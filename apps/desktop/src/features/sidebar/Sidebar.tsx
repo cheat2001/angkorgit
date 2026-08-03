@@ -12,6 +12,7 @@ import {
   GitMerge,
   ListRestart,
   MoreHorizontal,
+  GitBranchPlus,
   Pencil,
   Play,
   Plus,
@@ -32,6 +33,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   Input,
@@ -154,6 +156,8 @@ export function Sidebar() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [dropAction, setDropAction] = useState<{ source: string; target: string } | null>(null);
+  /** branch menu opened by right-click or the ⋯ button, positioned at cursor */
+  const [branchMenu, setBranchMenu] = useState<{ x: number; y: number; branch: BranchInfo } | null>(null);
 
   const path = repo?.path ?? '';
 
@@ -288,6 +292,10 @@ export function Sidebar() {
           setDropAction({ source, target: branch.name });
         }
       }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setBranchMenu({ x: e.clientX, y: e.clientY, branch });
+      }}
       style={{ paddingLeft: 28 + depth * 14 }}
       className={cn(
         'group flex cursor-grab items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-surface-raised active:cursor-grabbing',
@@ -309,44 +317,19 @@ export function Sidebar() {
         {branch.ahead > 0 && <Badge tone="primary">↑{branch.ahead}</Badge>}
         {branch.behind > 0 && <Badge tone="info">↓{branch.behind}</Badge>}
       </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-0 group-hover:opacity-100" aria-label={`${branch.name} actions`}>
-            <MoreHorizontal className="size-3.5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem
-            disabled={branch.isHead}
-            onClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
-          >
-            <Check /> Checkout
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={branch.isHead}
-            onClick={() => void act(`Merge ${branch.name}`, () => ipc.merge(path, branch.name), { kind: 'merge' })}
-          >
-            <GitMerge /> Merge into current
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={branch.isHead}
-            onClick={() => void act(`Rebase onto ${branch.name}`, () => ipc.rebase(path, branch.name), { kind: 'rebase' })}
-          >
-            <ListRestart /> Rebase current onto this
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => openDialog('rename', branch.name)}>
-            <Pencil /> Rename…
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            destructive
-            disabled={branch.isHead}
-            onClick={() => void act(`Delete branch ${branch.name}`, () => ipc.deleteBranch(path, branch.name, false), { kind: 'branchDelete', extra: { branch: branch.name, oid: branch.targetOid } })}
-          >
-            <Trash2 /> Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="shrink-0 opacity-0 group-hover:opacity-100"
+        aria-label={`${branch.name} actions`}
+        onClick={(e) => {
+          e.stopPropagation();
+          const rect = e.currentTarget.getBoundingClientRect();
+          setBranchMenu({ x: rect.left, y: rect.bottom + 4, branch });
+        }}
+      >
+        <MoreHorizontal className="size-3.5" />
+      </Button>
     </div>
   );
 
@@ -363,6 +346,10 @@ export function Sidebar() {
         setDragging(null);
         setDropTarget(null);
       }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setBranchMenu({ x: e.clientX, y: e.clientY, branch });
+      }}
       style={{ paddingLeft: 28 + depth * 14 }}
       className={cn(
         'group flex cursor-grab items-center gap-2 rounded-md px-2 py-1 text-sm text-muted hover:bg-surface-raised active:cursor-grabbing',
@@ -377,6 +364,19 @@ export function Sidebar() {
       >
         {label}
       </button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="shrink-0 opacity-0 group-hover:opacity-100"
+        aria-label={`${branch.name} actions`}
+        onClick={(e) => {
+          e.stopPropagation();
+          const rect = e.currentTarget.getBoundingClientRect();
+          setBranchMenu({ x: rect.left, y: rect.bottom + 4, branch });
+        }}
+      >
+        <MoreHorizontal className="size-3.5" />
+      </Button>
     </div>
   );
 
@@ -554,6 +554,74 @@ export function Sidebar() {
           </Section>
         )}
       </div>
+
+      {/* Branch context menu (right-click or ⋯) */}
+      {branchMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setBranchMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: branchMenu.x, top: branchMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            <DropdownMenuLabel className="max-w-64 truncate font-mono">{branchMenu.branch.name}</DropdownMenuLabel>
+            <DropdownMenuItem
+              disabled={branchMenu.branch.isHead}
+              onClick={() =>
+                void act(`Checkout ${branchMenu.branch.name}`, () => ipc.checkout(path, branchMenu.branch.name), {
+                  kind: 'checkout',
+                })
+              }
+            >
+              <Check /> Checkout
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={branchMenu.branch.isHead}
+              onClick={() =>
+                void act(`Merge ${branchMenu.branch.name}`, () => ipc.merge(path, branchMenu.branch.name), {
+                  kind: 'merge',
+                })
+              }
+            >
+              <GitMerge /> Merge into current
+            </DropdownMenuItem>
+            {!branchMenu.branch.isRemote && (
+              <DropdownMenuItem
+                disabled={branchMenu.branch.isHead}
+                onClick={() =>
+                  void act(`Rebase onto ${branchMenu.branch.name}`, () => ipc.rebase(path, branchMenu.branch.name), {
+                    kind: 'rebase',
+                  })
+                }
+              >
+                <ListRestart /> Rebase current onto this
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => openDialog('createBranch', branchMenu.branch.targetOid)}>
+              <GitBranchPlus /> Create branch here…
+            </DropdownMenuItem>
+            {!branchMenu.branch.isRemote && (
+              <>
+                <DropdownMenuItem onClick={() => openDialog('rename', branchMenu.branch.name)}>
+                  <Pencil /> Rename…
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  destructive
+                  disabled={branchMenu.branch.isHead}
+                  onClick={() =>
+                    void act(
+                      `Delete branch ${branchMenu.branch.name}`,
+                      () => ipc.deleteBranch(path, branchMenu.branch.name, false),
+                      { kind: 'branchDelete', extra: { branch: branchMenu.branch.name, oid: branchMenu.branch.targetOid } },
+                    )
+                  }
+                >
+                  <Trash2 /> Delete
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       {/* Drag-and-drop action chooser */}
       <Dialog open={dropAction !== null} onOpenChange={(o) => !o && setDropAction(null)}>
