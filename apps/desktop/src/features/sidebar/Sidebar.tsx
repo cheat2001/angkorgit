@@ -21,6 +21,12 @@ import {
 import {
   Badge,
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -81,6 +87,10 @@ export function Sidebar() {
   const filters = useGraph((s) => s.filters);
   const openDialog = useUi((s) => s.openDialog);
   const [query, setQuery] = useState('');
+  /** drag-and-drop merge state */
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dropAction, setDropAction] = useState<{ source: string; target: string } | null>(null);
 
   const path = repo?.path ?? '';
 
@@ -111,6 +121,42 @@ export function Sidebar() {
       await refreshAll();
     } catch (error) {
       toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
+    }
+  };
+
+  /** Merge source into target — checking target out first when needed. */
+  const dropMerge = async (source: string, target: string) => {
+    setDropAction(null);
+    try {
+      if (useRepo.getState().repo?.headBranch !== target) {
+        await useUndo.getState().tracked({
+          path,
+          kind: 'checkout',
+          label: `Checkout ${target}`,
+          action: () => ipc.checkout(path, target),
+        });
+      }
+      await act(`Merge ${source} into ${target}`, () => ipc.merge(path, source), { kind: 'merge' });
+    } catch (error) {
+      toast.error(`Merge failed: ${(error as { message?: string }).message ?? error}`);
+    }
+  };
+
+  /** Rebase source onto target — checking source out first when needed. */
+  const dropRebase = async (source: string, target: string) => {
+    setDropAction(null);
+    try {
+      if (useRepo.getState().repo?.headBranch !== source) {
+        await useUndo.getState().tracked({
+          path,
+          kind: 'checkout',
+          label: `Checkout ${source}`,
+          action: () => ipc.checkout(path, source),
+        });
+      }
+      await act(`Rebase ${source} onto ${target}`, () => ipc.rebase(path, target), { kind: 'rebase' });
+    } catch (error) {
+      toast.error(`Rebase failed: ${(error as { message?: string }).message ?? error}`);
     }
   };
 
@@ -155,11 +201,42 @@ export function Sidebar() {
           {locals.map((branch) => (
             <div
               key={branch.name}
+              draggable
+              onDragStart={(e) => {
+                setDragging(branch.name);
+                e.dataTransfer.setData('text/angkorgit-branch', branch.name);
+                e.dataTransfer.effectAllowed = 'link';
+              }}
+              onDragEnd={() => {
+                setDragging(null);
+                setDropTarget(null);
+              }}
+              onDragOver={(e) => {
+                const source = dragging;
+                if (source && source !== branch.name) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'link';
+                  setDropTarget(branch.name);
+                }
+              }}
+              onDragLeave={() => setDropTarget((t) => (t === branch.name ? null : t))}
+              onDrop={(e) => {
+                e.preventDefault();
+                const source = e.dataTransfer.getData('text/angkorgit-branch');
+                setDropTarget(null);
+                setDragging(null);
+                if (source && source !== branch.name) {
+                  setDropAction({ source, target: branch.name });
+                }
+              }}
               className={cn(
-                'group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised',
+                'group flex cursor-grab items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised active:cursor-grabbing',
                 branch.isHead && 'text-primary',
                 filters.branch === branch.name && 'bg-surface-raised',
+                dragging === branch.name && 'opacity-40',
+                dropTarget === branch.name && 'bg-primary/10 ring-1 ring-inset ring-primary/60',
               )}
+              title={`Drag onto another branch to merge or rebase`}
             >
               <button
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -216,7 +293,24 @@ export function Sidebar() {
 
         <Section icon={<Cloud className="size-3.5" />} title="Remotes" count={remoteBranches.length} defaultOpen={false}>
           {remoteBranches.map((branch) => (
-            <div key={branch.name} className="group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm text-muted hover:bg-surface-raised">
+            <div
+              key={branch.name}
+              draggable
+              onDragStart={(e) => {
+                setDragging(branch.name);
+                e.dataTransfer.setData('text/angkorgit-branch', branch.name);
+                e.dataTransfer.effectAllowed = 'link';
+              }}
+              onDragEnd={() => {
+                setDragging(null);
+                setDropTarget(null);
+              }}
+              className={cn(
+                'group flex cursor-grab items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm text-muted hover:bg-surface-raised active:cursor-grabbing',
+                dragging === branch.name && 'opacity-40',
+              )}
+              title="Drag onto a local branch to merge or rebase"
+            >
               <button
                 className="min-w-0 flex-1 truncate text-left"
                 onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
@@ -334,6 +428,45 @@ export function Sidebar() {
           </Section>
         )}
       </div>
+
+      {/* Drag-and-drop action chooser */}
+      <Dialog open={dropAction !== null} onOpenChange={(o) => !o && setDropAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              <span className="font-mono text-sm">{dropAction?.source}</span> →{' '}
+              <span className="font-mono text-sm">{dropAction?.target}</span>
+            </DialogTitle>
+            <DialogDescription>
+              {dropAction && useRepo.getState().repo?.headBranch !== dropAction.target
+                ? `${dropAction.target} will be checked out first when merging.`
+                : 'Choose what to do with these branches.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Button
+              className="justify-start"
+              onClick={() => dropAction && void dropMerge(dropAction.source, dropAction.target)}
+            >
+              <GitMerge /> Merge {dropAction?.source} into {dropAction?.target}
+            </Button>
+            {dropAction && !branches.find((b) => b.name === dropAction.source)?.isRemote && (
+              <Button
+                variant="secondary"
+                className="justify-start"
+                onClick={() => void dropRebase(dropAction.source, dropAction.target)}
+              >
+                <ListRestart /> Rebase {dropAction.source} onto {dropAction.target}
+              </Button>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDropAction(null)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
