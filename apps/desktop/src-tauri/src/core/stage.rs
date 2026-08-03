@@ -64,8 +64,30 @@ pub fn unstage_all(path: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Paths that still have unstaged changes (used to detect discard no-ops,
+/// e.g. submodule pointer changes that checkout-index cannot touch).
+fn unstaged_paths(repo: &git2::Repository) -> AppResult<Vec<String>> {
+    let mut opts = git2::StatusOptions::new();
+    opts.include_untracked(true).recurse_untracked_dirs(true);
+    let statuses = repo.statuses(Some(&mut opts))?;
+    Ok(statuses
+        .iter()
+        .filter(|e| {
+            let s = e.status();
+            s.is_wt_new()
+                || s.is_wt_modified()
+                || s.is_wt_deleted()
+                || s.is_wt_renamed()
+                || s.is_wt_typechange()
+        })
+        .filter_map(|e| e.path().map(String::from))
+        .collect())
+}
+
 /// Discard workdir changes for a file (checkout from index).
-pub fn discard_file(path: &str, file: &str) -> AppResult<()> {
+/// Returns `true` when the file is actually clean afterwards — submodule
+/// changes, for example, cannot be discarded from the parent repository.
+pub fn discard_file(path: &str, file: &str) -> AppResult<bool> {
     let repo = super::repo::open(path)?;
     let workdir = repo
         .workdir()
@@ -78,17 +100,18 @@ pub fn discard_file(path: &str, file: &str) -> AppResult<()> {
         if full.is_file() {
             std::fs::remove_file(full)?;
         }
-        return Ok(());
+    } else {
+        let mut builder = git2::build::CheckoutBuilder::new();
+        builder.path(file).force().update_index(false);
+        repo.checkout_index(None, Some(&mut builder))?;
     }
-    let mut builder = git2::build::CheckoutBuilder::new();
-    builder.path(file).force().update_index(false);
-    repo.checkout_index(None, Some(&mut builder))?;
-    Ok(())
+    Ok(!unstaged_paths(&repo)?.iter().any(|p| p == file))
 }
 
 /// Discard ALL working-tree changes: restore tracked files from the index
 /// and delete untracked files. Destructive — the UI confirms first.
-pub fn discard_all(path: &str) -> AppResult<()> {
+/// Returns paths that could NOT be discarded (typically submodules).
+pub fn discard_all(path: &str) -> AppResult<Vec<String>> {
     let repo = super::repo::open(path)?;
     let workdir = repo
         .workdir()
@@ -113,7 +136,8 @@ pub fn discard_all(path: &str) -> AppResult<()> {
     let mut builder = git2::build::CheckoutBuilder::new();
     builder.force().update_index(false);
     repo.checkout_index(None, Some(&mut builder))?;
-    Ok(())
+
+    unstaged_paths(&repo)
 }
 
 /// Render the full patch text of a diff, split per hunk, keeping the file

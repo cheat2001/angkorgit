@@ -56,10 +56,18 @@ const preset: Partial<Config> = {
           from: { opacity: '0', transform: 'translateY(4px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        // Centered dialogs must animate WITH the centering translate,
+        // otherwise the animation transform overrides it and the dialog
+        // visibly jumps into place.
+        'dialog-in': {
+          from: { opacity: '0', transform: 'translate(-50%, -49%) scale(0.97)' },
+          to: { opacity: '1', transform: 'translate(-50%, -50%) scale(1)' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 150ms ease-out',
         'slide-up': 'slide-up 180ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'dialog-in': 'dialog-in 180ms cubic-bezier(0.16, 1, 0.3, 1)',
       },
     },
   },

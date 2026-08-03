@@ -17,7 +17,7 @@ export const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
-        'rounded-lg border border-border bg-surface-overlay p-6 shadow-soft data-[state=open]:animate-slide-up',
+        'rounded-lg border border-border bg-surface-overlay p-6 shadow-soft data-[state=open]:animate-dialog-in',
         className,
       )}
       {...props}

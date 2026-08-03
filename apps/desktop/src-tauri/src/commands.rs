@@ -115,12 +115,12 @@ pub async fn unstage_all(path: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn discard_file(path: String, file: String) -> AppResult<()> {
+pub async fn discard_file(path: String, file: String) -> AppResult<bool> {
     blocking(move || stage::discard_file(&path, &file)).await
 }
 
 #[tauri::command]
-pub async fn discard_all(path: String) -> AppResult<()> {
+pub async fn discard_all(path: String) -> AppResult<Vec<String>> {
     blocking(move || stage::discard_all(&path)).await
 }
 

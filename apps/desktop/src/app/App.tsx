@@ -4,6 +4,7 @@ import { AnimatePresence } from 'framer-motion';
 import { Toaster } from 'sonner';
 import { TooltipProvider } from '@angkorgit/design-system';
 import { SplashScreen } from './SplashScreen';
+import { ConfirmHost } from '@/components/confirm';
 import { WelcomePage } from '@/features/repository/WelcomePage';
 import { RepositoryPage } from '@/features/repository/RepositoryPage';
 import { useRepo } from '@/features/repository/store';
@@ -67,14 +68,25 @@ export function App() {
           <Shell />
         </div>
       </MemoryRouter>
+      <ConfirmHost />
       <Toaster
-        position="bottom-right"
+        position="bottom-left"
         theme={theme}
+        closeButton
+        gap={8}
         toastOptions={{
           style: {
             background: 'hsl(var(--surface-overlay))',
             border: '1px solid hsl(var(--border))',
             color: 'hsl(var(--foreground))',
+            boxShadow: 'var(--shadow-soft)',
+            borderRadius: 'var(--radius)',
+          },
+          classNames: {
+            success: '!border-l-[3px] !border-l-success',
+            error: '!border-l-[3px] !border-l-danger',
+            warning: '!border-l-[3px] !border-l-primary',
+            info: '!border-l-[3px] !border-l-info',
           },
         }}
       />

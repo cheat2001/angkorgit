@@ -17,6 +17,7 @@ import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
+import { confirmDialog } from '@/components/confirm';
 
 /**
  * Visual conflict resolver, GitKraken-style:
@@ -70,17 +71,20 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const canSave = manualText !== null ? !manualHasMarkers : blocks !== null && allResolved(blocks);
 
   /** Block-level actions regenerate the result — guard hand edits. */
-  const guardManual = (): boolean => {
+  const guardManual = async (): Promise<boolean> => {
     if (manualText === null) return true;
-    if (window.confirm('Replace your manual edits in the Result pane with the generated resolution?')) {
-      setManualText(null);
-      return true;
-    }
-    return false;
+    const ok = await confirmDialog({
+      title: 'Replace manual edits?',
+      description: 'Your hand-written Result will be replaced by the resolution generated from the checkboxes.',
+      confirmLabel: 'Replace',
+      destructive: true,
+    });
+    if (ok) setManualText(null);
+    return ok;
   };
 
-  const setResolution = (index: number, resolution: Resolution) => {
-    if (!guardManual()) return;
+  const setResolution = async (index: number, resolution: Resolution) => {
+    if (!(await guardManual())) return;
     setBlocks((prev) =>
       prev ? prev.map((b, i) => (i === index && b.kind === 'conflict' ? { ...b, resolution } : b)) : prev,
     );
@@ -93,11 +97,11 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     const next = { current: side === 'current' ? !cur : cur, incoming: side === 'incoming' ? !inc : inc };
     const resolution: Resolution =
       next.current && next.incoming ? 'both' : next.current ? 'current' : next.incoming ? 'incoming' : 'unresolved';
-    setResolution(index, resolution);
+    void setResolution(index, resolution);
   };
 
-  const resolveAll = (resolution: Resolution) => {
-    if (!guardManual()) return;
+  const resolveAll = async (resolution: Resolution) => {
+    if (!(await guardManual())) return;
     setBlocks((prev) => (prev ? prev.map((b) => (b.kind === 'conflict' ? { ...b, resolution } : b)) : prev));
   };
 
@@ -170,10 +174,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => resolveAll('current')}>
+          <Button variant="ghost" size="sm" onClick={() => void resolveAll('current')}>
             All current
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => resolveAll('incoming')}>
+          <Button variant="ghost" size="sm" onClick={() => void resolveAll('incoming')}>
             All incoming
           </Button>
           <Hint

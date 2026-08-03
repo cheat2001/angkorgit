@@ -121,12 +121,14 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('unstage_all', { path });
   },
-  async discardFile(path: string, file: string): Promise<void> {
-    if (!isTauri()) return;
+  /** Returns true when the file is actually clean afterwards. */
+  async discardFile(path: string, file: string): Promise<boolean> {
+    if (!isTauri()) return true;
     return invoke('discard_file', { path, file });
   },
-  async discardAll(path: string): Promise<void> {
-    if (!isTauri()) return;
+  /** Returns the paths that could NOT be discarded (e.g. submodules). */
+  async discardAll(path: string): Promise<string[]> {
+    if (!isTauri()) return [];
     return invoke('discard_all', { path });
   },
   async stageHunk(path: string, file: string, hunkIndex: number): Promise<void> {

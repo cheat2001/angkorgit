@@ -21,6 +21,7 @@ import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import { CommitRow, ROW_HEIGHT } from './GraphRow';
 import { WipRow } from './WipRow';
+import { confirmDialog } from '@/components/confirm';
 
 interface MenuState {
   x: number;
@@ -220,9 +221,18 @@ export function CommitGraph() {
             <DropdownMenuItem
               destructive
               onClick={() => {
-                if (window.confirm('Hard reset discards all uncommitted work. Continue?')) {
-                  void act(`Hard reset to ${menu.commit.shortOid}`, () => ipc.reset(path, menu.commit.oid, 'hard'), { kind: 'reset' });
-                }
+                void confirmDialog({
+                  title: `Hard reset to ${menu.commit.shortOid}?`,
+                  description:
+                    'HEAD, the index and your working tree will all move to this commit. Uncommitted work is discarded and cannot be recovered.',
+                  confirmLabel: 'Hard reset',
+                  destructive: true,
+                }).then((ok) => {
+                  if (ok)
+                    void act(`Hard reset to ${menu.commit.shortOid}`, () => ipc.reset(path, menu.commit.oid, 'hard'), {
+                      kind: 'reset',
+                    });
+                });
               }}
             >
               <RotateCcw /> Reset here (hard)

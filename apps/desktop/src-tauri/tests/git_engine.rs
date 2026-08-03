@@ -185,8 +185,9 @@ fn unstage_all_and_discard_all() {
     assert!(status.files.iter().all(|f| f.staged.is_none()));
     assert_eq!(status.files.len(), 2);
 
-    // discard_all: tracked restored, untracked deleted
-    core::discard_all(repo.path()).unwrap();
+    // discard_all: tracked restored, untracked deleted, nothing left behind
+    let remaining = core::discard_all(repo.path()).unwrap();
+    assert!(remaining.is_empty());
     assert_eq!(repo.read("a.txt"), "one\n");
     assert!(!repo.dir.join("new.txt").exists());
     assert_eq!(core::status(repo.path()).unwrap().files.len(), 0);
