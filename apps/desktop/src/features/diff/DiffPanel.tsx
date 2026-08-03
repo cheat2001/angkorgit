@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Columns2, FileText, Minus, Plus, Rows3, WholeWord, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Columns2, FileText, Minus, Plus, Rows3, WholeWord, X } from 'lucide-react';
 import type { FileDiff } from '@angkorgit/core';
 import { Badge, Button, Hint, Kbd, Separator, Spinner, cn } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi, type CenterDiffTarget } from '@/features/ui/store';
 import { DiffViewer } from './DiffViewer';
+import { changeBlocks, DiffMinimap, scrollToFraction } from './DiffMinimap';
 
 /**
  * Full-width diff view shown over the commit graph (GitKraken-style).
@@ -20,9 +21,30 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const { closeCenterDiff, diffView, setDiffView, wordDiff, setWordDiff, fullFileDiff, setFullFileDiff } = useUi();
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
+
+  const blocks = useMemo(
+    () => (diff && !diff.isBinary && !diff.isImage ? changeBlocks(diff, diffView) : []),
+    [diff, diffView],
+  );
+
+  /** Jump to the change block before/after the current viewport position. */
+  const jumpChange = (direction: 1 | -1) => {
+    const el = scrollRef.current;
+    if (!el || blocks.length === 0 || el.scrollHeight === 0) return;
+    // Position the "cursor" a third down the viewport, matching scrollToFraction.
+    const current = (el.scrollTop + el.clientHeight * 0.35) / el.scrollHeight;
+    const epsilon = 0.002;
+    const next =
+      direction === 1
+        ? (blocks.find((b) => b.fraction > current + epsilon) ?? blocks[0])
+        : ([...blocks].reverse().find((b) => b.fraction < current - epsilon) ??
+          blocks[blocks.length - 1]);
+    scrollToFraction(el, next.fraction);
+  };
 
   useEffect(() => {
     if (!path) return;
@@ -145,6 +167,24 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <FileText className="size-3.5" />
           </Button>
         </Hint>
+        {blocks.length > 0 && (
+          <>
+            <Separator orientation="vertical" className="mx-1 h-4" />
+            <Hint label="Previous change">
+              <Button variant="ghost" size="icon-sm" aria-label="Previous change" onClick={() => jumpChange(-1)}>
+                <ChevronUp className="size-4" />
+              </Button>
+            </Hint>
+            <Hint label="Next change">
+              <Button variant="ghost" size="icon-sm" aria-label="Next change" onClick={() => jumpChange(1)}>
+                <ChevronDown className="size-4" />
+              </Button>
+            </Hint>
+            <span className="text-[10px] text-faint">
+              {blocks.length} change{blocks.length === 1 ? '' : 's'}
+            </span>
+          </>
+        )}
         {isWorkingCopy && (
           <>
             <Separator orientation="vertical" className="mx-1 h-4" />
@@ -169,13 +209,14 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="flex h-full items-center justify-center">
-            <Spinner className="size-5" />
-          </div>
-        ) : diff ? (
-          <DiffViewer
+      <div className="flex min-h-0 flex-1">
+        <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex h-full items-center justify-center">
+              <Spinner className="size-5" />
+            </div>
+          ) : diff ? (
+            <DiffViewer
             diff={diff}
             hunkActions={
               // Hunk indices refer to the compact (3-line-context) diff the
@@ -210,10 +251,14 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
                   )
                 : undefined
             }
-          />
-        ) : (
-          <p className="py-16 text-center text-sm text-faint">No diff to show — the change may already be staged or resolved.</p>
-        )}
+            />
+          ) : (
+            <p className="py-16 text-center text-sm text-faint">
+              No diff to show — the change may already be staged or resolved.
+            </p>
+          )}
+        </div>
+        {diff && !loading && <DiffMinimap diff={diff} view={diffView} scrollRef={scrollRef} />}
       </div>
     </motion.section>
   );
