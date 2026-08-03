@@ -22,6 +22,8 @@
 | `pnpm test:e2e` | Playwright against demo mode |
 | `cd apps/desktop/src-tauri && cargo test` | git engine integration tests (real temp repos) |
 | `pnpm tauri:build` | production bundles (.dmg/.msi/.deb/.AppImage) |
+| `pnpm release:mac` | build, then open the folder containing the .dmg |
+| `pnpm install:mac` | copy the built AngKorGit.app into /Applications and launch it |
 
 ## Demo mode
 

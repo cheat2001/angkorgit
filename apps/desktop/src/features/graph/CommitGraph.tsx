@@ -19,6 +19,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { CommitRow, ROW_HEIGHT } from './GraphRow';
+import { WipRow } from './WipRow';
 
 interface MenuState {
   x: number;
@@ -127,6 +128,7 @@ export function CommitGraph() {
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" role="table" aria-label="Commits">
+        <WipRow gutterWidth={gutterWidth} />
         {rows.length === 0 && !loading ? (
           <div className="flex h-full items-center justify-center text-sm text-faint">
             No commits found

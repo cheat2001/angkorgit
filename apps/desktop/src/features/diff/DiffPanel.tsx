@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { ChevronDown, ChevronUp, Columns2, FileText, Minus, Plus, Rows3, WholeWord, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Columns2, FileText, Minus, Plus, Rows3, WholeWord, WrapText, X } from 'lucide-react';
 import type { FileDiff } from '@angkorgit/core';
 import { Badge, Button, Hint, Kbd, Separator, Spinner, cn } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
@@ -18,7 +18,17 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const repo = useRepo((s) => s.repo);
   const status = useRepo((s) => s.status);
   const refreshStatus = useRepo((s) => s.refreshStatus);
-  const { closeCenterDiff, diffView, setDiffView, wordDiff, setWordDiff, fullFileDiff, setFullFileDiff } = useUi();
+  const {
+    closeCenterDiff,
+    diffView,
+    setDiffView,
+    wordDiff,
+    setWordDiff,
+    fullFileDiff,
+    setFullFileDiff,
+    wrapLines,
+    setWrapLines,
+  } = useUi();
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -154,6 +164,17 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             onClick={() => setWordDiff(!wordDiff)}
           >
             <WholeWord className="size-3.5" />
+          </Button>
+        </Hint>
+        <Hint label={wrapLines ? 'Lines wrapped — click for horizontal scroll' : 'Wrap long lines'}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Toggle line wrapping"
+            className={cn(wrapLines && 'bg-surface-raised text-primary')}
+            onClick={() => setWrapLines(!wrapLines)}
+          >
+            <WrapText className="size-3.5" />
           </Button>
         </Hint>
         <Hint label={fullFileDiff ? 'Whole file shown — click for changes only' : 'Show whole file'}>

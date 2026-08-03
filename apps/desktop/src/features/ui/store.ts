@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export type DiffViewMode = 'inline' | 'split';
 
@@ -31,6 +32,8 @@ interface UiState {
   wordDiff: boolean;
   /** show the entire file in diffs instead of change hunks only */
   fullFileDiff: boolean;
+  /** soft-wrap long lines in diffs (off = horizontal scroll, like editors) */
+  wrapLines: boolean;
   /** file selected in the working-copy panel: [path, staged] */
   selectedFile: { path: string; staged: boolean } | null;
   /** diff shown full-width over the graph, null = graph visible */
@@ -46,14 +49,17 @@ interface UiState {
   setDiffView: (mode: DiffViewMode) => void;
   setWordDiff: (on: boolean) => void;
   setFullFileDiff: (on: boolean) => void;
+  setWrapLines: (on: boolean) => void;
   selectFile: (file: { path: string; staged: boolean } | null) => void;
   openCenterDiff: (target: CenterDiffTarget) => void;
   closeCenterDiff: () => void;
   openConflict: (file: string | null) => void;
 }
 
-export const useUi = create<UiState>((set) => ({
-  sidebarOpen: true,
+export const useUi = create<UiState>()(
+  persist(
+    (set) => ({
+      sidebarOpen: true,
   terminalOpen: false,
   paletteOpen: false,
   dialog: null,
@@ -61,6 +67,7 @@ export const useUi = create<UiState>((set) => ({
   diffView: 'inline',
   wordDiff: true,
   fullFileDiff: false,
+  wrapLines: false,
   selectedFile: null,
   centerDiff: null,
   conflictFile: null,
@@ -73,8 +80,23 @@ export const useUi = create<UiState>((set) => ({
   setDiffView: (diffView) => set({ diffView }),
   setWordDiff: (wordDiff) => set({ wordDiff }),
   setFullFileDiff: (fullFileDiff) => set({ fullFileDiff }),
+  setWrapLines: (wrapLines) => set({ wrapLines }),
   selectFile: (selectedFile) => set({ selectedFile }),
   openCenterDiff: (centerDiff) => set({ centerDiff }),
   closeCenterDiff: () => set({ centerDiff: null }),
   openConflict: (conflictFile) => set({ conflictFile }),
-}));
+    }),
+    {
+      name: 'angkorgit-ui',
+      // Persist layout/view preferences only — never transient state like
+      // open dialogs, selections, or the current diff target.
+      partialize: (state) => ({
+        sidebarOpen: state.sidebarOpen,
+        diffView: state.diffView,
+        wordDiff: state.wordDiff,
+        fullFileDiff: state.fullFileDiff,
+        wrapLines: state.wrapLines,
+      }),
+    },
+  ),
+);
