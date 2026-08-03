@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, Combine, Sparkles, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Pencil, RotateCcw, Sparkles, X } from 'lucide-react';
 import {
   allResolved,
   aiCapabilities,
@@ -9,25 +9,33 @@ import {
   parseConflicts,
   serializeResolution,
   type Block,
+  type ConflictBlock,
   type Resolution,
 } from '@angkorgit/core';
-import { Badge, Button, Spinner, cn } from '@angkorgit/design-system';
+import { Badge, Button, Checkbox, Hint, Spinner, cn } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 
 /**
- * Visual conflict resolver: Current | Incoming | Result.
- * Per-conflict actions: Accept Current / Accept Incoming / Accept Both.
+ * Visual conflict resolver, GitKraken-style:
+ *  - Current | Incoming panes with a checkbox per side (check both = keep both)
+ *  - prev/next conflict navigation
+ *  - an EDITABLE Result pane — quick-pick with checkboxes, then fine-tune the
+ *    output by hand; manual edits are tracked and guarded.
  */
 export function ConflictResolver({ file, onResolved }: { file: string; onResolved: () => Promise<void> }) {
   const repo = useRepo((s) => s.repo);
   const openConflict = useUi((s) => s.openConflict);
   const [blocks, setBlocks] = useState<Block[] | null>(null);
+  /** non-null once the user typed in the result pane */
+  const [manualText, setManualText] = useState<string | null>(null);
+  const [activeConflict, setActiveConflict] = useState(0);
   const [saving, setSaving] = useState(false);
   const [aiText, setAiText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const blockRefs = useRef(new Map<number, HTMLDivElement>());
 
   const path = repo?.path ?? '';
 
@@ -50,19 +58,54 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     () => (blocks ? blocks.filter((b) => b.kind === 'conflict' && b.resolution !== 'unresolved').length : 0),
     [blocks],
   );
+  /** indices (into blocks) of conflict blocks, for navigation */
+  const conflictIndices = useMemo(
+    () => (blocks ? blocks.flatMap((b, i) => (b.kind === 'conflict' ? [i] : [])) : []),
+    [blocks],
+  );
+
+  const generated = useMemo(() => (blocks ? serializeResolution(blocks) : ''), [blocks]);
+  const resultText = manualText ?? generated;
+  const manualHasMarkers = manualText !== null && manualText.includes('<<<<<<<');
+  const canSave = manualText !== null ? !manualHasMarkers : blocks !== null && allResolved(blocks);
+
+  /** Block-level actions regenerate the result — guard hand edits. */
+  const guardManual = (): boolean => {
+    if (manualText === null) return true;
+    if (window.confirm('Replace your manual edits in the Result pane with the generated resolution?')) {
+      setManualText(null);
+      return true;
+    }
+    return false;
+  };
 
   const setResolution = (index: number, resolution: Resolution) => {
+    if (!guardManual()) return;
     setBlocks((prev) =>
-      prev
-        ? prev.map((b, i) => (i === index && b.kind === 'conflict' ? { ...b, resolution } : b))
-        : prev,
+      prev ? prev.map((b, i) => (i === index && b.kind === 'conflict' ? { ...b, resolution } : b)) : prev,
     );
   };
 
+  /** Checkbox model: current/incoming independently toggleable. */
+  const toggleSide = (index: number, side: 'current' | 'incoming', block: ConflictBlock) => {
+    const cur = block.resolution === 'current' || block.resolution === 'both';
+    const inc = block.resolution === 'incoming' || block.resolution === 'both';
+    const next = { current: side === 'current' ? !cur : cur, incoming: side === 'incoming' ? !inc : inc };
+    const resolution: Resolution =
+      next.current && next.incoming ? 'both' : next.current ? 'current' : next.incoming ? 'incoming' : 'unresolved';
+    setResolution(index, resolution);
+  };
+
   const resolveAll = (resolution: Resolution) => {
-    setBlocks((prev) =>
-      prev ? prev.map((b) => (b.kind === 'conflict' ? { ...b, resolution } : b)) : prev,
-    );
+    if (!guardManual()) return;
+    setBlocks((prev) => (prev ? prev.map((b) => (b.kind === 'conflict' ? { ...b, resolution } : b)) : prev));
+  };
+
+  const jump = (direction: 1 | -1) => {
+    if (conflictIndices.length === 0) return;
+    const next = (activeConflict + direction + conflictIndices.length) % conflictIndices.length;
+    setActiveConflict(next);
+    blockRefs.current.get(conflictIndices[next])?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   const explain = async (current: string, incoming: string) => {
@@ -81,10 +124,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   };
 
   const save = async () => {
-    if (!blocks || !allResolved(blocks)) return;
+    if (!canSave) return;
     setSaving(true);
     try {
-      await ipc.conflictResolve(path, file, serializeResolution(blocks));
+      await ipc.conflictResolve(path, file, resultText);
       toast.success(`${file} resolved`);
       openConflict(null);
       await onResolved();
@@ -94,8 +137,6 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       setSaving(false);
     }
   };
-
-  const resultPreview = useMemo(() => (blocks ? serializeResolution(blocks) : ''), [blocks]);
 
   return (
     <motion.div
@@ -111,21 +152,46 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         <Badge tone={resolvedCount === total ? 'success' : 'primary'}>
           {resolvedCount}/{total} resolved
         </Badge>
+        {total > 1 && (
+          <span className="flex items-center gap-0.5">
+            <Hint label="Previous conflict">
+              <Button variant="ghost" size="icon-sm" aria-label="Previous conflict" onClick={() => jump(-1)}>
+                <ChevronUp className="size-4" />
+              </Button>
+            </Hint>
+            <Hint label="Next conflict">
+              <Button variant="ghost" size="icon-sm" aria-label="Next conflict" onClick={() => jump(1)}>
+                <ChevronDown className="size-4" />
+              </Button>
+            </Hint>
+            <span className="text-[10px] text-faint">
+              {activeConflict + 1}/{total}
+            </span>
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => resolveAll('current')}>
-            <ArrowLeft className="size-3.5" /> All current
+            All current
           </Button>
           <Button variant="ghost" size="sm" onClick={() => resolveAll('incoming')}>
-            All incoming <ArrowRight className="size-3.5" />
+            All incoming
           </Button>
-          <Button
-            size="sm"
-            disabled={!blocks || !allResolved(blocks) || saving}
-            onClick={() => void save()}
+          <Hint
+            label={
+              manualHasMarkers
+                ? 'Remove the remaining <<<<<<< markers from the Result first'
+                : !canSave
+                  ? 'Resolve every conflict (or edit the Result directly) first'
+                  : 'Write the result and mark the file resolved'
+            }
           >
-            {saving ? <Spinner className="text-primary-foreground" /> : <Check />}
-            Mark resolved
-          </Button>
+            <span>
+              <Button size="sm" disabled={!canSave || saving} onClick={() => void save()}>
+                {saving ? <Spinner className="text-primary-foreground" /> : <Check />}
+                Mark resolved
+              </Button>
+            </span>
+          </Hint>
           <Button variant="ghost" size="icon" aria-label="Close" onClick={() => openConflict(null)}>
             <X />
           </Button>
@@ -146,53 +212,65 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                   {block.lines.join('\n')}
                 </pre>
               ) : (
-                <div key={index} className="my-2 border-y border-border">
+                <div
+                  key={index}
+                  ref={(el) => {
+                    if (el) blockRefs.current.set(index, el);
+                    else blockRefs.current.delete(index);
+                  }}
+                  className={cn(
+                    'my-2 border-y border-border transition-shadow',
+                    conflictIndices[activeConflict] === index && 'ring-1 ring-primary/50',
+                  )}
+                >
                   <div className="flex">
                     <div
                       className={cn(
-                        'w-1/2 border-r border-border-subtle bg-info/5 p-2',
-                        block.resolution === 'current' || block.resolution === 'both' ? 'ring-1 ring-inset ring-info/60' : '',
+                        'w-1/2 border-r border-border-subtle bg-info/5',
+                        (block.resolution === 'current' || block.resolution === 'both') &&
+                          'ring-1 ring-inset ring-info/60',
                       )}
                     >
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-info">
-                        Current {block.currentLabel && `(${block.currentLabel})`}
-                      </p>
-                      <pre className="whitespace-pre-wrap font-mono text-xs leading-5">{block.current.join('\n')}</pre>
+                      <label className="flex cursor-pointer items-center gap-2 border-b border-border-subtle px-2 py-1.5">
+                        <Checkbox
+                          checked={block.resolution === 'current' || block.resolution === 'both'}
+                          onCheckedChange={() => toggleSide(index, 'current', block)}
+                          aria-label="Use current side"
+                        />
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-info">
+                          Current {block.currentLabel && `(${block.currentLabel})`}
+                        </span>
+                      </label>
+                      <pre className="whitespace-pre-wrap p-2 font-mono text-xs leading-5">
+                        {block.current.join('\n')}
+                      </pre>
                     </div>
                     <div
                       className={cn(
-                        'w-1/2 bg-success/5 p-2',
-                        block.resolution === 'incoming' || block.resolution === 'both' ? 'ring-1 ring-inset ring-success/60' : '',
+                        'w-1/2 bg-success/5',
+                        (block.resolution === 'incoming' || block.resolution === 'both') &&
+                          'ring-1 ring-inset ring-success/60',
                       )}
                     >
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-success">
-                        Incoming {block.incomingLabel && `(${block.incomingLabel})`}
-                      </p>
-                      <pre className="whitespace-pre-wrap font-mono text-xs leading-5">{block.incoming.join('\n')}</pre>
+                      <label className="flex cursor-pointer items-center gap-2 border-b border-border-subtle px-2 py-1.5">
+                        <Checkbox
+                          checked={block.resolution === 'incoming' || block.resolution === 'both'}
+                          onCheckedChange={() => toggleSide(index, 'incoming', block)}
+                          aria-label="Use incoming side"
+                        />
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-success">
+                          Incoming {block.incomingLabel && `(${block.incomingLabel})`}
+                        </span>
+                      </label>
+                      <pre className="whitespace-pre-wrap p-2 font-mono text-xs leading-5">
+                        {block.incoming.join('\n')}
+                      </pre>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 border-t border-border-subtle bg-surface-raised/60 px-2 py-1.5">
-                    <Button
-                      variant={block.resolution === 'current' ? 'default' : 'secondary'}
-                      size="sm"
-                      onClick={() => setResolution(index, 'current')}
-                    >
-                      <ArrowLeft className="size-3" /> Accept current
-                    </Button>
-                    <Button
-                      variant={block.resolution === 'incoming' ? 'default' : 'secondary'}
-                      size="sm"
-                      onClick={() => setResolution(index, 'incoming')}
-                    >
-                      Accept incoming <ArrowRight className="size-3" />
-                    </Button>
-                    <Button
-                      variant={block.resolution === 'both' ? 'default' : 'secondary'}
-                      size="sm"
-                      onClick={() => setResolution(index, 'both')}
-                    >
-                      <Combine className="size-3" /> Accept both
-                    </Button>
+                  <div className="flex items-center gap-2 border-t border-border-subtle bg-surface-raised/60 px-2 py-1">
+                    <span className="text-[10px] text-faint">
+                      Check one side, both, or edit the Result directly →
+                    </span>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -214,14 +292,42 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
             )}
           </div>
 
-          {/* Result pane */}
+          {/* Result pane — editable */}
           <div className="flex min-h-0 flex-1 flex-col">
-            <p className="border-b border-border-subtle bg-surface px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Result
-            </p>
-            <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-4 py-2 font-mono text-xs leading-5">
-              {resultPreview}
-            </pre>
+            <div className="flex items-center gap-2 border-b border-border-subtle bg-surface px-3 py-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Result</span>
+              {manualText !== null ? (
+                <>
+                  <Badge tone="primary">
+                    <Pencil className="size-2.5" /> edited by hand
+                  </Badge>
+                  {manualHasMarkers && <Badge tone="danger">markers remain</Badge>}
+                  <Hint label="Discard manual edits and regenerate from the checkboxes">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="ml-auto"
+                      aria-label="Reset manual edits"
+                      onClick={() => setManualText(null)}
+                    >
+                      <RotateCcw className="size-3.5" />
+                    </Button>
+                  </Hint>
+                </>
+              ) : (
+                <span className="ml-auto text-[10px] text-faint">click to edit</span>
+              )}
+            </div>
+            <textarea
+              value={resultText}
+              onChange={(e) => setManualText(e.target.value)}
+              spellCheck={false}
+              aria-label="Resolved file content (editable)"
+              className={cn(
+                'min-h-0 flex-1 resize-none bg-transparent px-4 py-2 font-mono text-xs leading-5 text-foreground',
+                'focus:outline-none focus:ring-1 focus:ring-inset focus:ring-primary/40',
+              )}
+            />
           </div>
         </div>
       )}
