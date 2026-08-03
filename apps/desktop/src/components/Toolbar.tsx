@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -19,6 +19,7 @@ import {
   SquareTerminal,
   Tag,
   Archive,
+  UserRound,
 } from 'lucide-react';
 import {
   Badge,
@@ -28,6 +29,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   Hint,
   Kbd,
@@ -40,12 +44,34 @@ import { ipc, pickDirectory } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo } from '@/features/history/undoStore';
+import { useSettings } from '@/features/settings/store';
 import { modKey } from '@/shared/utils';
 
 /** GitKraken-style project switcher: the repo name is a dropdown. */
 function RepoSwitcher() {
   const { repo, recents, open, busy } = useRepo();
   const openDialog = useUi((s) => s.openDialog);
+  const profiles = useSettings((s) => s.profiles);
+  const [activeEmail, setActiveEmail] = useState('');
+
+  // Effective committer identity for the open repo (repo-local wins).
+  useEffect(() => {
+    if (!repo?.path) return;
+    void ipc.configGet(repo.path, 'user.email').then((email) => setActiveEmail(email ?? ''));
+  }, [repo?.path]);
+
+  const commitAs = async (name: string, email: string, label: string) => {
+    if (!repo) return;
+    try {
+      await ipc.configSet(repo.path, 'user.name', name, false);
+      await ipc.configSet(repo.path, 'user.email', email, false);
+      setActiveEmail(email);
+      toast.success(`Committing to ${repo.name} as "${label}" from now on`);
+    } catch (error) {
+      toast.error(`Could not switch identity: ${(error as { message?: string }).message ?? error}`);
+    }
+  };
+
   if (!repo) return null;
 
   const switchTo = async (path: string) => {
@@ -114,6 +140,33 @@ function RepoSwitcher() {
         <DropdownMenuItem onClick={() => openDialog('clone')}>
           <GitBranchPlus /> Clone repository…
         </DropdownMenuItem>
+        {profiles.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <UserRound /> Commit as…
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {profiles.map((profile) => {
+                  const active = profile.email === activeEmail;
+                  return (
+                    <DropdownMenuItem
+                      key={profile.id}
+                      onClick={() => void commitAs(profile.name, profile.email, profile.label)}
+                    >
+                      {active ? <Check className="text-primary" /> : <UserRound />}
+                      <span className="min-w-0 flex-1">
+                        <span className="block">{profile.label}</span>
+                        <span className="block truncate text-[10px] text-faint">{profile.email}</span>
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

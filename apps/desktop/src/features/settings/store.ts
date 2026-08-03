@@ -5,6 +5,14 @@ import { isTauri } from '@/core/ipc';
 
 export type Theme = 'dark' | 'light';
 
+/** A reusable committer identity (e.g. Work vs Personal). */
+export interface IdentityProfile {
+  id: string;
+  label: string;
+  name: string;
+  email: string;
+}
+
 export const ZOOM_MIN = 0.6;
 export const ZOOM_MAX = 1.6;
 export const ZOOM_STEP = 0.1;
@@ -35,6 +43,8 @@ interface SettingsState {
   reduceMotion: boolean;
   /** GitHub login connected via token (display only — token lives in keychain). */
   githubUser: string;
+  /** Committer identity profiles for quick per-repo switching. */
+  profiles: IdentityProfile[];
   ai: AiConfig;
   setTheme: (theme: Theme) => void;
   setZoom: (zoom: number) => void;
@@ -45,6 +55,8 @@ interface SettingsState {
   setSshKeyPath: (path: string) => void;
   setReduceMotion: (value: boolean) => void;
   setGithubUser: (login: string) => void;
+  addProfile: (profile: Omit<IdentityProfile, 'id'>) => void;
+  removeProfile: (id: string) => void;
   setAi: (config: Partial<AiConfig>) => void;
 }
 
@@ -60,6 +72,7 @@ export const useSettings = create<SettingsState>()(
       sshKeyPath: '',
       reduceMotion: false,
       githubUser: '',
+      profiles: [],
       ai: { provider: 'ollama', apiKey: '', model: 'llama3.1', baseUrl: '' },
       setTheme: (theme) => {
         document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -78,6 +91,11 @@ export const useSettings = create<SettingsState>()(
       setSshKeyPath: (sshKeyPath) => set({ sshKeyPath }),
       setReduceMotion: (reduceMotion) => set({ reduceMotion }),
       setGithubUser: (githubUser) => set({ githubUser }),
+      addProfile: (profile) =>
+        set((s) => ({
+          profiles: [...s.profiles, { ...profile, id: crypto.randomUUID() }],
+        })),
+      removeProfile: (id) => set((s) => ({ profiles: s.profiles.filter((p) => p.id !== id) })),
       setAi: (config) => set((s) => ({ ai: { ...s.ai, ...config } })),
     }),
     {

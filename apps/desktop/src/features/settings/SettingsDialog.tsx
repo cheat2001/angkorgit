@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
+  Check,
   Github,
   KeyRound,
+  Trash2,
+  UserRound,
+  UsersRound,
   Minus,
   Moon,
   Palette,
@@ -74,6 +78,9 @@ export function SettingsDialog() {
   const [gitName, setGitName] = useState('');
   const [gitEmail, setGitEmail] = useState('');
   const [testing, setTesting] = useState(false);
+  const [profileLabel, setProfileLabel] = useState('');
+  const [profileName, setProfileName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -89,6 +96,33 @@ export function SettingsDialog() {
     } catch (error) {
       toast.error(`Save failed: ${(error as { message?: string }).message ?? error}`);
     }
+  };
+
+  const applyProfile = async (name: string, email: string, label: string) => {
+    try {
+      // Repo-local on purpose: never rewrites the shared global gitconfig.
+      await ipc.configSet(repo?.path ?? null, 'user.name', name, !repo);
+      await ipc.configSet(repo?.path ?? null, 'user.email', email, !repo);
+      setGitName(name);
+      setGitEmail(email);
+      toast.success(
+        repo ? `Committing to ${repo.name} as "${label}" from now on` : `Global identity set to "${label}"`,
+      );
+    } catch (error) {
+      toast.error(`Apply failed: ${(error as { message?: string }).message ?? error}`);
+    }
+  };
+
+  const addProfile = () => {
+    if (!profileLabel.trim() || !profileName.trim() || !profileEmail.trim()) return;
+    settings.addProfile({
+      label: profileLabel.trim(),
+      name: profileName.trim(),
+      email: profileEmail.trim(),
+    });
+    setProfileLabel('');
+    setProfileName('');
+    setProfileEmail('');
   };
 
   const testAi = async () => {
@@ -203,6 +237,90 @@ export function SettingsDialog() {
             <p className="text-xs text-faint">
               {repo ? `Saved to this repository's .git/config` : 'Saved to your global git config'}
             </p>
+            <Separator />
+            <div className="rounded-lg border border-border p-3">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <UsersRound className="size-4" /> Identity profiles
+              </p>
+              <p className="mt-1 text-xs text-faint">
+                Save your work and personal identities, then switch per repository — applied to that
+                repo's local config only, so other tools can't override it.
+              </p>
+              <div className="mt-3 flex flex-col gap-1.5">
+                {settings.profiles.map((profile) => {
+                  const active = profile.email === gitEmail && profile.name === gitName;
+                  return (
+                    <div
+                      key={profile.id}
+                      className={cn(
+                        'group flex items-center gap-2 rounded-md border p-2',
+                        active ? 'border-primary/50 bg-primary/10' : 'border-border-subtle',
+                      )}
+                    >
+                      <UserRound className={cn('size-4 shrink-0', active ? 'text-primary' : 'text-muted')} />
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 text-sm">
+                          {profile.label}
+                          {active && <Check className="size-3.5 text-primary" />}
+                        </p>
+                        <p className="truncate text-xs text-faint">
+                          {profile.name} · {profile.email}
+                        </p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={active}
+                        onClick={() => void applyProfile(profile.name, profile.email, profile.label)}
+                      >
+                        {active ? 'Active' : repo ? 'Use for this repo' : 'Use'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove profile ${profile.label}`}
+                        className="opacity-0 group-hover:opacity-100"
+                        onClick={() => settings.removeProfile(profile.id)}
+                      >
+                        <Trash2 className="size-3.5 text-danger" />
+                      </Button>
+                    </div>
+                  );
+                })}
+                <div className="mt-1 flex flex-col gap-2 rounded-md border border-dashed border-border p-2">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Label, e.g. Work"
+                      value={profileLabel}
+                      onChange={(e) => setProfileLabel(e.target.value)}
+                      className="w-32 shrink-0"
+                    />
+                    <Input
+                      placeholder="Name"
+                      value={profileName}
+                      onChange={(e) => setProfileName(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="email@example.com"
+                      value={profileEmail}
+                      onChange={(e) => setProfileEmail(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') addProfile();
+                      }}
+                    />
+                    <Button
+                      variant="secondary"
+                      disabled={!profileLabel.trim() || !profileName.trim() || !profileEmail.trim()}
+                      onClick={addProfile}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
             <Separator />
             <Field label="Git executable (used by the built-in terminal)">
               <Input value={settings.gitExecutable} onChange={(e) => settings.setGitExecutable(e.target.value)} />
