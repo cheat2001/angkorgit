@@ -11,6 +11,7 @@ import {
   FolderOpen,
   GitBranchPlus,
   Home,
+  PanelLeft,
   RefreshCw,
   Settings,
   SquareTerminal,
@@ -117,7 +118,7 @@ function RepoSwitcher() {
 
 export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const { repo, status, remotes, busy, setBusy } = useRepo();
-  const { toggleTerminal, openDialog, setPaletteOpen } = useUi();
+  const { toggleTerminal, toggleSidebar, sidebarOpen, openDialog, setPaletteOpen } = useUi();
   const navigate = useNavigate();
   const [spinning, setSpinning] = useState(false);
 
@@ -148,6 +149,24 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       <Hint label="Back to repositories">
         <Button variant="ghost" size="icon" aria-label="Home" onClick={() => navigate('/welcome')}>
           <Home />
+        </Button>
+      </Hint>
+      <Hint
+        label={
+          <span className="flex items-center gap-1">
+            {sidebarOpen ? 'Hide sidebar' : 'Show sidebar'} <Kbd>{modKey()}</Kbd>
+            <Kbd>B</Kbd>
+          </span>
+        }
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+          className={!sidebarOpen ? 'text-primary' : undefined}
+          onClick={toggleSidebar}
+        >
+          <PanelLeft />
         </Button>
       </Hint>
       <RepoSwitcher />

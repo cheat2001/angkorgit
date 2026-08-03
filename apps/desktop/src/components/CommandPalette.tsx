@@ -9,6 +9,7 @@ import {
   FolderGit2,
   GitBranchPlus,
   Moon,
+  PanelLeft,
   RefreshCw,
   Settings,
   SquareTerminal,
@@ -29,7 +30,7 @@ import { modKey } from '@/shared/utils';
  */
 export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const { repo, branches, remotes, recents, open } = useRepo();
-  const { paletteOpen, setPaletteOpen, toggleTerminal, openDialog } = useUi();
+  const { paletteOpen, setPaletteOpen, toggleTerminal, toggleSidebar, sidebarOpen, openDialog } = useUi();
   const { theme, setTheme, zoomIn, zoomOut } = useSettings();
 
   const path = repo?.path ?? '';
@@ -134,6 +135,15 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             onSelect={() => {
               close();
               toggleTerminal();
+            }}
+          />
+          <PaletteItem
+            icon={<PanelLeft />}
+            label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+            shortcut="B"
+            onSelect={() => {
+              close();
+              toggleSidebar();
             }}
           />
           <PaletteItem

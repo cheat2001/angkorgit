@@ -251,10 +251,19 @@ fn file_diff_reports_hunks() {
     commit_all(&repo, "base");
 
     repo.write("a.txt", "one\nTWO\nthree\n");
-    let diff = core::file_diff(repo.path(), "a.txt", false).unwrap();
+    let diff = core::file_diff(repo.path(), "a.txt", false, 3).unwrap();
     assert_eq!(diff.hunks.len(), 1);
     assert_eq!(diff.additions, 1);
     assert_eq!(diff.deletions, 1);
+
+    // Whole-file mode: huge context pulls every line into the hunk.
+    let full = core::file_diff(repo.path(), "a.txt", false, u32::MAX).unwrap();
+    let context_lines = full.hunks[0]
+        .lines
+        .iter()
+        .filter(|l| l.kind == "context")
+        .count();
+    assert_eq!(context_lines, 2); // "one" and "three" around the change
 }
 
 #[test]

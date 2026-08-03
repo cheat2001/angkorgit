@@ -329,13 +329,22 @@ pub async fn submodule_update(path: String, name: String) -> AppResult<()> {
 // ---- Diff ---------------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn diff_file(path: String, file: String, staged: bool) -> AppResult<FileDiff> {
-    blocking(move || diff::file_diff(&path, &file, staged)).await
+pub async fn diff_file(
+    path: String,
+    file: String,
+    staged: bool,
+    contextLines: Option<u32>,
+) -> AppResult<FileDiff> {
+    blocking(move || diff::file_diff(&path, &file, staged, contextLines.unwrap_or(3))).await
 }
 
 #[tauri::command]
-pub async fn diff_commit(path: String, oid: String) -> AppResult<Vec<FileDiff>> {
-    blocking(move || diff::commit_diff(&path, &oid)).await
+pub async fn diff_commit(
+    path: String,
+    oid: String,
+    contextLines: Option<u32>,
+) -> AppResult<Vec<FileDiff>> {
+    blocking(move || diff::commit_diff(&path, &oid, contextLines.unwrap_or(3))).await
 }
 
 #[tauri::command]

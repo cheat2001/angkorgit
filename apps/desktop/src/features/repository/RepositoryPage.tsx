@@ -23,7 +23,16 @@ export function RepositoryPage() {
   const refresh = useRepo((s) => s.refresh);
   const reload = useGraph((s) => s.reload);
   const navigate = useNavigate();
-  const { toggleTerminal, setPaletteOpen, terminalOpen, conflictFile, centerDiff, closeCenterDiff } = useUi();
+  const {
+    toggleTerminal,
+    toggleSidebar,
+    sidebarOpen,
+    setPaletteOpen,
+    terminalOpen,
+    conflictFile,
+    centerDiff,
+    closeCenterDiff,
+  } = useUi();
 
   const repoPath = repo?.path ?? null;
   useEffect(() => {
@@ -50,6 +59,7 @@ export function RepositoryPage() {
       { combo: 'mod+k', handler: () => setPaletteOpen(true) },
       { combo: 'mod+p', handler: () => setPaletteOpen(true) },
       { combo: 'mod+`', handler: () => toggleTerminal() },
+      { combo: 'mod+b', handler: () => toggleSidebar() },
       { combo: 'mod+r', handler: () => void refreshAll() },
       {
         combo: 'mod+,',
@@ -62,7 +72,7 @@ export function RepositoryPage() {
         },
       },
     ],
-    [setPaletteOpen, toggleTerminal, refreshAll, closeCenterDiff],
+    [setPaletteOpen, toggleTerminal, toggleSidebar, refreshAll, closeCenterDiff],
   );
   useShortcuts(shortcuts);
 
@@ -78,11 +88,15 @@ export function RepositoryPage() {
       <Toolbar onRefresh={refreshAll} />
       <div className="min-h-0 flex-1">
         <PanelGroup direction="horizontal" autoSaveId="angkorgit-main">
-          <Panel defaultSize={18} minSize={13} maxSize={30}>
-            <Sidebar />
-          </Panel>
-          <PanelResizeHandle className="w-px bg-border-subtle" />
-          <Panel defaultSize={54} minSize={30}>
+          {sidebarOpen && (
+            <>
+              <Panel defaultSize={18} minSize={13} maxSize={30} order={1}>
+                <Sidebar />
+              </Panel>
+              <PanelResizeHandle className="w-px bg-border-subtle" />
+            </>
+          )}
+          <Panel defaultSize={54} minSize={30} order={2}>
             <PanelGroup direction="vertical" autoSaveId="angkorgit-center">
               <Panel minSize={30}>
                 {/* graph stays mounted under the diff so scroll/selection survive */}
@@ -102,7 +116,7 @@ export function RepositoryPage() {
             </PanelGroup>
           </Panel>
           <PanelResizeHandle className="w-px bg-border-subtle" />
-          <Panel defaultSize={28} minSize={20} maxSize={45}>
+          <Panel defaultSize={28} minSize={20} maxSize={45} order={3}>
             <Inspector />
           </Panel>
         </PanelGroup>

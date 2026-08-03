@@ -48,6 +48,7 @@ const SHORTCUTS: Array<[string, string[]]> = [
   ['Commit (in message box)', ['mod', '⏎']],
   ['Zoom in / out', ['mod', '+ / −']],
   ['Reset zoom', ['mod', '0']],
+  ['Toggle sidebar', ['mod', 'B']],
   ['Close diff view', ['Esc']],
 ];
 

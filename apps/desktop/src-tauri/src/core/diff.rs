@@ -25,9 +25,9 @@ pub enum DiffTarget {
     Staged,
 }
 
-fn base_opts(file: Option<&str>) -> DiffOptions {
+fn base_opts(file: Option<&str>, context_lines: u32) -> DiffOptions {
     let mut opts = DiffOptions::new();
-    opts.context_lines(3)
+    opts.context_lines(context_lines)
         .include_untracked(true)
         .show_untracked_content(true)
         .recurse_untracked_dirs(true);
@@ -41,8 +41,9 @@ fn make_diff<'a>(
     repo: &'a Repository,
     target: DiffTarget,
     file: Option<&str>,
+    context_lines: u32,
 ) -> AppResult<Diff<'a>> {
-    let mut opts = base_opts(file);
+    let mut opts = base_opts(file, context_lines);
     let diff = match target {
         DiffTarget::Unstaged => repo.diff_index_to_workdir(None, Some(&mut opts))?,
         DiffTarget::Staged => {
@@ -170,14 +171,15 @@ fn file_diff_from(
 }
 
 /// Diff of a single workdir/index file (used by the staging panel).
-pub fn file_diff(path: &str, file: &str, staged: bool) -> AppResult<FileDiff> {
+/// `context_lines` = 3 for a compact diff; a huge value yields the whole file.
+pub fn file_diff(path: &str, file: &str, staged: bool, context_lines: u32) -> AppResult<FileDiff> {
     let repo = super::repo::open(path)?;
     let target = if staged {
         DiffTarget::Staged
     } else {
         DiffTarget::Unstaged
     };
-    let diff = make_diff(&repo, target, Some(file))?;
+    let diff = make_diff(&repo, target, Some(file), context_lines)?;
     if diff.deltas().len() == 0 {
         return Ok(FileDiff {
             path: file.to_string(),
@@ -195,13 +197,13 @@ pub fn file_diff(path: &str, file: &str, staged: bool) -> AppResult<FileDiff> {
 }
 
 /// All file diffs introduced by a commit (against its first parent).
-pub fn commit_diff(path: &str, oid: &str) -> AppResult<Vec<FileDiff>> {
+pub fn commit_diff(path: &str, oid: &str, context_lines: u32) -> AppResult<Vec<FileDiff>> {
     let repo = super::repo::open(path)?;
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
     let tree = commit.tree()?;
     let parent_tree = commit.parent(0).ok().map(|p| p.tree()).transpose()?;
 
-    let mut opts = base_opts(None);
+    let mut opts = base_opts(None, context_lines);
     let mut diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
     let mut find_opts = git2::DiffFindOptions::new();
     find_opts.renames(true);
@@ -218,7 +220,7 @@ pub fn commit_diff(path: &str, oid: &str) -> AppResult<Vec<FileDiff>> {
 /// Raw patch text of everything staged — the payload for AI commit messages.
 pub fn staged_patch_text(path: &str) -> AppResult<String> {
     let repo = super::repo::open(path)?;
-    let diff = make_diff(&repo, DiffTarget::Staged, None)?;
+    let diff = make_diff(&repo, DiffTarget::Staged, None, 3)?;
     let mut text = String::new();
     diff.print(git2::DiffFormat::Patch, |_d, _h, line| {
         match line.origin() {

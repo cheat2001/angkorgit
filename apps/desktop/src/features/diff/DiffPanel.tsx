@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Columns2, Minus, Plus, Rows3, WholeWord, X } from 'lucide-react';
+import { Columns2, FileText, Minus, Plus, Rows3, WholeWord, X } from 'lucide-react';
 import type { FileDiff } from '@angkorgit/core';
 import { Badge, Button, Hint, Kbd, Separator, Spinner, cn } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
@@ -17,7 +17,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const repo = useRepo((s) => s.repo);
   const status = useRepo((s) => s.status);
   const refreshStatus = useRepo((s) => s.refreshStatus);
-  const { closeCenterDiff, diffView, setDiffView, wordDiff, setWordDiff } = useUi();
+  const { closeCenterDiff, diffView, setDiffView, wordDiff, setWordDiff, fullFileDiff, setFullFileDiff } = useUi();
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,12 +28,14 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     if (!path) return;
     let cancelled = false;
     setLoading(true);
+    // "Whole file" = diff with effectively unlimited context lines.
+    const context = fullFileDiff ? 10_000_000 : undefined;
     const load = async (): Promise<FileDiff | null> => {
       if (target.oid) {
-        const diffs = await ipc.diffCommit(path, target.oid);
+        const diffs = await ipc.diffCommit(path, target.oid, context);
         return diffs.find((d) => d.path === target.path) ?? null;
       }
-      return ipc.diffFile(path, target.path, target.staged ?? false);
+      return ipc.diffFile(path, target.path, target.staged ?? false, context);
     };
     void load()
       .then((result) => {
@@ -53,7 +55,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     };
     // re-fetch working-copy diffs whenever status changes (hunk staged, etc.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, target.path, target.oid, target.staged, isWorkingCopy ? status : null]);
+  }, [path, target.path, target.oid, target.staged, fullFileDiff, isWorkingCopy ? status : null]);
 
   const runStage = async (op: () => Promise<unknown>, label: string) => {
     try {
@@ -132,6 +134,17 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <WholeWord className="size-3.5" />
           </Button>
         </Hint>
+        <Hint label={fullFileDiff ? 'Whole file shown — click for changes only' : 'Show whole file'}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Toggle whole file view"
+            className={cn(fullFileDiff && 'bg-surface-raised text-primary')}
+            onClick={() => setFullFileDiff(!fullFileDiff)}
+          >
+            <FileText className="size-3.5" />
+          </Button>
+        </Hint>
         {isWorkingCopy && (
           <>
             <Separator orientation="vertical" className="mx-1 h-4" />
@@ -165,7 +178,10 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
           <DiffViewer
             diff={diff}
             hunkActions={
-              isWorkingCopy
+              // Hunk indices refer to the compact (3-line-context) diff the
+              // engine stages against, so per-hunk staging is hidden in
+              // whole-file mode — use "Stage file" instead.
+              isWorkingCopy && !fullFileDiff
                 ? (hunkIndex) => (
                     <Button
                       variant="ghost"

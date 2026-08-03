@@ -283,13 +283,13 @@ export const ipc = {
   },
 
   // ---- diff ----
-  async diffFile(path: string, file: string, staged: boolean): Promise<FileDiff> {
+  async diffFile(path: string, file: string, staged: boolean, contextLines?: number): Promise<FileDiff> {
     if (!isTauri()) return { ...demo.demoFileDiff, path: file };
-    return invoke('diff_file', { path, file, staged });
+    return invoke('diff_file', { path, file, staged, contextLines: contextLines ?? null });
   },
-  async diffCommit(path: string, oid: string): Promise<FileDiff[]> {
+  async diffCommit(path: string, oid: string, contextLines?: number): Promise<FileDiff[]> {
     if (!isTauri()) return demo.demoCommitDiff();
-    return invoke('diff_commit', { path, oid });
+    return invoke('diff_commit', { path, oid, contextLines: contextLines ?? null });
   },
   async stagedPatch(path: string): Promise<string> {
     if (!isTauri()) return '--- demo staged patch ---';
