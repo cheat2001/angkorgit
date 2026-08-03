@@ -20,6 +20,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const refreshStatus = useRepo((s) => s.refreshStatus);
   const {
     closeCenterDiff,
+    openCenterDiff,
     diffView,
     setDiffView,
     wordDiff,
@@ -35,6 +36,19 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
 
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
+
+  // A working-copy diff only makes sense while the file still has changes on
+  // that side. Committed/discarded → back to the graph; fully staged while
+  // viewing the unstaged side → follow the change to the staged view.
+  useEffect(() => {
+    if (!isWorkingCopy || !status) return;
+    const entry = status.files.find((f) => f.path === target.path);
+    const stillHasThisSide = target.staged ? !!entry?.staged : !!entry?.unstaged;
+    if (stillHasThisSide) return;
+    const hasOtherSide = target.staged ? !!entry?.unstaged : !!entry?.staged;
+    if (hasOtherSide) openCenterDiff({ path: target.path, staged: !target.staged });
+    else closeCenterDiff();
+  }, [status, isWorkingCopy, target.path, target.staged, openCenterDiff, closeCenterDiff]);
 
   const blocks = useMemo(
     () => (diff && !diff.isBinary && !diff.isImage ? changeBlocks(diff, diffView) : []),
