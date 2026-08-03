@@ -6,6 +6,7 @@ mod error;
 mod http;
 mod state;
 mod terminal;
+mod watcher;
 
 /// Flat re-exports of the git engine for integration tests
 /// (`tests/git_engine.rs`). Not part of the IPC surface.
@@ -39,6 +40,7 @@ pub fn run() {
             Ok(())
         })
         .manage(terminal::TerminalState::default())
+        .manage(watcher::WatcherState::default())
         .invoke_handler(tauri::generate_handler![
             commands::repo_discover,
             commands::repo_open,
@@ -99,6 +101,8 @@ pub fn run() {
             commands::term_write,
             commands::term_resize,
             commands::term_kill,
+            commands::watch_repo,
+            commands::watch_stop,
             commands::credential_store,
             commands::account_list,
             commands::account_add,

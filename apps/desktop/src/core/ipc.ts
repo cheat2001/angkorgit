@@ -335,6 +335,17 @@ export const ipc = {
     return invoke('term_kill', { id });
   },
 
+  // ---- filesystem watcher ----
+  /** Watch the repo for external changes; emits `repo-changed` events. */
+  async watchRepo(path: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('watch_repo', { path });
+  },
+  async watchStop(): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('watch_stop');
+  },
+
   // ---- credentials & accounts ----
   /** Store an HTTPS token in the system git credential helper (keychain). */
   async credentialStore(host: string, username: string, password: string): Promise<void> {

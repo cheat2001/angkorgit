@@ -402,6 +402,23 @@ pub fn term_kill(state: State<'_, TerminalState>, id: u32) -> AppResult<()> {
     crate::terminal::kill(&state, id)
 }
 
+// ---- Filesystem watcher ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn watch_repo(
+    app: AppHandle,
+    state: State<'_, crate::watcher::WatcherState>,
+    path: String,
+) -> AppResult<()> {
+    crate::watcher::watch(&app, &state, &path)
+}
+
+#[tauri::command]
+pub fn watch_stop(state: State<'_, crate::watcher::WatcherState>) -> AppResult<()> {
+    crate::watcher::stop(&state);
+    Ok(())
+}
+
 // ---- Credentials & accounts -----------------------------------------------------------------------
 
 #[tauri::command]

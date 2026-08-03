@@ -61,3 +61,4 @@ Read more in [docs/Architecture.md](docs/Architecture.md) and [docs/Development.
 ## License
 
 MIT
+Nice

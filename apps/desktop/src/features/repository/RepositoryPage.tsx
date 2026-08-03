@@ -18,6 +18,7 @@ import { RepoDialogs } from './RepoDialogs';
 import { CloneDialog } from './CloneDialog';
 import { useShortcuts } from '@/shared/useShortcuts';
 import { useUndo } from '@/features/history/undoStore';
+import { ipc, listen } from '@/core/ipc';
 
 export function RepositoryPage() {
   const repo = useRepo((s) => s.repo);
@@ -47,6 +48,37 @@ export function RepositoryPage() {
     ui.closeCenterDiff();
     ui.selectFile(null);
     void reload(repoPath);
+
+    // Live updates: watch the working tree; refresh on external changes.
+    let unlisten: (() => void) | undefined;
+    let refreshing = false;
+    void ipc.watchRepo(repoPath);
+    void listen('repo-changed', () => {
+      if (refreshing) return;
+      refreshing = true;
+      void (async () => {
+        try {
+          const info = await ipc.repoInfo(repoPath);
+          const current = useRepo.getState().repo;
+          if (info.headOid !== current?.headOid || info.headBranch !== current?.headBranch) {
+            // history moved (e.g. commit from a terminal) — refresh everything
+            await useRepo.getState().refresh();
+            await useGraph.getState().reload(repoPath);
+          } else {
+            await useRepo.getState().refreshStatus();
+          }
+        } finally {
+          refreshing = false;
+        }
+      })();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+      void ipc.watchStop();
+    };
   }, [repoPath, reload, navigate]);
 
   const refreshAll = useCallback(async () => {
