@@ -17,6 +17,7 @@ import { SettingsDialog } from '@/features/settings/SettingsDialog';
 import { RepoDialogs } from './RepoDialogs';
 import { CloneDialog } from './CloneDialog';
 import { useShortcuts } from '@/shared/useShortcuts';
+import { useUndo } from '@/features/history/undoStore';
 
 export function RepositoryPage() {
   const repo = useRepo((s) => s.repo);
@@ -60,6 +61,26 @@ export function RepositoryPage() {
       { combo: 'mod+p', handler: () => setPaletteOpen(true) },
       { combo: 'mod+`', handler: () => toggleTerminal() },
       { combo: 'mod+b', handler: () => toggleSidebar() },
+      {
+        combo: 'mod+z',
+        skipInInput: true,
+        handler: () => {
+          const path = useRepo.getState().repo?.path;
+          if (path) void useUndo.getState().undo(path).then((ok) => {
+              if (ok) void refreshAll();
+            });
+        },
+      },
+      {
+        combo: 'mod+shift+z',
+        skipInInput: true,
+        handler: () => {
+          const path = useRepo.getState().repo?.path;
+          if (path) void useUndo.getState().redo(path).then((ok) => {
+              if (ok) void refreshAll();
+            });
+        },
+      },
       { combo: 'mod+r', handler: () => void refreshAll() },
       {
         combo: 'mod+,',

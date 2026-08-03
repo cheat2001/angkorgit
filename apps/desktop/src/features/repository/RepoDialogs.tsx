@@ -15,6 +15,7 @@ import {
 import { ipc } from '@/core/ipc';
 import { useRepo } from './store';
 import { useUi } from '@/features/ui/store';
+import { useUndo } from '@/features/history/undoStore';
 
 /** Small create/rename dialogs: branch, tag, stash, branch rename. */
 export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
@@ -63,7 +64,15 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && name.trim()) {
-                  void submit('Create branch', () => ipc.createBranch(path, name.trim(), dialogContext, checkout));
+                  void submit('Create branch', () =>
+                    useUndo.getState().tracked({
+                      path,
+                      kind: 'branchCreate',
+                      label: `create branch ${name.trim()}`,
+                      extra: { branch: name.trim(), oid: dialogContext ?? (repo?.headOid ?? '') },
+                      action: () => ipc.createBranch(path, name.trim(), dialogContext, checkout),
+                    }),
+                  );
                 }
               }}
             />
@@ -78,7 +87,15 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
             </Button>
             <Button
               disabled={!name.trim()}
-              onClick={() => void submit('Create branch', () => ipc.createBranch(path, name.trim(), dialogContext, checkout))}
+              onClick={() => void submit('Create branch', () =>
+                    useUndo.getState().tracked({
+                      path,
+                      kind: 'branchCreate',
+                      label: `create branch ${name.trim()}`,
+                      extra: { branch: name.trim(), oid: dialogContext ?? (repo?.headOid ?? '') },
+                      action: () => ipc.createBranch(path, name.trim(), dialogContext, checkout),
+                    }),
+                  )}
             >
               Create
             </Button>
@@ -165,7 +182,15 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
             <Button
               disabled={!name.trim() || name.trim() === dialogContext}
               onClick={() =>
-                void submit('Rename branch', () => ipc.renameBranch(path, dialogContext ?? '', name.trim()))
+                void submit('Rename branch', () =>
+                  useUndo.getState().tracked({
+                    path,
+                    kind: 'branchRename',
+                    label: `rename ${dialogContext} → ${name.trim()}`,
+                    extra: { from: dialogContext ?? '', to: name.trim() },
+                    action: () => ipc.renameBranch(path, dialogContext ?? '', name.trim()),
+                  }),
+                )
               }
             >
               Rename

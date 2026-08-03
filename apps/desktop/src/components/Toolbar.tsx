@@ -12,7 +12,9 @@ import {
   GitBranchPlus,
   Home,
   PanelLeft,
+  Redo2,
   RefreshCw,
+  Undo2,
   Settings,
   SquareTerminal,
   Tag,
@@ -37,6 +39,7 @@ import {
 import { ipc, pickDirectory } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
+import { useUndo } from '@/features/history/undoStore';
 import { modKey } from '@/shared/utils';
 
 /** GitKraken-style project switcher: the repo name is a dropdown. */
@@ -116,6 +119,73 @@ function RepoSwitcher() {
   );
 }
 
+function UndoRedoButtons({ onRefresh }: { onRefresh: () => Promise<void> }) {
+  const repo = useRepo((s) => s.repo);
+  const undoStack = useUndo((s) => s.undoStack);
+  const redoStack = useUndo((s) => s.redoStack);
+  const path = repo?.path ?? '';
+
+  const nextUndo = [...undoStack].reverse().find((e) => e.repoPath === path);
+  const nextRedo = [...redoStack].reverse().find((e) => e.repoPath === path);
+
+  const run = (direction: 'undo' | 'redo') => {
+    const fn = direction === 'undo' ? useUndo.getState().undo : useUndo.getState().redo;
+    void fn(path).then((ok) => {
+      if (ok) void onRefresh();
+    });
+  };
+
+  return (
+    <>
+      <Hint
+        label={
+          nextUndo ? (
+            <span className="flex items-center gap-1">
+              Undo: {nextUndo.label} <Kbd>{modKey()}</Kbd>
+              <Kbd>Z</Kbd>
+            </span>
+          ) : (
+            'Nothing to undo'
+          )
+        }
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Undo"
+          disabled={!nextUndo}
+          onClick={() => run('undo')}
+        >
+          <Undo2 />
+        </Button>
+      </Hint>
+      <Hint
+        label={
+          nextRedo ? (
+            <span className="flex items-center gap-1">
+              Redo: {nextRedo.label} <Kbd>{modKey()}</Kbd>
+              <Kbd>⇧</Kbd>
+              <Kbd>Z</Kbd>
+            </span>
+          ) : (
+            'Nothing to redo'
+          )
+        }
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Redo"
+          disabled={!nextRedo}
+          onClick={() => run('redo')}
+        >
+          <Redo2 />
+        </Button>
+      </Hint>
+    </>
+  );
+}
+
 export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const { repo, status, remotes, busy, setBusy } = useRepo();
   const { toggleTerminal, toggleSidebar, sidebarOpen, openDialog, setPaletteOpen } = useUi();
@@ -170,6 +240,8 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
         </Button>
       </Hint>
       <RepoSwitcher />
+
+      <UndoRedoButtons onRefresh={onRefresh} />
 
       <Separator orientation="vertical" className="mx-2 h-6" />
 

@@ -6,6 +6,8 @@ export interface Shortcut {
   handler: (event: KeyboardEvent) => void;
   /** allow firing while an input/textarea is focused */
   allowInInput?: boolean;
+  /** suppress in editable fields even for modifier combos (e.g. mod+z) */
+  skipInInput?: boolean;
 }
 
 function matches(event: KeyboardEvent, combo: string): boolean {
@@ -41,6 +43,7 @@ export function useShortcuts(shortcuts: Shortcut[]): void {
       for (const shortcut of shortcuts) {
         if (!matches(event, shortcut.combo)) continue;
         const hasModifier = shortcut.combo.includes('mod+') || shortcut.combo.includes('alt+');
+        if (shortcut.skipInInput && inEditable(event)) continue;
         if (!hasModifier && !shortcut.allowInInput && inEditable(event)) continue;
         event.preventDefault();
         shortcut.handler(event);

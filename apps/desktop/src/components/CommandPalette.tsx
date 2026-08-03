@@ -23,6 +23,7 @@ import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { useSettings } from '@/features/settings/store';
+import { useUndo } from '@/features/history/undoStore';
 import { modKey } from '@/shared/utils';
 
 /**
@@ -122,7 +123,16 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
               key={branch.name}
               icon={<Check />}
               label={branch.name}
-              onSelect={() => run(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name))}
+              onSelect={() =>
+                run(`Checkout ${branch.name}`, () =>
+                  useUndo.getState().tracked({
+                    path,
+                    kind: 'checkout',
+                    label: `Checkout ${branch.name}`,
+                    action: () => ipc.checkout(path, branch.name),
+                  }),
+                )
+              }
             />
           ))}
         </Command.Group>

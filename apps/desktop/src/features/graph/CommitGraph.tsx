@@ -18,6 +18,7 @@ import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
+import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import { CommitRow, ROW_HEIGHT } from './GraphRow';
 import { WipRow } from './WipRow';
 
@@ -69,9 +70,27 @@ export function CommitGraph() {
   const gutterWidth = Math.min(16 + (maxLane + 1) * 14, 200);
 
   const act = useCallback(
-    async (label: string, op: () => Promise<unknown>) => {
+    async (
+      label: string,
+      op: () => Promise<unknown>,
+      undoable?: { kind: UndoKind; extra?: Record<string, string> },
+    ) => {
       try {
-        const result = (await op()) as { status?: string; message?: string } | undefined;
+        const run = undoable
+          ? () =>
+              useUndo.getState().tracked({
+                path,
+                kind: undoable.kind,
+                label,
+                extra: undoable.extra,
+                action: op,
+                shouldRecord: (r) => {
+                  const status = (r as { status?: string } | undefined)?.status;
+                  return status === undefined || status === 'ok' || status === 'fast_forward';
+                },
+              })
+          : op;
+        const result = (await run()) as { status?: string; message?: string } | undefined;
         if (result?.status === 'conflicts') toast.warning(result.message);
         else toast.success(result?.message ?? `${label} done`);
         await refresh();
@@ -177,7 +196,7 @@ export function CommitGraph() {
           <DropdownMenuContent align="start" side="bottom">
             <DropdownMenuLabel className="font-mono">{menu.commit.shortOid}</DropdownMenuLabel>
             <DropdownMenuItem
-              onClick={() => void act('Checkout', () => ipc.checkoutDetached(path, menu.commit.oid))}
+              onClick={() => void act(`Checkout ${menu.commit.shortOid}`, () => ipc.checkoutDetached(path, menu.commit.oid), { kind: 'checkout' })}
             >
               Checkout commit (detached)
             </DropdownMenuItem>
@@ -188,21 +207,21 @@ export function CommitGraph() {
               <TagIcon /> Create tag here…
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => void act('Cherry-pick', () => ipc.cherryPick(path, menu.commit.oid))}>
+            <DropdownMenuItem onClick={() => void act(`Cherry-pick ${menu.commit.shortOid}`, () => ipc.cherryPick(path, menu.commit.oid), { kind: 'cherryPick' })}>
               <ListRestart /> Cherry-pick onto current branch
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => void act('Soft reset', () => ipc.reset(path, menu.commit.oid, 'soft'))}>
+            <DropdownMenuItem onClick={() => void act(`Soft reset to ${menu.commit.shortOid}`, () => ipc.reset(path, menu.commit.oid, 'soft'), { kind: 'reset' })}>
               <RotateCcw /> Reset here (soft)
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void act('Mixed reset', () => ipc.reset(path, menu.commit.oid, 'mixed'))}>
+            <DropdownMenuItem onClick={() => void act(`Mixed reset to ${menu.commit.shortOid}`, () => ipc.reset(path, menu.commit.oid, 'mixed'), { kind: 'reset' })}>
               <RotateCcw /> Reset here (mixed)
             </DropdownMenuItem>
             <DropdownMenuItem
               destructive
               onClick={() => {
                 if (window.confirm('Hard reset discards all uncommitted work. Continue?')) {
-                  void act('Hard reset', () => ipc.reset(path, menu.commit.oid, 'hard'));
+                  void act(`Hard reset to ${menu.commit.shortOid}`, () => ipc.reset(path, menu.commit.oid, 'hard'), { kind: 'reset' });
                 }
               }}
             >

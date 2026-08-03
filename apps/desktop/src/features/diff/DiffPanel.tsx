@@ -239,6 +239,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
           ) : diff ? (
             <DiffViewer
             diff={diff}
+            scrollRef={scrollRef}
             hunkActions={
               // Hunk indices refer to the compact (3-line-context) diff the
               // engine stages against, so per-hunk staging is hidden in

@@ -33,6 +33,13 @@ import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
+import { useUndo, type UndoKind } from '@/features/history/undoStore';
+
+/** Records op outcomes for undo only when they completed (not on conflicts). */
+const outcomeOk = (result: unknown) => {
+  const status = (result as { status?: string } | undefined)?.status;
+  return status === undefined || status === 'ok' || status === 'fast_forward';
+};
 
 function Section({
   icon,
@@ -82,9 +89,22 @@ export function Sidebar() {
     await graphReload(path);
   };
 
-  const act = async (label: string, op: () => Promise<unknown>) => {
+  const act = async (
+    label: string,
+    op: () => Promise<unknown>,
+    undoable?: { kind: UndoKind; extra?: Record<string, string> },
+  ) => {
     try {
-      const result = await op();
+      const result = undoable
+        ? await useUndo.getState().tracked({
+            path,
+            kind: undoable.kind,
+            label,
+            extra: undoable.extra,
+            action: op,
+            shouldRecord: outcomeOk,
+          })
+        : await op();
       const outcome = result as { status?: string; message?: string } | undefined;
       if (outcome?.status === 'conflicts') toast.warning(outcome.message);
       else toast.success(outcome?.message ?? `${label} done`);
@@ -143,7 +163,7 @@ export function Sidebar() {
             >
               <button
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name))}
+                onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
                 onClick={() => setFilters(path, { branch: filters.branch === branch.name ? '' : branch.name })}
                 title={`${branch.name} — click to filter graph, double-click to checkout`}
               >
@@ -161,19 +181,19 @@ export function Sidebar() {
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem
                     disabled={branch.isHead}
-                    onClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name))}
+                    onClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
                   >
                     <Check /> Checkout
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     disabled={branch.isHead}
-                    onClick={() => void act(`Merge ${branch.name}`, () => ipc.merge(path, branch.name))}
+                    onClick={() => void act(`Merge ${branch.name}`, () => ipc.merge(path, branch.name), { kind: 'merge' })}
                   >
                     <GitMerge /> Merge into current
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     disabled={branch.isHead}
-                    onClick={() => void act(`Rebase onto ${branch.name}`, () => ipc.rebase(path, branch.name))}
+                    onClick={() => void act(`Rebase onto ${branch.name}`, () => ipc.rebase(path, branch.name), { kind: 'rebase' })}
                   >
                     <ListRestart /> Rebase current onto this
                   </DropdownMenuItem>
@@ -184,7 +204,7 @@ export function Sidebar() {
                   <DropdownMenuItem
                     destructive
                     disabled={branch.isHead}
-                    onClick={() => void act(`Delete ${branch.name}`, () => ipc.deleteBranch(path, branch.name, false))}
+                    onClick={() => void act(`Delete branch ${branch.name}`, () => ipc.deleteBranch(path, branch.name, false), { kind: 'branchDelete', extra: { branch: branch.name, oid: branch.targetOid } })}
                   >
                     <Trash2 /> Delete
                   </DropdownMenuItem>
@@ -199,7 +219,7 @@ export function Sidebar() {
             <div key={branch.name} className="group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm text-muted hover:bg-surface-raised">
               <button
                 className="min-w-0 flex-1 truncate text-left"
-                onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name))}
+                onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
                 title={`${branch.name} — double-click to checkout`}
               >
                 {branch.name}
@@ -236,7 +256,7 @@ export function Sidebar() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => void act(`Checkout ${tag.name}`, () => ipc.checkoutDetached(path, tag.name))}>
+                  <DropdownMenuItem onClick={() => void act(`Checkout ${tag.name}`, () => ipc.checkoutDetached(path, tag.name), { kind: 'checkout' })}>
                     <Check /> Checkout (detached)
                   </DropdownMenuItem>
                   <DropdownMenuItem

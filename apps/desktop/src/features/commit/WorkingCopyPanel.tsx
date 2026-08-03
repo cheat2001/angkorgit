@@ -9,6 +9,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
+import { useUndo } from '@/features/history/undoStore';
 import { basename, dirname } from '@/shared/utils';
 
 function statusBadge(kind: string | null) {
@@ -146,7 +147,13 @@ export function WorkingCopyPanel() {
         await ipc.amend(path, message.trim() ? message.trim() : null);
         toast.success('Commit amended');
       } else {
-        await ipc.commit(path, message.trim());
+        const summary = message.trim().split('\n')[0].slice(0, 50);
+        await useUndo.getState().tracked({
+          path,
+          kind: 'commit',
+          label: `commit "${summary}"`,
+          action: () => ipc.commit(path, message.trim()),
+        });
         toast.success('Committed');
       }
       setMessage('');
