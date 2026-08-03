@@ -22,7 +22,8 @@ pub fn credential_approve(host: &str, username: &str, password: &str) -> AppResu
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()?;
-    let input = format!("protocol=https\nhost={host}\nusername={username}\npassword={password}\n\n");
+    let input =
+        format!("protocol=https\nhost={host}\nusername={username}\npassword={password}\n\n");
     child
         .stdin
         .as_mut()
