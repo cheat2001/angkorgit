@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Archive,
@@ -6,6 +6,8 @@ import {
   Check,
   ChevronRight,
   Cloud,
+  Folder,
+  FolderOpen,
   GitBranch,
   GitMerge,
   ListRestart,
@@ -40,6 +42,67 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
+import type { BranchInfo } from '@angkorgit/core';
+
+/**
+ * Branch folder tree: "feature/test" and "feature/test2" group under a
+ * collapsible "feature" folder (nested to any depth), GitKraken-style.
+ */
+interface BranchTreeNode {
+  /** last path segment (display name) */
+  key: string;
+  /** full folder path or full branch name */
+  path: string;
+  branch?: BranchInfo;
+  children: BranchTreeNode[];
+}
+
+function buildBranchTree(branches: BranchInfo[]): BranchTreeNode[] {
+  const root: BranchTreeNode = { key: '', path: '', children: [] };
+  const folders = new Map<string, BranchTreeNode>([['', root]]);
+  for (const branch of branches) {
+    const segments = branch.name.split('/');
+    let parentPath = '';
+    for (let i = 0; i < segments.length - 1; i++) {
+      const folderPath = parentPath ? `${parentPath}/${segments[i]}` : segments[i];
+      if (!folders.has(folderPath)) {
+        const node: BranchTreeNode = { key: segments[i], path: folderPath, children: [] };
+        folders.get(parentPath)?.children.push(node);
+        folders.set(folderPath, node);
+      }
+      parentPath = folderPath;
+    }
+    folders.get(parentPath)?.children.push({
+      key: segments[segments.length - 1],
+      path: branch.name,
+      branch,
+      children: [],
+    });
+  }
+  const sortNodes = (nodes: BranchTreeNode[]) => {
+    nodes.sort((a, b) => (a.branch ? 1 : 0) - (b.branch ? 1 : 0) || a.key.localeCompare(b.key));
+    nodes.forEach((n) => sortNodes(n.children));
+  };
+  sortNodes(root.children);
+  return root.children;
+}
+
+function leafCount(node: BranchTreeNode): number {
+  return node.branch ? 1 : node.children.reduce((sum, child) => sum + leafCount(child), 0);
+}
+
+/** Folder paths leading to a branch (for auto-expanding the HEAD path). */
+function ancestorFolders(branchName: string): string[] {
+  const segments = branchName.split('/');
+  segments.pop();
+  const paths: string[] = [];
+  let acc = '';
+  for (const segment of segments) {
+    acc = acc ? `${acc}/${segment}` : segment;
+    paths.push(acc);
+  }
+  return paths;
+}
 
 /** Records op outcomes for undo only when they completed (not on conflicts). */
 const outcomeOk = (result: unknown) => {
@@ -171,7 +234,183 @@ export function Sidebar() {
   );
   const filteredTags = useMemo(() => tags.filter((t) => !q || t.name.toLowerCase().includes(q)), [tags, q]);
 
+  const localTree = useMemo(() => buildBranchTree(locals), [locals]);
+  const remoteTree = useMemo(() => buildBranchTree(remoteBranches), [remoteBranches]);
+
+  /** expanded folder paths; the path to HEAD starts open */
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const head = branches.find((b) => b.isHead);
+    if (!head) return;
+    const paths = ancestorFolders(head.name);
+    if (paths.length > 0) {
+      setExpandedFolders((prev) => new Set([...prev, ...paths]));
+    }
+  }, [branches]);
+  const toggleFolder = (folderPath: string) =>
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) next.delete(folderPath);
+      else next.add(folderPath);
+      return next;
+    });
+
   if (!repo) return null;
+
+  const renderLocalBranch = (branch: BranchInfo, label: string, depth: number) => (
+    <div
+      key={branch.name}
+      draggable
+      onDragStart={(e) => {
+        setDragging(branch.name);
+        e.dataTransfer.setData('text/angkorgit-branch', branch.name);
+        e.dataTransfer.effectAllowed = 'link';
+      }}
+      onDragEnd={() => {
+        setDragging(null);
+        setDropTarget(null);
+      }}
+      onDragOver={(e) => {
+        const source = dragging;
+        if (source && source !== branch.name) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'link';
+          setDropTarget(branch.name);
+        }
+      }}
+      onDragLeave={() => setDropTarget((t) => (t === branch.name ? null : t))}
+      onDrop={(e) => {
+        e.preventDefault();
+        const source = e.dataTransfer.getData('text/angkorgit-branch');
+        setDropTarget(null);
+        setDragging(null);
+        if (source && source !== branch.name) {
+          setDropAction({ source, target: branch.name });
+        }
+      }}
+      style={{ paddingLeft: 28 + depth * 14 }}
+      className={cn(
+        'group flex cursor-grab items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-surface-raised active:cursor-grabbing',
+        branch.isHead && 'text-primary',
+        filters.branch === branch.name && 'bg-surface-raised',
+        dragging === branch.name && 'opacity-40',
+        dropTarget === branch.name && 'bg-primary/10 ring-1 ring-inset ring-primary/60',
+      )}
+      title={`${branch.name} — drag onto another branch to merge or rebase`}
+    >
+      <button
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
+        onClick={() => setFilters(path, { branch: filters.branch === branch.name ? '' : branch.name })}
+        title={`${branch.name} — click to filter graph, double-click to checkout`}
+      >
+        {branch.isHead && <Check className="size-3.5 shrink-0" />}
+        <span className="truncate">{label}</span>
+        {branch.ahead > 0 && <Badge tone="primary">↑{branch.ahead}</Badge>}
+        {branch.behind > 0 && <Badge tone="info">↓{branch.behind}</Badge>}
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-0 group-hover:opacity-100" aria-label={`${branch.name} actions`}>
+            <MoreHorizontal className="size-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem
+            disabled={branch.isHead}
+            onClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
+          >
+            <Check /> Checkout
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={branch.isHead}
+            onClick={() => void act(`Merge ${branch.name}`, () => ipc.merge(path, branch.name), { kind: 'merge' })}
+          >
+            <GitMerge /> Merge into current
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={branch.isHead}
+            onClick={() => void act(`Rebase onto ${branch.name}`, () => ipc.rebase(path, branch.name), { kind: 'rebase' })}
+          >
+            <ListRestart /> Rebase current onto this
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => openDialog('rename', branch.name)}>
+            <Pencil /> Rename…
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            destructive
+            disabled={branch.isHead}
+            onClick={() => void act(`Delete branch ${branch.name}`, () => ipc.deleteBranch(path, branch.name, false), { kind: 'branchDelete', extra: { branch: branch.name, oid: branch.targetOid } })}
+          >
+            <Trash2 /> Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
+  const renderRemoteBranch = (branch: BranchInfo, label: string, depth: number) => (
+    <div
+      key={branch.name}
+      draggable
+      onDragStart={(e) => {
+        setDragging(branch.name);
+        e.dataTransfer.setData('text/angkorgit-branch', branch.name);
+        e.dataTransfer.effectAllowed = 'link';
+      }}
+      onDragEnd={() => {
+        setDragging(null);
+        setDropTarget(null);
+      }}
+      style={{ paddingLeft: 28 + depth * 14 }}
+      className={cn(
+        'group flex cursor-grab items-center gap-2 rounded-md px-2 py-1 text-sm text-muted hover:bg-surface-raised active:cursor-grabbing',
+        dragging === branch.name && 'opacity-40',
+      )}
+      title={`${branch.name} — drag onto a local branch to merge or rebase`}
+    >
+      <button
+        className="min-w-0 flex-1 truncate text-left"
+        onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
+        title={`${branch.name} — double-click to checkout`}
+      >
+        {label}
+      </button>
+    </div>
+  );
+
+  const renderTree = (nodes: BranchTreeNode[], depth: number, kind: 'local' | 'remote'): React.ReactNode =>
+    nodes.map((node) => {
+      if (node.branch) {
+        return kind === 'local'
+          ? renderLocalBranch(node.branch, node.key, depth)
+          : renderRemoteBranch(node.branch, node.key, depth);
+      }
+      const expanded = expandedFolders.has(node.path);
+      return (
+        <div key={`folder:${node.path}`}>
+          <button
+            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted hover:bg-surface-raised"
+            style={{ paddingLeft: 10 + depth * 14 }}
+            onClick={() => toggleFolder(node.path)}
+            title={node.path}
+          >
+            <ChevronRight
+              className={cn('size-3.5 shrink-0 text-faint transition-transform duration-150', expanded && 'rotate-90')}
+            />
+            {expanded ? (
+              <FolderOpen className="size-3.5 shrink-0 text-primary/70" />
+            ) : (
+              <Folder className="size-3.5 shrink-0 text-faint" />
+            )}
+            <span className="truncate">{node.key}</span>
+            <span className="text-[10px] text-faint">{leafCount(node)}</span>
+          </button>
+          {expanded && renderTree(node.children, depth + 1, kind)}
+        </div>
+      );
+    });
 
   return (
     <aside className="flex h-full flex-col bg-surface">
@@ -198,128 +437,15 @@ export function Sidebar() {
             </Button>
           }
         >
-          {locals.map((branch) => (
-            <div
-              key={branch.name}
-              draggable
-              onDragStart={(e) => {
-                setDragging(branch.name);
-                e.dataTransfer.setData('text/angkorgit-branch', branch.name);
-                e.dataTransfer.effectAllowed = 'link';
-              }}
-              onDragEnd={() => {
-                setDragging(null);
-                setDropTarget(null);
-              }}
-              onDragOver={(e) => {
-                const source = dragging;
-                if (source && source !== branch.name) {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'link';
-                  setDropTarget(branch.name);
-                }
-              }}
-              onDragLeave={() => setDropTarget((t) => (t === branch.name ? null : t))}
-              onDrop={(e) => {
-                e.preventDefault();
-                const source = e.dataTransfer.getData('text/angkorgit-branch');
-                setDropTarget(null);
-                setDragging(null);
-                if (source && source !== branch.name) {
-                  setDropAction({ source, target: branch.name });
-                }
-              }}
-              className={cn(
-                'group flex cursor-grab items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised active:cursor-grabbing',
-                branch.isHead && 'text-primary',
-                filters.branch === branch.name && 'bg-surface-raised',
-                dragging === branch.name && 'opacity-40',
-                dropTarget === branch.name && 'bg-primary/10 ring-1 ring-inset ring-primary/60',
-              )}
-              title={`Drag onto another branch to merge or rebase`}
-            >
-              <button
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
-                onClick={() => setFilters(path, { branch: filters.branch === branch.name ? '' : branch.name })}
-                title={`${branch.name} — click to filter graph, double-click to checkout`}
-              >
-                {branch.isHead && <Check className="size-3.5 shrink-0" />}
-                <span className="truncate">{branch.name}</span>
-                {branch.ahead > 0 && <Badge tone="primary">↑{branch.ahead}</Badge>}
-                {branch.behind > 0 && <Badge tone="info">↓{branch.behind}</Badge>}
-              </button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-0 group-hover:opacity-100" aria-label={`${branch.name} actions`}>
-                    <MoreHorizontal className="size-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    disabled={branch.isHead}
-                    onClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
-                  >
-                    <Check /> Checkout
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={branch.isHead}
-                    onClick={() => void act(`Merge ${branch.name}`, () => ipc.merge(path, branch.name), { kind: 'merge' })}
-                  >
-                    <GitMerge /> Merge into current
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={branch.isHead}
-                    onClick={() => void act(`Rebase onto ${branch.name}`, () => ipc.rebase(path, branch.name), { kind: 'rebase' })}
-                  >
-                    <ListRestart /> Rebase current onto this
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => openDialog('rename', branch.name)}>
-                    <Pencil /> Rename…
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    destructive
-                    disabled={branch.isHead}
-                    onClick={() => void act(`Delete branch ${branch.name}`, () => ipc.deleteBranch(path, branch.name, false), { kind: 'branchDelete', extra: { branch: branch.name, oid: branch.targetOid } })}
-                  >
-                    <Trash2 /> Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          ))}
+          {q
+            ? locals.map((branch) => renderLocalBranch(branch, branch.name, 0))
+            : renderTree(localTree, 0, 'local')}
         </Section>
 
         <Section icon={<Cloud className="size-3.5" />} title="Remotes" count={remoteBranches.length} defaultOpen={false}>
-          {remoteBranches.map((branch) => (
-            <div
-              key={branch.name}
-              draggable
-              onDragStart={(e) => {
-                setDragging(branch.name);
-                e.dataTransfer.setData('text/angkorgit-branch', branch.name);
-                e.dataTransfer.effectAllowed = 'link';
-              }}
-              onDragEnd={() => {
-                setDragging(null);
-                setDropTarget(null);
-              }}
-              className={cn(
-                'group flex cursor-grab items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm text-muted hover:bg-surface-raised active:cursor-grabbing',
-                dragging === branch.name && 'opacity-40',
-              )}
-              title="Drag onto a local branch to merge or rebase"
-            >
-              <button
-                className="min-w-0 flex-1 truncate text-left"
-                onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
-                title={`${branch.name} — double-click to checkout`}
-              >
-                {branch.name}
-              </button>
-            </div>
-          ))}
+          {q
+            ? remoteBranches.map((branch) => renderRemoteBranch(branch, branch.name, 0))
+            : renderTree(remoteTree, 0, 'remote')}
           {remotes.map((r) => (
             <div key={r.name} className="px-2 py-1 pl-7 font-mono text-[10px] text-faint" title={r.url}>
               {r.name} · {r.url}
