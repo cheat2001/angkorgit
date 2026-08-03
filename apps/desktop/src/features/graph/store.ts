@@ -21,6 +21,8 @@ interface GraphState {
   selectedOid: string | null;
   /** internal layout engine, rebuilt when filters change */
   layout: GraphLayout;
+  /** repo the current commits belong to — guards against stale cross-repo state */
+  lastPath: string | null;
 
   reload: (path: string) => Promise<void>;
   loadMore: (path: string) => Promise<void>;
@@ -37,8 +39,23 @@ export const useGraph = create<GraphState>((set, get) => ({
   filters: { search: '', author: '', branch: '' },
   selectedOid: null,
   layout: new GraphLayout(),
+  lastPath: null,
 
   reload: async (path: string) => {
+    // Switching repositories: filters and commits from the previous repo
+    // must never leak into the new one.
+    if (get().lastPath !== path) {
+      set({
+        commits: [],
+        rows: [],
+        maxLane: 0,
+        hasMore: true,
+        selectedOid: null,
+        filters: { search: '', author: '', branch: '' },
+        layout: new GraphLayout(),
+        lastPath: path,
+      });
+    }
     const { filters } = get();
     set({ loading: true });
     try {

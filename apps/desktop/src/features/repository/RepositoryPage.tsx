@@ -152,9 +152,10 @@ export function RepositoryPage() {
           <Panel defaultSize={54} minSize={30} order={2}>
             <PanelGroup direction="vertical" autoSaveId="angkorgit-center">
               <Panel minSize={30}>
-                {/* graph stays mounted under the diff so scroll/selection survive */}
+                {/* graph stays mounted under the diff so scroll/selection survive;
+                    keyed by repo so filter inputs reset when switching projects */}
                 <div className={centerDiff ? 'hidden' : 'h-full'}>
-                  <CommitGraph />
+                  <CommitGraph key={repo.path} />
                 </div>
                 {centerDiff && <DiffPanel target={centerDiff} />}
               </Panel>
