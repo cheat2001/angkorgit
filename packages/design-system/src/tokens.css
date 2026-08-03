@@ -1,0 +1,82 @@
+/*
+ * AngKorGit design tokens.
+ * 8px spacing system, Temple Gold brand palette, dark-first.
+ * Colors are HSL triplets consumed by Tailwind as hsl(var(--token) / alpha).
+ */
+
+:root {
+  /* Brand */
+  --brand-gold: 32 93% 44%;        /* #D97706 Temple Gold */
+  --brand-slate: 217 19% 27%;      /* #374151 */
+  --brand-accent: 0 84% 60%;       /* #EF4444 */
+  --brand-success: 142 71% 45%;    /* #22C55E */
+
+  --radius: 0.5rem;
+
+  /* Graph lane colors (10-step wheel tuned for both themes) */
+  --graph-0: 32 93% 54%;
+  --graph-1: 199 89% 48%;
+  --graph-2: 142 71% 45%;
+  --graph-3: 262 83% 66%;
+  --graph-4: 0 84% 60%;
+  --graph-5: 174 62% 47%;
+  --graph-6: 43 96% 56%;
+  --graph-7: 292 84% 61%;
+  --graph-8: 217 91% 60%;
+  --graph-9: 24 94% 50%;
+
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.dark {
+  --background: 221 39% 8%;        /* deeper than #111827 for panel contrast */
+  --surface: 221 39% 11%;          /* #111827 */
+  --surface-raised: 220 28% 14%;
+  --surface-overlay: 220 26% 16%;
+  --border: 218 20% 22%;
+  --border-subtle: 219 24% 17%;
+  --foreground: 216 20% 92%;
+  --muted-foreground: 218 12% 62%;
+  --faint-foreground: 219 10% 44%;
+
+  --primary: 32 93% 50%;
+  --primary-foreground: 30 90% 8%;
+  --danger: 0 84% 60%;
+  --danger-foreground: 0 0% 100%;
+  --success: 142 71% 45%;
+  --info: 199 89% 48%;
+
+  --diff-add-bg: 142 60% 45%;
+  --diff-del-bg: 0 70% 58%;
+
+  --glass: 221 39% 11%;
+  --shadow-soft: 0 8px 32px -12px rgb(0 0 0 / 0.55);
+  color-scheme: dark;
+}
+
+.light {
+  --background: 220 25% 97%;
+  --surface: 0 0% 100%;
+  --surface-raised: 220 20% 99%;
+  --surface-overlay: 0 0% 100%;
+  --border: 218 18% 86%;
+  --border-subtle: 219 20% 91%;
+  --foreground: 221 39% 14%;
+  --muted-foreground: 218 12% 40%;
+  --faint-foreground: 219 10% 58%;
+
+  --primary: 32 93% 44%;
+  --primary-foreground: 0 0% 100%;
+  --danger: 0 74% 50%;
+  --danger-foreground: 0 0% 100%;
+  --success: 142 71% 35%;
+  --info: 200 90% 40%;
+
+  --diff-add-bg: 142 60% 40%;
+  --diff-del-bg: 0 70% 52%;
+
+  --glass: 0 0% 100%;
+  --shadow-soft: 0 8px 32px -16px rgb(15 23 42 / 0.25);
+  color-scheme: light;
+}

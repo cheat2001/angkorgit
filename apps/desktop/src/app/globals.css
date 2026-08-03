@@ -1,0 +1,72 @@
+@import '../../../../packages/design-system/src/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  @apply bg-background font-sans text-sm text-foreground antialiased;
+}
+
+/* Subtle scrollbars everywhere */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Resizable panel handles */
+[data-panel-resize-handle-id] {
+  position: relative;
+}
+[data-panel-resize-handle-id]::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+}
+[data-panel-resize-handle-id][data-resize-handle-state='hover']::before,
+[data-panel-resize-handle-id][data-resize-handle-state='drag']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--primary) / 0.5);
+  border-radius: 2px;
+}
+
+/* Minimal syntax palette on top of design tokens (both themes) */
+.hljs-keyword, .hljs-literal, .hljs-built_in { color: hsl(292 60% 68%); }
+.hljs-string, .hljs-regexp { color: hsl(95 40% 62%); }
+.hljs-number { color: hsl(30 90% 65%); }
+.hljs-comment { color: hsl(var(--faint-foreground)); font-style: italic; }
+.hljs-title, .hljs-function { color: hsl(210 90% 70%); }
+.hljs-attr, .hljs-property, .hljs-variable { color: hsl(200 70% 70%); }
+.hljs-type, .hljs-class { color: hsl(40 80% 65%); }
+.light .hljs-keyword, .light .hljs-literal, .light .hljs-built_in { color: hsl(292 70% 42%); }
+.light .hljs-string, .light .hljs-regexp { color: hsl(95 60% 30%); }
+.light .hljs-number { color: hsl(30 90% 38%); }
+.light .hljs-title, .light .hljs-function { color: hsl(210 90% 40%); }
+.light .hljs-attr, .light .hljs-property, .light .hljs-variable { color: hsl(200 80% 34%); }
+.light .hljs-type, .light .hljs-class { color: hsl(40 90% 34%); }
+
+/* xterm fills its panel */
+.terminal-host .xterm {
+  height: 100%;
+  padding: 8px;
+}

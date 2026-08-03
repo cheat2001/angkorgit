@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@angkorgit/core": ["../../packages/core/src/index.ts"],
+      "@angkorgit/core/*": ["../../packages/core/src/*"],
+      "@angkorgit/design-system": ["../../packages/design-system/src/index.ts"],
+      "@angkorgit/design-system/*": ["../../packages/design-system/src/*"]
+    },
+    "baseUrl": "."
+  },
+  "include": ["src", "vite.config.ts", "tailwind.config.ts"]
+}

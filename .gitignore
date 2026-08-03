@@ -1,0 +1,9 @@
+node_modules/
+dist/
+target/
+*.local
+.DS_Store
+coverage/
+playwright-report/
+test-results/
+apps/desktop/src-tauri/gen/
