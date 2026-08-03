@@ -52,7 +52,8 @@ pub fn unstage_all(path: &str) -> AppResult<()> {
     match repo.head() {
         Ok(head) => {
             let obj = head.peel(git2::ObjectType::Commit)?;
-            repo.reset_default(Some(&obj), ["."])?;
+            // libgit2 pathspecs use fnmatch: "*" matches everything ("." does not)
+            repo.reset_default(Some(&obj), ["*"])?;
         }
         Err(_) => {
             let mut index = repo.index()?;
@@ -81,6 +82,36 @@ pub fn discard_file(path: &str, file: &str) -> AppResult<()> {
     }
     let mut builder = git2::build::CheckoutBuilder::new();
     builder.path(file).force().update_index(false);
+    repo.checkout_index(None, Some(&mut builder))?;
+    Ok(())
+}
+
+/// Discard ALL working-tree changes: restore tracked files from the index
+/// and delete untracked files. Destructive — the UI confirms first.
+pub fn discard_all(path: &str) -> AppResult<()> {
+    let repo = super::repo::open(path)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| AppError::other("bare repository"))?;
+
+    // Untracked files: discard means delete.
+    let mut opts = git2::StatusOptions::new();
+    opts.include_untracked(true).recurse_untracked_dirs(true);
+    let statuses = repo.statuses(Some(&mut opts))?;
+    for entry in statuses.iter() {
+        if entry.status().is_wt_new() {
+            if let Some(rel) = entry.path() {
+                let full = workdir.join(rel);
+                if full.is_file() {
+                    let _ = std::fs::remove_file(full);
+                }
+            }
+        }
+    }
+
+    // Tracked files: restore workdir from the index.
+    let mut builder = git2::build::CheckoutBuilder::new();
+    builder.force().update_index(false);
     repo.checkout_index(None, Some(&mut builder))?;
     Ok(())
 }

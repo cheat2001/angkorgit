@@ -170,6 +170,58 @@ fn merge_conflict_detect_and_resolve() {
 }
 
 #[test]
+fn unstage_all_and_discard_all() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    repo.write("b.txt", "two\n");
+    commit_all(&repo, "base");
+
+    // unstage_all: everything staged goes back to unstaged
+    repo.write("a.txt", "changed\n");
+    repo.write("new.txt", "untracked\n");
+    core::stage_all(repo.path()).unwrap();
+    core::unstage_all(repo.path()).unwrap();
+    let status = core::status(repo.path()).unwrap();
+    assert!(status.files.iter().all(|f| f.staged.is_none()));
+    assert_eq!(status.files.len(), 2);
+
+    // discard_all: tracked restored, untracked deleted
+    core::discard_all(repo.path()).unwrap();
+    assert_eq!(repo.read("a.txt"), "one\n");
+    assert!(!repo.dir.join("new.txt").exists());
+    assert_eq!(core::status(repo.path()).unwrap().files.len(), 0);
+}
+
+#[test]
+fn merge_message_includes_into_branch() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "topic", None, true).unwrap();
+    repo.write("t.txt", "topic\n");
+    commit_all(&repo, "topic work");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("m.txt", "master\n");
+    commit_all(&repo, "master work");
+
+    let outcome = core::merge(repo.path(), "topic").unwrap();
+    assert_eq!(outcome.status, "ok");
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 0,
+            limit: 1,
+            search: None,
+            author: None,
+            branch: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(page.commits[0].summary, "Merge branch 'topic' into master");
+}
+
+#[test]
 fn stash_roundtrip() {
     let repo = TempRepo::new();
     repo.write("a.txt", "committed\n");

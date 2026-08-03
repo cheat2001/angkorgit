@@ -125,6 +125,10 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('discard_file', { path, file });
   },
+  async discardAll(path: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('discard_all', { path });
+  },
   async stageHunk(path: string, file: string, hunkIndex: number): Promise<void> {
     if (!isTauri()) return;
     return invoke('stage_hunk', { path, file, hunkIndex });

@@ -217,9 +217,27 @@ export function WorkingCopyPanel() {
             Changes <span className="text-faint">{unstagedFiles.length}</span>
           </span>
           {unstagedFiles.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => void run(() => ipc.stageAll(path), 'Stage all failed')}>
-              <Plus className="size-3" /> Stage all
-            </Button>
+            <span className="flex items-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-danger hover:text-danger"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Discard ALL ${unstagedFiles.length} unstaged change${unstagedFiles.length === 1 ? '' : 's'}? Untracked files will be deleted. This cannot be undone.`,
+                    )
+                  ) {
+                    void run(() => ipc.discardAll(path), 'Discard all failed');
+                  }
+                }}
+              >
+                <Trash2 className="size-3" /> Discard all
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => void run(() => ipc.stageAll(path), 'Stage all failed')}>
+                <Plus className="size-3" /> Stage all
+              </Button>
+            </span>
           )}
         </div>
         {unstagedFiles.length === 0 && <p className="px-2 pb-2 text-xs text-faint">Working tree clean.</p>}

@@ -120,6 +120,11 @@ pub async fn discard_file(path: String, file: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub async fn discard_all(path: String) -> AppResult<()> {
+    blocking(move || stage::discard_all(&path)).await
+}
+
+#[tauri::command]
 pub async fn stage_hunk(path: String, file: String, hunkIndex: usize) -> AppResult<()> {
     blocking(move || stage::stage_hunk(&path, &file, hunkIndex)).await
 }

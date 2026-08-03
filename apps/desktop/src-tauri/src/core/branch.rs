@@ -167,17 +167,20 @@ pub fn merge(path: &str, branch: &str) -> AppResult<OpOutcome> {
         });
     }
 
-    // Clean auto-merge: create the merge commit right away.
+    // Clean auto-merge: create the merge commit right away, with git's
+    // conventional message: Merge branch 'x' into y
     let sig = repo.signature().map_err(AppError::from)?;
     let mut index = repo.index()?;
     let tree = repo.find_tree(index.write_tree()?)?;
-    let head_commit = repo.head()?.peel_to_commit()?;
+    let head_ref = repo.head()?;
+    let into = head_ref.shorthand().unwrap_or("HEAD").to_string();
+    let head_commit = head_ref.peel_to_commit()?;
     let their_commit = reference.peel_to_commit()?;
     repo.commit(
         Some("HEAD"),
         &sig,
         &sig,
-        &format!("Merge branch '{branch}'"),
+        &format!("Merge branch '{branch}' into {into}"),
         &tree,
         &[&head_commit, &their_commit],
     )?;
