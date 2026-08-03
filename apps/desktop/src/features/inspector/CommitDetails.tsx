@@ -7,7 +7,8 @@ import { Badge, Button, Hint, Spinner, cn } from '@angkorgit/design-system';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
-import { avatarHue, formatDate, initials } from '@/shared/utils';
+import { Avatar } from '@/components/Avatar';
+import { formatDate } from '@/shared/utils';
 
 function diffToText(diffs: FileDiff[]): string {
   return diffs
@@ -71,12 +72,7 @@ export function CommitDetails({
           <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted">{commit.body}</pre>
         )}
         <div className="mt-3 flex items-center gap-2 text-xs text-muted">
-          <span
-            className="flex size-5 items-center justify-center rounded-full text-[9px] font-semibold text-white"
-            style={{ background: `hsl(${avatarHue(commit.author.email)} 45% 45%)` }}
-          >
-            {initials(commit.author.name)}
-          </span>
+          <Avatar name={commit.author.name} email={commit.author.email} size={24} />
           <span>{commit.author.name}</span>
           <span className="text-faint">{formatDate(commit.author.time)}</span>
         </div>

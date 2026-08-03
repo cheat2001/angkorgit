@@ -3,7 +3,8 @@ import type { GraphRow as GraphRowData, RefInfo } from '@angkorgit/core';
 import { Badge, cn } from '@angkorgit/design-system';
 import { GitMerge, Tag as TagIcon } from 'lucide-react';
 import type { CommitInfo } from '@angkorgit/core';
-import { avatarHue, initials, timeAgo } from '@/shared/utils';
+import { Avatar } from '@/components/Avatar';
+import { timeAgo } from '@/shared/utils';
 
 export const ROW_HEIGHT = 32;
 const LANE_WIDTH = 14;
@@ -121,13 +122,7 @@ export const CommitRow = memo(function CommitRow({
       <RefChips refs={commit.refs} />
       {commit.parents.length > 1 && <GitMerge className="size-3.5 shrink-0 text-muted" />}
       <span className="min-w-0 flex-1 truncate">{commit.summary || <span className="text-faint">(no message)</span>}</span>
-      <span
-        className="flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold text-white"
-        style={{ background: `hsl(${avatarHue(commit.author.email)} 45% 45%)` }}
-        title={`${commit.author.name} <${commit.author.email}>`}
-      >
-        {initials(commit.author.name)}
-      </span>
+      <Avatar name={commit.author.name} email={commit.author.email} size={20} />
       <span className="w-14 shrink-0 text-right font-mono text-[11px] text-faint">{commit.shortOid.slice(0, 7)}</span>
       <span className="w-16 shrink-0 text-right text-[11px] text-faint">{timeAgo(commit.author.time)}</span>
     </div>
