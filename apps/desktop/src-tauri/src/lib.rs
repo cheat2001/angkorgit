@@ -30,6 +30,14 @@ pub mod test_api {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            use tauri::Manager;
+            if let Ok(dir) = app.path().app_config_dir() {
+                let _ = core::accounts::CONFIG_DIR.set(dir);
+            }
+            Ok(())
+        })
         .manage(terminal::TerminalState::default())
         .invoke_handler(tauri::generate_handler![
             commands::repo_discover,
@@ -91,6 +99,10 @@ pub fn run() {
             commands::term_write,
             commands::term_resize,
             commands::term_kill,
+            commands::credential_store,
+            commands::account_list,
+            commands::account_add,
+            commands::account_remove,
             commands::http_request,
         ])
         .run(tauri::generate_context!())

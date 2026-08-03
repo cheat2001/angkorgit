@@ -33,6 +33,13 @@ export interface IpcError {
   message: string;
 }
 
+/** A hosting account managed by the app (token stored in the OS keychain). */
+export interface HostingAccount {
+  host: string;
+  username: string;
+  provider: string;
+}
+
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -328,6 +335,25 @@ export const ipc = {
     return invoke('term_kill', { id });
   },
 
+  // ---- credentials & accounts ----
+  /** Store an HTTPS token in the system git credential helper (keychain). */
+  async credentialStore(host: string, username: string, password: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('credential_store', { host, username, password });
+  },
+  async accountList(): Promise<HostingAccount[]> {
+    if (!isTauri()) return [{ host: 'github.com', username: 'demo-user', provider: 'github' }];
+    return invoke('account_list');
+  },
+  async accountAdd(host: string, username: string, provider: string, token: string): Promise<HostingAccount[]> {
+    if (!isTauri()) return [{ host, username, provider }];
+    return invoke('account_add', { host, username, provider, token });
+  },
+  async accountRemove(host: string): Promise<HostingAccount[]> {
+    if (!isTauri()) return [];
+    return invoke('account_remove', { host });
+  },
+
   // ---- AI transport ----
   async httpRequest(request: HttpRequest): Promise<HttpResponse> {
     if (!isTauri()) {
@@ -341,6 +367,16 @@ export const ipc = {
     return invoke('http_request', { request });
   },
 };
+
+/** Open a URL in the user's default browser. */
+export async function openExternal(url: string): Promise<void> {
+  if (!isTauri()) {
+    window.open(url, '_blank');
+    return;
+  }
+  const { openUrl } = await import('@tauri-apps/plugin-opener');
+  await openUrl(url);
+}
 
 /** Open a native folder picker (Tauri) or prompt (browser demo). */
 export async function pickDirectory(title: string): Promise<string | null> {

@@ -33,6 +33,8 @@ interface SettingsState {
   sshKeyPath: string;
   /** Reduced motion switch for all Framer Motion animation. */
   reduceMotion: boolean;
+  /** GitHub login connected via token (display only — token lives in keychain). */
+  githubUser: string;
   ai: AiConfig;
   setTheme: (theme: Theme) => void;
   setZoom: (zoom: number) => void;
@@ -42,6 +44,7 @@ interface SettingsState {
   setGitExecutable: (path: string) => void;
   setSshKeyPath: (path: string) => void;
   setReduceMotion: (value: boolean) => void;
+  setGithubUser: (login: string) => void;
   setAi: (config: Partial<AiConfig>) => void;
 }
 
@@ -56,6 +59,7 @@ export const useSettings = create<SettingsState>()(
       gitExecutable: 'git',
       sshKeyPath: '',
       reduceMotion: false,
+      githubUser: '',
       ai: { provider: 'ollama', apiKey: '', model: 'llama3.1', baseUrl: '' },
       setTheme: (theme) => {
         document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -73,6 +77,7 @@ export const useSettings = create<SettingsState>()(
       setGitExecutable: (gitExecutable) => set({ gitExecutable }),
       setSshKeyPath: (sshKeyPath) => set({ sshKeyPath }),
       setReduceMotion: (reduceMotion) => set({ reduceMotion }),
+      setGithubUser: (githubUser) => set({ githubUser }),
       setAi: (config) => set((s) => ({ ai: { ...s.ai, ...config } })),
     }),
     {

@@ -9,6 +9,34 @@ use crate::error::{AppError, AppResult};
 
 use super::types::{OpOutcome, RemoteInfo};
 
+/// Store credentials into the user's `git credential` stack (macOS keychain,
+/// Windows credential manager, …) so HTTPS auth works for this app AND the
+/// plain git CLI. Used by the "Connect GitHub" flow.
+pub fn credential_approve(host: &str, username: &str, password: &str) -> AppResult<()> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("git")
+        .args(["credential", "approve"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let input = format!("protocol=https\nhost={host}\nusername={username}\npassword={password}\n\n");
+    child
+        .stdin
+        .as_mut()
+        .ok_or_else(|| AppError::other("could not write to git credential"))?
+        .write_all(input.as_bytes())?;
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(AppError::other(
+            "git credential approve failed — is a credential helper configured?",
+        ));
+    }
+    Ok(())
+}
+
 /// Ask the real `git credential` stack (osxkeychain, manager, store, …) for
 /// credentials, exactly like the git CLI would. This picks up whatever the
 /// user's normal `git pull` already uses.
@@ -84,6 +112,17 @@ fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
             }
         }
         if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
+            // App-managed accounts first: matched by the remote's host, so a
+            // GitLab account never gets offered to GitHub and vice versa.
+            if attempt == 0 {
+                if let Some(host) = super::accounts::host_of_url(url) {
+                    if let Some((user, token)) = super::accounts::lookup(&host) {
+                        if let Ok(cred) = Cred::userpass_plaintext(&user, &token) {
+                            return Ok(cred);
+                        }
+                    }
+                }
+            }
             if let Some((user, pass)) = credentials_from_git_cli(url, username_from_url) {
                 if let Ok(cred) = Cred::userpass_plaintext(&user, &pass) {
                     return Ok(cred);

@@ -1,6 +1,20 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { KeyRound, Minus, Moon, Palette, Plus, Sparkles, Sun, User, Keyboard, Wifi } from 'lucide-react';
+import {
+  CheckCircle2,
+  ExternalLink,
+  Github,
+  KeyRound,
+  Minus,
+  Moon,
+  Palette,
+  Plus,
+  Sparkles,
+  Sun,
+  User,
+  Keyboard,
+  Wifi,
+} from 'lucide-react';
 import { AI_PROVIDER_PRESETS, type AiProviderKind } from '@angkorgit/core';
 import {
   Button,
@@ -24,7 +38,7 @@ import {
   TabsTrigger,
   cn,
 } from '@angkorgit/design-system';
-import { ipc } from '@/core/ipc';
+import { ipc, openExternal } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { useSettings, ZOOM_MAX, ZOOM_MIN } from './store';
@@ -61,6 +75,8 @@ export function SettingsDialog() {
   const [gitName, setGitName] = useState('');
   const [gitEmail, setGitEmail] = useState('');
   const [testing, setTesting] = useState(false);
+  const [token, setToken] = useState('');
+  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +91,40 @@ export function SettingsDialog() {
       toast.success('Git identity saved');
     } catch (error) {
       toast.error(`Save failed: ${(error as { message?: string }).message ?? error}`);
+    }
+  };
+
+  const connectGithub = async () => {
+    const pat = token.trim();
+    if (!pat) return;
+    setConnecting(true);
+    try {
+      // Verify the token and discover the login it belongs to.
+      const res = await ipc.httpRequest({
+        url: 'https://api.github.com/user',
+        method: 'GET',
+        headers: {
+          authorization: `Bearer ${pat}`,
+          accept: 'application/vnd.github+json',
+          'user-agent': 'AngKorGit',
+        },
+      });
+      if (res.status !== 200) {
+        throw new Error(`GitHub rejected the token (${res.status}). Check it has the "repo" scope.`);
+      }
+      const login = (JSON.parse(res.body) as { login?: string }).login;
+      if (!login) throw new Error('could not read your GitHub login');
+
+      // Store in the system git credential helper (macOS keychain) so both
+      // AngKorGit and the plain git CLI can push over HTTPS.
+      await ipc.credentialStore('github.com', login, pat);
+      settings.setGithubUser(login);
+      setToken('');
+      toast.success(`Connected as ${login} — HTTPS push is ready`);
+    } catch (error) {
+      toast.error(`Connect failed: ${(error as { message?: string }).message ?? error}`);
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -187,6 +237,50 @@ export function SettingsDialog() {
             <p className="text-xs text-faint">
               {repo ? `Saved to this repository's .git/config` : 'Saved to your global git config'}
             </p>
+            <Separator />
+            <div className="rounded-lg border border-border p-3">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <Github className="size-4" /> GitHub connection
+                {settings.githubUser && (
+                  <span className="ml-auto flex items-center gap-1 text-xs text-success">
+                    <CheckCircle2 className="size-3.5" /> {settings.githubUser}
+                  </span>
+                )}
+              </p>
+              <p className="mt-1 text-xs text-faint">
+                Push over HTTPS without SSH: create a token (choose the <span className="font-mono">repo</span> scope),
+                paste it here once — it's stored in your system keychain and also works for terminal git.
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="self-start"
+                  onClick={() =>
+                    void openExternal(
+                      'https://github.com/settings/tokens/new?scopes=repo&description=AngKorGit',
+                    )
+                  }
+                >
+                  <ExternalLink /> Create token on GitHub
+                </Button>
+                <div className="flex gap-2">
+                  <Input
+                    type="password"
+                    placeholder="ghp_… or github_pat_…"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void connectGithub();
+                    }}
+                  />
+                  <Button onClick={() => void connectGithub()} disabled={connecting || !token.trim()}>
+                    {connecting ? <Spinner className="text-primary-foreground" /> : null}
+                    Connect
+                  </Button>
+                </div>
+              </div>
+            </div>
             <Separator />
             <Field label="Git executable (used by the built-in terminal)">
               <Input value={settings.gitExecutable} onChange={(e) => settings.setGitExecutable(e.target.value)} />

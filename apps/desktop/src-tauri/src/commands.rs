@@ -402,6 +402,33 @@ pub fn term_kill(state: State<'_, TerminalState>, id: u32) -> AppResult<()> {
     crate::terminal::kill(&state, id)
 }
 
+// ---- Credentials & accounts -----------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn credential_store(host: String, username: String, password: String) -> AppResult<()> {
+    blocking(move || remote::credential_approve(&host, &username, &password)).await
+}
+
+#[tauri::command]
+pub fn account_list() -> Vec<crate::core::accounts::AccountInfo> {
+    crate::core::accounts::list()
+}
+
+#[tauri::command]
+pub async fn account_add(
+    host: String,
+    username: String,
+    provider: String,
+    token: String,
+) -> AppResult<Vec<crate::core::accounts::AccountInfo>> {
+    blocking(move || crate::core::accounts::add(&host, &username, &provider, &token)).await
+}
+
+#[tauri::command]
+pub async fn account_remove(host: String) -> AppResult<Vec<crate::core::accounts::AccountInfo>> {
+    blocking(move || crate::core::accounts::remove(&host)).await
+}
+
 // ---- AI proxy -------------------------------------------------------------------------------------
 
 #[tauri::command]
