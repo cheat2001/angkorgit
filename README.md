@@ -19,14 +19,29 @@
 ---
 
 <p align="center">
-  <img src="docs/assets/hero.png" alt="AngKorGit — side-by-side diff view with commit details" width="900" />
-</p>
-
-<p align="center">
-  <a href="https://github.com/cheat2001/angkorgit/blob/main/docs/assets/angkorgit-demo.mp4"><b>▶ Watch the 45-second demo</b></a>
+  <img src="docs/assets/graph.png" alt="AngKorGit — commit graph with repository tabs and the ⌘K command palette" width="920" />
 </p>
 
 AngKorGit focuses on the Git operations developers actually use every day and executes them exceptionally well — in an app that weighs **~8 MB** instead of a gigabyte.
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/diff.png" alt="Side-by-side diff with commit details" />
+      <p align="center"><em>Side-by-side diffs — word-level highlights, minimap, line-level staging</em></p>
+    </td>
+    <td width="50%">
+      <img src="docs/assets/settings-light.png" alt="Light theme with accent colors" />
+      <p align="center"><em>Dark & light themes, five accent colors, UI zoom</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <img src="docs/assets/welcome.png" alt="Welcome screen" width="70%" />
+      <p align="center"><em>Open, clone, or jump back into recent projects</em></p>
+    </td>
+  </tr>
+</table>
 
 ## Highlights
 
