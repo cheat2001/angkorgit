@@ -148,8 +148,12 @@ function useDiffVirtualizer(rows: FlatRow[], scrollRef: React.RefObject<HTMLDivE
   });
 }
 
-/** Promote scrolled content to its own compositor layer (WebKit smoothness). */
-const LAYER: React.CSSProperties = { transform: 'translateZ(0)' };
+/**
+ * Row tints (add/del backgrounds) are painted on an underlay that spans the
+ * visible pane and scrolls ONLY vertically; the text layer scrolls over it
+ * horizontally. Editors do the same — it guarantees full-width highlight
+ * coverage at any horizontal offset and keeps h-scroll repaints tiny.
+ */
 
 function HeaderContent({
   header,
@@ -184,7 +188,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
       {/* gutter column: line numbers + change marker */}
       <div
         className="relative w-[104px] shrink-0 border-r border-border-subtle bg-surface"
-        style={{ height: total, ...LAYER }}
+        style={{ height: total }}
       >
         {items.map((item) => {
           const row = rows[item.index];
@@ -211,44 +215,58 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
         })}
       </div>
 
-      {/* code column: horizontal scroll, virtualized rows */}
-      <div className="min-w-0 flex-1 overflow-x-auto">
-        <div className="relative" style={{ height: total, width, tabSize: 4, ...LAYER }}>
+      {/* code area: full-width tint underlay + horizontally scrolling text */}
+      <div className="relative min-w-0 flex-1" style={{ height: total }}>
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
           {items.map((item) => {
             const row = rows[item.index];
             return (
               <div
                 key={item.key}
                 className={cn(
-                  'absolute left-0',
+                  'absolute left-0 w-full',
                   row.kind === 'header'
                     ? 'border-y border-border-subtle bg-surface-raised/60'
                     : lineBg(row.kind === 'line' ? row.line.kind : 'context'),
                 )}
-                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
-                onContextMenu={
-                  row.kind === 'line' && onLineContextMenu
-                    ? (e) => onLineContextMenu(e, { line: row.line })
-                    : undefined
-                }
-              >
-                {row.kind === 'header' ? (
-                  <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
-                ) : row.kind === 'line' ? (
-                  <div className="px-2">
-                    <CodeLine
-                      line={row.line}
-                      pair={row.pair}
-                      language={language}
-                      useWordDiff={useWordDiff}
-                      side={row.line.kind === 'deletion' ? 'old' : 'new'}
-                      wrap={false}
-                    />
-                  </div>
-                ) : null}
-              </div>
+                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+              />
             );
           })}
+        </div>
+        <div className="absolute inset-0 overflow-x-auto overflow-y-hidden">
+          <div className="relative h-full" style={{ width, minWidth: '100%', tabSize: 4 }}>
+            {items.map((item) => {
+              const row = rows[item.index];
+              return (
+                <div
+                  key={item.key}
+                  className="absolute left-0"
+                  style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
+                  onContextMenu={
+                    row.kind === 'line' && onLineContextMenu
+                      ? (e) => onLineContextMenu(e, { line: row.line })
+                      : undefined
+                  }
+                >
+                  {row.kind === 'header' ? (
+                    <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
+                  ) : row.kind === 'line' ? (
+                    <div className="px-2">
+                      <CodeLine
+                        line={row.line}
+                        pair={row.pair}
+                        language={language}
+                        useWordDiff={useWordDiff}
+                        side={row.line.kind === 'deletion' ? 'old' : 'new'}
+                        wrap={false}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -296,7 +314,7 @@ function SplitHalf({
 
   return (
     <div className={cn('flex w-1/2 min-w-0 items-start', side === 'old' && 'border-r border-border-subtle')}>
-      <div className="relative w-10 shrink-0 border-r border-border-subtle bg-surface" style={{ height: total, ...LAYER }}>
+      <div className="relative w-10 shrink-0 border-r border-border-subtle bg-surface" style={{ height: total }}>
         {items.map((item) => {
           const row = rows[item.index];
           const line = row.kind === 'pair' ? (side === 'old' ? row.left : row.right) : null;
@@ -313,39 +331,54 @@ function SplitHalf({
           );
         })}
       </div>
-      <div ref={scrollX} onScroll={onScrollX} className="min-w-0 flex-1 overflow-x-auto">
-        <div className="relative" style={{ height: total, width, tabSize: 4, ...LAYER }}>
+      {/* code area: full-width tint underlay + horizontally scrolling text */}
+      <div className="relative min-w-0 flex-1" style={{ height: total }}>
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
           {items.map((item) => {
             const row = rows[item.index];
-            const line = row.kind === 'pair' ? (side === 'old' ? row.left : row.right) : null;
             return (
               <div
                 key={item.key}
-                className={cn('absolute left-0', bgOf(row))}
-                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
-                onContextMenu={
-                  line && onLineContextMenu ? (e) => onLineContextMenu(e, { line }) : undefined
-                }
-              >
-                {row.kind === 'header' ? (
-                  side === 'old' ? (
-                    <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
-                  ) : null
-                ) : line ? (
-                  <div className="px-2">
-                    <CodeLine
-                      line={line}
-                      pair={row.kind === 'pair' ? (side === 'old' ? row.right : row.left) : null}
-                      language={language}
-                      useWordDiff={useWordDiff}
-                      side={side}
-                      wrap={false}
-                    />
-                  </div>
-                ) : null}
-              </div>
+                className={cn('absolute left-0 w-full', bgOf(row))}
+                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+              />
             );
           })}
+        </div>
+        <div ref={scrollX} onScroll={onScrollX} className="absolute inset-0 overflow-x-auto overflow-y-hidden">
+          <div className="relative h-full" style={{ width, minWidth: '100%', tabSize: 4 }}>
+            {items.map((item) => {
+              const row = rows[item.index];
+              const line = row.kind === 'pair' ? (side === 'old' ? row.left : row.right) : null;
+              return (
+                <div
+                  key={item.key}
+                  className="absolute left-0"
+                  style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
+                  onContextMenu={
+                    line && onLineContextMenu ? (e) => onLineContextMenu(e, { line }) : undefined
+                  }
+                >
+                  {row.kind === 'header' ? (
+                    side === 'old' ? (
+                      <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
+                    ) : null
+                  ) : line ? (
+                    <div className="px-2">
+                      <CodeLine
+                        line={line}
+                        pair={row.kind === 'pair' ? (side === 'old' ? row.right : row.left) : null}
+                        language={language}
+                        useWordDiff={useWordDiff}
+                        side={side}
+                        wrap={false}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
