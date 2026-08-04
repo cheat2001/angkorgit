@@ -27,6 +27,10 @@ pub enum DiffTarget {
 
 fn base_opts(file: Option<&str>, context_lines: u32) -> DiffOptions {
     let mut opts = DiffOptions::new();
+    // xdiff stores this in a C `long`, which is 32-BIT ON WINDOWS: u32::MAX
+    // wraps to -1 and produces zero context. Clamp "whole file" requests to
+    // a value that survives the cast everywhere (no real file has 10M lines).
+    let context_lines = context_lines.min(10_000_000);
     opts.context_lines(context_lines)
         .include_untracked(true)
         .show_untracked_content(true)
