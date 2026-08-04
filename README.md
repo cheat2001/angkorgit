@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cheat2001/angkorgit/releases/latest/download/angkorgit-demo.mp4"><b>▶ Watch the 45-second demo</b></a>
+  <a href="https://github.com/cheat2001/angkorgit/blob/main/docs/assets/angkorgit-demo.mp4"><b>▶ Watch the 45-second demo</b></a>
 </p>
 
 AngKorGit focuses on the Git operations developers actually use every day and executes them exceptionally well — in an app that weighs **~8 MB** instead of a gigabyte.
