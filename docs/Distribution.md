@@ -29,6 +29,14 @@ on first launch; document it prominently (README covers this):
 - **Linux**: AppImage: `chmod +x AngKorGit_*.AppImage` and run; `.deb` installs
   normally.
 
+**macOS Keychain prompts**: account tokens live in the Keychain, and macOS
+cannot durably trust an unsigned binary — "Always Allow" does not stick, so
+the first git operation that needs a token asks for permission **once per app
+session** (keyring reads are cached in-process; `accounts.rs` `TOKEN_CACHE`).
+Click **Allow** (not "Always Allow" — it has no effect). One prompt per launch
+is expected behavior for unsigned builds; a paid Developer ID signature is the
+only way to make authorization permanent.
+
 Security honesty: unsigned ≠ unsafe. Releases are built by public GitHub
 Actions from public source, updates are minisign-verified (§3), and users can
 always build from source. If the project later earns sponsorship, Apple

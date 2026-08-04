@@ -6,8 +6,9 @@
 //! matches a remote's host against these accounts before falling back to the
 //! system git credential stack.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +18,21 @@ use crate::error::{AppError, AppResult};
 pub static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 const KEYRING_SERVICE: &str = "AngKorGit";
+
+/// Keychain reads for the process lifetime, keyed by account host.
+///
+/// macOS prompts for permission on EVERY keychain read when the binary is not
+/// durably trusted ("Always Allow" cannot stick to unsigned/ad-hoc builds,
+/// and every distributed build has a different ad-hoc identity). libgit2 also
+/// invokes the credential callback several times per operation. Without this
+/// cache users get a storm of permission dialogs; with it, at most one per
+/// app session. The Mutex additionally serializes prompts.
+type TokenCache = Mutex<HashMap<String, Option<(String, String)>>>;
+static TOKEN_CACHE: OnceLock<TokenCache> = OnceLock::new();
+
+fn token_cache() -> &'static TokenCache {
+    TOKEN_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +87,12 @@ pub fn add(host: &str, username: &str, provider: &str, token: &str) -> AppResult
     entry
         .set_password(token.trim())
         .map_err(|e| AppError::other(format!("could not store token in keychain: {e}")))?;
+    if let Ok(mut cache) = token_cache().lock() {
+        cache.insert(
+            host.clone(),
+            Some((username.trim().to_string(), token.trim().to_string())),
+        );
+    }
 
     let mut accounts = list();
     accounts.retain(|a| a.host != host);
@@ -89,6 +111,9 @@ pub fn remove(host: &str) -> AppResult<Vec<AccountInfo>> {
     if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, &host) {
         let _ = entry.delete_credential();
     }
+    if let Ok(mut cache) = token_cache().lock() {
+        cache.remove(&host);
+    }
     let mut accounts = list();
     accounts.retain(|a| a.host != host);
     save_list(&accounts)?;
@@ -96,6 +121,9 @@ pub fn remove(host: &str) -> AppResult<Vec<AccountInfo>> {
 }
 
 /// Credentials for a host, if an account is configured for it.
+///
+/// Keychain reads are cached per app session — including failures/denials,
+/// so a denied permission dialog is never re-asked until the next launch.
 pub fn lookup(host: &str) -> Option<(String, String)> {
     let host = normalize_host(host);
     let account = list().into_iter().find(|a| {
@@ -104,11 +132,16 @@ pub fn lookup(host: &str) -> Option<(String, String)> {
             || a.host == host.split(':').next().unwrap_or(&host)
             || host == a.host.split(':').next().unwrap_or(&a.host)
     })?;
-    let token = keyring::Entry::new(KEYRING_SERVICE, &account.host)
-        .ok()?
-        .get_password()
-        .ok()?;
-    Some((account.username, token))
+    let mut cache = token_cache().lock().ok()?;
+    if let Some(hit) = cache.get(&account.host) {
+        return hit.clone();
+    }
+    let result = keyring::Entry::new(KEYRING_SERVICE, &account.host)
+        .ok()
+        .and_then(|entry| entry.get_password().ok())
+        .map(|token| (account.username.clone(), token));
+    cache.insert(account.host.clone(), result.clone());
+    result
 }
 
 /// Extract the host (with port, if any) from a git remote URL.
