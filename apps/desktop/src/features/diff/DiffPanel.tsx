@@ -1,9 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { ChevronDown, ChevronUp, Columns2, FileText, Minus, Plus, Rows3, WholeWord, WrapText, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Columns2, Copy, FileText, Minus, Plus, Rows3, Trash2, WholeWord, WrapText, X } from 'lucide-react';
 import type { FileDiff } from '@angkorgit/core';
-import { Badge, Button, Hint, Kbd, Separator, Spinner, cn } from '@angkorgit/design-system';
+import {
+  Badge,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Hint,
+  Kbd,
+  Separator,
+  Spinner,
+  cn,
+} from '@angkorgit/design-system';
+import { confirmDialog } from '@/components/confirm';
+import type { LineMenuInfo } from './VirtualDiff';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi, type CenterDiffTarget } from '@/features/ui/store';
@@ -33,6 +48,8 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** right-click menu on a diff line (working-copy, compact view only) */
+  const [lineMenu, setLineMenu] = useState<{ x: number; y: number; info: LineMenuInfo } | null>(null);
 
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
@@ -254,6 +271,14 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <DiffViewer
             diff={diff}
             scrollRef={scrollRef}
+            onLineContextMenu={
+              isWorkingCopy
+                ? (e, info) => {
+                    e.preventDefault();
+                    setLineMenu({ x: e.clientX, y: e.clientY, info });
+                  }
+                : undefined
+            }
             hunkActions={
               // Hunk indices refer to the compact (3-line-context) diff the
               // engine stages against, so per-hunk staging is hidden in
@@ -296,6 +321,98 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         </div>
         {diff && !loading && <DiffMinimap diff={diff} view={diffView} scrollRef={scrollRef} />}
       </div>
+
+      {/* Line context menu: stage / unstage / discard / copy a single line */}
+      {lineMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setLineMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: lineMenu.x, top: lineMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            {lineMenu.info.line.kind !== 'context' && (
+              <>
+                {target.staged ? (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      void runStage(
+                        () =>
+                          ipc.unstageLine(
+                            path,
+                            target.path,
+                            lineMenu.info.line.kind,
+                            (lineMenu.info.line.kind === 'addition'
+                              ? lineMenu.info.line.newLineNo
+                              : lineMenu.info.line.oldLineNo) ?? 0,
+                          ),
+                        'Unstage line',
+                      )
+                    }
+                  >
+                    <Minus /> Unstage this line
+                  </DropdownMenuItem>
+                ) : (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        void runStage(
+                          () =>
+                            ipc.stageLine(
+                              path,
+                              target.path,
+                              lineMenu.info.line.kind,
+                              (lineMenu.info.line.kind === 'addition'
+                                ? lineMenu.info.line.newLineNo
+                                : lineMenu.info.line.oldLineNo) ?? 0,
+                            ),
+                          'Stage line',
+                        )
+                      }
+                    >
+                      <Plus /> Stage this line
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      destructive
+                      onClick={() => {
+                        const info = lineMenu.info;
+                        void confirmDialog({
+                          title: 'Discard this line?',
+                          description:
+                            'The change on this line will be reverted in your working tree (modified lines are restored to their original text). This cannot be undone.',
+                          confirmLabel: 'Discard line',
+                          destructive: true,
+                        }).then((ok) => {
+                          if (ok)
+                            void runStage(
+                              () =>
+                                ipc.discardLine(
+                                  path,
+                                  target.path,
+                                  info.line.kind,
+                                  (info.line.kind === 'addition' ? info.line.newLineNo : info.line.oldLineNo) ?? 0,
+                                ),
+                              'Discard line',
+                            );
+                        });
+                      }}
+                    >
+                      <Trash2 /> Discard this line…
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuItem
+              onClick={() => {
+                void navigator.clipboard.writeText(lineMenu.info.line.content);
+                toast.success('Line copied');
+              }}
+            >
+              <Copy /> Copy line
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </motion.section>
   );
 }

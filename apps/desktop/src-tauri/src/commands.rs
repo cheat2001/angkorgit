@@ -130,6 +130,110 @@ pub async fn stage_hunk(path: String, file: String, hunkIndex: usize) -> AppResu
 }
 
 #[tauri::command]
+pub async fn stage_line(path: String, file: String, kind: String, lineNo: u32) -> AppResult<()> {
+    blocking(move || stage::stage_line(&path, &file, &kind, lineNo)).await
+}
+
+#[tauri::command]
+pub async fn unstage_line(path: String, file: String, kind: String, lineNo: u32) -> AppResult<()> {
+    blocking(move || stage::unstage_line(&path, &file, &kind, lineNo)).await
+}
+
+#[tauri::command]
+pub async fn discard_line(path: String, file: String, kind: String, lineNo: u32) -> AppResult<()> {
+    blocking(move || stage::discard_line(&path, &file, &kind, lineNo)).await
+}
+
+const MAX_EDITABLE_BYTES: u64 = 5 * 1024 * 1024;
+
+#[tauri::command]
+pub fn read_file(path: String, file: String) -> AppResult<String> {
+    let full = std::path::Path::new(&path).join(&file);
+    let meta = std::fs::metadata(&full)?;
+    if meta.len() > MAX_EDITABLE_BYTES {
+        return Err(crate::error::AppError::other(
+            "file is larger than 5 MB — open it in an external editor",
+        ));
+    }
+    let bytes = std::fs::read(&full)?;
+    String::from_utf8(bytes)
+        .map_err(|_| crate::error::AppError::other("file is not valid UTF-8 text"))
+}
+
+#[tauri::command]
+pub fn write_file(path: String, file: String, content: String) -> AppResult<()> {
+    let full = std::path::Path::new(&path).join(&file);
+    std::fs::write(full, content)?;
+    Ok(())
+}
+
+// ---- File utilities --------------------------------------------------------------
+
+#[tauri::command]
+pub fn open_path(path: String) -> AppResult<()> {
+    let status = {
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open").arg(&path).status()
+        }
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("cmd")
+                .args(["/C", "start", "", &path])
+                .status()
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            std::process::Command::new("xdg-open").arg(&path).status()
+        }
+    }?;
+    if !status.success() {
+        return Err(crate::error::AppError::other("could not open path"));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn reveal_path(path: String) -> AppResult<()> {
+    let status = {
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open")
+                .args(["-R", &path])
+                .status()
+        }
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("explorer")
+                .arg(format!("/select,{path}"))
+                .status()
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let parent = std::path::Path::new(&path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            std::process::Command::new("xdg-open").arg(parent).status()
+        }
+    }?;
+    // Windows explorer returns nonzero even on success — don't treat as error.
+    let _ = status;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_file(path: String, file: String) -> AppResult<()> {
+    let full = std::path::Path::new(&path).join(&file);
+    if full.is_file() {
+        std::fs::remove_file(full)?;
+    } else if full.is_dir() {
+        std::fs::remove_dir_all(full)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn unstage_hunk(path: String, file: String, hunkIndex: usize) -> AppResult<()> {
     blocking(move || stage::unstage_hunk(&path, &file, hunkIndex)).await
 }

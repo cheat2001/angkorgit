@@ -26,6 +26,8 @@ interface LineRow {
   kind: 'line';
   line: DiffLine;
   pair: DiffLine | null;
+  hunkIndex: number;
+  lineIndex: number;
 }
 interface PairRow {
   kind: 'pair';
@@ -49,9 +51,9 @@ export function flattenDiff(diff: FileDiff, split: boolean): FlatRow[] {
           counterpart.set(p.right, p.left);
         }
       }
-      for (const line of hunk.lines) {
-        rows.push({ kind: 'line', line, pair: counterpart.get(line) ?? null });
-      }
+      hunk.lines.forEach((line, lineIndex) => {
+        rows.push({ kind: 'line', line, pair: counterpart.get(line) ?? null, hunkIndex, lineIndex });
+      });
     }
   });
   return rows;
@@ -93,12 +95,17 @@ function marker(kind: DiffLine['kind']): { char: string; cls: string } {
   return { char: '', cls: '' };
 }
 
+export interface LineMenuInfo {
+  line: DiffLine;
+}
+
 interface CommonProps {
   rows: FlatRow[];
   language: string | null;
   useWordDiff: boolean;
   scrollRef: React.RefObject<HTMLDivElement>;
   hunkActions?: (hunkIndex: number) => React.ReactNode;
+  onLineContextMenu?: (event: React.MouseEvent, info: LineMenuInfo) => void;
 }
 
 function useDiffVirtualizer(rows: FlatRow[], scrollRef: React.RefObject<HTMLDivElement>) {
@@ -128,7 +135,7 @@ function HeaderContent({
 }
 
 /** Inline (unified) virtualized diff. */
-export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunkActions }: CommonProps) {
+export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunkActions, onLineContextMenu }: CommonProps) {
   const virtualizer = useDiffVirtualizer(rows, scrollRef);
   const items = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
@@ -188,6 +195,11 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
                     : lineBg(row.kind === 'line' ? row.line.kind : 'context'),
                 )}
                 style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+                onContextMenu={
+                  row.kind === 'line' && onLineContextMenu
+                    ? (e) => onLineContextMenu(e, { line: row.line })
+                    : undefined
+                }
               >
                 {row.kind === 'header' ? (
                   <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
@@ -221,6 +233,7 @@ function SplitHalf({
   language,
   useWordDiff,
   hunkActions,
+  onLineContextMenu,
   scrollX,
   onScrollX,
 }: CommonProps & {
@@ -277,6 +290,9 @@ function SplitHalf({
                 key={item.key}
                 className={cn('absolute left-0 w-full', bgOf(row))}
                 style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+                onContextMenu={
+                  line && onLineContextMenu ? (e) => onLineContextMenu(e, { line }) : undefined
+                }
               >
                 {row.kind === 'header' ? (
                   side === 'old' ? (

@@ -38,6 +38,8 @@ interface UiState {
   selectedFile: { path: string; staged: boolean } | null;
   /** diff shown full-width over the graph, null = graph visible */
   centerDiff: CenterDiffTarget | null;
+  /** file open in the built-in editor (takes over the center area) */
+  centerEditor: string | null;
   /** conflict resolver target */
   conflictFile: string | null;
 
@@ -53,6 +55,8 @@ interface UiState {
   selectFile: (file: { path: string; staged: boolean } | null) => void;
   openCenterDiff: (target: CenterDiffTarget) => void;
   closeCenterDiff: () => void;
+  openEditor: (file: string) => void;
+  closeEditor: () => void;
   openConflict: (file: string | null) => void;
 }
 
@@ -70,6 +74,7 @@ export const useUi = create<UiState>()(
   wrapLines: false,
   selectedFile: null,
   centerDiff: null,
+  centerEditor: null,
   conflictFile: null,
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -84,6 +89,8 @@ export const useUi = create<UiState>()(
   selectFile: (selectedFile) => set({ selectedFile }),
   openCenterDiff: (centerDiff) => set({ centerDiff }),
   closeCenterDiff: () => set({ centerDiff: null }),
+  openEditor: (centerEditor) => set({ centerEditor }),
+  closeEditor: () => set({ centerEditor: null }),
   openConflict: (conflictFile) => set({ conflictFile }),
     }),
     {

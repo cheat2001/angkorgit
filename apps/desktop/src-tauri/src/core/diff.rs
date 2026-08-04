@@ -63,6 +63,9 @@ fn hunks_from_patch(patch: &Patch) -> AppResult<(Vec<DiffHunk>, u32, u32)> {
         let mut lines = Vec::with_capacity(line_count);
         for l in 0..line_count {
             let line = patch.line_in_hunk(h, l)?;
+            if matches!(line.origin(), '<' | '>' | '=') {
+                continue; // "\ No newline at end of file" markers — not real lines
+            }
             let kind = match line.origin() {
                 '+' => {
                     additions += 1;

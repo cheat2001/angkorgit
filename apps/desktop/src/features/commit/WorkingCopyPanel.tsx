@@ -1,9 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Minus, Plus, Sparkles, Trash2, Undo2 } from 'lucide-react';
+import { AlertTriangle, Copy, ExternalLink, FolderOpen, Minus, Pencil, Plus, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import type { FileStatus } from '@angkorgit/core';
 import { aiCapabilities } from '@angkorgit/core';
-import { Badge, Button, Checkbox, Hint, Spinner, Textarea, cn } from '@angkorgit/design-system';
+import {
+  Badge,
+  Button,
+  Checkbox,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Hint,
+  Spinner,
+  Textarea,
+  cn,
+} from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
@@ -38,6 +52,7 @@ function FileRow({
   onClick,
   onPrimary,
   onDiscard,
+  onContextMenu,
 }: {
   file: FileStatus;
   staged: boolean;
@@ -45,6 +60,7 @@ function FileRow({
   onClick: () => void;
   onPrimary: () => void;
   onDiscard?: () => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
 }) {
   const kind = staged ? file.staged : file.unstaged;
   const conflicted = file.unstaged === 'conflicted';
@@ -55,6 +71,7 @@ function FileRow({
         selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
       )}
       onClick={onClick}
+      onContextMenu={onContextMenu}
     >
       <Checkbox
         checked={staged}
@@ -90,11 +107,13 @@ function FileRow({
 export function WorkingCopyPanel() {
   const { repo, status, conflicts, submodules, refreshStatus } = useRepo();
   const reloadGraph = useGraph((s) => s.reload);
-  const { selectedFile, selectFile, openCenterDiff, openConflict } = useUi();
+  const { selectedFile, selectFile, openCenterDiff, openEditor, openConflict } = useUi();
   const [message, setMessage] = useState('');
   const [amend, setAmend] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  /** right-click menu on a working-copy file */
+  const [fileMenu, setFileMenu] = useState<{ x: number; y: number; file: FileStatus; staged: boolean } | null>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-grow the commit box with its content (capped, then scrolls).
@@ -258,6 +277,10 @@ export function WorkingCopyPanel() {
             selected={selectedFile?.path === file.path && selectedFile.staged}
             onClick={() => showDiff(file.path, true)}
             onPrimary={() => void run(() => ipc.unstageFile(path, file.path), 'Unstage failed')}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setFileMenu({ x: e.clientX, y: e.clientY, file, staged: true });
+            }}
           />
         ))}
 
@@ -311,6 +334,10 @@ export function WorkingCopyPanel() {
               selected={selectedFile?.path === file.path && !selectedFile.staged}
               onClick={() => showDiff(file.path, false)}
               onPrimary={() => void run(() => ipc.stageFile(path, file.path), 'Stage failed')}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setFileMenu({ x: e.clientX, y: e.clientY, file, staged: false });
+              }}
               onDiscard={() => {
                 void confirmDialog({
                   title: 'Discard changes?',
@@ -326,6 +353,87 @@ export function WorkingCopyPanel() {
         )}
 
       </div>
+
+      {/* File context menu */}
+      {fileMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setFileMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: fileMenu.x, top: fileMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            <DropdownMenuLabel className="max-w-64 truncate font-mono">{fileMenu.file.path}</DropdownMenuLabel>
+            {fileMenu.staged ? (
+              <DropdownMenuItem
+                onClick={() => void run(() => ipc.unstageFile(path, fileMenu.file.path), 'Unstage failed')}
+              >
+                <Minus /> Unstage file
+              </DropdownMenuItem>
+            ) : (
+              <>
+                <DropdownMenuItem
+                  onClick={() => void run(() => ipc.stageFile(path, fileMenu.file.path), 'Stage failed')}
+                >
+                  <Plus /> Stage file
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  destructive
+                  onClick={() => {
+                    const file = fileMenu.file;
+                    void confirmDialog({
+                      title: 'Discard changes?',
+                      description: `All changes in "${file.path}" will be reverted${file.unstaged === 'untracked' ? ' and the file deleted' : ''}. This cannot be undone.`,
+                      confirmLabel: 'Discard',
+                      destructive: true,
+                    }).then((ok) => {
+                      if (ok) void discardOne(file.path);
+                    });
+                  }}
+                >
+                  <Trash2 /> Discard changes…
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => openEditor(fileMenu.file.path)}>
+              <Pencil /> Edit file
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void ipc.openPath(`${path}/${fileMenu.file.path}`)}>
+              <ExternalLink /> Open in external app
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void ipc.revealPath(`${path}/${fileMenu.file.path}`)}>
+              <FolderOpen /> Show in Finder
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                void navigator.clipboard.writeText(fileMenu.file.path);
+                toast.success('Path copied');
+              }}
+            >
+              <Copy /> Copy path
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              destructive
+              onClick={() => {
+                const file = fileMenu.file;
+                void confirmDialog({
+                  title: `Delete "${file.path}"?`,
+                  description:
+                    file.unstaged === 'untracked'
+                      ? 'The file is untracked — deleting it cannot be undone.'
+                      : 'The file will be removed from your working tree. It can be restored with Discard (the deletion shows as a change).',
+                  confirmLabel: 'Delete',
+                  destructive: true,
+                }).then((ok) => {
+                  if (ok) void run(() => ipc.deleteFile(path, file.path), 'Delete failed');
+                });
+              }}
+            >
+              <Trash2 /> Delete file…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       {files.length === 0 && !amend ? (
         // Clean tree: no commit box — just a quiet way in for message fixes.

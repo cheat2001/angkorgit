@@ -4,7 +4,7 @@ import { cn } from '@angkorgit/design-system';
 import { useUi } from '@/features/ui/store';
 import { languageOf } from '@/shared/highlight';
 import { CodeLine, gutter, lineBg, pairHunkLines } from './diffShared';
-import { flattenDiff, VirtualInlineDiff, VirtualSplitDiff } from './VirtualDiff';
+import { flattenDiff, VirtualInlineDiff, VirtualSplitDiff, type LineMenuInfo } from './VirtualDiff';
 
 /**
  * Diff rendering. The default no-wrap mode is fully virtualized — only
@@ -165,12 +165,15 @@ export function DiffViewer({
   diff,
   scrollRef,
   hunkActions,
+  onLineContextMenu,
 }: {
   diff: FileDiff;
   /** the vertical scroll container (needed for virtualization) */
   scrollRef?: React.RefObject<HTMLDivElement>;
   /** optional per-hunk action buttons (stage/unstage hunk) */
   hunkActions?: (hunkIndex: number) => React.ReactNode;
+  /** right-click on a diff line (inline view only) */
+  onLineContextMenu?: (event: React.MouseEvent, info: LineMenuInfo) => void;
 }) {
   const { diffView, wordDiff: useWord, wrapLines } = useUi();
   const language = useMemo(() => languageOf(diff.path), [diff.path]);
@@ -197,6 +200,7 @@ export function DiffViewer({
       useWordDiff: useWord,
       scrollRef,
       hunkActions,
+      onLineContextMenu,
     };
     return split ? <VirtualSplitDiff {...props} /> : <VirtualInlineDiff {...props} />;
   }

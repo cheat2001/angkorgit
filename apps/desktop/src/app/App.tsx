@@ -71,6 +71,18 @@ export function App() {
     document.documentElement.classList.toggle('light', theme === 'light');
   }, [theme]);
 
+  // The app owns right-click: suppress the webview's native menu everywhere
+  // except editable fields (where copy/paste/spellcheck still make sense).
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      e.preventDefault();
+    };
+    document.addEventListener('contextmenu', onContextMenu);
+    return () => document.removeEventListener('contextmenu', onContextMenu);
+  }, []);
+
   return (
     <TooltipProvider>
       <MemoryRouter initialEntries={['/']}>

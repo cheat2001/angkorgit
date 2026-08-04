@@ -139,6 +139,38 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('unstage_hunk', { path, file, hunkIndex });
   },
+  async stageLine(path: string, file: string, kind: string, lineNo: number): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('stage_line', { path, file, kind, lineNo });
+  },
+  async unstageLine(path: string, file: string, kind: string, lineNo: number): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('unstage_line', { path, file, kind, lineNo });
+  },
+  async discardLine(path: string, file: string, kind: string, lineNo: number): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('discard_line', { path, file, kind, lineNo });
+  },
+  async readFile(path: string, file: string): Promise<string> {
+    if (!isTauri()) return '// demo mode — editing is available in the desktop app\n';
+    return invoke('read_file', { path, file });
+  },
+  async writeFile(path: string, file: string, content: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('write_file', { path, file, content });
+  },
+  async openPath(target: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('open_path', { path: target });
+  },
+  async revealPath(target: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('reveal_path', { path: target });
+  },
+  async deleteFile(path: string, file: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('delete_file', { path, file });
+  },
   async commit(path: string, message: string): Promise<string> {
     if (!isTauri()) {
       await delay(200);

@@ -12,19 +12,27 @@ struct TempRepo {
 
 impl TempRepo {
     fn new() -> Self {
+        // Timestamps alone can collide when parallel tests start in the same
+        // nanosecond — the counter keeps every repo directory unique.
+        static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "angkorgit-test-{}-{}",
+            "angkorgit-test-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.to_str().unwrap();
         core::init(path).unwrap();
         core::set_config(Some(path), "user.name", "Test User", false).unwrap();
         core::set_config(Some(path), "user.email", "test@angkorgit.dev", false).unwrap();
+        // Windows CI runners set core.autocrlf=true globally, which rewrites
+        // LF→CRLF on checkout and breaks byte-exact assertions. Tests are
+        // line-ending-deterministic on every platform.
+        core::set_config(Some(path), "core.autocrlf", "false", false).unwrap();
         Self { dir }
     }
 
@@ -321,6 +329,117 @@ fn reset_modes() {
     )
     .unwrap();
     assert_eq!(page.commits.len(), 1);
+}
+
+#[test]
+fn line_level_stage_unstage_discard() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\ntwo\nthree\nfour\nfive\n");
+    commit_all(&repo, "base");
+
+    // Two changed lines inside ONE hunk (context 3 merges them).
+    repo.write("a.txt", "one\nTWO\nthree\nFOUR\nfive\n");
+    let diff = core::file_diff(repo.path(), "a.txt", false, 3).unwrap();
+    assert_eq!(diff.hunks.len(), 1);
+    let first_addition = diff.hunks[0]
+        .lines
+        .iter()
+        .find(|l| l.kind == "addition")
+        .unwrap()
+        .new_line_no
+        .unwrap();
+
+    // Stage ONLY the first added line ("TWO").
+    core::stage_line(repo.path(), "a.txt", "addition", first_addition).unwrap();
+    let status = core::status(repo.path()).unwrap();
+    let entry = &status.files[0];
+    assert_eq!(entry.staged.as_deref(), Some("modified"));
+    assert_eq!(entry.unstaged.as_deref(), Some("modified"));
+
+    let staged = core::file_diff(repo.path(), "a.txt", true, 3).unwrap();
+    assert_eq!(staged.additions, 1); // only TWO staged
+    let unstaged = core::file_diff(repo.path(), "a.txt", false, 3).unwrap();
+    assert_eq!(unstaged.additions, 1); // FOUR still unstaged
+
+    // Unstage that line again — staged side becomes empty.
+    let staged_addition = staged.hunks[0]
+        .lines
+        .iter()
+        .find(|l| l.kind == "addition")
+        .unwrap()
+        .new_line_no
+        .unwrap();
+    core::unstage_line(repo.path(), "a.txt", "addition", staged_addition).unwrap();
+    let status = core::status(repo.path()).unwrap();
+    assert_eq!(status.files[0].staged, None);
+
+    // Discard only the FOUR change from the working tree.
+    let diff = core::file_diff(repo.path(), "a.txt", false, 3).unwrap();
+    let four_line = diff.hunks[0]
+        .lines
+        .iter()
+        .find(|l| l.kind == "addition" && l.content.contains("FOUR"))
+        .unwrap()
+        .new_line_no
+        .unwrap();
+    core::discard_line(repo.path(), "a.txt", "addition", four_line).unwrap();
+    assert_eq!(repo.read("a.txt"), "one\nTWO\nthree\nfour\nfive\n");
+}
+
+#[test]
+fn line_ops_handle_missing_trailing_newline() {
+    let repo = TempRepo::new();
+    // The committed file's last line has NO trailing newline — common in
+    // the wild and the shape behind "invalid patch instruction" reports.
+    repo.write("README.md", "alpha\nbeta\ngamma");
+    commit_all(&repo, "base");
+
+    // Append blank lines + a new unterminated last line.
+    repo.write("README.md", "alpha\nbeta\ngamma\n\n\nkhlhlihho");
+
+    let find_addition = |staged: bool, needle: &str| {
+        let diff = core::file_diff(repo.path(), "README.md", staged, 3).unwrap();
+        diff.hunks[0]
+            .lines
+            .iter()
+            .find(|l| l.kind == "addition" && l.content.contains(needle))
+            .map(|l| l.new_line_no.unwrap())
+    };
+
+    // Discard the added last line: the blanks must survive.
+    let last = find_addition(false, "khlhlihho").unwrap();
+    core::discard_line(repo.path(), "README.md", "addition", last).unwrap();
+    assert_eq!(repo.read("README.md"), "alpha\nbeta\ngamma\n\n\n");
+
+    // Stage that same line. Like `git add -p`, this drags in the newline
+    // fix for the old last line — otherwise the patch is unrepresentable.
+    repo.write("README.md", "alpha\nbeta\ngamma\n\n\nkhlhlihho");
+    let last = find_addition(false, "khlhlihho").unwrap();
+    core::stage_line(repo.path(), "README.md", "addition", last).unwrap();
+    let staged = find_addition(true, "khlhlihho");
+    assert!(staged.is_some(), "line should be staged");
+
+    // And unstage it again.
+    core::unstage_line(repo.path(), "README.md", "addition", staged.unwrap()).unwrap();
+    assert!(find_addition(true, "khlhlihho").is_none());
+    assert_eq!(repo.read("README.md"), "alpha\nbeta\ngamma\n\n\nkhlhlihho");
+}
+
+#[test]
+fn hunk_ops_handle_missing_trailing_newline() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\ntwo");
+    commit_all(&repo, "base");
+
+    repo.write("a.txt", "one\ntwo\nthree");
+    core::stage_hunk(repo.path(), "a.txt", 0).unwrap();
+    let status = core::status(repo.path()).unwrap();
+    assert_eq!(status.files[0].staged.as_deref(), Some("modified"));
+    assert_eq!(status.files[0].unstaged, None);
+
+    core::unstage_hunk(repo.path(), "a.txt", 0).unwrap();
+    let status = core::status(repo.path()).unwrap();
+    assert_eq!(status.files[0].staged, None);
 }
 
 #[test]

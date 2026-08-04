@@ -24,7 +24,10 @@ pub mod test_api {
         stash_create, stash_list, stash_pop, tag_create, tag_delete, tag_list,
     };
     pub use crate::core::repo::{init, set_config, status};
-    pub use crate::core::stage::{discard_all, stage_all, stage_file, unstage_all, unstage_file};
+    pub use crate::core::stage::{
+        discard_all, discard_line, stage_all, stage_file, stage_hunk, stage_line, unstage_all,
+        unstage_file, unstage_hunk, unstage_line,
+    };
     pub use crate::core::types::HistoryQuery;
 }
 
@@ -62,6 +65,14 @@ pub fn run() {
             commands::discard_all,
             commands::stage_hunk,
             commands::unstage_hunk,
+            commands::stage_line,
+            commands::unstage_line,
+            commands::discard_line,
+            commands::open_path,
+            commands::read_file,
+            commands::write_file,
+            commands::reveal_path,
+            commands::delete_file,
             commands::commit_create,
             commands::commit_amend,
             commands::commit_revert,

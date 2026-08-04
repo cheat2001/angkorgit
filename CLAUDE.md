@@ -93,6 +93,10 @@ no build step for packages).
 **Build gotchas (important):**
 - **Quit the running app before `tauri:build`** — the `.dmg` bundler script is flaky while the app runs (the `.app` itself still builds).
 - `source ~/.cargo/env` before cargo commands (rustup-installed toolchain).
+- With updater `createUpdaterArtifacts` on, `tauri build` exits 1 AFTER producing the
+  .app unless `TAURI_SIGNING_PRIVATE_KEY=$(cat ~/.tauri/angkorgit.key)` (+ empty
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) is exported — for local installs the .app is
+  still usable via `pnpm install:mac`.
 - Root pnpm scripts must run **from repo root**; background shells don't persist `cd`.
 - Rust fmt/clippy are CI gates: `cargo fmt --check && cargo clippy --all-targets -- -D warnings`.
 
@@ -113,8 +117,9 @@ core/
 ├── types.rs          ← serde structs mirroring @angkorgit/core (camelCase rename_all)
 ├── repo.rs           ← open/discover/init/info/status, upstream divergence, get/set config
 ├── history.rs        ← revwalk pagination + search/author/branch filters, ref decorations
-├── stage.rs          ← stage/unstage file+all, stage/unstage HUNK (patch-text split + apply),
-│                       discard_file/discard_all → return what could NOT be discarded
+├── stage.rs          ← stage/unstage file+all, HUNK ops (patch-text split + apply), LINE ops
+│                       (single_line_patch fwd/reverse; discard is PAIR-aware — reverting a
+│                       modified line restores the original), discard_file/all → report leftovers
 ├── commit.rs         ← commit (merge-aware parents), amend, revert (mainline 1 for merges)
 ├── branch.rs         ← list(+ahead/behind), create/delete/rename, checkout (remote→local),
 │                       merge (ff/normal/conflicts; msg "Merge branch 'x' into y"),
@@ -252,12 +257,20 @@ in a browser and the Playwright e2e suite run entirely on this. **Never** import
   path is. Keep large-file work on the no-wrap path.
 - **G12 — first icon build**: `pnpm icons` then `pnpm --filter @angkorgit/desktop exec
   tauri icon src-tauri/icons/icon.png` (release workflow does this).
+- **G13 — files without a trailing newline**: libgit2 diffs contain `\ No newline at end
+  of file` marker lines (origins `<`, `>`, `=`) whose content lacks its own `\n`. Any
+  hand-built patch text must re-emit those markers (and terminate the unterminated line
+  first) or `git apply` fails with "invalid patch instruction". `single_line_patch`
+  restores markers from content; staging an addition below the old unterminated last
+  line auto-drags in that line's newline-fix pair (like `git add -p`); `pair_partner`
+  must NOT treat markers as block boundaries; `file_diff` filters marker rows out of
+  UI lines. Regression tests: `*_handle_missing_trailing_newline`.
 
 ## 9. Testing map
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (15) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, git-CLI interop |
+| Rust integration (17) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
 | Unit (14) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved) |
 | E2E (5) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search — all on demo mode |
 

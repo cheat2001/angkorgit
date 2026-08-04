@@ -9,6 +9,7 @@ import { Toolbar } from '@/components/Toolbar';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { CommitGraph } from '@/features/graph/CommitGraph';
 import { DiffPanel } from '@/features/diff/DiffPanel';
+import { EditorPanel } from '@/features/editor/EditorPanel';
 import { Inspector } from '@/features/inspector/Inspector';
 import { TerminalPanel } from '@/features/terminal/TerminalPanel';
 import { CommandPalette } from '@/components/CommandPalette';
@@ -33,6 +34,7 @@ export function RepositoryPage() {
     terminalOpen,
     conflictFile,
     centerDiff,
+    centerEditor,
     closeCenterDiff,
   } = useUi();
 
@@ -46,6 +48,7 @@ export function RepositoryPage() {
     useGraph.getState().select(null);
     const ui = useUi.getState();
     ui.closeCenterDiff();
+    ui.closeEditor();
     ui.selectFile(null);
     void reload(repoPath);
 
@@ -154,10 +157,14 @@ export function RepositoryPage() {
               <Panel minSize={30}>
                 {/* graph stays mounted under the diff so scroll/selection survive;
                     keyed by repo so filter inputs reset when switching projects */}
-                <div className={centerDiff ? 'hidden' : 'h-full'}>
+                <div className={centerDiff || centerEditor ? 'hidden' : 'h-full'}>
                   <CommitGraph key={repo.path} />
                 </div>
-                {centerDiff && <DiffPanel target={centerDiff} />}
+                {centerEditor ? (
+                  <EditorPanel key={centerEditor} file={centerEditor} />
+                ) : (
+                  centerDiff && <DiffPanel target={centerDiff} />
+                )}
               </Panel>
               {terminalOpen && (
                 <>
