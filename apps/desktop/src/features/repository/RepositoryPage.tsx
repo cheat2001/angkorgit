@@ -10,6 +10,7 @@ import { Sidebar } from '@/features/sidebar/Sidebar';
 import { CommitGraph } from '@/features/graph/CommitGraph';
 import { DiffPanel } from '@/features/diff/DiffPanel';
 import { EditorPanel } from '@/features/editor/EditorPanel';
+import { FileHistoryPanel } from '@/features/history/FileHistoryPanel';
 import { Inspector } from '@/features/inspector/Inspector';
 import { TerminalPanel } from '@/features/terminal/TerminalPanel';
 import { CommandPalette } from '@/components/CommandPalette';
@@ -35,6 +36,7 @@ export function RepositoryPage() {
     conflictFile,
     centerDiff,
     centerEditor,
+    centerFileHistory,
     closeCenterDiff,
   } = useUi();
 
@@ -49,6 +51,7 @@ export function RepositoryPage() {
     const ui = useUi.getState();
     ui.closeCenterDiff();
     ui.closeEditor();
+    ui.closeFileHistory();
     ui.selectFile(null);
     void reload(repoPath);
 
@@ -124,7 +127,9 @@ export function RepositoryPage() {
       {
         combo: 'escape',
         handler: () => {
-          if (useUi.getState().centerDiff) closeCenterDiff();
+          const ui = useUi.getState();
+          if (ui.centerDiff) closeCenterDiff();
+          else if (ui.centerFileHistory) ui.closeFileHistory();
         },
       },
     ],
@@ -157,13 +162,17 @@ export function RepositoryPage() {
               <Panel minSize={30}>
                 {/* graph stays mounted under the diff so scroll/selection survive;
                     keyed by repo so filter inputs reset when switching projects */}
-                <div className={centerDiff || centerEditor ? 'hidden' : 'h-full'}>
+                <div className={centerDiff || centerEditor || centerFileHistory ? 'hidden' : 'h-full'}>
                   <CommitGraph key={repo.path} />
                 </div>
                 {centerEditor ? (
                   <EditorPanel key={centerEditor} file={centerEditor} />
+                ) : centerDiff ? (
+                  <DiffPanel target={centerDiff} />
                 ) : (
-                  centerDiff && <DiffPanel target={centerDiff} />
+                  centerFileHistory && (
+                    <FileHistoryPanel key={centerFileHistory} file={centerFileHistory} />
+                  )
                 )}
               </Panel>
               {terminalOpen && (

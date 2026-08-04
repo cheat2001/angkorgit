@@ -265,6 +265,20 @@ pub async fn history_commit(path: String, oid: String) -> AppResult<CommitInfo> 
     blocking(move || history::single(&path, &oid)).await
 }
 
+#[tauri::command]
+pub async fn history_file(
+    path: String,
+    file: String,
+    limit: Option<usize>,
+) -> AppResult<HistoryPage> {
+    blocking(move || history::file_history(&path, &file, limit.unwrap_or(200))).await
+}
+
+#[tauri::command]
+pub async fn repo_files(path: String) -> AppResult<Vec<String>> {
+    blocking(move || repo::list_files(&path)).await
+}
+
 // ---- Branches ----------------------------------------------------------------------
 
 #[tauri::command]

@@ -172,6 +172,16 @@ pub fn init(path: &str) -> AppResult<RepositoryInfo> {
     info(path)
 }
 
+/// All tracked file paths (index order) — powers file pickers.
+pub fn list_files(path: &str) -> AppResult<Vec<String>> {
+    let repo = open(path)?;
+    let index = repo.index()?;
+    Ok(index
+        .iter()
+        .filter_map(|entry| String::from_utf8(entry.path).ok())
+        .collect())
+}
+
 // ---- git config ------------------------------------------------------------
 
 pub fn get_config(repo_path: Option<&str>, key: &str) -> AppResult<Option<String>> {

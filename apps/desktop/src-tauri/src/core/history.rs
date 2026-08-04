@@ -151,6 +151,61 @@ pub fn list(path: &str, query: HistoryQuery) -> AppResult<HistoryPage> {
     })
 }
 
+/// Commits that changed one file, newest first (HEAD's history).
+///
+/// A commit "changed" the file when its blob differs from the FIRST parent's
+/// (same rule as `git log -- <file>`): modified, added, or deleted. Tree
+/// entry lookups make this fast — no per-commit diffs.
+pub fn file_history(path: &str, file: &str, limit: usize) -> AppResult<HistoryPage> {
+    let repo = super::repo::open(path)?;
+    let mut walk = repo.revwalk()?;
+    walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
+    walk.push_head()?;
+
+    let decorations = ref_decorations(&repo);
+    let head_oid = repo.head().ok().and_then(|h| h.target());
+    let file_path = std::path::Path::new(file);
+    let blob_of = |commit: &git2::Commit| -> Option<Oid> {
+        commit
+            .tree()
+            .ok()?
+            .get_path(file_path)
+            .ok()
+            .map(|entry| entry.id())
+    };
+
+    let mut commits = Vec::new();
+    let mut has_more = false;
+    for oid in walk.flatten() {
+        let Ok(commit) = repo.find_commit(oid) else {
+            continue;
+        };
+        let current = blob_of(&commit);
+        let parent_commit = commit.parent(0).ok();
+        let parent = parent_commit.as_ref().and_then(&blob_of);
+        let changed = match (current, parent) {
+            (Some(c), Some(p)) => c != p,
+            (Some(_), None) => true, // added here (or root commit)
+            (None, Some(_)) => true, // deleted here
+            (None, None) => false,
+        };
+        if !changed {
+            continue;
+        }
+        if commits.len() >= limit {
+            has_more = true;
+            break;
+        }
+        commits.push(commit_info(&repo, &commit, &decorations, head_oid));
+    }
+
+    Ok(HistoryPage {
+        commits,
+        has_more,
+        total: None,
+    })
+}
+
 pub fn single(path: &str, oid: &str) -> AppResult<CommitInfo> {
     let repo = super::repo::open(path)?;
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;

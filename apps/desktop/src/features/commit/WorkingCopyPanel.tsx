@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Copy, ExternalLink, FolderOpen, Minus, Pencil, Plus, Sparkles, Trash2, Undo2 } from 'lucide-react';
+import { AlertTriangle, Copy, ExternalLink, FolderOpen, History, Minus, Pencil, Plus, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import type { FileStatus } from '@angkorgit/core';
 import { aiCapabilities } from '@angkorgit/core';
 import {
@@ -396,6 +396,9 @@ export function WorkingCopyPanel() {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => openEditor(fileMenu.file.path)}>
               <Pencil /> Edit file
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => useUi.getState().openFileHistory(fileMenu.file.path)}>
+              <History /> File history
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void ipc.openPath(`${path}/${fileMenu.file.path}`)}>
               <ExternalLink /> Open in external app

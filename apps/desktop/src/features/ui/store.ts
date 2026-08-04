@@ -40,6 +40,8 @@ interface UiState {
   centerDiff: CenterDiffTarget | null;
   /** file open in the built-in editor (takes over the center area) */
   centerEditor: string | null;
+  /** file whose commit history fills the center area */
+  centerFileHistory: string | null;
   /** conflict resolver target */
   conflictFile: string | null;
 
@@ -57,6 +59,8 @@ interface UiState {
   closeCenterDiff: () => void;
   openEditor: (file: string) => void;
   closeEditor: () => void;
+  openFileHistory: (file: string) => void;
+  closeFileHistory: () => void;
   openConflict: (file: string | null) => void;
 }
 
@@ -75,6 +79,7 @@ export const useUi = create<UiState>()(
   selectedFile: null,
   centerDiff: null,
   centerEditor: null,
+  centerFileHistory: null,
   conflictFile: null,
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -91,6 +96,8 @@ export const useUi = create<UiState>()(
   closeCenterDiff: () => set({ centerDiff: null }),
   openEditor: (centerEditor) => set({ centerEditor }),
   closeEditor: () => set({ centerEditor: null }),
+  openFileHistory: (centerFileHistory) => set({ centerFileHistory }),
+  closeFileHistory: () => set({ centerFileHistory: null }),
   openConflict: (conflictFile) => set({ conflictFile }),
     }),
     {

@@ -443,6 +443,34 @@ fn hunk_ops_handle_missing_trailing_newline() {
 }
 
 #[test]
+fn file_history_lists_only_touching_commits() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "a1\n");
+    repo.write("b.txt", "b1\n");
+    commit_all(&repo, "add a and b");
+
+    repo.write("b.txt", "b2\n");
+    commit_all(&repo, "change b only");
+
+    repo.write("a.txt", "a2\n");
+    commit_all(&repo, "change a");
+
+    repo.write("a.txt", "a3\n");
+    repo.write("b.txt", "b3\n");
+    commit_all(&repo, "change both");
+
+    let page = core::file_history(repo.path(), "a.txt", 100).unwrap();
+    let summaries: Vec<_> = page.commits.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(summaries, vec!["change both", "change a", "add a and b"]);
+    assert!(!page.has_more);
+
+    // Limit + hasMore pagination signal.
+    let page = core::file_history(repo.path(), "a.txt", 2).unwrap();
+    assert_eq!(page.commits.len(), 2);
+    assert!(page.has_more);
+}
+
+#[test]
 fn file_diff_reports_hunks() {
     let repo = TempRepo::new();
     repo.write("a.txt", "one\ntwo\nthree\n");

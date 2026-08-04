@@ -199,6 +199,21 @@ export const ipc = {
     if (!isTauri()) return demo.demoHistory({ skip: 0, limit: 1 }).commits[0];
     return invoke('history_commit', { path, oid });
   },
+  /** Commits that changed one file, newest first. */
+  async fileHistory(path: string, file: string, limit?: number): Promise<HistoryPage> {
+    if (!isTauri()) {
+      await delay(60);
+      return demo.demoHistory({ skip: 0, limit: limit ?? 25 });
+    }
+    return invoke('history_file', { path, file, limit });
+  },
+  /** All tracked file paths — powers file pickers. */
+  async repoFiles(path: string): Promise<string[]> {
+    if (!isTauri()) {
+      return ['src/main.ts', 'src/app/App.tsx', 'src/graph/layout.ts', 'README.md', 'package.json'];
+    }
+    return invoke('repo_files', { path });
+  },
 
   // ---- branches ----
   async branches(path: string): Promise<BranchInfo[]> {

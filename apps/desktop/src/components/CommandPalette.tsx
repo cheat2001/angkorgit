@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Command } from 'cmdk';
 import { toast } from 'sonner';
 import {
@@ -6,8 +6,10 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Check,
+  FileClock,
   FolderGit2,
   GitBranchPlus,
+  History,
   Moon,
   PanelLeft,
   RefreshCw,
@@ -39,6 +41,35 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
   const locals = useMemo(() => branches.filter((b) => !b.isRemote && !b.isHead), [branches]);
   const otherRepos = useMemo(() => recents.filter((r) => r.path !== path).slice(0, 8), [recents, path]);
 
+  /** 'commands' = normal palette; 'fileHistory' = pick a file to see its history */
+  const [mode, setMode] = useState<'commands' | 'fileHistory'>('commands');
+  const [search, setSearch] = useState('');
+  const [files, setFiles] = useState<string[]>([]);
+
+  // Fresh palette every time it opens.
+  useEffect(() => {
+    if (!paletteOpen) return;
+    setMode('commands');
+    setSearch('');
+  }, [paletteOpen]);
+
+  const enterFileHistory = () => {
+    setMode('fileHistory');
+    setSearch('');
+    void ipc
+      .repoFiles(path)
+      .then(setFiles)
+      .catch(() => setFiles([]));
+  };
+
+  // Manual filtering scales to 10k-file repos (cmdk scoring would not).
+  const visibleFiles = useMemo(() => {
+    if (mode !== 'fileHistory') return [];
+    const q = search.trim().toLowerCase();
+    const matches = q ? files.filter((f) => f.toLowerCase().includes(q)) : files;
+    return matches.slice(0, 50);
+  }, [mode, files, search]);
+
   const close = () => setPaletteOpen(false);
 
   const run = (label: string, op: () => Promise<unknown>) => {
@@ -60,16 +91,49 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
       open={paletteOpen}
       onOpenChange={setPaletteOpen}
       label="Command palette"
+      shouldFilter={mode === 'commands'}
       className="fixed left-1/2 top-24 z-50 w-full max-w-lg -translate-x-1/2 overflow-hidden rounded-lg border border-border bg-surface-overlay shadow-soft"
     >
       <Command.Input
-        placeholder="Type a command or branch name…"
+        value={search}
+        onValueChange={setSearch}
+        placeholder={
+          mode === 'fileHistory'
+            ? 'Search a file to see who changed it…'
+            : 'Type a command or branch name…'
+        }
+        onKeyDown={(e) => {
+          // Backspace on an empty input backs out of file-pick mode.
+          if (mode === 'fileHistory' && e.key === 'Backspace' && search === '') {
+            e.preventDefault();
+            setMode('commands');
+          }
+        }}
         className="h-11 w-full border-b border-border-subtle bg-transparent px-4 text-sm text-foreground outline-none placeholder:text-faint"
       />
       <Command.List className="max-h-80 overflow-y-auto p-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-faint">
         <Command.Empty className="py-8 text-center text-sm text-faint">No results.</Command.Empty>
 
+        {mode === 'fileHistory' && (
+          <Command.Group heading="File history">
+            {visibleFiles.map((file) => (
+              <PaletteItem
+                key={file}
+                icon={<FileClock />}
+                label={file}
+                onSelect={() => {
+                  close();
+                  useUi.getState().openFileHistory(file);
+                }}
+              />
+            ))}
+          </Command.Group>
+        )}
+
+        {mode === 'commands' && (
+        <>
         <Command.Group heading="Actions">
+          <PaletteItem icon={<History />} label="File history…" onSelect={enterFileHistory} />
           <PaletteItem icon={<ArrowDownToLine />} label="Pull" onSelect={() => run('Pull', () => ipc.pull(path, remote))} />
           <PaletteItem icon={<ArrowUpFromLine />} label="Push" onSelect={() => run('Push', () => ipc.push(path, remote, false, false, true))} />
           <PaletteItem icon={<RefreshCw />} label="Fetch (with tags)" onSelect={() => run('Fetch', () => ipc.fetch(path, remote, true, true))} />
@@ -192,6 +256,8 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             }}
           />
         </Command.Group>
+        </>
+        )}
       </Command.List>
     </Command.Dialog>
   );
