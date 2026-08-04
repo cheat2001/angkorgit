@@ -23,7 +23,9 @@ tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-git2 = { version = "0.20", features = ["vendored-libgit2"] }
+# vendored-openssl: the release pipeline cross-compiles (e.g. x86_64 half of
+# the macOS universal binary) where no system OpenSSL exists for the target.
+git2 = { version = "0.20", features = ["vendored-libgit2", "vendored-openssl"] }
 portable-pty = "0.8"
 base64 = "0.22"
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }

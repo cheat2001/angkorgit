@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { FileDiff } from '@angkorgit/core';
 import type { DiffViewMode } from '@/features/ui/store';
 
@@ -76,11 +76,19 @@ export function scrollToFraction(el: HTMLElement, fraction: number): void {
   });
 }
 
+// Soft translucent markers — a fully-added file must read as a tinted rail,
+// not a solid neon bar.
 const MARKER_COLOR: Record<string, string> = {
-  addition: 'hsl(var(--success))',
-  deletion: 'hsl(var(--danger))',
-  mixed: 'hsl(var(--primary))',
+  addition: 'hsl(var(--success) / 0.5)',
+  deletion: 'hsl(var(--danger) / 0.5)',
+  mixed: 'hsl(var(--primary) / 0.55)',
 };
+
+interface MarkerBlock {
+  start: number;
+  end: number;
+  kind: RowKind;
+}
 
 export function DiffMinimap({
   diff,
@@ -92,39 +100,49 @@ export function DiffMinimap({
   scrollRef: React.RefObject<HTMLDivElement>;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
-  const [viewport, setViewport] = useState({ top: 0, height: 1 });
+  const indicatorRef = useRef<HTMLSpanElement>(null);
 
   const rows = useMemo(() => logicalRows(diff, view), [diff, view]);
   const total = Math.max(rows.length, 1);
-  const markers = useMemo(
-    () =>
-      rows
-        .map((kind, index) => ({ kind, index }))
-        .filter((r) => r.kind === 'addition' || r.kind === 'deletion' || r.kind === 'mixed'),
-    [rows],
-  );
-
-  const syncViewport = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el || el.scrollHeight === 0) return;
-    setViewport({
-      top: el.scrollTop / el.scrollHeight,
-      height: Math.min(1, el.clientHeight / el.scrollHeight),
+  // Consecutive changed rows of the same kind render as ONE block: far fewer
+  // DOM nodes and a cleaner rail than per-line markers.
+  const markers = useMemo(() => {
+    const blocks: MarkerBlock[] = [];
+    rows.forEach((kind, index) => {
+      if (kind !== 'addition' && kind !== 'deletion' && kind !== 'mixed') return;
+      const last = blocks[blocks.length - 1];
+      if (last && last.kind === kind && last.end === index) last.end = index + 1;
+      else blocks.push({ start: index, end: index + 1, kind });
     });
-  }, [scrollRef]);
+    return blocks;
+  }, [rows]);
 
+  // The viewport indicator tracks scrolling OUTSIDE React: writing styles
+  // directly (rAF-throttled) keeps scroll frames free of render work.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    syncViewport();
-    el.addEventListener('scroll', syncViewport, { passive: true });
-    const observer = new ResizeObserver(syncViewport);
+    const indicator = indicatorRef.current;
+    if (!el || !indicator) return;
+    let raf = 0;
+    const sync = () => {
+      raf = 0;
+      if (el.scrollHeight === 0) return;
+      indicator.style.top = `${(el.scrollTop / el.scrollHeight) * 100}%`;
+      indicator.style.height = `${Math.max((el.clientHeight / el.scrollHeight) * 100, 2)}%`;
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(sync);
+    };
+    sync();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    const observer = new ResizeObserver(onScroll);
     observer.observe(el);
     return () => {
-      el.removeEventListener('scroll', syncViewport);
+      if (raf) cancelAnimationFrame(raf);
+      el.removeEventListener('scroll', onScroll);
       observer.disconnect();
     };
-  }, [scrollRef, syncViewport, diff]);
+  }, [scrollRef, diff, view]);
 
   const jump = (event: React.MouseEvent) => {
     const rail = railRef.current;
@@ -144,22 +162,21 @@ export function DiffMinimap({
       onMouseDown={jump}
       role="scrollbar"
       aria-label="Change overview — click to jump"
-      aria-valuenow={Math.round(viewport.top * 100)}
     >
-      {markers.map(({ kind, index }) => (
+      {markers.map(({ kind, start, end }) => (
         <span
-          key={index}
+          key={start}
           className="absolute left-0.5 right-0.5 rounded-full"
           style={{
-            top: `${(index / total) * 100}%`,
-            height: `max(2px, ${100 / total}%)`,
+            top: `${(start / total) * 100}%`,
+            height: `max(2px, ${((end - start) / total) * 100}%)`,
             background: MARKER_COLOR[kind],
           }}
         />
       ))}
       <span
+        ref={indicatorRef}
         className="absolute inset-x-0 rounded-sm bg-foreground/15 ring-1 ring-inset ring-foreground/20"
-        style={{ top: `${viewport.top * 100}%`, height: `${Math.max(viewport.height * 100, 2)}%` }}
       />
     </div>
   );

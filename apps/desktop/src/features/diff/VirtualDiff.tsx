@@ -113,9 +113,14 @@ function useDiffVirtualizer(rows: FlatRow[], scrollRef: React.RefObject<HTMLDivE
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => (rows[index].kind === 'header' ? HEADER_H : LINE_H),
-    overscan: 30,
+    // Generous overscan: fast wheel/momentum scrolling must not outrun row
+    // mounting (blank flashes). Rows are cheap fixed-height divs.
+    overscan: 60,
   });
 }
+
+/** Promote scrolled content to its own compositor layer (WebKit smoothness). */
+const LAYER: React.CSSProperties = { transform: 'translateZ(0)' };
 
 function HeaderContent({
   header,
@@ -153,7 +158,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
       {/* gutter column: line numbers + change marker */}
       <div
         className="relative w-[104px] shrink-0 border-r border-border-subtle bg-surface"
-        style={{ height: total }}
+        style={{ height: total, ...LAYER }}
       >
         {items.map((item) => {
           const row = rows[item.index];
@@ -182,7 +187,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
 
       {/* code column: horizontal scroll, virtualized rows */}
       <div className="min-w-0 flex-1 overflow-x-auto">
-        <div className="relative" style={{ height: total, width, tabSize: 4 }}>
+        <div className="relative" style={{ height: total, width, tabSize: 4, ...LAYER }}>
           {items.map((item) => {
             const row = rows[item.index];
             return (
@@ -263,7 +268,7 @@ function SplitHalf({
 
   return (
     <div className={cn('flex w-1/2 min-w-0 items-start', side === 'old' && 'border-r border-border-subtle')}>
-      <div className="relative w-10 shrink-0 border-r border-border-subtle bg-surface" style={{ height: total }}>
+      <div className="relative w-10 shrink-0 border-r border-border-subtle bg-surface" style={{ height: total, ...LAYER }}>
         {items.map((item) => {
           const row = rows[item.index];
           const line = row.kind === 'pair' ? (side === 'old' ? row.left : row.right) : null;
@@ -281,7 +286,7 @@ function SplitHalf({
         })}
       </div>
       <div ref={scrollX} onScroll={onScrollX} className="min-w-0 flex-1 overflow-x-auto">
-        <div className="relative" style={{ height: total, width, tabSize: 4 }}>
+        <div className="relative" style={{ height: total, width, tabSize: 4, ...LAYER }}>
           {items.map((item) => {
             const row = rows[item.index];
             const line = row.kind === 'pair' ? (side === 'old' ? row.left : row.right) : null;
