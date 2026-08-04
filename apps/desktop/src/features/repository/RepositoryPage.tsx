@@ -48,7 +48,6 @@ export function RepositoryPage() {
       navigate('/welcome', { replace: true });
       return;
     }
-    // Entering a (different) repository: reset per-repo UI state.
     useGraph.getState().select(null);
     const ui = useUi.getState();
     ui.closeCenterDiff();
@@ -57,7 +56,6 @@ export function RepositoryPage() {
     ui.selectFile(null);
     void reload(repoPath);
 
-    // Live updates: watch the working tree; refresh on external changes.
     let unlisten: (() => void) | undefined;
     let refreshing = false;
     void ipc.watchRepo(repoPath);
@@ -69,7 +67,6 @@ export function RepositoryPage() {
           const info = await ipc.repoInfo(repoPath);
           const current = useRepo.getState().repo;
           if (info.headOid !== current?.headOid || info.headBranch !== current?.headBranch) {
-            // history moved (e.g. commit from a terminal) — refresh everything
             await useRepo.getState().refresh();
             await useGraph.getState().reload(repoPath);
           } else {
@@ -141,8 +138,6 @@ export function RepositoryPage() {
 
   if (!repo) return null;
 
-  // File history is a review surface — both side panels auto-hide so the
-  // commit list + diff get the full width (they return when it closes).
   const focusMode = !!centerFileHistory && !centerEditor && !centerDiff;
 
   return (
@@ -167,8 +162,6 @@ export function RepositoryPage() {
           <Panel defaultSize={54} minSize={30} order={2}>
             <PanelGroup direction="vertical" autoSaveId="angkorgit-center">
               <Panel minSize={30}>
-                {/* graph stays mounted under the diff so scroll/selection survive;
-                    keyed by repo so filter inputs reset when switching projects */}
                 <div className={centerDiff || centerEditor || centerFileHistory ? 'hidden' : 'h-full'}>
                   <CommitGraph key={repo.path} />
                 </div>

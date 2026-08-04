@@ -1,6 +1,3 @@
-//! Built-in terminal: a real PTY per session, streamed to xterm.js
-//! over Tauri events (`term-data-{id}` / `term-exit-{id}`).
-
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU32, Ordering};

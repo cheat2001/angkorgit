@@ -31,7 +31,6 @@ async function postJson(
   }
 }
 
-/** OpenAI-compatible chat completions (also used by LM Studio and custom hosts). */
 function openAiCompatible(
   id: AiProviderKind,
   label: string,
@@ -202,9 +201,6 @@ function ollamaProvider(http: HttpClient, config: AiConfig): AiProvider {
   };
 }
 
-/**
- * Provider registry. New providers plug in here — features never change.
- */
 export function createAiProvider(config: AiConfig, http: HttpClient): AiProvider {
   switch (config.provider) {
     case 'openai':

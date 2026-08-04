@@ -8,7 +8,6 @@ import { ipc, isTauri, listen } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 
-/** Built-in terminal, opened at the repository root over a real PTY. */
 export function TerminalPanel() {
   const repo = useRepo((s) => s.repo);
   const toggleTerminal = useUi((s) => s.toggleTerminal);

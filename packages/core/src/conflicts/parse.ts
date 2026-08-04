@@ -1,11 +1,3 @@
-/**
- * Conflict-marker parser for the visual conflict resolver.
- *
- * A conflicted file is split into an ordered list of blocks: plain text
- * blocks and conflict blocks carrying the "current" (ours) and "incoming"
- * (theirs) sides. The resolver renders three panes from this structure and
- * serializes the chosen resolution back to text.
- */
 
 export interface TextBlock {
   kind: 'text';
@@ -14,11 +6,8 @@ export interface TextBlock {
 
 export interface ConflictBlock {
   kind: 'conflict';
-  /** ours — between <<<<<<< and ======= (or ||||||| when diff3) */
   current: string[];
-  /** base — between ||||||| and ======= when diff3 style is enabled */
   base: string[] | null;
-  /** theirs — between ======= and >>>>>>> */
   incoming: string[];
   currentLabel: string;
   incomingLabel: string;
@@ -86,7 +75,6 @@ export function parseConflicts(content: string): Block[] {
           resolution: 'unresolved',
         });
       } else {
-        // Malformed markers: keep as plain text so nothing is lost.
         text.push(line, ...current, ...(base ?? []), ...incoming);
       }
       continue;
@@ -98,7 +86,6 @@ export function parseConflicts(content: string): Block[] {
   return blocks;
 }
 
-/** Serialize blocks back into file content using each block's resolution. */
 export function serializeResolution(
   blocks: readonly Block[],
   manualEdits?: ReadonlyMap<number, string[]>,
@@ -124,7 +111,6 @@ export function serializeResolution(
         out.push(...(manual ?? []));
         break;
       case 'unresolved':
-        // Re-emit markers so an unfinished resolve never destroys data.
         out.push(`<<<<<<< ${block.currentLabel}`, ...block.current);
         if (block.base) out.push('|||||||', ...block.base);
         out.push('=======', ...block.incoming, `>>>>>>> ${block.incomingLabel}`);

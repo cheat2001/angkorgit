@@ -82,7 +82,6 @@ export function languageOf(path: string): string | null {
   return EXT_TO_LANG[ext] ?? null;
 }
 
-/** Highlight one line of code; returns HTML (already escaped by hljs). */
 export function highlightLine(code: string, language: string | null): string {
   if (!language) return escapeHtml(code);
   try {

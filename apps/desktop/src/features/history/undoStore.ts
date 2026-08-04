@@ -2,17 +2,6 @@ import { create } from 'zustand';
 import { toast } from 'sonner';
 import { ipc } from '@/core/ipc';
 
-/**
- * GitKraken-style undo/redo for git operations.
- *
- * Every tracked operation stores a before/after snapshot of HEAD (plus op
- * details). Undo applies the inverse; redo re-applies the original. Both
- * validate that the repository still looks like the recorded "after"/"before"
- * state — if history moved in the meantime the entry is discarded instead of
- * corrupting the repo. Hard-reset style undos additionally refuse to run over
- * uncommitted changes.
- */
-
 export type UndoKind =
   | 'commit'
   | 'checkout'
@@ -37,13 +26,10 @@ export interface UndoEntry {
   label: string;
   before: Snapshot;
   after: Snapshot;
-  /** op-specific payload (branch names, oids) */
   extra: Record<string, string>;
 }
 
-/** Ops whose undo/redo moves HEAD with a hard reset (need a clean tree). */
 const HARD_KINDS: ReadonlySet<UndoKind> = new Set(['merge', 'cherryPick', 'rebase', 'reset', 'revert']);
-/** Ops that move HEAD (validated against HEAD position). */
 const HEAD_KINDS: ReadonlySet<UndoKind> = new Set([
   'commit',
   'checkout',
@@ -69,7 +55,6 @@ async function treeIsClean(path: string): Promise<boolean> {
   return status.files.length === 0;
 }
 
-/** Move the repo from one snapshot to another (the core of undo/redo). */
 async function applyTransition(
   entry: UndoEntry,
   from: Snapshot,
@@ -79,7 +64,6 @@ async function applyTransition(
   const path = entry.repoPath;
   switch (entry.kind) {
     case 'commit': {
-      // soft reset keeps the committed changes staged
       if (!to.headOid) throw new Error('nothing to reset to');
       await ipc.reset(path, to.headOid, 'soft');
       return;
@@ -126,7 +110,6 @@ interface UndoState {
   undoStack: UndoEntry[];
   redoStack: UndoEntry[];
 
-  /** Run a mutating op and record it for undo (when shouldRecord passes). */
   tracked: <T>(options: {
     path: string;
     kind: UndoKind;
@@ -159,7 +142,6 @@ export const useUndo = create<UndoState>((set, get) => ({
         ...s.undoStack.slice(-(MAX_ENTRIES - 1)),
         { repoPath: path, kind, label, before, after, extra },
       ],
-      // a new operation invalidates the redo timeline for this repo
       redoStack: s.redoStack.filter((e) => e.repoPath !== path),
     }));
     return result;
@@ -221,7 +203,6 @@ export const useUndo = create<UndoState>((set, get) => ({
     })),
 }));
 
-/** True when a hard-style undo would need a clean tree (for tooltips). */
 export function isHardKind(kind: UndoKind): boolean {
   return HARD_KINDS.has(kind);
 }

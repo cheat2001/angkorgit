@@ -19,18 +19,10 @@ import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { confirmDialog } from '@/components/confirm';
 
-/**
- * Visual conflict resolver, GitKraken-style:
- *  - Current | Incoming panes with a checkbox per side (check both = keep both)
- *  - prev/next conflict navigation
- *  - an EDITABLE Result pane — quick-pick with checkboxes, then fine-tune the
- *    output by hand; manual edits are tracked and guarded.
- */
 export function ConflictResolver({ file, onResolved }: { file: string; onResolved: () => Promise<void> }) {
   const repo = useRepo((s) => s.repo);
   const openConflict = useUi((s) => s.openConflict);
   const [blocks, setBlocks] = useState<Block[] | null>(null);
-  /** non-null once the user typed in the result pane */
   const [manualText, setManualText] = useState<string | null>(null);
   const [activeConflict, setActiveConflict] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -59,7 +51,6 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     () => (blocks ? blocks.filter((b) => b.kind === 'conflict' && b.resolution !== 'unresolved').length : 0),
     [blocks],
   );
-  /** indices (into blocks) of conflict blocks, for navigation */
   const conflictIndices = useMemo(
     () => (blocks ? blocks.flatMap((b, i) => (b.kind === 'conflict' ? [i] : [])) : []),
     [blocks],
@@ -70,7 +61,6 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const manualHasMarkers = manualText !== null && manualText.includes('<<<<<<<');
   const canSave = manualText !== null ? !manualHasMarkers : blocks !== null && allResolved(blocks);
 
-  /** Block-level actions regenerate the result — guard hand edits. */
   const guardManual = async (): Promise<boolean> => {
     if (manualText === null) return true;
     const ok = await confirmDialog({
@@ -90,7 +80,6 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     );
   };
 
-  /** Checkbox model: current/incoming independently toggleable. */
   const toggleSide = (index: number, side: 'current' | 'incoming', block: ConflictBlock) => {
     const cur = block.resolution === 'current' || block.resolution === 'both';
     const inc = block.resolution === 'incoming' || block.resolution === 'both';
@@ -208,7 +197,6 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          {/* Current + Incoming panes */}
           <div className="flex min-h-0 flex-[2] flex-col overflow-y-auto border-r border-border-subtle">
             {blocks.map((block, index) =>
               block.kind === 'text' ? (
@@ -296,7 +284,6 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
             )}
           </div>
 
-          {/* Result pane — editable */}
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex items-center gap-2 border-b border-border-subtle bg-surface px-3 py-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Result</span>

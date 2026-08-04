@@ -52,14 +52,8 @@ import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import type { BranchInfo, RemoteInfo, SubmoduleInfo } from '@angkorgit/core';
 
-/**
- * Branch folder tree: "feature/test" and "feature/test2" group under a
- * collapsible "feature" folder (nested to any depth), GitKraken-style.
- */
 interface BranchTreeNode {
-  /** last path segment (display name) */
   key: string;
-  /** full folder path or full branch name */
   path: string;
   branch?: BranchInfo;
   children: BranchTreeNode[];
@@ -99,7 +93,6 @@ function leafCount(node: BranchTreeNode): number {
   return node.branch ? 1 : node.children.reduce((sum, child) => sum + leafCount(child), 0);
 }
 
-/** Folder paths leading to a branch (for auto-expanding the HEAD path). */
 function ancestorFolders(branchName: string): string[] {
   const segments = branchName.split('/');
   segments.pop();
@@ -112,7 +105,6 @@ function ancestorFolders(branchName: string): string[] {
   return paths;
 }
 
-/** Records op outcomes for undo only when they completed (not on conflicts). */
 const outcomeOk = (result: unknown) => {
   const status = (result as { status?: string } | undefined)?.status;
   return status === undefined || status === 'ok' || status === 'fast_forward';
@@ -158,18 +150,14 @@ export function Sidebar() {
   const filters = useGraph((s) => s.filters);
   const openDialog = useUi((s) => s.openDialog);
   const [query, setQuery] = useState('');
-  /** drag-and-drop merge state */
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [dropAction, setDropAction] = useState<{ source: string; target: string } | null>(null);
-  /** branch menu opened by right-click or the ⋯ button, positioned at cursor */
   const [branchMenu, setBranchMenu] = useState<{ x: number; y: number; branch: BranchInfo } | null>(null);
   const [subMenu, setSubMenu] = useState<{ x: number; y: number; sub: SubmoduleInfo } | null>(null);
   const [remoteMenu, setRemoteMenu] = useState<{ x: number; y: number; remote: RemoteInfo } | null>(null);
-  /** edit-remote dialog state; `original` is the name before editing */
   const [editRemote, setEditRemote] = useState<{ original: string; name: string; url: string } | null>(null);
 
-  /** Open a submodule as its own repository — full graph, history, everything. */
   const openSubmodule = (sub: SubmoduleInfo) => {
     void useRepo
       .getState()
@@ -213,7 +201,6 @@ export function Sidebar() {
     }
   };
 
-  /** Merge source into target — checking target out first when needed. */
   const dropMerge = async (source: string, target: string) => {
     setDropAction(null);
     try {
@@ -231,7 +218,6 @@ export function Sidebar() {
     }
   };
 
-  /** Rebase source onto target — checking source out first when needed. */
   const dropRebase = async (source: string, target: string) => {
     setDropAction(null);
     try {
@@ -263,7 +249,6 @@ export function Sidebar() {
   const localTree = useMemo(() => buildBranchTree(locals), [locals]);
   const remoteTree = useMemo(() => buildBranchTree(remoteBranches), [remoteBranches]);
 
-  /** expanded folder paths; the path to HEAD starts open */
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   useEffect(() => {
     const head = branches.find((b) => b.isHead);
@@ -615,7 +600,6 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Submodule context menu */}
       {subMenu && (
         <DropdownMenu open onOpenChange={(o) => !o && setSubMenu(null)}>
           <DropdownMenuTrigger asChild>
@@ -647,7 +631,6 @@ export function Sidebar() {
         </DropdownMenu>
       )}
 
-      {/* Remote context menu */}
       {remoteMenu && (
         <DropdownMenu open onOpenChange={(o) => !o && setRemoteMenu(null)}>
           <DropdownMenuTrigger asChild>
@@ -693,7 +676,6 @@ export function Sidebar() {
         </DropdownMenu>
       )}
 
-      {/* Edit remote dialog */}
       <Dialog open={editRemote !== null} onOpenChange={(o) => !o && setEditRemote(null)}>
         <DialogContent>
           <DialogHeader>
@@ -741,7 +723,6 @@ export function Sidebar() {
         </DialogContent>
       </Dialog>
 
-      {/* Branch context menu (right-click or ⋯) */}
       {branchMenu && (
         <DropdownMenu open onOpenChange={(o) => !o && setBranchMenu(null)}>
           <DropdownMenuTrigger asChild>
@@ -833,7 +814,6 @@ export function Sidebar() {
         </DropdownMenu>
       )}
 
-      {/* Drag-and-drop action chooser */}
       <Dialog open={dropAction !== null} onOpenChange={(o) => !o && setDropAction(null)}>
         <DialogContent>
           <DialogHeader>

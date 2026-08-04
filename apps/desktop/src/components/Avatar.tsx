@@ -2,13 +2,6 @@ import { memo, useEffect, useState } from 'react';
 import { cn } from '@angkorgit/design-system';
 import { avatarHue, initials } from '@/shared/utils';
 
-/**
- * Author avatar: Gravatar profile picture looked up by email, with the
- * colored-initials circle as instant fallback (shown immediately and kept
- * whenever no Gravatar exists). Hash computations and failed lookups are
- * cached module-wide so a 100k-commit graph never repeats work.
- */
-
 const hashCache = new Map<string, Promise<string>>();
 const noGravatar = new Set<string>();
 
@@ -51,7 +44,6 @@ export const Avatar = memo(function Avatar({
     if (!email || noGravatar.has(email)) return;
     void emailHash(email).then((hash) => {
       if (!cancelled) {
-        // d=404 → missing avatars fail fast onto the initials fallback
         setUrl(`https://www.gravatar.com/avatar/${hash}?s=${Math.ceil(size * 2)}&d=404`);
       }
     });

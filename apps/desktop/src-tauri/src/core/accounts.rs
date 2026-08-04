@@ -1,11 +1,3 @@
-//! App-managed hosting accounts (GitHub, GitLab, Bitbucket, self-hosted…).
-//!
-//! Tokens live in the OS keychain under the "AngKorGit" service — never on
-//! disk. Non-secret metadata (host, username, provider) lives in a JSON file
-//! in the app config dir so accounts can be listed. The remote-auth callback
-//! matches a remote's host against these accounts before falling back to the
-//! system git credential stack.
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -14,19 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
-/// Set once at startup from Tauri's app config dir.
 pub static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 const KEYRING_SERVICE: &str = "AngKorGit";
 
-/// Keychain reads for the process lifetime, keyed by account host.
-///
-/// macOS prompts for permission on EVERY keychain read when the binary is not
-/// durably trusted ("Always Allow" cannot stick to unsigned/ad-hoc builds,
-/// and every distributed build has a different ad-hoc identity). libgit2 also
-/// invokes the credential callback several times per operation. Without this
-/// cache users get a storm of permission dialogs; with it, at most one per
-/// app session. The Mutex additionally serializes prompts.
 type TokenCache = Mutex<HashMap<String, Option<(String, String)>>>;
 static TOKEN_CACHE: OnceLock<TokenCache> = OnceLock::new();
 
@@ -120,15 +103,10 @@ pub fn remove(host: &str) -> AppResult<Vec<AccountInfo>> {
     Ok(accounts)
 }
 
-/// Credentials for a host, if an account is configured for it.
-///
-/// Keychain reads are cached per app session — including failures/denials,
-/// so a denied permission dialog is never re-asked until the next launch.
 pub fn lookup(host: &str) -> Option<(String, String)> {
     let host = normalize_host(host);
     let account = list().into_iter().find(|a| {
         a.host == host
-            // stored without port, remote with port (or vice versa)
             || a.host == host.split(':').next().unwrap_or(&host)
             || host == a.host.split(':').next().unwrap_or(&a.host)
     })?;
@@ -144,11 +122,9 @@ pub fn lookup(host: &str) -> Option<(String, String)> {
     result
 }
 
-/// Extract the host (with port, if any) from a git remote URL.
 pub fn host_of_url(url: &str) -> Option<String> {
     let rest = url.split("://").nth(1)?; // http(s) URLs only
     let authority = rest.split('/').next()?;
-    // strip user[:pass]@ prefix
     let host = authority.rsplit('@').next()?;
     if host.is_empty() {
         None

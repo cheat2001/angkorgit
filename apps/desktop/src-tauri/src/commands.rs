@@ -1,6 +1,3 @@
-//! Thin Tauri command layer over the core git engine.
-//! Long-running git work runs on blocking threads so the UI never stalls.
-
 use tauri::{AppHandle, Emitter, State};
 
 use crate::core::types::*;
@@ -8,7 +5,6 @@ use crate::core::{branch, commit, conflict, diff, history, misc, remote, repo, s
 use crate::error::AppResult;
 use crate::terminal::TerminalState;
 
-/// Run a blocking git operation off the async runtime.
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> AppResult<T> + Send + 'static,
 ) -> AppResult<T> {
@@ -16,8 +12,6 @@ async fn blocking<T: Send + 'static>(
         .await
         .map_err(|e| crate::error::AppError::other(e.to_string()))?
 }
-
-// ---- Repository ------------------------------------------------------------
 
 #[tauri::command]
 pub async fn repo_discover(path: String) -> AppResult<String> {
@@ -75,8 +69,6 @@ pub fn recent_remove(app: AppHandle, path: String) -> AppResult<Vec<RecentReposi
     crate::state::recent_remove(&app, &path)
 }
 
-// ---- Config -----------------------------------------------------------------
-
 #[tauri::command]
 pub async fn config_get(path: Option<String>, key: String) -> AppResult<Option<String>> {
     blocking(move || repo::get_config(path.as_deref(), &key)).await
@@ -91,8 +83,6 @@ pub async fn config_set(
 ) -> AppResult<()> {
     blocking(move || repo::set_config(path.as_deref(), &key, &value, global)).await
 }
-
-// ---- Staging & commit ----------------------------------------------------------
 
 #[tauri::command]
 pub async fn stage_file(path: String, file: String) -> AppResult<()> {
@@ -167,8 +157,6 @@ pub fn write_file(path: String, file: String, content: String) -> AppResult<()> 
     Ok(())
 }
 
-// ---- File utilities --------------------------------------------------------------
-
 #[tauri::command]
 pub fn open_path(path: String) -> AppResult<()> {
     let status = {
@@ -217,7 +205,6 @@ pub fn reveal_path(path: String) -> AppResult<()> {
             std::process::Command::new("xdg-open").arg(parent).status()
         }
     }?;
-    // Windows explorer returns nonzero even on success — don't treat as error.
     let _ = status;
     Ok(())
 }
@@ -253,8 +240,6 @@ pub async fn commit_revert(path: String, oid: String) -> AppResult<OpOutcome> {
     blocking(move || commit::revert(&path, &oid)).await
 }
 
-// ---- History ---------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn history_list(path: String, query: HistoryQuery) -> AppResult<HistoryPage> {
     blocking(move || history::list(&path, query)).await
@@ -278,8 +263,6 @@ pub async fn history_file(
 pub async fn repo_files(path: String) -> AppResult<Vec<String>> {
     blocking(move || repo::list_files(&path)).await
 }
-
-// ---- Branches ----------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn branch_list(path: String) -> AppResult<Vec<BranchInfo>> {
@@ -351,8 +334,6 @@ pub async fn reset_to(path: String, oid: String, mode: String) -> AppResult<()> 
     blocking(move || branch::reset(&path, &oid, &mode)).await
 }
 
-// ---- Remotes -------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn remote_list(path: String) -> AppResult<Vec<RemoteInfo>> {
     blocking(move || remote::list(&path)).await
@@ -420,8 +401,6 @@ pub async fn remote_push_tag(path: String, remote: String, tag: String) -> AppRe
     blocking(move || remote::push_tag(&path, &remote, &tag)).await
 }
 
-// ---- Stash ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn stash_list(path: String) -> AppResult<Vec<StashInfo>> {
     blocking(move || misc::stash_list(&path)).await
@@ -451,8 +430,6 @@ pub async fn stash_drop(path: String, index: usize) -> AppResult<()> {
     blocking(move || misc::stash_drop(&path, index)).await
 }
 
-// ---- Tags ----------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn tag_list(path: String) -> AppResult<Vec<TagInfo>> {
     blocking(move || misc::tag_list(&path)).await
@@ -473,8 +450,6 @@ pub async fn tag_delete(path: String, name: String) -> AppResult<()> {
     blocking(move || misc::tag_delete(&path, &name)).await
 }
 
-// ---- Submodules -------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn submodule_list(path: String) -> AppResult<Vec<SubmoduleInfo>> {
     blocking(move || misc::submodule_list(&path)).await
@@ -484,8 +459,6 @@ pub async fn submodule_list(path: String) -> AppResult<Vec<SubmoduleInfo>> {
 pub async fn submodule_update(path: String, name: String) -> AppResult<()> {
     blocking(move || misc::submodule_update(&path, &name)).await
 }
-
-// ---- Diff ---------------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn diff_file(
@@ -511,8 +484,6 @@ pub async fn staged_patch(path: String) -> AppResult<String> {
     blocking(move || diff::staged_patch_text(&path)).await
 }
 
-// ---- Conflicts -------------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn conflict_list(path: String) -> AppResult<Vec<String>> {
     blocking(move || conflict::list(&path)).await
@@ -527,8 +498,6 @@ pub async fn conflict_read(path: String, file: String) -> AppResult<ConflictFile
 pub async fn conflict_resolve(path: String, file: String, content: String) -> AppResult<()> {
     blocking(move || conflict::resolve(&path, &file, &content)).await
 }
-
-// ---- Terminal ----------------------------------------------------------------------------------
 
 #[tauri::command]
 pub fn term_create(
@@ -561,8 +530,6 @@ pub fn term_kill(state: State<'_, TerminalState>, id: u32) -> AppResult<()> {
     crate::terminal::kill(&state, id)
 }
 
-// ---- Filesystem watcher ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub fn watch_repo(
     app: AppHandle,
@@ -577,8 +544,6 @@ pub fn watch_stop(state: State<'_, crate::watcher::WatcherState>) -> AppResult<(
     crate::watcher::stop(&state);
     Ok(())
 }
-
-// ---- Credentials & accounts -----------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn credential_store(host: String, username: String, password: String) -> AppResult<()> {
@@ -604,8 +569,6 @@ pub async fn account_add(
 pub async fn account_remove(host: String) -> AppResult<Vec<crate::core::accounts::AccountInfo>> {
     blocking(move || crate::core::accounts::remove(&host)).await
 }
-
-// ---- AI proxy -------------------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn http_request(

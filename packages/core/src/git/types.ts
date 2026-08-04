@@ -1,4 +1,3 @@
-/** Domain types shared between the Rust engine (serde) and the frontend. */
 
 export interface RepositoryInfo {
   path: string;
@@ -27,7 +26,6 @@ export interface RecentRepository {
 export interface Signature {
   name: string;
   email: string;
-  /** Unix seconds */
   time: number;
 }
 
@@ -109,8 +107,6 @@ export interface StatusSummary {
   behind: number;
 }
 
-// ---- Diff -----------------------------------------------------------------
-
 export type DiffLineKind = 'context' | 'addition' | 'deletion';
 
 export interface DiffLine {
@@ -135,14 +131,11 @@ export interface FileDiff {
   hunks: DiffHunk[];
   isBinary: boolean;
   isImage: boolean;
-  /** base64 payloads for image diffs */
   oldImage: string | null;
   newImage: string | null;
   additions: number;
   deletions: number;
 }
-
-// ---- Conflicts -------------------------------------------------------------
 
 export interface ConflictFile {
   path: string;
@@ -150,15 +143,11 @@ export interface ConflictFile {
   hasMarkers: boolean;
 }
 
-// ---- History query ----------------------------------------------------------
-
 export interface HistoryQuery {
   skip: number;
   limit: number;
-  /** substring match against summary/body/oid */
   search?: string;
   author?: string;
-  /** limit to a branch tip (ref name), otherwise all refs */
   branch?: string;
 }
 

@@ -47,14 +47,12 @@ import { useUndo } from '@/features/history/undoStore';
 import { useSettings } from '@/features/settings/store';
 import { modKey } from '@/shared/utils';
 
-/** GitKraken-style project switcher: the repo name is a dropdown. */
 function RepoSwitcher() {
   const { repo, recents, open, busy } = useRepo();
   const openDialog = useUi((s) => s.openDialog);
   const profiles = useSettings((s) => s.profiles);
   const [activeEmail, setActiveEmail] = useState('');
 
-  // Effective committer identity for the open repo (repo-local wins).
   useEffect(() => {
     if (!repo?.path) return;
     void ipc.configGet(repo.path, 'user.email').then((email) => setActiveEmail(email ?? ''));

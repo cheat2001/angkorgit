@@ -2,12 +2,6 @@ import { Component, type ReactNode } from 'react';
 import { AlertTriangle, ClipboardCopy, RotateCcw } from 'lucide-react';
 import { Button, Logo } from '@angkorgit/design-system';
 
-/**
- * Last line of defense: an unexpected render error shows a calm recovery
- * screen instead of a white window. Repositories are never at risk — the
- * Rust engine is untouched by frontend crashes.
- */
-
 interface State {
   error: Error | null;
 }

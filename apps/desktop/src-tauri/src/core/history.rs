@@ -14,7 +14,6 @@ fn signature_info(sig: &git2::Signature) -> SignatureInfo {
     }
 }
 
-/// Map of commit oid -> decorations (branches, tags, HEAD).
 fn ref_decorations(repo: &Repository) -> HashMap<Oid, Vec<RefInfo>> {
     let mut map: HashMap<Oid, Vec<RefInfo>> = HashMap::new();
     if let Ok(refs) = repo.references() {
@@ -30,7 +29,6 @@ fn ref_decorations(repo: &Repository) -> HashMap<Oid, Vec<RefInfo>> {
             } else {
                 continue;
             };
-            // Peel tags to the commit they point at.
             let target = reference
                 .peel_to_commit()
                 .ok()
@@ -76,7 +74,6 @@ pub fn list(path: &str, query: HistoryQuery) -> AppResult<HistoryPage> {
 
     match &query.branch {
         Some(branch) => {
-            // Accept shorthand ("main"), remote ("origin/main") or full ref names.
             let reference = repo
                 .resolve_reference_from_short_name(branch)
                 .or_else(|_| repo.find_reference(branch))?;
@@ -85,7 +82,6 @@ pub fn list(path: &str, query: HistoryQuery) -> AppResult<HistoryPage> {
             }
         }
         None => {
-            // All branches + tags + HEAD (detached included).
             let _ = walk.push_glob("refs/heads/*");
             let _ = walk.push_glob("refs/remotes/*");
             let _ = walk.push_glob("refs/tags/*");
@@ -151,11 +147,6 @@ pub fn list(path: &str, query: HistoryQuery) -> AppResult<HistoryPage> {
     })
 }
 
-/// Commits that changed one file, newest first (HEAD's history).
-///
-/// A commit "changed" the file when its blob differs from the FIRST parent's
-/// (same rule as `git log -- <file>`): modified, added, or deleted. Tree
-/// entry lookups make this fast — no per-commit diffs.
 pub fn file_history(path: &str, file: &str, limit: usize) -> AppResult<HistoryPage> {
     let repo = super::repo::open(path)?;
     let mut walk = repo.revwalk()?;

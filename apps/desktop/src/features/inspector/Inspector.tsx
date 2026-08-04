@@ -9,10 +9,6 @@ import { ipc } from '@/core/ipc';
 import { WorkingCopyPanel } from '@/features/commit/WorkingCopyPanel';
 import { CommitDetails } from './CommitDetails';
 
-/**
- * Right panel: shows the working copy (staging + commit) when nothing is
- * selected in the graph, or the selected commit's details.
- */
 export function Inspector() {
   const selectedOid = useGraph((s) => s.selectedOid);
   const commits = useGraph((s) => s.commits);
@@ -24,7 +20,6 @@ export function Inspector() {
   const [loadingDiffs, setLoadingDiffs] = useState(false);
 
   useEffect(() => {
-    // A commit diff open in the center belongs to the previous selection.
     const { centerDiff, closeCenterDiff } = useUi.getState();
     if (centerDiff?.oid && centerDiff.oid !== selectedOid) closeCenterDiff();
 

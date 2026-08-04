@@ -1,5 +1,3 @@
-//! App-level state: recent repositories persisted to the config dir.
-
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 

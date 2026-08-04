@@ -12,11 +12,6 @@ import { timeAgo } from '@/shared/utils';
 import { DiffViewer } from '@/features/diff/DiffViewer';
 import { DiffMinimap } from '@/features/diff/DiffMinimap';
 
-/**
- * "Who changed this file?" — master-detail view. The commit list stays
- * docked on the left; clicking an entry shows its diff on the right, so
- * hopping between authors' changes never closes the view (GitKraken-style).
- */
 export function FileHistoryPanel({ file }: { file: string }) {
   const repo = useRepo((s) => s.repo);
   const {
@@ -39,7 +34,6 @@ export function FileHistoryPanel({ file }: { file: string }) {
 
   const path = repo?.path ?? '';
 
-  // Load the commit list; auto-select the newest change.
   useEffect(() => {
     if (!path) return;
     let cancelled = false;
@@ -63,7 +57,6 @@ export function FileHistoryPanel({ file }: { file: string }) {
     };
   }, [path, file]);
 
-  // Load the selected commit's diff for this file.
   useEffect(() => {
     if (!path || !selected) {
       setDiff(null);
@@ -178,7 +171,6 @@ export function FileHistoryPanel({ file }: { file: string }) {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {/* commit list: stays docked, click-through without closing */}
         <div className="w-72 shrink-0 overflow-y-auto border-r border-border-subtle bg-surface">
           {commits === null ? (
             <div className="flex h-full items-center justify-center">
@@ -224,7 +216,6 @@ export function FileHistoryPanel({ file }: { file: string }) {
           )}
         </div>
 
-        {/* diff of the selected commit */}
         <div className="flex min-h-0 min-w-0 flex-1">
           <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
             {diffLoading ? (

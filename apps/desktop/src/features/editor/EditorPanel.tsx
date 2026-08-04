@@ -9,10 +9,6 @@ import { useUi } from '@/features/ui/store';
 import { confirmDialog } from '@/components/confirm';
 import { modKey } from '@/shared/utils';
 
-/**
- * Built-in file editor: quick fixes without leaving AngKorGit.
- * ⌘S saves, Esc closes (guarded when there are unsaved changes).
- */
 export function EditorPanel({ file }: { file: string }) {
   const repo = useRepo((s) => s.repo);
   const refreshStatus = useRepo((s) => s.refreshStatus);
@@ -132,7 +128,6 @@ export function EditorPanel({ file }: { file: string }) {
               e.preventDefault();
               requestClose();
             } else if (e.key === 'Tab') {
-              // insert a real tab instead of moving focus
               e.preventDefault();
               const el = e.currentTarget;
               const { selectionStart, selectionEnd, value } = el;

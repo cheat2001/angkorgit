@@ -25,10 +25,6 @@ import { useUi, type CenterDiffTarget } from '@/features/ui/store';
 import { DiffViewer } from './DiffViewer';
 import { changeBlocks, DiffMinimap, scrollToFraction } from './DiffMinimap';
 
-/**
- * Full-width diff view shown over the commit graph (GitKraken-style).
- * Working-copy diffs keep their stage/unstage hunk actions; Esc closes.
- */
 export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const repo = useRepo((s) => s.repo);
   const status = useRepo((s) => s.status);
@@ -47,19 +43,13 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   } = useUi();
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
-  /** identity of the diff currently shown — refetches of the SAME target must
-   * not blank the view (that resets the reader's scroll). */
   const loadedKey = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  /** right-click menu on a diff line (working-copy, compact view only) */
   const [lineMenu, setLineMenu] = useState<{ x: number; y: number; info: LineMenuInfo } | null>(null);
 
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
 
-  // A working-copy diff only makes sense while the file still has changes on
-  // that side. Committed/discarded → back to the graph; fully staged while
-  // viewing the unstaged side → follow the change to the staged view.
   useEffect(() => {
     if (!isWorkingCopy || !status) return;
     const entry = status.files.find((f) => f.path === target.path);
@@ -75,11 +65,9 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     [diff, diffView],
   );
 
-  /** Jump to the change block before/after the current viewport position. */
   const jumpChange = (direction: 1 | -1) => {
     const el = scrollRef.current;
     if (!el || blocks.length === 0 || el.scrollHeight === 0) return;
-    // Position the "cursor" a third down the viewport, matching scrollToFraction.
     const current = (el.scrollTop + el.clientHeight * 0.35) / el.scrollHeight;
     const epsilon = 0.002;
     const next =
@@ -93,13 +81,8 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   useEffect(() => {
     if (!path) return;
     let cancelled = false;
-    // The spinner only appears when a DIFFERENT diff is opened. Background
-    // refetches (the watcher fires on any repo file change) keep the current
-    // content mounted and swap data in place — otherwise the collapse to a
-    // spinner resets the reader's scroll position to the top.
     const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}|${fullFileDiff}`;
     if (loadedKey.current !== key) setLoading(true);
-    // "Whole file" = diff with effectively unlimited context lines.
     const context = fullFileDiff ? 10_000_000 : undefined;
     const load = async (): Promise<FileDiff | null> => {
       if (target.oid) {
@@ -128,7 +111,6 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     return () => {
       cancelled = true;
     };
-    // re-fetch working-copy diffs whenever status changes (hunk staged, etc.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, target.path, target.oid, target.staged, fullFileDiff, isWorkingCopy ? status : null]);
 
@@ -292,9 +274,6 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
                 : undefined
             }
             hunkActions={
-              // Hunk indices refer to the compact (3-line-context) diff the
-              // engine stages against, so per-hunk staging is hidden in
-              // whole-file mode — use "Stage file" instead.
               isWorkingCopy && !fullFileDiff
                 ? (hunkIndex) => (
                     <Button
@@ -334,7 +313,6 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         {diff && !loading && <DiffMinimap diff={diff} view={diffView} scrollRef={scrollRef} />}
       </div>
 
-      {/* Line context menu: stage / unstage / discard / copy a single line */}
       {lineMenu && (
         <DropdownMenu open onOpenChange={(o) => !o && setLineMenu(null)}>
           <DropdownMenuTrigger asChild>

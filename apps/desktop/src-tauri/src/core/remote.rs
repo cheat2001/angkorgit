@@ -9,9 +9,6 @@ use crate::error::{AppError, AppResult};
 
 use super::types::{OpOutcome, RemoteInfo};
 
-/// Store credentials into the user's `git credential` stack (macOS keychain,
-/// Windows credential manager, …) so HTTPS auth works for this app AND the
-/// plain git CLI. Used by the "Connect GitHub" flow.
 pub fn credential_approve(host: &str, username: &str, password: &str) -> AppResult<()> {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -38,9 +35,6 @@ pub fn credential_approve(host: &str, username: &str, password: &str) -> AppResu
     Ok(())
 }
 
-/// Ask the real `git credential` stack (osxkeychain, manager, store, …) for
-/// credentials, exactly like the git CLI would. This picks up whatever the
-/// user's normal `git pull` already uses.
 fn credentials_from_git_cli(url: &str, username: Option<&str>) -> Option<(String, String)> {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -53,7 +47,6 @@ fn credentials_from_git_cli(url: &str, username: Option<&str>) -> Option<(String
 
     let mut child = Command::new("git")
         .args(["credential", "fill"])
-        // Never block waiting for an interactive prompt.
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -79,9 +72,6 @@ fn credentials_from_git_cli(url: &str, username: Option<&str>) -> Option<(String
     Some((user?, pass?))
 }
 
-/// Credential negotiation: SSH agent → ~/.ssh keys → `git credential fill`
-/// (keychain/manager/store) → libgit2 helper → default. A retry guard
-/// prevents libgit2 from looping forever on rejected credentials.
 pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
     let mut callbacks = RemoteCallbacks::new();
     let attempts = AtomicUsize::new(0);
@@ -98,7 +88,6 @@ pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
             if let Ok(cred) = Cred::ssh_key_from_agent(user) {
                 return Ok(cred);
             }
-            // Fall back to conventional key files.
             if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
             {
                 let home = std::path::PathBuf::from(home);
@@ -113,8 +102,6 @@ pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
             }
         }
         if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
-            // App-managed accounts first: matched by the remote's host, so a
-            // GitLab account never gets offered to GitHub and vice versa.
             if attempt == 0 {
                 if let Some(host) = super::accounts::host_of_url(url) {
                     if let Some((user, token)) = super::accounts::lookup(&host) {
@@ -164,7 +151,6 @@ pub fn list(path: &str) -> AppResult<Vec<RemoteInfo>> {
     Ok(result)
 }
 
-/// Rename a remote and/or change its URL.
 pub fn edit(path: &str, name: &str, new_name: &str, url: &str) -> AppResult<()> {
     let new_name = new_name.trim();
     let url = url.trim();
@@ -176,8 +162,6 @@ pub fn edit(path: &str, name: &str, new_name: &str, url: &str) -> AppResult<()> 
     let repo = super::repo::open(path)?;
     let mut current = name.to_string();
     if new_name != name {
-        // Non-default refspecs aren't rewritten automatically; the returned
-        // list is informational — default setups have none.
         let _ = repo.remote_rename(name, new_name)?;
         current = new_name.to_string();
     }
@@ -209,7 +193,6 @@ pub fn fetch(path: &str, remote_name: &str, tags: bool, prune: bool) -> AppResul
     })
 }
 
-/// Pull = fetch + merge the upstream of the current branch (ff preferred).
 pub fn pull(path: &str, remote_name: &str) -> AppResult<OpOutcome> {
     fetch(path, remote_name, false, false)?;
 
@@ -280,9 +263,6 @@ pub fn push(
     })
 }
 
-/// Pull a specific branch. When it's checked out this is a normal pull;
-/// otherwise the local ref fast-forwards without touching the working tree
-/// (diverged branches must be checked out to merge).
 pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
     let (upstream_name, remote_name) = {
         let repo = super::repo::open(path)?;
@@ -344,7 +324,6 @@ pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
             "{branch_name} has diverged from {upstream_name} — check it out to merge"
         )));
     }
-    // Pure fast-forward: move the ref, no checkout needed.
     let mut reference = repo.find_reference(&format!("refs/heads/{branch_name}"))?;
     reference.set_target(
         upstream_oid,
@@ -394,7 +373,6 @@ pub fn clone(url: &str, into: &str, on_progress: impl Fn(u32) + Send) -> AppResu
     Ok(root)
 }
 
-/// Hard-sync the working tree after history-changing remote ops when needed.
 #[allow(dead_code)]
 pub fn checkout_head_force(repo: &Repository) -> AppResult<()> {
     let mut builder = CheckoutBuilder::new();

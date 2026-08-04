@@ -49,7 +49,6 @@ export function CommitGraph() {
     overscan: 20,
   });
 
-  // Infinite scroll: request the next page as the tail approaches.
   const items = virtualizer.getVirtualItems();
   useEffect(() => {
     const last = items[items.length - 1];
@@ -58,7 +57,6 @@ export function CommitGraph() {
     }
   }, [items, rows.length, hasMore, loading, path, loadMore]);
 
-  // Debounced search.
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchDraft !== filters.search || authorDraft !== filters.author) {

@@ -17,7 +17,6 @@ function Shell() {
   const loadRecents = useRepo((s) => s.loadRecents);
   const navigate = useNavigate();
 
-  // Zoom works everywhere, even while typing in an input.
   const zoomShortcuts = useMemo(
     () => [
       { combo: 'mod+=', handler: () => useSettings.getState().zoomIn(), allowInInput: true },
@@ -35,7 +34,6 @@ function Shell() {
       setSplash(false);
       navigate('/welcome', { replace: true });
     }, 1600);
-    // Quiet auto-update check shortly after startup.
     const updateTimer = setTimeout(() => {
       void import('@/features/updater/check').then(({ checkForUpdates }) =>
         checkForUpdates({ silent: true }),
@@ -71,8 +69,6 @@ export function App() {
     document.documentElement.classList.toggle('light', theme === 'light');
   }, [theme]);
 
-  // The app owns right-click: suppress the webview's native menu everywhere
-  // except editable fields (where copy/paste/spellcheck still make sense).
   useEffect(() => {
     const onContextMenu = (e: MouseEvent) => {
       const el = e.target as HTMLElement | null;

@@ -1,12 +1,9 @@
 import { useEffect } from 'react';
 
 export interface Shortcut {
-  /** e.g. "mod+k", "mod+shift+p", "escape" */
   combo: string;
   handler: (event: KeyboardEvent) => void;
-  /** allow firing while an input/textarea is focused */
   allowInInput?: boolean;
-  /** suppress in editable fields even for modifier combos (e.g. mod+z) */
   skipInInput?: boolean;
 }
 
@@ -21,7 +18,6 @@ function matches(event: KeyboardEvent, combo: string): boolean {
   if (needShift !== event.shiftKey) return false;
   if (needAlt !== event.altKey) return false;
   const eventKey = event.key.toLowerCase();
-  // Shifted "=" produces "+": accept it for zoom-style combos.
   if (key === '=' && eventKey === '+') return true;
   return eventKey === key;
 }
@@ -33,10 +29,6 @@ function inEditable(event: KeyboardEvent): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
 }
 
-/**
- * Registers global keyboard shortcuts. Handlers with a modifier fire even in
- * inputs; bare-key shortcuts are suppressed while typing unless opted in.
- */
 export function useShortcuts(shortcuts: Shortcut[]): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

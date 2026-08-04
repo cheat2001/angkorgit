@@ -1,4 +1,3 @@
-/** Word-level diff between two lines, via LCS over word tokens. */
 
 export interface WordSegment {
   text: string;
@@ -6,7 +5,6 @@ export interface WordSegment {
 }
 
 function tokenize(line: string): string[] {
-  // Split into words, whitespace runs, and punctuation so highlights stay tight.
   return line.match(/\w+|\s+|[^\w\s]/g) ?? [];
 }
 
@@ -17,7 +15,6 @@ export function wordDiff(oldLine: string, newLine: string): {
   const a = tokenize(oldLine);
   const b = tokenize(newLine);
 
-  // LCS dynamic programming table.
   const m = a.length;
   const n = b.length;
   const dp: Uint32Array = new Uint32Array((m + 1) * (n + 1));

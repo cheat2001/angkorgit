@@ -5,7 +5,6 @@ import { isTauri } from '@/core/ipc';
 
 export type Theme = 'dark' | 'light';
 
-/** User-selectable primary accent. Temple Gold is the brand default. */
 export type AccentId = 'gold' | 'jade' | 'sapphire' | 'lotus' | 'crimson';
 
 export const ACCENTS: Array<{ id: AccentId; label: string; color: string }> = [
@@ -24,7 +23,6 @@ function applyAccent(accent: AccentId): void {
   if (accent !== 'gold') el.classList.add(`accent-${accent}`);
 }
 
-/** A reusable committer identity (e.g. Work vs Personal). */
 export interface IdentityProfile {
   id: string;
   label: string;
@@ -32,11 +30,10 @@ export interface IdentityProfile {
   email: string;
 }
 
-export const ZOOM_MIN = 0.6;
-export const ZOOM_MAX = 1.6;
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 2;
 export const ZOOM_STEP = 0.1;
 
-/** Native webview zoom in Tauri (crisp, browser-like); CSS zoom elsewhere. */
 function applyZoom(zoom: number): void {
   if (isTauri()) {
     void import('@tauri-apps/api/webview').then(({ getCurrentWebview }) =>
@@ -54,16 +51,11 @@ function applyZoom(zoom: number): void {
 interface SettingsState {
   theme: Theme;
   accent: AccentId;
-  /** UI zoom factor, 0.6–1.6 (1 = 100%). */
   zoom: number;
-  /** Path to a git executable for the built-in terminal PATH hint. */
   gitExecutable: string;
   sshKeyPath: string;
-  /** Reduced motion switch for all Framer Motion animation. */
   reduceMotion: boolean;
-  /** GitHub login connected via token (display only — token lives in keychain). */
   githubUser: string;
-  /** Committer identity profiles for quick per-repo switching. */
   profiles: IdentityProfile[];
   ai: AiConfig;
   setTheme: (theme: Theme) => void;
@@ -82,7 +74,7 @@ interface SettingsState {
 }
 
 const clampZoom = (zoom: number): number =>
-  Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(zoom * 10) / 10));
+  Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(zoom * 100) / 100));
 
 export const useSettings = create<SettingsState>()(
   persist(

@@ -11,7 +11,6 @@ test('opens the demo repository and shows the commit graph', async ({ page }) =>
   await page.getByText('angkorgit', { exact: true }).first().click();
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('HEAD', { exact: true }).first()).toBeVisible();
-  // working copy panel with demo status
   await expect(page.getByText('Working copy')).toBeVisible();
 });
 

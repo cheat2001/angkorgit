@@ -1,23 +1,5 @@
 import type { CommitInfo } from '../git/types';
 
-/**
- * Incremental commit-graph lane layout.
- *
- * Commits arrive in topological/time order (as produced by the engine's
- * revwalk). Each commit is assigned a lane (column) and every row carries
- * exactly the geometry the renderer needs:
- *
- *  - `passing`  — lanes flowing straight through this row
- *  - `closing`  — lanes that curve into this row's node (branch tips merging)
- *  - `merges`   — lanes that curve out of a merge commit toward extra parents
- *  - `hasIncoming` / `continues` — whether the node's own lane connects
- *    upward and/or downward
- *
- * The algorithm is O(n · activeLanes) and incremental: feeding more pages
- * never changes already-computed rows, which keeps virtualized rendering
- * stable while history streams in.
- */
-
 export interface LaneRef {
   lane: number;
   color: number;
@@ -29,24 +11,18 @@ export interface GraphNode {
   lane: number;
   color: number;
   isMerge: boolean;
-  /** a lane above is waiting for this commit */
   hasIncoming: boolean;
-  /** the first parent continues below in the same lane */
   continues: boolean;
-  /** lanes (beyond the first) that close into this node from above */
   closing: LaneRef[];
-  /** lanes that open from this node toward extra parents (merge links) */
   merges: LaneRef[];
 }
 
 export interface GraphRow {
   node: GraphNode;
-  /** lanes that pass straight through this row */
   passing: LaneRef[];
 }
 
 interface ActiveLane {
-  /** oid this lane is waiting to meet */
   expects: string;
   color: number;
 }
@@ -71,7 +47,6 @@ export class GraphLayout {
     return this.rowByOid.get(oid);
   }
 
-  /** Maximum lane index used so far (for computing graph gutter width). */
   get maxLane(): number {
     return this._maxLane;
   }
@@ -92,14 +67,12 @@ export class GraphLayout {
     const row = this.rows.length;
     this.rowByOid.set(commit.oid, row);
 
-    // Lanes occupied before this commit lands (these drew rails from above).
     const before: Array<{ index: number; active: ActiveLane }> = [];
     for (let i = 0; i < this.lanes.length; i++) {
       const l = this.lanes[i];
       if (l) before.push({ index: i, active: l });
     }
 
-    // Lanes waiting for exactly this commit.
     const waiting = before.filter((b) => b.active.expects === commit.oid);
 
     let lane: number;
@@ -118,7 +91,6 @@ export class GraphLayout {
       .slice(1)
       .map((w) => ({ lane: w.index, color: w.active.color }));
 
-    // Continue the node's lane toward the first parent.
     const [firstParent, ...restParents] = commit.parents;
     if (firstParent !== undefined) {
       this.lanes[lane] = { expects: firstParent, color };
@@ -126,8 +98,6 @@ export class GraphLayout {
       this.lanes[lane] = null; // root commit
     }
 
-    // Extra parents of a merge commit: reuse a lane already waiting for that
-    // parent, or open a fresh lane.
     const merges: LaneRef[] = [];
     for (const parent of restParents) {
       const existing = this.lanes.findIndex((l) => l?.expects === parent);
@@ -141,7 +111,6 @@ export class GraphLayout {
       }
     }
 
-    // Straight rails: active before, not closing into the node, not the node.
     const waitingSet = new Set(waiting.map((w) => w.index));
     const passing: LaneRef[] = before
       .filter((b) => !waitingSet.has(b.index) && b.index !== lane)
@@ -176,7 +145,6 @@ export class GraphLayout {
   }
 }
 
-/** Convenience: lay out a full list at once. */
 export function layoutGraph(commits: readonly CommitInfo[]): {
   rows: readonly GraphRow[];
   maxLane: number;

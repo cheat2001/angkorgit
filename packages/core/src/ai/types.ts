@@ -1,11 +1,3 @@
-/**
- * Provider-agnostic AI module.
- *
- * Nothing in the app depends on a concrete vendor: features talk to
- * `AiProvider`, providers are created by the registry from `AiConfig`,
- * and HTTP goes through an injected transport (the desktop app injects a
- * Rust-backed client to avoid CORS and keep keys out of the webview fetch).
- */
 
 export interface AiMessage {
   role: 'system' | 'user' | 'assistant';
@@ -28,7 +20,6 @@ export interface AiProvider {
   readonly id: string;
   readonly label: string;
   complete(request: AiCompletionRequest): Promise<AiCompletionResult>;
-  /** Cheap connectivity check used by the settings screen. */
   ping(): Promise<boolean>;
 }
 
@@ -44,7 +35,6 @@ export interface HttpResponse {
   body: string;
 }
 
-/** Injected transport — implemented over Rust in the app, fetch in tests. */
 export type HttpClient = (request: HttpRequest) => Promise<HttpResponse>;
 
 export type AiProviderKind =
@@ -58,7 +48,6 @@ export interface AiConfig {
   provider: AiProviderKind;
   apiKey: string;
   model: string;
-  /** Override for self-hosted/local endpoints. */
   baseUrl?: string;
 }
 

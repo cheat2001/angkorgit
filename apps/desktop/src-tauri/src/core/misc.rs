@@ -1,12 +1,8 @@
-//! Stash, tags and submodules.
-
 use git2::{Oid, StashApplyOptions, StashFlags};
 
 use crate::error::{AppError, AppResult};
 
 use super::types::{StashInfo, SubmoduleInfo, TagInfo};
-
-// ---- Stash -------------------------------------------------------------------
 
 pub fn stash_list(path: &str) -> AppResult<Vec<StashInfo>> {
     let mut repo = super::repo::open(path)?;
@@ -53,15 +49,12 @@ pub fn stash_drop(path: &str, index: usize) -> AppResult<()> {
     Ok(())
 }
 
-// ---- Tags ---------------------------------------------------------------------
-
 pub fn tag_list(path: &str) -> AppResult<Vec<TagInfo>> {
     let repo = super::repo::open(path)?;
     let mut result = Vec::new();
     repo.tag_foreach(|oid, name_bytes| {
         let full = String::from_utf8_lossy(name_bytes).to_string();
         let name = full.trim_start_matches("refs/tags/").to_string();
-        // Annotated tags point at a tag object; peel to find the commit.
         match repo.find_tag(oid) {
             Ok(tag) => {
                 result.push(TagInfo {
@@ -118,8 +111,6 @@ pub fn tag_delete(path: &str, name: &str) -> AppResult<()> {
     Ok(())
 }
 
-// ---- Submodules ------------------------------------------------------------------
-
 pub fn submodule_list(path: &str) -> AppResult<Vec<SubmoduleInfo>> {
     let repo = super::repo::open(path)?;
     let mut result = Vec::new();
@@ -137,8 +128,6 @@ pub fn submodule_list(path: &str) -> AppResult<Vec<SubmoduleInfo>> {
 pub fn submodule_update(path: &str, name: &str) -> AppResult<()> {
     let repo = super::repo::open(path)?;
     let mut sub = repo.find_submodule(name)?;
-    // The recorded commit may need fetching — use the full credential chain
-    // (accounts → SSH → git credential helpers), same as fetch/pull/push.
     let mut fetch = git2::FetchOptions::new();
     fetch.remote_callbacks(super::remote::make_callbacks());
     let mut opts = git2::SubmoduleUpdateOptions::new();

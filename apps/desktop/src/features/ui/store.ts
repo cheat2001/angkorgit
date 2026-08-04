@@ -12,12 +12,9 @@ export type DialogKind =
   | 'rename'
   | null;
 
-/** A diff opened full-width in the center area (GitKraken-style). */
 export interface CenterDiffTarget {
   path: string;
-  /** working-copy diffs: which side */
   staged?: boolean;
-  /** commit diffs: the commit to diff against its parent */
   oid?: string;
 }
 
@@ -26,25 +23,16 @@ interface UiState {
   terminalOpen: boolean;
   paletteOpen: boolean;
   dialog: DialogKind;
-  /** context payload for dialogs (e.g. branch name being renamed) */
   dialogContext: string | null;
   diffView: DiffViewMode;
   wordDiff: boolean;
-  /** show the entire file in diffs instead of change hunks only */
   fullFileDiff: boolean;
-  /** soft-wrap long lines in diffs (off = horizontal scroll, like editors) */
   wrapLines: boolean;
-  /** file selected in the working-copy panel: [path, staged] */
   selectedFile: { path: string; staged: boolean } | null;
-  /** diff shown full-width over the graph, null = graph visible */
   centerDiff: CenterDiffTarget | null;
-  /** file open in the built-in editor (takes over the center area) */
   centerEditor: string | null;
-  /** file whose commit history fills the center area */
   centerFileHistory: string | null;
-  /** conflict resolver target */
   conflictFile: string | null;
-  /** open repository tabs (paths, GitKraken-style top strip) — persisted */
   repoTabs: string[];
 
   toggleSidebar: () => void;
@@ -101,8 +89,6 @@ export const useUi = create<UiState>()(
   closeCenterDiff: () => set({ centerDiff: null }),
   openEditor: (centerEditor) => set({ centerEditor }),
   closeEditor: () => set({ centerEditor: null }),
-  // A center diff would render above the history view and hide it — opening
-  // file history takes over the center area.
   openFileHistory: (centerFileHistory) => set({ centerFileHistory, centerDiff: null }),
   closeFileHistory: () => set({ centerFileHistory: null }),
   openConflict: (conflictFile) => set({ conflictFile }),
@@ -112,8 +98,6 @@ export const useUi = create<UiState>()(
     }),
     {
       name: 'angkorgit-ui',
-      // Persist layout/view preferences only — never transient state like
-      // open dialogs, selections, or the current diff target.
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         diffView: state.diffView,

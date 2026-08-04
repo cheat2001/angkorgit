@@ -1,6 +1,3 @@
-//! Git integration tests: exercise the core engine against real temporary
-//! repositories. Run with `cargo test` inside `apps/desktop/src-tauri`.
-
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -12,8 +9,6 @@ struct TempRepo {
 
 impl TempRepo {
     fn new() -> Self {
-        // Timestamps alone can collide when parallel tests start in the same
-        // nanosecond — the counter keeps every repo directory unique.
         static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let dir = std::env::temp_dir().join(format!(
             "angkorgit-test-{}-{}-{}",
@@ -29,9 +24,6 @@ impl TempRepo {
         core::init(path).unwrap();
         core::set_config(Some(path), "user.name", "Test User", false).unwrap();
         core::set_config(Some(path), "user.email", "test@angkorgit.dev", false).unwrap();
-        // Windows CI runners set core.autocrlf=true globally, which rewrites
-        // LF→CRLF on checkout and breaks byte-exact assertions. Tests are
-        // line-ending-deterministic on every platform.
         core::set_config(Some(path), "core.autocrlf", "false", false).unwrap();
         Self { dir }
     }
@@ -138,7 +130,6 @@ fn branch_create_checkout_merge_ff_and_normal() {
     assert_eq!(outcome.status, "fast_forward");
     assert!(repo.dir.join("b.txt").exists());
 
-    // diverge for a real merge commit
     core::branch_create(repo.path(), "topic", None, true).unwrap();
     repo.write("c.txt", "topic\n");
     commit_all(&repo, "topic work");
@@ -184,7 +175,6 @@ fn unstage_all_and_discard_all() {
     repo.write("b.txt", "two\n");
     commit_all(&repo, "base");
 
-    // unstage_all: everything staged goes back to unstaged
     repo.write("a.txt", "changed\n");
     repo.write("new.txt", "untracked\n");
     core::stage_all(repo.path()).unwrap();
@@ -193,7 +183,6 @@ fn unstage_all_and_discard_all() {
     assert!(status.files.iter().all(|f| f.staged.is_none()));
     assert_eq!(status.files.len(), 2);
 
-    // discard_all: tracked restored, untracked deleted, nothing left behind
     let remaining = core::discard_all(repo.path()).unwrap();
     assert!(remaining.is_empty());
     assert_eq!(repo.read("a.txt"), "one\n");
@@ -337,7 +326,6 @@ fn line_level_stage_unstage_discard() {
     repo.write("a.txt", "one\ntwo\nthree\nfour\nfive\n");
     commit_all(&repo, "base");
 
-    // Two changed lines inside ONE hunk (context 3 merges them).
     repo.write("a.txt", "one\nTWO\nthree\nFOUR\nfive\n");
     let diff = core::file_diff(repo.path(), "a.txt", false, 3).unwrap();
     assert_eq!(diff.hunks.len(), 1);
@@ -349,7 +337,6 @@ fn line_level_stage_unstage_discard() {
         .new_line_no
         .unwrap();
 
-    // Stage ONLY the first added line ("TWO").
     core::stage_line(repo.path(), "a.txt", "addition", first_addition).unwrap();
     let status = core::status(repo.path()).unwrap();
     let entry = &status.files[0];
@@ -361,7 +348,6 @@ fn line_level_stage_unstage_discard() {
     let unstaged = core::file_diff(repo.path(), "a.txt", false, 3).unwrap();
     assert_eq!(unstaged.additions, 1); // FOUR still unstaged
 
-    // Unstage that line again — staged side becomes empty.
     let staged_addition = staged.hunks[0]
         .lines
         .iter()
@@ -373,7 +359,6 @@ fn line_level_stage_unstage_discard() {
     let status = core::status(repo.path()).unwrap();
     assert_eq!(status.files[0].staged, None);
 
-    // Discard only the FOUR change from the working tree.
     let diff = core::file_diff(repo.path(), "a.txt", false, 3).unwrap();
     let four_line = diff.hunks[0]
         .lines
@@ -389,12 +374,9 @@ fn line_level_stage_unstage_discard() {
 #[test]
 fn line_ops_handle_missing_trailing_newline() {
     let repo = TempRepo::new();
-    // The committed file's last line has NO trailing newline — common in
-    // the wild and the shape behind "invalid patch instruction" reports.
     repo.write("README.md", "alpha\nbeta\ngamma");
     commit_all(&repo, "base");
 
-    // Append blank lines + a new unterminated last line.
     repo.write("README.md", "alpha\nbeta\ngamma\n\n\nkhlhlihho");
 
     let find_addition = |staged: bool, needle: &str| {
@@ -406,20 +388,16 @@ fn line_ops_handle_missing_trailing_newline() {
             .map(|l| l.new_line_no.unwrap())
     };
 
-    // Discard the added last line: the blanks must survive.
     let last = find_addition(false, "khlhlihho").unwrap();
     core::discard_line(repo.path(), "README.md", "addition", last).unwrap();
     assert_eq!(repo.read("README.md"), "alpha\nbeta\ngamma\n\n\n");
 
-    // Stage that same line. Like `git add -p`, this drags in the newline
-    // fix for the old last line — otherwise the patch is unrepresentable.
     repo.write("README.md", "alpha\nbeta\ngamma\n\n\nkhlhlihho");
     let last = find_addition(false, "khlhlihho").unwrap();
     core::stage_line(repo.path(), "README.md", "addition", last).unwrap();
     let staged = find_addition(true, "khlhlihho");
     assert!(staged.is_some(), "line should be staged");
 
-    // And unstage it again.
     core::unstage_line(repo.path(), "README.md", "addition", staged.unwrap()).unwrap();
     assert!(find_addition(true, "khlhlihho").is_none());
     assert_eq!(repo.read("README.md"), "alpha\nbeta\ngamma\n\n\nkhlhlihho");
@@ -464,7 +442,6 @@ fn file_history_lists_only_touching_commits() {
     assert_eq!(summaries, vec!["change both", "change a", "add a and b"]);
     assert!(!page.has_more);
 
-    // Limit + hasMore pagination signal.
     let page = core::file_history(repo.path(), "a.txt", 2).unwrap();
     assert_eq!(page.commits.len(), 2);
     assert!(page.has_more);
@@ -482,7 +459,6 @@ fn file_diff_reports_hunks() {
     assert_eq!(diff.additions, 1);
     assert_eq!(diff.deletions, 1);
 
-    // Whole-file mode: huge context pulls every line into the hunk.
     let full = core::file_diff(repo.path(), "a.txt", false, u32::MAX).unwrap();
     let context_lines = full.hunks[0]
         .lines
@@ -513,7 +489,6 @@ fn rebase_linearizes_history() {
     assert!(repo.dir.join("feature.txt").exists());
 }
 
-/// Ensures the repo also works via the plain `git` CLI the user may mix in.
 #[test]
 fn interoperates_with_git_cli() {
     let repo = TempRepo::new();

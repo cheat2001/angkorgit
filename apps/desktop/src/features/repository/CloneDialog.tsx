@@ -38,7 +38,6 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
     if (!url.trim() || !into.trim()) return;
     setProgress(0);
     try {
-      // Derive target folder from the repository name.
       const name = url.trim().replace(/\.git$/, '').split('/').pop() ?? 'repository';
       const target = `${into.replace(/\/$/, '')}/${name}`;
       const path = await ipc.cloneRepository(url.trim(), target);

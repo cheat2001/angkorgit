@@ -10,15 +10,6 @@ import {
   DialogTitle,
 } from '@angkorgit/design-system';
 
-/**
- * App-wide confirmation dialog for destructive actions. Usage:
- *
- *   if (await confirmDialog({ title, description, destructive: true })) …
- *
- * Cancel is always the safe default (Esc / clicking outside / close all
- * resolve to false).
- */
-
 export interface ConfirmOptions {
   title: string;
   description: string;
@@ -36,7 +27,6 @@ const useConfirmStore = create<ConfirmState>((set, get) => ({
   request: null,
   ask: (options) =>
     new Promise<boolean>((resolve) => {
-      // A newer request supersedes an unanswered one (which resolves false).
       get().request?.resolve(false);
       set({ request: { ...options, resolve } });
     }),

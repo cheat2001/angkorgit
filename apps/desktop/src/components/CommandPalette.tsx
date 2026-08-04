@@ -28,9 +28,6 @@ import { useSettings } from '@/features/settings/store';
 import { useUndo } from '@/features/history/undoStore';
 import { modKey } from '@/shared/utils';
 
-/**
- * ⌘K command palette: every daily operation is reachable from the keyboard.
- */
 export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const { repo, branches, remotes, recents, open } = useRepo();
   const { paletteOpen, setPaletteOpen, toggleTerminal, toggleSidebar, sidebarOpen, openDialog } = useUi();
@@ -41,12 +38,10 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
   const locals = useMemo(() => branches.filter((b) => !b.isRemote && !b.isHead), [branches]);
   const otherRepos = useMemo(() => recents.filter((r) => r.path !== path).slice(0, 8), [recents, path]);
 
-  /** 'commands' = normal palette; 'fileHistory' = pick a file to see its history */
   const [mode, setMode] = useState<'commands' | 'fileHistory'>('commands');
   const [search, setSearch] = useState('');
   const [files, setFiles] = useState<string[]>([]);
 
-  // Fresh palette every time it opens.
   useEffect(() => {
     if (!paletteOpen) return;
     setMode('commands');
@@ -62,7 +57,6 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
       .catch(() => setFiles([]));
   };
 
-  // Manual filtering scales to 10k-file repos (cmdk scoring would not).
   const visibleFiles = useMemo(() => {
     if (mode !== 'fileHistory') return [];
     const q = search.trim().toLowerCase();
@@ -103,7 +97,6 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             : 'Type a command or branch name…'
         }
         onKeyDown={(e) => {
-          // Backspace on an empty input backs out of file-pick mode.
           if (mode === 'fileHistory' && e.key === 'Backspace' && search === '') {
             e.preventDefault();
             setMode('commands');

@@ -1,10 +1,5 @@
 import { defineConfig } from '@playwright/test';
 
-/**
- * E2E runs against the Vite dev server in browser demo mode: the IPC layer
- * serves a deterministic synthetic repository, so every screen is testable
- * without a native Tauri build.
- */
 export default defineConfig({
   testDir: '.',
   timeout: 30_000,

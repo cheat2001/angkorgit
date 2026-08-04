@@ -17,7 +17,6 @@ import { useRepo } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo } from '@/features/history/undoStore';
 
-/** Small create/rename dialogs: branch, tag, stash, branch rename. */
 export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
   const repo = useRepo((s) => s.repo);
   const { dialog, dialogContext, closeDialog } = useUi();

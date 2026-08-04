@@ -1,10 +1,6 @@
 import { motion } from 'framer-motion';
 import { Logo } from '@angkorgit/design-system';
 
-/**
- * Splash: the AngKorGit mark draws itself from git branch strokes,
- * then the whole screen fades into the app.
- */
 export function SplashScreen() {
   return (
     <motion.div

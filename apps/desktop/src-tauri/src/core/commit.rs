@@ -10,13 +10,10 @@ fn default_signature(repo: &Repository) -> AppResult<git2::Signature<'static>> {
     })
 }
 
-/// Create a commit from the current index.
 pub fn commit(path: &str, message: &str) -> AppResult<String> {
     let mut repo = super::repo::open(path)?;
     let sig = default_signature(&repo)?;
 
-    // While a merge is being concluded, MERGE_HEAD commits become parents.
-    // Collect the oids first: mergehead_foreach borrows the repo mutably.
     let is_merge = repo.state() == git2::RepositoryState::Merge;
     let mut merge_oids: Vec<git2::Oid> = Vec::new();
     if is_merge {
@@ -53,16 +50,12 @@ pub fn commit(path: &str, message: &str) -> AppResult<String> {
     Ok(oid.to_string())
 }
 
-/// Revert a commit: apply its inverse to the working tree and commit it
-/// (git's conventional Revert "…" message). Conflicts pause like a merge.
 pub fn revert(path: &str, oid: &str) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
 
     let mut opts = git2::RevertOptions::new();
     if commit.parent_count() > 1 {
-        // Reverting a merge needs a mainline; use the first parent, matching
-        // the graph's first-parent view.
         opts.mainline(1);
     }
     repo.revert(&commit, Some(&mut opts))?;
@@ -95,7 +88,6 @@ pub fn revert(path: &str, oid: &str) -> AppResult<OpOutcome> {
     })
 }
 
-/// Amend HEAD with the current index and an optional new message.
 pub fn amend(path: &str, message: Option<&str>) -> AppResult<String> {
     let repo = super::repo::open(path)?;
     let head = repo

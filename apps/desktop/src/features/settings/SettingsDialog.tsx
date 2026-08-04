@@ -45,12 +45,6 @@ import { AccountsTab } from './AccountsTab';
 import { getAiProvider } from '@/features/ai/client';
 import { modKey } from '@/shared/utils';
 
-/**
- * Product-grade settings window: navigation rail on the left, one focused
- * section on the right — the pattern of Linear / Arc / VS Code, not a
- * cramped tab strip.
- */
-
 type SectionId = 'appearance' | 'git' | 'accounts' | 'ai' | 'shortcuts';
 
 const SECTIONS: Array<{
@@ -75,7 +69,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-/** Titled card grouping related controls — the visual unit of every section. */
 function SettingCard({
   title,
   description,
@@ -138,7 +131,6 @@ export function SettingsDialog() {
 
   const applyProfile = async (name: string, email: string, label: string) => {
     try {
-      // Repo-local on purpose: never rewrites the shared global gitconfig.
       await ipc.configSet(repo?.path ?? null, 'user.name', name, !repo);
       await ipc.configSet(repo?.path ?? null, 'user.email', email, !repo);
       setGitName(name);
@@ -184,7 +176,6 @@ export function SettingsDialog() {
       <DialogContent className="max-w-3xl overflow-hidden p-0">
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <div className="flex h-[560px] max-h-[80vh]">
-          {/* Navigation rail */}
           <nav className="flex w-52 shrink-0 flex-col border-r border-border-subtle bg-surface">
             <p className="px-4 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-faint">
               Settings
@@ -224,7 +215,6 @@ export function SettingsDialog() {
             </div>
           </nav>
 
-          {/* Section content */}
           <div className="flex min-w-0 flex-1 flex-col bg-background">
             <header className="shrink-0 border-b border-border-subtle px-6 pb-4 pt-5">
               <h2 className="text-base font-semibold">{active.label}</h2>

@@ -5,11 +5,6 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 
-/**
- * "WIP" row pinned above the commit graph whenever the working tree is
- * dirty — uncommitted changes are visible at a glance instead of hiding
- * until the working-copy panel is opened. Clicking focuses the working copy.
- */
 export function WipRow({ gutterWidth }: { gutterWidth: number }) {
   const status = useRepo((s) => s.status);
   const conflicts = useRepo((s) => s.conflicts);
@@ -50,7 +45,6 @@ export function WipRow({ gutterWidth }: { gutterWidth: number }) {
       )}
     >
       <svg width={gutterWidth} height={36} className="shrink-0" aria-hidden>
-        {/* dashed "future commit" node on the HEAD lane */}
         <line x1={8} y1={18} x2={8} y2={36} stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="3 3" />
         <circle
           cx={8}

@@ -1,6 +1,3 @@
-//! Minimal HTTP proxy for the AI module. Keeps provider requests out of the
-//! webview (no CORS issues, keys never touch browser-level fetch).
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};

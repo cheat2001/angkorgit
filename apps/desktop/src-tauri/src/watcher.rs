@@ -1,8 +1,3 @@
-//! Filesystem watcher: keeps the UI live while the user edits in another
-//! tool. Watches the open repository recursively, debounces event bursts
-//! (builds, branch switches) and emits a single `repo-changed` event the
-//! frontend uses to refresh status — no manual reload needed.
-
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -19,8 +14,6 @@ use crate::error::{AppError, AppResult};
 #[derive(Default)]
 pub struct WatcherState(Mutex<Option<Debouncer<RecommendedWatcher>>>);
 
-/// Workdir changes always matter. Inside `.git`, only ref/HEAD/index
-/// movements do — object writes and lock files would cause refresh storms.
 fn relevant(path: &Path, root: &Path) -> bool {
     let rel = match path.strip_prefix(root) {
         Ok(rel) => rel,
@@ -68,7 +61,6 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> AppResult<()>
         .watch(&root, RecursiveMode::Recursive)
         .map_err(|e| AppError::other(format!("could not watch {path}: {e}")))?;
 
-    // Replacing the previous watcher drops (and stops) it.
     *state.0.lock().unwrap() = Some(debouncer);
     Ok(())
 }

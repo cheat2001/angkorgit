@@ -5,8 +5,6 @@ import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown, Loader2, Minus } from 'lucide-react';
 import { cn } from '../lib/cn';
 
-// ---- Badge ------------------------------------------------------------------
-
 export function Badge({
   className,
   tone = 'neutral',
@@ -33,8 +31,6 @@ export function Badge({
   );
 }
 
-// ---- Separator ----------------------------------------------------------------
-
 export function Separator({
   className,
   orientation = 'horizontal',
@@ -53,8 +49,6 @@ export function Separator({
   );
 }
 
-// ---- Kbd ----------------------------------------------------------------------
-
 export function Kbd({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
   return (
     <kbd
@@ -67,13 +61,9 @@ export function Kbd({ className, ...props }: React.HTMLAttributes<HTMLElement>) 
   );
 }
 
-// ---- Spinner --------------------------------------------------------------------
-
 export function Spinner({ className }: { className?: string }) {
   return <Loader2 className={cn('size-4 animate-spin text-muted', className)} />;
 }
-
-// ---- Switch ---------------------------------------------------------------------
 
 export const Switch = React.forwardRef<
   React.ElementRef<typeof SwitchPrimitive.Root>,
@@ -93,8 +83,6 @@ export const Switch = React.forwardRef<
   </SwitchPrimitive.Root>
 ));
 Switch.displayName = 'Switch';
-
-// ---- Checkbox ----------------------------------------------------------------------
 
 export const Checkbox = React.forwardRef<
   React.ElementRef<typeof CheckboxPrimitive.Root>,
@@ -117,8 +105,6 @@ export const Checkbox = React.forwardRef<
   </CheckboxPrimitive.Root>
 ));
 Checkbox.displayName = 'Checkbox';
-
-// ---- Select -----------------------------------------------------------------------------
 
 export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;

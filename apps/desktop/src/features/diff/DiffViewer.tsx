@@ -6,14 +6,6 @@ import { languageOf } from '@/shared/highlight';
 import { CodeLine, gutter, lineBg, pairHunkLines } from './diffShared';
 import { flattenDiff, VirtualInlineDiff, VirtualSplitDiff, type LineMenuInfo } from './VirtualDiff';
 
-/**
- * Diff rendering. The default no-wrap mode is fully virtualized — only
- * visible lines are in the DOM (and only they are syntax-highlighted), so
- * whole-file diffs of any size load instantly and scroll smoothly. The
- * opt-in wrap mode renders classically since folded lines have variable
- * heights.
- */
-
 interface HunkProps {
   hunk: DiffHunk;
   language: string | null;
@@ -30,7 +22,6 @@ function HunkHeader({ hunk, actions }: { hunk: DiffHunk; actions?: React.ReactNo
   );
 }
 
-/** Wrap-mode inline view: lines fold when long. */
 function WrappedInlineHunk({ hunk, language, useWordDiff, actions }: HunkProps) {
   const pairs = useMemo(() => pairHunkLines(hunk), [hunk]);
   const counterpart = useMemo(() => {
@@ -80,7 +71,6 @@ function WrappedInlineHunk({ hunk, language, useWordDiff, actions }: HunkProps) 
   );
 }
 
-/** Wrap-mode split view: paired rows, lines fold when long. */
 function WrappedSplitHunk({ hunk, language, useWordDiff, actions }: HunkProps) {
   const pairs = useMemo(() => pairHunkLines(hunk), [hunk]);
   return (
@@ -168,11 +158,8 @@ export function DiffViewer({
   onLineContextMenu,
 }: {
   diff: FileDiff;
-  /** the vertical scroll container (needed for virtualization) */
   scrollRef?: React.RefObject<HTMLDivElement>;
-  /** optional per-hunk action buttons (stage/unstage hunk) */
   hunkActions?: (hunkIndex: number) => React.ReactNode;
-  /** right-click on a diff line (inline view only) */
   onLineContextMenu?: (event: React.MouseEvent, info: LineMenuInfo) => void;
 }) {
   const { diffView, wordDiff: useWord, wrapLines } = useUi();
@@ -192,7 +179,6 @@ export function DiffViewer({
     return <p className="py-8 text-center text-sm text-faint">No changes</p>;
   }
 
-  // Fast path: virtualized no-wrap rendering.
   if (!wrapLines && scrollRef) {
     const props = {
       rows: flatRows,
@@ -205,7 +191,6 @@ export function DiffViewer({
     return split ? <VirtualSplitDiff {...props} /> : <VirtualInlineDiff {...props} />;
   }
 
-  // Wrap mode: classic rendering (variable row heights).
   return (
     <div>
       {diff.hunks.map((hunk, i) => {

@@ -33,7 +33,6 @@ describe('GraphLayout', () => {
   });
 
   it('assigns a second lane to a parallel branch', () => {
-    // main: m2 -> m1 -> base ; feature: f1 -> base
     const { rows, maxLane } = layoutGraph([
       commit('m2', ['m1']),
       commit('f1', ['base']),
@@ -43,7 +42,6 @@ describe('GraphLayout', () => {
     expect(maxLane).toBe(1);
     const f1 = rows.find((r) => r.node.oid === 'f1')!;
     expect(f1.node.lane).toBe(1);
-    // base joins both lanes: the second lane closes into it
     const base = rows.find((r) => r.node.oid === 'base')!;
     expect(base.node.closing).toHaveLength(1);
   });
@@ -75,14 +73,11 @@ describe('GraphLayout', () => {
     const firstTwo = incremental.getRows().slice(0, 2).map((r) => JSON.stringify(r));
     incremental.add(commits.slice(2));
 
-    // rows computed before the second page never change
     expect(incremental.getRows().slice(0, 2).map((r) => JSON.stringify(r))).toEqual(firstTwo);
-    // and the final result matches a single-shot layout
     expect(JSON.stringify(incremental.getRows())).toEqual(JSON.stringify(whole.rows));
   });
 
   it('reuses freed lanes to keep the graph narrow', () => {
-    // two short-lived branches that never overlap should share lane 1
     const { maxLane } = layoutGraph([
       commit('m4', ['m3', 'f2']),
       commit('f2', ['m3']),

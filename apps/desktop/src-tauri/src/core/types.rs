@@ -1,5 +1,3 @@
-//! Serde mirror of `@angkorgit/core` TypeScript domain types.
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Clone)]
@@ -178,7 +176,6 @@ pub struct ConflictFile {
     pub has_markers: bool,
 }
 
-/// Result of merge/rebase/cherry-pick style operations.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpOutcome {

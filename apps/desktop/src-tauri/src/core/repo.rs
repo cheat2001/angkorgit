@@ -10,7 +10,6 @@ pub fn open(path: &str) -> AppResult<Repository> {
     Ok(Repository::open(path)?)
 }
 
-/// Discover a repository from any path inside a working tree.
 pub fn discover(path: &str) -> AppResult<String> {
     let repo = Repository::discover(path)?;
     let root = repo
@@ -172,7 +171,6 @@ pub fn init(path: &str) -> AppResult<RepositoryInfo> {
     info(path)
 }
 
-/// All tracked file paths (index order) — powers file pickers.
 pub fn list_files(path: &str) -> AppResult<Vec<String>> {
     let repo = open(path)?;
     let index = repo.index()?;
@@ -181,8 +179,6 @@ pub fn list_files(path: &str) -> AppResult<Vec<String>> {
         .filter_map(|entry| String::from_utf8(entry.path).ok())
         .collect())
 }
-
-// ---- git config ------------------------------------------------------------
 
 pub fn get_config(repo_path: Option<&str>, key: &str) -> AppResult<Option<String>> {
     let config = match repo_path {

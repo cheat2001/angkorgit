@@ -1,4 +1,3 @@
-/** Relative time like "3h ago" from unix seconds. */
 export function timeAgo(unixSeconds: number): string {
   const diff = Math.max(0, Date.now() / 1000 - unixSeconds);
   if (diff < 60) return 'just now';
@@ -19,7 +18,6 @@ export function formatDate(unixSeconds: number): string {
   });
 }
 
-/** Deterministic avatar hue from an email. */
 export function avatarHue(email: string): number {
   let hash = 0;
   for (let i = 0; i < email.length; i++) {
@@ -39,7 +37,6 @@ export function initials(name: string): string {
 
 export const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC');
 
-/** Render "mod" as ⌘ on macOS, Ctrl elsewhere. */
 export function modKey(): string {
   return isMac ? '⌘' : 'Ctrl';
 }

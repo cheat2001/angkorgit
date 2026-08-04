@@ -2,15 +2,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { FileDiff } from '@angkorgit/core';
 import type { DiffViewMode } from '@/features/ui/store';
 
-/**
- * Change-overview rail (minimap) for the diff view: one marker per changed
- * line at its proportional position, a live viewport indicator, and
- * click-to-jump. Powers the header's prev/next-change buttons too.
- */
-
 type RowKind = 'header' | 'context' | 'addition' | 'deletion' | 'mixed';
 
-/** Flatten the diff into the rows the viewer actually renders. */
 function logicalRows(diff: FileDiff, view: DiffViewMode): RowKind[] {
   const rows: RowKind[] = [];
   for (const hunk of diff.hunks) {
@@ -18,7 +11,6 @@ function logicalRows(diff: FileDiff, view: DiffViewMode): RowKind[] {
     if (view === 'inline') {
       for (const line of hunk.lines) rows.push(line.kind);
     } else {
-      // split view pairs deletions with additions, mirroring pairHunkLines()
       let pendingDeletions = 0;
       const flush = () => {
         for (let i = 0; i < pendingDeletions; i++) rows.push('deletion');
@@ -46,12 +38,10 @@ function logicalRows(diff: FileDiff, view: DiffViewMode): RowKind[] {
 }
 
 export interface ChangeBlock {
-  /** 0..1 position of the block's first row */
   fraction: number;
   kind: RowKind;
 }
 
-/** Consecutive changed rows collapse into one jumpable block. */
 export function changeBlocks(diff: FileDiff, view: DiffViewMode): ChangeBlock[] {
   const rows = logicalRows(diff, view);
   const total = Math.max(rows.length, 1);
@@ -76,8 +66,6 @@ export function scrollToFraction(el: HTMLElement, fraction: number): void {
   });
 }
 
-// Soft translucent markers — a fully-added file must read as a tinted rail,
-// not a solid neon bar.
 const MARKER_COLOR: Record<string, string> = {
   addition: 'hsl(var(--success) / 0.5)',
   deletion: 'hsl(var(--danger) / 0.5)',
@@ -104,8 +92,6 @@ export function DiffMinimap({
 
   const rows = useMemo(() => logicalRows(diff, view), [diff, view]);
   const total = Math.max(rows.length, 1);
-  // Consecutive changed rows of the same kind render as ONE block: far fewer
-  // DOM nodes and a cleaner rail than per-line markers.
   const markers = useMemo(() => {
     const blocks: MarkerBlock[] = [];
     rows.forEach((kind, index) => {
@@ -117,8 +103,6 @@ export function DiffMinimap({
     return blocks;
   }, [rows]);
 
-  // The viewport indicator tracks scrolling OUTSIDE React: writing styles
-  // directly (rAF-throttled) keeps scroll frames free of render work.
   useEffect(() => {
     const el = scrollRef.current;
     const indicator = indicatorRef.current;
@@ -144,9 +128,6 @@ export function DiffMinimap({
     };
   }, [scrollRef, diff, view]);
 
-  // Press-and-drag scrubbing, like a scrollbar thumb: mousedown jumps, and
-  // dragging keeps scrolling until release (instant, not smooth — smooth
-  // scrolling would fight the pointer).
   const scrub = (event: React.MouseEvent) => {
     event.preventDefault();
     const rail = railRef.current;

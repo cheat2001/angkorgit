@@ -17,12 +17,6 @@ import type {
 } from '@angkorgit/core';
 import * as demo from './demo';
 
-/**
- * Typed IPC boundary. In Tauri, commands go to the Rust engine; in a plain
- * browser (UI development, Playwright) a deterministic demo backend answers,
- * so every screen is testable without a native build.
- */
-
 export interface OpOutcome {
   status: 'ok' | 'conflicts' | 'up_to_date' | 'fast_forward';
   message: string;
@@ -33,7 +27,6 @@ export interface IpcError {
   message: string;
 }
 
-/** A hosting account managed by the app (token stored in the OS keychain). */
 export interface HostingAccount {
   host: string;
   username: string;
@@ -58,7 +51,6 @@ export async function listen(event: string, handler: (payload: unknown) => void)
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
 export const ipc = {
-  // ---- repository ----
   async openRepository(path: string): Promise<RepositoryInfo> {
     if (!isTauri()) {
       await delay();
@@ -94,7 +86,6 @@ export const ipc = {
     return invoke('recent_remove', { path });
   },
 
-  // ---- config ----
   async configGet(path: string | null, key: string): Promise<string | null> {
     if (!isTauri()) return key === 'user.name' ? 'Demo User' : key === 'user.email' ? 'demo@angkorgit.dev' : null;
     return invoke('config_get', { path, key });
@@ -104,7 +95,6 @@ export const ipc = {
     return invoke('config_set', { path, key, value, global });
   },
 
-  // ---- staging / commit ----
   async stageFile(path: string, file: string): Promise<void> {
     if (!isTauri()) return;
     return invoke('stage_file', { path, file });
@@ -121,12 +111,10 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('unstage_all', { path });
   },
-  /** Returns true when the file is actually clean afterwards. */
   async discardFile(path: string, file: string): Promise<boolean> {
     if (!isTauri()) return true;
     return invoke('discard_file', { path, file });
   },
-  /** Returns the paths that could NOT be discarded (e.g. submodules). */
   async discardAll(path: string): Promise<string[]> {
     if (!isTauri()) return [];
     return invoke('discard_all', { path });
@@ -187,7 +175,6 @@ export const ipc = {
     return invoke('commit_revert', { path, oid });
   },
 
-  // ---- history ----
   async history(path: string, query: HistoryQuery): Promise<HistoryPage> {
     if (!isTauri()) {
       await delay(60);
@@ -199,7 +186,6 @@ export const ipc = {
     if (!isTauri()) return demo.demoHistory({ skip: 0, limit: 1 }).commits[0];
     return invoke('history_commit', { path, oid });
   },
-  /** Commits that changed one file, newest first. */
   async fileHistory(path: string, file: string, limit?: number): Promise<HistoryPage> {
     if (!isTauri()) {
       await delay(60);
@@ -207,7 +193,6 @@ export const ipc = {
     }
     return invoke('history_file', { path, file, limit });
   },
-  /** All tracked file paths — powers file pickers. */
   async repoFiles(path: string): Promise<string[]> {
     if (!isTauri()) {
       return ['src/main.ts', 'src/app/App.tsx', 'src/graph/layout.ts', 'README.md', 'package.json'];
@@ -215,7 +200,6 @@ export const ipc = {
     return invoke('repo_files', { path });
   },
 
-  // ---- branches ----
   async branches(path: string): Promise<BranchInfo[]> {
     if (!isTauri()) return demo.demoBranches;
     return invoke('branch_list', { path });
@@ -269,12 +253,10 @@ export const ipc = {
     return invoke('reset_to', { path, oid, mode });
   },
 
-  // ---- remotes ----
   async remotes(path: string): Promise<RemoteInfo[]> {
     if (!isTauri()) return [{ name: 'origin', url: 'git@github.com:demo/angkorgit.git' }];
     return invoke('remote_list', { path });
   },
-  /** Rename a remote and/or change its URL. */
   async remoteEdit(path: string, name: string, newName: string, url: string): Promise<void> {
     if (!isTauri()) return;
     return invoke('remote_edit', { path, name, newName, url });
@@ -320,7 +302,6 @@ export const ipc = {
     return invoke('remote_push_tag', { path, remote, tag });
   },
 
-  // ---- stash ----
   async stashes(path: string): Promise<StashInfo[]> {
     if (!isTauri()) return demo.demoStashes;
     return invoke('stash_list', { path });
@@ -342,7 +323,6 @@ export const ipc = {
     return invoke('stash_drop', { path, index });
   },
 
-  // ---- tags ----
   async tags(path: string): Promise<TagInfo[]> {
     if (!isTauri()) return demo.demoTags;
     return invoke('tag_list', { path });
@@ -356,7 +336,6 @@ export const ipc = {
     return invoke('tag_delete', { path, name });
   },
 
-  // ---- submodules ----
   async submodules(path: string): Promise<SubmoduleInfo[]> {
     if (!isTauri()) return [{ name: 'vendor/libfoo', path: 'vendor/libfoo', url: 'https://github.com/demo/libfoo', headOid: 'abc123' }];
     return invoke('submodule_list', { path });
@@ -366,7 +345,6 @@ export const ipc = {
     return invoke('submodule_update', { path, name });
   },
 
-  // ---- diff ----
   async diffFile(path: string, file: string, staged: boolean, contextLines?: number): Promise<FileDiff> {
     if (!isTauri()) return { ...demo.demoFileDiff, path: file };
     return invoke('diff_file', { path, file, staged, contextLines: contextLines ?? null });
@@ -380,7 +358,6 @@ export const ipc = {
     return invoke('staged_patch', { path });
   },
 
-  // ---- conflicts ----
   async conflicts(path: string): Promise<string[]> {
     if (!isTauri()) return [];
     return invoke('conflict_list', { path });
@@ -394,7 +371,6 @@ export const ipc = {
     return invoke('conflict_resolve', { path, file, content });
   },
 
-  // ---- terminal ----
   async termCreate(cwd: string, cols: number, rows: number): Promise<number> {
     if (!isTauri()) return -1;
     return invoke('term_create', { cwd, cols, rows });
@@ -412,8 +388,6 @@ export const ipc = {
     return invoke('term_kill', { id });
   },
 
-  // ---- filesystem watcher ----
-  /** Watch the repo for external changes; emits `repo-changed` events. */
   async watchRepo(path: string): Promise<void> {
     if (!isTauri()) return;
     return invoke('watch_repo', { path });
@@ -423,8 +397,6 @@ export const ipc = {
     return invoke('watch_stop');
   },
 
-  // ---- credentials & accounts ----
-  /** Store an HTTPS token in the system git credential helper (keychain). */
   async credentialStore(host: string, username: string, password: string): Promise<void> {
     if (!isTauri()) return;
     return invoke('credential_store', { host, username, password });
@@ -442,7 +414,6 @@ export const ipc = {
     return invoke('account_remove', { host });
   },
 
-  // ---- AI transport ----
   async httpRequest(request: HttpRequest): Promise<HttpResponse> {
     if (!isTauri()) {
       const res = await fetch(request.url, {
@@ -456,7 +427,6 @@ export const ipc = {
   },
 };
 
-/** Open a URL in the user's default browser. */
 export async function openExternal(url: string): Promise<void> {
   if (!isTauri()) {
     window.open(url, '_blank');
@@ -466,14 +436,12 @@ export async function openExternal(url: string): Promise<void> {
   await openUrl(url);
 }
 
-/** Installed app version (from the Tauri bundle). */
 export async function appVersion(): Promise<string> {
   if (!isTauri()) return 'dev';
   const { getVersion } = await import('@tauri-apps/api/app');
   return getVersion();
 }
 
-/** Open a native folder picker (Tauri) or prompt (browser demo). */
 export async function pickDirectory(title: string): Promise<string | null> {
   if (!isTauri()) {
     return window.prompt(`${title} — enter a path (demo mode)`) || null;

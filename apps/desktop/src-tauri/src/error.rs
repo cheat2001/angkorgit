@@ -1,7 +1,5 @@
 use serde::Serialize;
 
-/// Unified error crossing the IPC boundary. The frontend receives
-/// `{ code, message }` and maps codes to user-facing recovery actions.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("{0}")]

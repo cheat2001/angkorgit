@@ -1,12 +1,6 @@
 import { toast } from 'sonner';
 import { isTauri } from '@/core/ipc';
 
-/**
- * Auto-update over GitHub releases. Update packages are signed with the
- * project's own minisign key (free, Apple-independent) and verified by the
- * updater plugin before install — a tampered download will never run.
- */
-
 let checking = false;
 
 export async function checkForUpdates(options: { silent: boolean }): Promise<void> {
@@ -44,8 +38,6 @@ export async function checkForUpdates(options: { silent: boolean }): Promise<voi
       },
     });
   } catch (error) {
-    // Offline, no releases yet, rate-limited — never bother the user on
-    // automatic checks.
     if (!options.silent) {
       toast.error(`Update check failed: ${(error as { message?: string }).message ?? error}`);
     }

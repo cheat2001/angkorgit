@@ -1,11 +1,5 @@
 import type { AiProvider } from './types';
 
-/**
- * AI capabilities are pure prompt builders over the provider interface —
- * every feature works identically across OpenAI, Anthropic, Gemini, Ollama,
- * LM Studio, or any future adapter.
- */
-
 const SYSTEM = 'You are the AI assistant inside AngKorGit, a Git client. Be precise and concise. Never invent file names or changes that are not in the provided context.';
 
 function clip(text: string, max = 24_000): string {

@@ -88,7 +88,6 @@ pub fn rename(path: &str, old_name: &str, new_name: &str) -> AppResult<()> {
 pub fn checkout_branch(path: &str, name: &str) -> AppResult<()> {
     let repo = super::repo::open(path)?;
 
-    // Checking out a remote branch creates a local tracking branch first.
     if let Ok(remote_branch) = repo.find_branch(name, BranchType::Remote) {
         if repo
             .find_branch(local_name_of(name), BranchType::Local)
@@ -120,7 +119,6 @@ fn do_checkout(repo: &Repository, refname: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// Detached checkout of an arbitrary commit or tag.
 pub fn checkout_detached(path: &str, rev: &str) -> AppResult<()> {
     let repo = super::repo::open(path)?;
     let obj = repo.revparse_single(rev)?;
@@ -167,8 +165,6 @@ pub fn merge(path: &str, branch: &str) -> AppResult<OpOutcome> {
         });
     }
 
-    // Clean auto-merge: create the merge commit right away, with git's
-    // conventional message: Merge branch 'x' into y
     let sig = repo.signature().map_err(AppError::from)?;
     let mut index = repo.index()?;
     let tree = repo.find_tree(index.write_tree()?)?;
@@ -219,7 +215,6 @@ pub fn rebase(path: &str, upstream: &str) -> AppResult<OpOutcome> {
         }
         match rebase.commit(None, &sig, None) {
             Ok(_) => {}
-            // Empty patches (already applied upstream) are skipped.
             Err(e) if e.code() == git2::ErrorCode::Applied => {}
             Err(e) => return Err(e.into()),
         }

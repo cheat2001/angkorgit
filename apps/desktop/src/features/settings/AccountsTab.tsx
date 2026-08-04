@@ -13,12 +13,6 @@ import {
 } from '@angkorgit/design-system';
 import { ipc, openExternal, type HostingAccount } from '@/core/ipc';
 
-/**
- * App-managed hosting accounts, GitKraken-style: one token per host, stored
- * in the OS keychain under AngKorGit's own service. The git engine picks the
- * matching account by remote host — GitLab tokens never go to GitHub.
- */
-
 type ProviderKind = 'github' | 'gitlab' | 'gitlab-self' | 'bitbucket' | 'other';
 
 interface ProviderPreset {
@@ -73,7 +67,6 @@ function providerIcon(provider: string) {
   return <Globe className="size-4" />;
 }
 
-/** Best-effort token validation; null = provider not verifiable. */
 async function validateToken(
   provider: ProviderKind,
   host: string,
@@ -109,7 +102,6 @@ async function validateToken(
           }
         } catch (error) {
           if ((error as Error).message?.includes('rejected')) throw error;
-          // network-level failure: try next scheme
         }
       }
       return 'unreachable';

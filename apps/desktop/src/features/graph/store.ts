@@ -19,9 +19,7 @@ interface GraphState {
   loading: boolean;
   filters: GraphFilters;
   selectedOid: string | null;
-  /** internal layout engine, rebuilt when filters change */
   layout: GraphLayout;
-  /** repo the current commits belong to — guards against stale cross-repo state */
   lastPath: string | null;
 
   reload: (path: string) => Promise<void>;
@@ -42,8 +40,6 @@ export const useGraph = create<GraphState>((set, get) => ({
   lastPath: null,
 
   reload: async (path: string) => {
-    // Switching repositories: filters and commits from the previous repo
-    // must never leak into the new one.
     if (get().lastPath !== path) {
       set({
         commits: [],
@@ -94,7 +90,6 @@ export const useGraph = create<GraphState>((set, get) => ({
         branch: filters.branch || undefined,
       });
       layout.add(page.commits);
-      // getRows() returns the same (mutated) array — copy so zustand re-renders.
       set({
         commits: [...commits, ...page.commits],
         rows: [...layout.getRows()],

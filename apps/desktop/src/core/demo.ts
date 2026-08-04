@@ -11,12 +11,6 @@ import type {
   TagInfo,
 } from '@angkorgit/core';
 
-/**
- * Demo dataset used when the app runs outside Tauri (plain browser dev,
- * Playwright e2e). Generates a deterministic synthetic history with
- * branches and merges so the graph, diff and inspector are all exercised.
- */
-
 const AUTHORS = [
   { name: 'Sokha Chan', email: 'sokha@angkorgit.dev' },
   { name: 'Dara Kim', email: 'dara@angkorgit.dev' },
@@ -39,7 +33,6 @@ const SUBJECTS = [
 function makeCommits(count: number): CommitInfo[] {
   const commits: CommitInfo[] = [];
   const now = 1754200000;
-  // Build backwards: newest first, parent chains into older commits.
   for (let i = 0; i < count; i++) {
     const oid = `${(count - i).toString(16).padStart(6, '0')}${'a'.repeat(34)}`;
     const author = AUTHORS[i % AUTHORS.length];

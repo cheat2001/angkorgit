@@ -220,6 +220,15 @@ in a browser and the Playwright e2e suite run entirely on this. **Never** import
 - Mutating git operations that should be undoable MUST go through
   `useUndo.getState().tracked({ path, kind, label, extra, action, shouldRecord })`.
 
+## 6.5 Code style: NO inline comments
+
+The owner's explicit convention: **source files contain no comments** — not
+doc-comments, not explainers. Express intent through naming/structure; put
+explanations in docs/ and this file (gotchas G1+). Allowed exceptions are
+machine directives only: `eslint-disable`, `@ts-expect-error`,
+`/// <reference>`, Rust `#[allow]` attributes. When a change needs context,
+update CLAUDE.md or docs/ — never the code.
+
 ## 7. Design system rules
 
 - **Colors only via tokens** (`bg-surface`, `text-muted`, `text-danger`…) — hex values in

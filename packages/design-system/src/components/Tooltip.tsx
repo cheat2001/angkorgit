@@ -24,7 +24,6 @@ export const TooltipContent = React.forwardRef<
 ));
 TooltipContent.displayName = 'TooltipContent';
 
-/** Convenience wrapper: <Hint label="Fetch (⌘⇧F)"><Button/></Hint> */
 export function Hint({
   label,
   children,

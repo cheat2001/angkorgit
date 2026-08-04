@@ -4,17 +4,8 @@ import type { DiffLine, FileDiff } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
 import { CodeLine, lineBg, pairHunkLines } from './diffShared';
 
-/**
- * Virtualized no-wrap diff renderer. Only visible rows exist in the DOM and
- * only they get syntax-highlighted, so a 20k-line whole-file diff loads
- * instantly and scrolls at full frame rate. Gutters are dedicated columns
- * (not per-line sticky elements), and code columns scroll horizontally with
- * a width computed from the longest line (monospace makes this exact).
- */
-
 const LINE_H = 20;
 const HEADER_H = 28;
-/** Fallback advance width at 12px if canvas measurement is unavailable. */
 const CHAR_W = 7.3;
 
 interface HeaderRow {
@@ -59,7 +50,6 @@ export function flattenDiff(diff: FileDiff, split: boolean): FlatRow[] {
   return rows;
 }
 
-/** Visual length of a line (tabs render 4 wide via CSS tab-size). */
 function visualLength(content: string): number {
   let extra = 0;
   for (let i = 0; i < content.length; i++) if (content[i] === '\t') extra += 3;
@@ -68,9 +58,6 @@ function visualLength(content: string): number {
 
 let measureCtx: CanvasRenderingContext2D | null | undefined;
 
-/** Exact rendered width of a line in the app's mono font. Character-count
- * estimates UNDERESTIMATE for non-Latin scripts and fallback glyphs, which
- * left row backgrounds ending before the text when scrolled horizontally. */
 function measureWidth(content: string): number {
   if (measureCtx === undefined) {
     measureCtx = document.createElement('canvas').getContext('2d');
@@ -83,9 +70,6 @@ function measureWidth(content: string): number {
   return measureCtx.measureText(content.replace(/\t/g, '    ')).width;
 }
 
-/** Scroll width for a set of lines: rank by cheap estimate, then measure the
- * widest candidates exactly (fonts may render some glyphs wider than others,
- * so a few runners-up are checked too). */
 function contentWidth(lines: Iterable<string>): number {
   const candidates: { content: string; est: number }[] = [];
   for (const content of lines) candidates.push({ content, est: visualLength(content) });
@@ -95,8 +79,6 @@ function contentWidth(lines: Iterable<string>): number {
   return Math.ceil(max) + 32;
 }
 
-/** Rows must never show text past their tinted background: cover at least the
- * container (scroll width) and always the row's own content. */
 const ROW_W: React.CSSProperties = { minWidth: '100%', width: 'max-content' };
 
 const GutterCell = memo(function GutterCell({
@@ -142,25 +124,10 @@ function useDiffVirtualizer(rows: FlatRow[], scrollRef: React.RefObject<HTMLDivE
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => (rows[index].kind === 'header' ? HEADER_H : LINE_H),
-    // Generous overscan: fast wheel/momentum scrolling must not outrun row
-    // mounting (blank flashes). Rows are cheap fixed-height divs.
     overscan: 60,
   });
 }
 
-/**
- * Row tints (add/del backgrounds) are painted on an underlay that spans the
- * visible pane and scrolls ONLY vertically; the text layer pans over it
- * horizontally. Editors do the same — it guarantees full-width highlight
- * coverage at any horizontal offset and keeps h-scroll repaints tiny.
- */
-
-/**
- * Wheel-driven horizontal panning via translateX. Native nested h-scrollers
- * (document-tall elements inside the vertical scroller) force WebKit through
- * main-thread scroll machinery and axis event chaining — visible jank. One
- * rAF'd transform write pans every pane in the same frame instead.
- */
 function useHorizontalPan(
   panes: React.RefObject<HTMLDivElement>[],
   layers: React.RefObject<HTMLDivElement>[],
@@ -172,9 +139,6 @@ function useHorizontalPan(
     const maxX = () => {
       const pane = panes.find((p) => p.current)?.current;
       if (!pane) return 0;
-      // Ground truth beats the width estimate: scrollWidth is the real
-      // rendered extent of the mounted rows, so the longest visible line is
-      // always fully reachable (the range adapts like VS Code's).
       let w = width;
       for (const layer of layers) {
         if (layer.current) w = Math.max(w, layer.current.scrollWidth);
@@ -198,7 +162,6 @@ function useHorizontalPan(
       if (!raf) raf = requestAnimationFrame(apply);
     };
     const els = panes.flatMap((p) => (p.current ? [p.current] : []));
-    // React registers wheel listeners passively; panning must preventDefault.
     for (const el of els) el.addEventListener('wheel', onWheel, { passive: false });
     apply();
     return () => {
@@ -225,7 +188,6 @@ function HeaderContent({
   );
 }
 
-/** Inline (unified) virtualized diff. */
 export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunkActions, onLineContextMenu }: CommonProps) {
   const virtualizer = useDiffVirtualizer(rows, scrollRef);
   const items = virtualizer.getVirtualItems();
@@ -244,7 +206,6 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
 
   return (
     <div className="flex items-start">
-      {/* gutter column: line numbers + change marker */}
       <div
         className="relative w-[104px] shrink-0 border-r border-border-subtle bg-surface"
         style={{ height: total }}
@@ -274,7 +235,6 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
         })}
       </div>
 
-      {/* code area: full-width tint underlay + transform-panned text */}
       <div ref={paneRef} className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
         <div aria-hidden className="pointer-events-none absolute inset-0">
           {items.map((item) => {
@@ -320,7 +280,6 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
             );
           })}
         </div>
-        {/* hunk headers stay put while the text pans */}
         {items.map((item) => {
           const row = rows[item.index];
           if (row.kind !== 'header') return null;
@@ -339,7 +298,6 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
   );
 }
 
-/** One half of the split view. */
 function SplitHalf({
   rows,
   items,
@@ -355,7 +313,6 @@ function SplitHalf({
 }: CommonProps & {
   items: ReturnType<ReturnType<typeof useDiffVirtualizer>['getVirtualItems']>;
   total: number;
-  /** SHARED between both halves so panning keeps the columns aligned. */
   width: number;
   side: 'old' | 'new';
   paneRef: React.RefObject<HTMLDivElement>;
@@ -388,7 +345,6 @@ function SplitHalf({
           );
         })}
       </div>
-      {/* code area: full-width tint underlay + transform-panned text */}
       <div ref={paneRef} className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
         <div aria-hidden className="pointer-events-none absolute inset-0">
           {items.map((item) => {
@@ -430,7 +386,6 @@ function SplitHalf({
             );
           })}
         </div>
-        {/* hunk headers stay put while the text pans */}
         {items.map((item) => {
           const row = rows[item.index];
           if (row.kind !== 'header') return null;
@@ -451,7 +406,6 @@ function SplitHalf({
   );
 }
 
-/** Side-by-side virtualized diff; both halves pan horizontally in lockstep. */
 export function VirtualSplitDiff(props: CommonProps) {
   const virtualizer = useDiffVirtualizer(props.rows, props.scrollRef);
   const items = virtualizer.getVirtualItems();
@@ -463,8 +417,6 @@ export function VirtualSplitDiff(props: CommonProps) {
   const panes = useMemo(() => [paneL, paneR], []);
   const layers = useMemo(() => [layerL, layerR], []);
 
-  // One pan width for BOTH halves (widest line of either side) keeps the
-  // columns aligned at every offset.
   const width = useMemo(
     () =>
       contentWidth(

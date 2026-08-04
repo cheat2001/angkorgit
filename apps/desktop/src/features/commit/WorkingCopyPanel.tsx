@@ -112,11 +112,9 @@ export function WorkingCopyPanel() {
   const [amend, setAmend] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
-  /** right-click menu on a working-copy file */
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; file: FileStatus; staged: boolean } | null>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-grow the commit box with its content (capped, then scrolls).
   useEffect(() => {
     const el = messageRef.current;
     if (!el) return;
@@ -129,7 +127,6 @@ export function WorkingCopyPanel() {
   const stagedFiles = files.filter((f) => f.staged);
   const unstagedFiles = files.filter((f) => f.unstaged);
 
-  /** Clicking a file opens its diff full-width over the graph. */
   const showDiff = (file: string, staged: boolean) => {
     selectFile({ path: file, staged });
     openCenterDiff({ path: file, staged });
@@ -354,7 +351,6 @@ export function WorkingCopyPanel() {
 
       </div>
 
-      {/* File context menu */}
       {fileMenu && (
         <DropdownMenu open onOpenChange={(o) => !o && setFileMenu(null)}>
           <DropdownMenuTrigger asChild>
@@ -439,7 +435,6 @@ export function WorkingCopyPanel() {
       )}
 
       {files.length === 0 && !amend ? (
-        // Clean tree: no commit box — just a quiet way in for message fixes.
         <div className="shrink-0 border-t border-border-subtle px-3 py-2">
           <Button variant="ghost" size="sm" className="text-muted" onClick={() => setAmend(true)}>
             <Undo2 className="size-3" /> Amend last commit…

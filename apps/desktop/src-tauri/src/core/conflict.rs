@@ -4,7 +4,6 @@ use crate::error::{AppError, AppResult};
 
 use super::types::ConflictFile;
 
-/// Paths currently conflicted in the index.
 pub fn list(path: &str) -> AppResult<Vec<String>> {
     let repo = super::repo::open(path)?;
     let index = repo.index()?;
@@ -20,7 +19,6 @@ pub fn list(path: &str) -> AppResult<Vec<String>> {
     Ok(paths)
 }
 
-/// Read a conflicted file's working-tree content (with conflict markers).
 pub fn read(path: &str, file: &str) -> AppResult<ConflictFile> {
     let repo = super::repo::open(path)?;
     let workdir = repo
@@ -35,7 +33,6 @@ pub fn read(path: &str, file: &str) -> AppResult<ConflictFile> {
     })
 }
 
-/// Write the resolved content and mark the path resolved in the index.
 pub fn resolve(path: &str, file: &str, content: &str) -> AppResult<()> {
     let repo = super::repo::open(path)?;
     let workdir = repo

@@ -5,10 +5,6 @@ import { pickDirectory } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 
-/**
- * GitKraken-style repository tab strip: one tab per open project, click to
- * switch, ✕ to close, + to open another. Tabs persist across restarts.
- */
 export function RepoTabs() {
   const repo = useRepo((s) => s.repo);
   const tabs = useUi((s) => s.repoTabs);
@@ -31,7 +27,6 @@ export function RepoTabs() {
     useUi.getState().closeRepoTab(path);
     if (repo?.path !== path) return;
     if (remaining.length > 0) activate(remaining[remaining.length - 1]);
-    // no tabs left: RepositoryPage navigates to the welcome screen
     else useRepo.getState().close();
   };
 

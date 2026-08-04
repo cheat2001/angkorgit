@@ -16,20 +16,14 @@ fn is_image_path(path: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Which side of the working area a diff should describe.
 #[derive(Clone, Copy, PartialEq)]
 pub enum DiffTarget {
-    /// index -> workdir (unstaged changes)
     Unstaged,
-    /// HEAD -> index (staged changes)
     Staged,
 }
 
 fn base_opts(file: Option<&str>, context_lines: u32) -> DiffOptions {
     let mut opts = DiffOptions::new();
-    // xdiff stores this in a C `long`, which is 32-BIT ON WINDOWS: u32::MAX
-    // wraps to -1 and produces zero context. Clamp "whole file" requests to
-    // a value that survives the cast everywhere (no real file has 10M lines).
     let context_lines = context_lines.min(10_000_000);
     opts.context_lines(context_lines)
         .include_untracked(true)
@@ -177,8 +171,6 @@ fn file_diff_from(
     })
 }
 
-/// Diff of a single workdir/index file (used by the staging panel).
-/// `context_lines` = 3 for a compact diff; a huge value yields the whole file.
 pub fn file_diff(path: &str, file: &str, staged: bool, context_lines: u32) -> AppResult<FileDiff> {
     let repo = super::repo::open(path)?;
     let target = if staged {
@@ -203,7 +195,6 @@ pub fn file_diff(path: &str, file: &str, staged: bool, context_lines: u32) -> Ap
     file_diff_from(&repo, &diff, 0, !staged)
 }
 
-/// All file diffs introduced by a commit (against its first parent).
 pub fn commit_diff(path: &str, oid: &str, context_lines: u32) -> AppResult<Vec<FileDiff>> {
     let repo = super::repo::open(path)?;
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
@@ -224,7 +215,6 @@ pub fn commit_diff(path: &str, oid: &str, context_lines: u32) -> AppResult<Vec<F
     Ok(result)
 }
 
-/// Raw patch text of everything staged — the payload for AI commit messages.
 pub fn staged_patch_text(path: &str) -> AppResult<String> {
     let repo = super::repo::open(path)?;
     let diff = make_diff(&repo, DiffTarget::Staged, None, 3)?;

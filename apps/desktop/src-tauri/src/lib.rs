@@ -8,8 +8,6 @@ mod state;
 mod terminal;
 mod watcher;
 
-/// Flat re-exports of the git engine for integration tests
-/// (`tests/git_engine.rs`). Not part of the IPC surface.
 pub mod test_api {
     pub use crate::core::branch::{
         checkout_branch, cherry_pick, create as branch_create, merge, rebase, reset,

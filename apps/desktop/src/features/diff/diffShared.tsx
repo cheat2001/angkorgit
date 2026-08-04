@@ -4,7 +4,6 @@ import { wordDiff, type WordSegment } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
 import { highlightLine } from '@/shared/highlight';
 
-/** Pair up deletions/additions inside a hunk for split view + word diff. */
 export interface LinePair {
   left: DiffLine | null;
   right: DiffLine | null;

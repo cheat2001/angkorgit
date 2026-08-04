@@ -12,14 +12,8 @@ import { appVersion } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useSettings } from '@/features/settings/store';
 
-/** Preset zoom levels, GitKraken-style. */
 const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 
-/**
- * Slim footer: live repository facts on the left (branch, ahead/behind,
- * working-copy state), app controls on the right (zoom, version + update
- * check). Everything a glance should answer without opening a panel.
- */
 export function StatusBar() {
   const repo = useRepo((s) => s.repo);
   const status = useRepo((s) => s.status);

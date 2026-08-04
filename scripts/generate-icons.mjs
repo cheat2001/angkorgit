@@ -1,14 +1,4 @@
 #!/usr/bin/env node
-/**
- * AngKorGit app icon generator — zero dependencies.
- *
- * Renders the brand mark (tiered Angkor Wat towers on a temple platform,
- * flowing into a git branch with commit nodes) onto a dark rounded square
- * with vertical gradients. 4×4 supersampling gives clean anti-aliased edges.
- *
- * For release bundles run afterwards:
- *   pnpm --filter @angkorgit/desktop exec tauri icon src-tauri/icons/icon.png
- */
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -17,8 +7,6 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, 'apps/desktop/src-tauri/icons');
 mkdirSync(outDir, { recursive: true });
-
-// ---- minimal PNG encoder ----------------------------------------------------
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -64,12 +52,9 @@ function png(size, pixelFn) {
   ]);
 }
 
-// ---- scene ------------------------------------------------------------------
-
 const lerp = (a, b, t) => a + (b - a) * t;
 const mix = (c1, c2, t) => [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
 
-// palette
 const BG_TOP = [27, 37, 55]; // deep slate
 const BG_BOTTOM = [11, 16, 28];
 const GOLD_TOP = [245, 166, 35]; // Temple Gold gradient
@@ -77,7 +62,6 @@ const GOLD_BOTTOM = [196, 106, 8];
 const CREAM = [244, 214, 168];
 const NODE_GOLD = [240, 180, 41];
 
-/** trapezoid tapering upward: y0=top, y1=bottom, halfTop/halfBottom widths */
 function inTower(u, v, cx, y0, y1, halfTop, halfBottom) {
   if (v < y0 || v > y1) return false;
   const t = (v - y0) / (y1 - y0);
@@ -85,7 +69,6 @@ function inTower(u, v, cx, y0, y1, halfTop, halfBottom) {
 }
 const inCircle = (u, v, cx, cy, r) => (u - cx) ** 2 + (v - cy) ** 2 <= r * r;
 
-/** central tower: spire + three tapering tiers (classic prasat silhouette) */
 function centerTower(u, v) {
   return (
     inTower(u, v, 0.5, 0.095, 0.215, 0.0, 0.038) ||
@@ -102,32 +85,25 @@ function sideTower(u, v, cx) {
   );
 }
 
-/** color for one sample point in unit space, or null for transparent */
 function sample(u, v, cornerRadius) {
-  // rounded-square mask
   const dx = Math.max(cornerRadius - u, u - (1 - cornerRadius), 0);
   const dy = Math.max(cornerRadius - v, v - (1 - cornerRadius), 0);
   if (dx * dx + dy * dy > cornerRadius * cornerRadius) return null;
 
   const goldAt = (vv) => mix(GOLD_TOP, GOLD_BOTTOM, Math.min(Math.max((vv - 0.1) / 0.6, 0), 1));
 
-  // commit nodes (drawn on top)
   if (inCircle(u, v, 0.3, 0.795, 0.036)) return NODE_GOLD;
   if (inCircle(u, v, 0.7, 0.795, 0.036)) return NODE_GOLD;
   if (inCircle(u, v, 0.5, 0.855, 0.038)) return CREAM;
 
-  // branch: horizontal rail + stem down to the lower node
   if (v >= 0.787 && v <= 0.803 && u >= 0.3 && u <= 0.7) return CREAM;
   if (Math.abs(u - 0.5) <= 0.008 && v >= 0.72 && v <= 0.855) return CREAM;
 
-  // temple platform (two tiers, widening downward)
   if (inTower(u, v, 0.5, 0.6, 0.655, 0.34, 0.36)) return goldAt(v);
   if (inTower(u, v, 0.5, 0.655, 0.7, 0.4, 0.42)) return goldAt(v);
 
-  // towers
   if (centerTower(u, v) || sideTower(u, v, 0.285) || sideTower(u, v, 0.715)) return goldAt(v);
 
-  // background: vertical gradient with a faint glow behind the temple
   let bg = mix(BG_TOP, BG_BOTTOM, v);
   const glow = Math.max(0, 1 - Math.hypot((u - 0.5) / 0.55, (v - 0.42) / 0.5));
   bg = mix(bg, [58, 63, 76], glow * glow * 0.35);
