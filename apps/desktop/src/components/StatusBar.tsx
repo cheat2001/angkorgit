@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, GitBranch, Pencil, ZoomIn } from 'lucide-react';
-import { Hint, cn } from '@angkorgit/design-system';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Hint,
+  cn,
+} from '@angkorgit/design-system';
 import { appVersion } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useSettings } from '@/features/settings/store';
+
+/** Preset zoom levels, GitKraken-style. */
+const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 
 /**
  * Slim footer: live repository facts on the left (branch, ahead/behind,
@@ -14,7 +24,7 @@ export function StatusBar() {
   const repo = useRepo((s) => s.repo);
   const status = useRepo((s) => s.status);
   const zoom = useSettings((s) => s.zoom);
-  const zoomReset = useSettings((s) => s.zoomReset);
+  const setZoom = useSettings((s) => s.setZoom);
   const [version, setVersion] = useState('');
 
   useEffect(() => {
@@ -57,18 +67,26 @@ export function StatusBar() {
 
       <span className="flex-1" />
 
-      {Math.round(zoom * 100) !== 100 && (
-        <Hint label="Reset zoom">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <button
             type="button"
             className="flex items-center gap-1 rounded px-1 hover:bg-surface-raised hover:text-foreground"
-            onClick={zoomReset}
+            aria-label="UI zoom"
           >
             <ZoomIn className="size-3" />
             {Math.round(zoom * 100)}%
           </button>
-        </Hint>
-      )}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" side="top">
+          {ZOOM_LEVELS.map((level) => (
+            <DropdownMenuItem key={level} onClick={() => setZoom(level / 100)}>
+              <Check className={cn('size-3.5', Math.round(zoom * 100) !== level && 'invisible')} />
+              {level}%
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Hint label="Check for updates">
         <button
           type="button"
