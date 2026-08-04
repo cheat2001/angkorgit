@@ -55,6 +55,16 @@
   color-scheme: dark;
 }
 
+/*
+ * Accent variants — user-selectable personalization. Temple Gold (the brand
+ * default) lives in the .dark/.light blocks below. Accents recolor ONLY the
+ * interactive/brand primary; graph lanes and diff colors keep their meaning.
+ */
+.accent-jade { --primary: 160 84% 42%; --primary-foreground: 160 90% 8%; }
+.accent-sapphire { --primary: 217 91% 63%; --primary-foreground: 220 90% 10%; }
+.accent-lotus { --primary: 330 81% 62%; --primary-foreground: 330 90% 10%; }
+.accent-crimson { --primary: 0 84% 62%; --primary-foreground: 0 90% 10%; }
+
 .light {
   --background: 220 25% 97%;
   --surface: 0 0% 100%;
@@ -80,3 +90,9 @@
   --shadow-soft: 0 8px 32px -16px rgb(15 23 42 / 0.25);
   color-scheme: light;
 }
+
+/* Accent values tuned for the light theme (higher contrast, white text). */
+.light.accent-jade { --primary: 161 94% 30%; --primary-foreground: 0 0% 100%; }
+.light.accent-sapphire { --primary: 221 83% 45%; --primary-foreground: 0 0% 100%; }
+.light.accent-lotus { --primary: 330 81% 43%; --primary-foreground: 0 0% 100%; }
+.light.accent-crimson { --primary: 0 72% 45%; --primary-foreground: 0 0% 100%; }

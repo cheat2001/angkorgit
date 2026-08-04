@@ -3,18 +3,18 @@ import { toast } from 'sonner';
 import {
   Check,
   Github,
+  Keyboard,
   KeyRound,
-  Trash2,
-  UserRound,
-  UsersRound,
   Minus,
   Moon,
   Palette,
   Plus,
   Sparkles,
   Sun,
+  Trash2,
   User,
-  Keyboard,
+  UserRound,
+  UsersRound,
   Wifi,
 } from 'lucide-react';
 import { AI_PROVIDER_PRESETS, type AiProviderKind } from '@angkorgit/core';
@@ -22,10 +22,11 @@ import {
   Button,
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
+  Hint,
   Input,
   Kbd,
+  Logo,
   Select,
   SelectContent,
   SelectItem,
@@ -34,19 +35,36 @@ import {
   Separator,
   Spinner,
   Switch,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
   cn,
 } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
-import { useSettings, ZOOM_MAX, ZOOM_MIN } from './store';
+import { ACCENTS, useSettings, ZOOM_MAX, ZOOM_MIN } from './store';
 import { AccountsTab } from './AccountsTab';
 import { getAiProvider } from '@/features/ai/client';
 import { modKey } from '@/shared/utils';
+
+/**
+ * Product-grade settings window: navigation rail on the left, one focused
+ * section on the right — the pattern of Linear / Arc / VS Code, not a
+ * cramped tab strip.
+ */
+
+type SectionId = 'appearance' | 'git' | 'accounts' | 'ai' | 'shortcuts';
+
+const SECTIONS: Array<{
+  id: SectionId;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  { id: 'appearance', label: 'Appearance', description: 'Theme, accent color, zoom and motion', icon: Palette },
+  { id: 'git', label: 'Git', description: 'Committer identity and identity profiles', icon: User },
+  { id: 'accounts', label: 'Accounts', description: 'Hosting accounts for push and pull over HTTPS', icon: Github },
+  { id: 'ai', label: 'AI Assistant', description: 'Provider, model and connection', icon: Sparkles },
+  { id: 'shortcuts', label: 'Shortcuts', description: 'Keyboard reference', icon: Keyboard },
+];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -57,15 +75,34 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/** Titled card grouping related controls — the visual unit of every section. */
+function SettingCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-border bg-surface p-4">
+      <h3 className="text-sm font-medium">{title}</h3>
+      {description && <p className="mt-0.5 text-xs text-faint">{description}</p>}
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
 const SHORTCUTS: Array<[string, string[]]> = [
   ['Command palette', ['mod', 'K']],
   ['Toggle terminal', ['mod', '`']],
+  ['Toggle sidebar', ['mod', 'B']],
+  ['Undo / redo operation', ['mod', 'Z / ⇧Z']],
   ['Refresh repository', ['mod', 'R']],
   ['Settings', ['mod', ',']],
   ['Commit (in message box)', ['mod', '⏎']],
-  ['Zoom in / out', ['mod', '+ / −']],
-  ['Reset zoom', ['mod', '0']],
-  ['Toggle sidebar', ['mod', 'B']],
+  ['Zoom in / out / reset', ['mod', '+ / − / 0']],
   ['Close diff view', ['Esc']],
 ];
 
@@ -75,6 +112,7 @@ export function SettingsDialog() {
   const open = dialog === 'settings';
   const settings = useSettings();
 
+  const [section, setSection] = useState<SectionId>('appearance');
   const [gitName, setGitName] = useState('');
   const [gitEmail, setGitEmail] = useState('');
   const [testing, setTesting] = useState(false);
@@ -139,287 +177,352 @@ export function SettingsDialog() {
   };
 
   const preset = AI_PROVIDER_PRESETS[settings.ai.provider];
+  const active = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && closeDialog()}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
-        </DialogHeader>
-        <Tabs defaultValue="appearance">
-          <TabsList className="mb-4">
-            <TabsTrigger value="appearance">
-              <Palette className="size-3.5" /> Appearance
-            </TabsTrigger>
-            <TabsTrigger value="git">
-              <User className="size-3.5" /> Git
-            </TabsTrigger>
-            <TabsTrigger value="accounts">
-              <Github className="size-3.5" /> Accounts
-            </TabsTrigger>
-            <TabsTrigger value="ai">
-              <Sparkles className="size-3.5" /> AI
-            </TabsTrigger>
-            <TabsTrigger value="shortcuts">
-              <Keyboard className="size-3.5" /> Shortcuts
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="appearance" className="flex flex-col gap-4">
-            <div className="flex gap-2">
-              {(['dark', 'light'] as const).map((theme) => (
+      <DialogContent className="max-w-3xl overflow-hidden p-0">
+        <DialogTitle className="sr-only">Settings</DialogTitle>
+        <div className="flex h-[560px] max-h-[80vh]">
+          {/* Navigation rail */}
+          <nav className="flex w-52 shrink-0 flex-col border-r border-border-subtle bg-surface">
+            <p className="px-4 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-faint">
+              Settings
+            </p>
+            <div className="flex-1 px-2">
+              {SECTIONS.map(({ id, label, icon: Icon }) => (
                 <button
-                  key={theme}
-                  onClick={() => settings.setTheme(theme)}
+                  key={id}
+                  onClick={() => setSection(id)}
                   className={cn(
-                    'flex flex-1 items-center justify-center gap-2 rounded-lg border p-4 text-sm transition-colors',
-                    settings.theme === theme
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border hover:bg-surface-raised',
+                    'mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+                    section === id
+                      ? 'bg-primary/10 font-medium text-primary'
+                      : 'text-muted hover:bg-surface-raised hover:text-foreground',
                   )}
                 >
-                  {theme === 'dark' ? <Moon className="size-4" /> : <Sun className="size-4" />}
-                  {theme === 'dark' ? 'Dark' : 'Light'}
+                  <Icon className="size-4 shrink-0" />
+                  {label}
                 </button>
               ))}
             </div>
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div>
-                <p className="text-sm">Zoom</p>
-                <p className="text-xs text-faint">
-                  Also <Kbd>{modKey()}</Kbd> <Kbd>+</Kbd> / <Kbd>{modKey()}</Kbd> <Kbd>−</Kbd> anywhere
-                </p>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="secondary"
-                  size="icon-sm"
-                  aria-label="Zoom out"
-                  disabled={settings.zoom <= ZOOM_MIN}
-                  onClick={settings.zoomOut}
-                >
-                  <Minus className="size-3.5" />
-                </Button>
-                <button
-                  className="w-14 text-center font-mono text-xs text-muted hover:text-foreground"
-                  title="Reset zoom"
-                  onClick={settings.zoomReset}
-                >
-                  {Math.round(settings.zoom * 100)}%
-                </button>
-                <Button
-                  variant="secondary"
-                  size="icon-sm"
-                  aria-label="Zoom in"
-                  disabled={settings.zoom >= ZOOM_MAX}
-                  onClick={settings.zoomIn}
-                >
-                  <Plus className="size-3.5" />
-                </Button>
-              </div>
+            <div className="flex items-center gap-2 border-t border-border-subtle px-4 py-3">
+              <Logo size={18} className="text-foreground" />
+              <span className="text-xs text-faint">AngKorGit 0.1.0</span>
             </div>
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div>
-                <p className="text-sm">Reduce motion</p>
-                <p className="text-xs text-faint">Minimize animations across the app</p>
-              </div>
-              <Switch checked={settings.reduceMotion} onCheckedChange={settings.setReduceMotion} />
-            </div>
-          </TabsContent>
+          </nav>
 
-          <TabsContent value="git" className="flex flex-col gap-4">
-            <Field label="User name">
-              <Input value={gitName} onChange={(e) => setGitName(e.target.value)} placeholder="Your Name" />
-            </Field>
-            <Field label="Email">
-              <Input value={gitEmail} onChange={(e) => setGitEmail(e.target.value)} placeholder="you@example.com" />
-            </Field>
-            <p className="text-xs text-faint">
-              {repo ? `Saved to this repository's .git/config` : 'Saved to your global git config'}
-            </p>
-            <Separator />
-            <div className="rounded-lg border border-border p-3">
-              <p className="flex items-center gap-2 text-sm font-medium">
-                <UsersRound className="size-4" /> Identity profiles
-              </p>
-              <p className="mt-1 text-xs text-faint">
-                Save your work and personal identities, then switch per repository — applied to that
-                repo's local config only, so other tools can't override it.
-              </p>
-              <div className="mt-3 flex flex-col gap-1.5">
-                {settings.profiles.map((profile) => {
-                  const active = profile.email === gitEmail && profile.name === gitName;
-                  return (
-                    <div
-                      key={profile.id}
-                      className={cn(
-                        'group flex items-center gap-2 rounded-md border p-2',
-                        active ? 'border-primary/50 bg-primary/10' : 'border-border-subtle',
-                      )}
-                    >
-                      <UserRound className={cn('size-4 shrink-0', active ? 'text-primary' : 'text-muted')} />
-                      <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 text-sm">
-                          {profile.label}
-                          {active && <Check className="size-3.5 text-primary" />}
-                        </p>
-                        <p className="truncate text-xs text-faint">
-                          {profile.name} · {profile.email}
-                        </p>
-                      </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={active}
-                        onClick={() => void applyProfile(profile.name, profile.email, profile.label)}
-                      >
-                        {active ? 'Active' : repo ? 'Use for this repo' : 'Use'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Remove profile ${profile.label}`}
-                        className="opacity-0 group-hover:opacity-100"
-                        onClick={() => settings.removeProfile(profile.id)}
-                      >
-                        <Trash2 className="size-3.5 text-danger" />
-                      </Button>
+          {/* Section content */}
+          <div className="flex min-w-0 flex-1 flex-col bg-background">
+            <header className="shrink-0 border-b border-border-subtle px-6 pb-4 pt-5">
+              <h2 className="text-base font-semibold">{active.label}</h2>
+              <p className="mt-0.5 text-xs text-muted">{active.description}</p>
+            </header>
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              {section === 'appearance' && (
+                <div className="flex flex-col gap-4">
+                  <SettingCard title="Theme">
+                    <div className="flex gap-2">
+                      {(['dark', 'light'] as const).map((theme) => (
+                        <button
+                          key={theme}
+                          onClick={() => settings.setTheme(theme)}
+                          className={cn(
+                            'flex flex-1 items-center justify-center gap-2 rounded-lg border p-3 text-sm transition-colors',
+                            settings.theme === theme
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border hover:bg-surface-raised',
+                          )}
+                        >
+                          {theme === 'dark' ? <Moon className="size-4" /> : <Sun className="size-4" />}
+                          {theme === 'dark' ? 'Dark' : 'Light'}
+                        </button>
+                      ))}
                     </div>
-                  );
-                })}
-                <div className="mt-1 flex flex-col gap-2 rounded-md border border-dashed border-border p-2">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Label, e.g. Work"
-                      value={profileLabel}
-                      onChange={(e) => setProfileLabel(e.target.value)}
-                      className="w-32 shrink-0"
-                    />
-                    <Input
-                      placeholder="Name"
-                      value={profileName}
-                      onChange={(e) => setProfileName(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="email@example.com"
-                      value={profileEmail}
-                      onChange={(e) => setProfileEmail(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') addProfile();
-                      }}
-                    />
-                    <Button
-                      variant="secondary"
-                      disabled={!profileLabel.trim() || !profileName.trim() || !profileEmail.trim()}
-                      onClick={addProfile}
-                    >
-                      Add
-                    </Button>
-                  </div>
+                  </SettingCard>
+
+                  <SettingCard
+                    title="Accent color"
+                    description="Buttons, highlights and focus follow your accent. Graph and diff colors keep their meaning."
+                  >
+                    <div className="flex items-center gap-3">
+                      {ACCENTS.map((accent) => (
+                        <Hint key={accent.id} label={accent.label}>
+                          <button
+                            aria-label={`Accent: ${accent.label}`}
+                            onClick={() => settings.setAccent(accent.id)}
+                            className={cn(
+                              'flex size-8 items-center justify-center rounded-full transition-transform hover:scale-110',
+                              settings.accent === accent.id &&
+                                'ring-2 ring-foreground/70 ring-offset-2 ring-offset-background',
+                            )}
+                            style={{ background: accent.color }}
+                          >
+                            {settings.accent === accent.id && <Check className="size-4 text-white drop-shadow" />}
+                          </button>
+                        </Hint>
+                      ))}
+                    </div>
+                  </SettingCard>
+
+                  <SettingCard title="Zoom">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-faint">
+                        Also <Kbd>{modKey()}</Kbd> <Kbd>+</Kbd> / <Kbd>{modKey()}</Kbd> <Kbd>−</Kbd> anywhere
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="secondary"
+                          size="icon-sm"
+                          aria-label="Zoom out"
+                          disabled={settings.zoom <= ZOOM_MIN}
+                          onClick={settings.zoomOut}
+                        >
+                          <Minus className="size-3.5" />
+                        </Button>
+                        <button
+                          className="w-14 text-center font-mono text-xs text-muted hover:text-foreground"
+                          title="Reset zoom"
+                          onClick={settings.zoomReset}
+                        >
+                          {Math.round(settings.zoom * 100)}%
+                        </button>
+                        <Button
+                          variant="secondary"
+                          size="icon-sm"
+                          aria-label="Zoom in"
+                          disabled={settings.zoom >= ZOOM_MAX}
+                          onClick={settings.zoomIn}
+                        >
+                          <Plus className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </SettingCard>
+
+                  <SettingCard title="Reduce motion" description="Minimize animations across the app">
+                    <Switch checked={settings.reduceMotion} onCheckedChange={settings.setReduceMotion} />
+                  </SettingCard>
                 </div>
-              </div>
-            </div>
-            <Separator />
-            <Field label="Git executable (used by the built-in terminal)">
-              <Input value={settings.gitExecutable} onChange={(e) => settings.setGitExecutable(e.target.value)} />
-            </Field>
-            <Field label="SSH private key (optional — SSH agent is tried first)">
-              <div className="relative">
-                <KeyRound className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
-                <Input
-                  className="pl-8"
-                  value={settings.sshKeyPath}
-                  onChange={(e) => settings.setSshKeyPath(e.target.value)}
-                  placeholder="~/.ssh/id_ed25519"
-                />
-              </div>
-            </Field>
-            <div className="flex justify-end">
-              <Button onClick={() => void saveIdentity()}>Save identity</Button>
-            </div>
-          </TabsContent>
+              )}
 
-          <TabsContent value="accounts">
-            <AccountsTab />
-          </TabsContent>
+              {section === 'git' && (
+                <div className="flex flex-col gap-4">
+                  <SettingCard
+                    title="Committer identity"
+                    description={
+                      repo
+                        ? `Saved to this repository's .git/config (wins over the global config).`
+                        : 'Saved to your global git config.'
+                    }
+                  >
+                    <div className="flex flex-col gap-3">
+                      <Field label="User name">
+                        <Input value={gitName} onChange={(e) => setGitName(e.target.value)} placeholder="Your Name" />
+                      </Field>
+                      <Field label="Email">
+                        <Input
+                          value={gitEmail}
+                          onChange={(e) => setGitEmail(e.target.value)}
+                          placeholder="you@example.com"
+                        />
+                      </Field>
+                      <div className="flex justify-end">
+                        <Button onClick={() => void saveIdentity()}>Save identity</Button>
+                      </div>
+                    </div>
+                  </SettingCard>
 
-          <TabsContent value="ai" className="flex flex-col gap-4">
-            <Field label="Provider">
-              <Select
-                value={settings.ai.provider}
-                onValueChange={(value) => {
-                  const kind = value as AiProviderKind;
-                  settings.setAi({
-                    provider: kind,
-                    model: AI_PROVIDER_PRESETS[kind].defaultModel,
-                    baseUrl: '',
-                  });
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(AI_PROVIDER_PRESETS) as AiProviderKind[]).map((kind) => (
-                    <SelectItem key={kind} value={kind}>
-                      {AI_PROVIDER_PRESETS[kind].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Model">
-              <Input
-                value={settings.ai.model}
-                onChange={(e) => settings.setAi({ model: e.target.value })}
-                placeholder={preset.defaultModel}
-              />
-            </Field>
-            {preset.needsApiKey && (
-              <Field label="API key">
-                <Input
-                  type="password"
-                  value={settings.ai.apiKey}
-                  onChange={(e) => settings.setAi({ apiKey: e.target.value })}
-                  placeholder="sk-…"
-                />
-              </Field>
-            )}
-            <Field label={`Base URL (optional — defaults to ${preset.defaultBaseUrl})`}>
-              <Input
-                value={settings.ai.baseUrl ?? ''}
-                onChange={(e) => settings.setAi({ baseUrl: e.target.value })}
-                placeholder={preset.defaultBaseUrl}
-              />
-            </Field>
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-faint">
-                Used for commit messages, diff explanations, conflict help and reviews.
-              </p>
-              <Button variant="secondary" onClick={() => void testAi()} disabled={testing}>
-                {testing ? <Spinner /> : <Wifi />}
-                Test connection
-              </Button>
-            </div>
-          </TabsContent>
+                  <SettingCard
+                    title="Identity profiles"
+                    description="Save work and personal identities, then switch per repository — applied to that repo's local config only, so other tools can't override it."
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      {settings.profiles.map((profile) => {
+                        const isActive = profile.email === gitEmail && profile.name === gitName;
+                        return (
+                          <div
+                            key={profile.id}
+                            className={cn(
+                              'group flex items-center gap-2 rounded-md border p-2',
+                              isActive ? 'border-primary/50 bg-primary/10' : 'border-border-subtle',
+                            )}
+                          >
+                            <UserRound className={cn('size-4 shrink-0', isActive ? 'text-primary' : 'text-muted')} />
+                            <div className="min-w-0 flex-1">
+                              <p className="flex items-center gap-1.5 text-sm">
+                                {profile.label}
+                                {isActive && <Check className="size-3.5 text-primary" />}
+                              </p>
+                              <p className="truncate text-xs text-faint">
+                                {profile.name} · {profile.email}
+                              </p>
+                            </div>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={isActive}
+                              onClick={() => void applyProfile(profile.name, profile.email, profile.label)}
+                            >
+                              {isActive ? 'Active' : repo ? 'Use for this repo' : 'Use'}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Remove profile ${profile.label}`}
+                              className="opacity-0 group-hover:opacity-100"
+                              onClick={() => settings.removeProfile(profile.id)}
+                            >
+                              <Trash2 className="size-3.5 text-danger" />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                      {settings.profiles.length === 0 && (
+                        <p className="flex items-center gap-2 rounded-md border border-dashed border-border p-3 text-xs text-faint">
+                          <UsersRound className="size-4" /> No profiles yet — add your Work and Personal identities below.
+                        </p>
+                      )}
+                      <div className="mt-1 flex flex-col gap-2 rounded-md border border-dashed border-border p-2">
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Label, e.g. Work"
+                            value={profileLabel}
+                            onChange={(e) => setProfileLabel(e.target.value)}
+                            className="w-32 shrink-0"
+                          />
+                          <Input placeholder="Name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
+                        </div>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="email@example.com"
+                            value={profileEmail}
+                            onChange={(e) => setProfileEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') addProfile();
+                            }}
+                          />
+                          <Button
+                            variant="secondary"
+                            disabled={!profileLabel.trim() || !profileName.trim() || !profileEmail.trim()}
+                            onClick={addProfile}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </SettingCard>
 
-          <TabsContent value="shortcuts">
-            <div className="flex flex-col">
-              {SHORTCUTS.map(([label, keys]) => (
-                <div key={label} className="flex items-center justify-between border-b border-border-subtle py-2 last:border-0">
-                  <span className="text-sm">{label}</span>
-                  <span className="flex items-center gap-1">
-                    {keys.map((key) => (
-                      <Kbd key={key}>{key === 'mod' ? modKey() : key}</Kbd>
+                  <SettingCard title="Advanced">
+                    <div className="flex flex-col gap-3">
+                      <Field label="Git executable (used by the built-in terminal)">
+                        <Input value={settings.gitExecutable} onChange={(e) => settings.setGitExecutable(e.target.value)} />
+                      </Field>
+                      <Field label="SSH private key (optional — SSH agent is tried first)">
+                        <div className="relative">
+                          <KeyRound className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
+                          <Input
+                            className="pl-8"
+                            value={settings.sshKeyPath}
+                            onChange={(e) => settings.setSshKeyPath(e.target.value)}
+                            placeholder="~/.ssh/id_ed25519"
+                          />
+                        </div>
+                      </Field>
+                    </div>
+                  </SettingCard>
+                </div>
+              )}
+
+              {section === 'accounts' && <AccountsTab />}
+
+              {section === 'ai' && (
+                <div className="flex flex-col gap-4">
+                  <SettingCard
+                    title="Provider"
+                    description="Used for commit messages, diff explanations, conflict help and reviews. Local models via Ollama or LM Studio need no API key."
+                  >
+                    <div className="flex flex-col gap-3">
+                      <Select
+                        value={settings.ai.provider}
+                        onValueChange={(value) => {
+                          const kind = value as AiProviderKind;
+                          settings.setAi({
+                            provider: kind,
+                            model: AI_PROVIDER_PRESETS[kind].defaultModel,
+                            baseUrl: '',
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(AI_PROVIDER_PRESETS) as AiProviderKind[]).map((kind) => (
+                            <SelectItem key={kind} value={kind}>
+                              {AI_PROVIDER_PRESETS[kind].label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Field label="Model">
+                        <Input
+                          value={settings.ai.model}
+                          onChange={(e) => settings.setAi({ model: e.target.value })}
+                          placeholder={preset.defaultModel}
+                        />
+                      </Field>
+                      {preset.needsApiKey && (
+                        <Field label="API key">
+                          <Input
+                            type="password"
+                            value={settings.ai.apiKey}
+                            onChange={(e) => settings.setAi({ apiKey: e.target.value })}
+                            placeholder="sk-…"
+                          />
+                        </Field>
+                      )}
+                      <Field label={`Base URL (optional — defaults to ${preset.defaultBaseUrl})`}>
+                        <Input
+                          value={settings.ai.baseUrl ?? ''}
+                          onChange={(e) => settings.setAi({ baseUrl: e.target.value })}
+                          placeholder={preset.defaultBaseUrl}
+                        />
+                      </Field>
+                      <div className="flex justify-end">
+                        <Button variant="secondary" onClick={() => void testAi()} disabled={testing}>
+                          {testing ? <Spinner /> : <Wifi />}
+                          Test connection
+                        </Button>
+                      </div>
+                    </div>
+                  </SettingCard>
+                </div>
+              )}
+
+              {section === 'shortcuts' && (
+                <SettingCard title="Keyboard shortcuts">
+                  <div className="flex flex-col">
+                    {SHORTCUTS.map(([label, keys], index) => (
+                      <div key={label}>
+                        {index > 0 && <Separator />}
+                        <div className="flex items-center justify-between py-2.5">
+                          <span className="text-sm">{label}</span>
+                          <span className="flex items-center gap-1">
+                            {keys.map((key) => (
+                              <Kbd key={key}>{key === 'mod' ? modKey() : key}</Kbd>
+                            ))}
+                          </span>
+                        </div>
+                      </div>
                     ))}
-                  </span>
-                </div>
-              ))}
+                  </div>
+                </SettingCard>
+              )}
             </div>
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

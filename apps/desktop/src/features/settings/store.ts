@@ -5,6 +5,25 @@ import { isTauri } from '@/core/ipc';
 
 export type Theme = 'dark' | 'light';
 
+/** User-selectable primary accent. Temple Gold is the brand default. */
+export type AccentId = 'gold' | 'jade' | 'sapphire' | 'lotus' | 'crimson';
+
+export const ACCENTS: Array<{ id: AccentId; label: string; color: string }> = [
+  { id: 'gold', label: 'Temple Gold', color: '#D97706' },
+  { id: 'jade', label: 'Jade', color: '#10B981' },
+  { id: 'sapphire', label: 'Sapphire', color: '#3B82F6' },
+  { id: 'lotus', label: 'Lotus', color: '#EC4899' },
+  { id: 'crimson', label: 'Crimson', color: '#EF4444' },
+];
+
+const ACCENT_CLASSES = ACCENTS.filter((a) => a.id !== 'gold').map((a) => `accent-${a.id}`);
+
+function applyAccent(accent: AccentId): void {
+  const el = document.documentElement;
+  el.classList.remove(...ACCENT_CLASSES);
+  if (accent !== 'gold') el.classList.add(`accent-${accent}`);
+}
+
 /** A reusable committer identity (e.g. Work vs Personal). */
 export interface IdentityProfile {
   id: string;
@@ -34,6 +53,7 @@ function applyZoom(zoom: number): void {
 
 interface SettingsState {
   theme: Theme;
+  accent: AccentId;
   /** UI zoom factor, 0.6–1.6 (1 = 100%). */
   zoom: number;
   /** Path to a git executable for the built-in terminal PATH hint. */
@@ -47,6 +67,7 @@ interface SettingsState {
   profiles: IdentityProfile[];
   ai: AiConfig;
   setTheme: (theme: Theme) => void;
+  setAccent: (accent: AccentId) => void;
   setZoom: (zoom: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -67,6 +88,7 @@ export const useSettings = create<SettingsState>()(
   persist(
     (set, get) => ({
       theme: 'dark',
+      accent: 'gold',
       zoom: 1,
       gitExecutable: 'git',
       sshKeyPath: '',
@@ -78,6 +100,10 @@ export const useSettings = create<SettingsState>()(
         document.documentElement.classList.toggle('dark', theme === 'dark');
         document.documentElement.classList.toggle('light', theme === 'light');
         set({ theme });
+      },
+      setAccent: (accent) => {
+        applyAccent(accent);
+        set({ accent });
       },
       setZoom: (zoom) => {
         const clamped = clampZoom(zoom);
@@ -106,6 +132,7 @@ export const useSettings = create<SettingsState>()(
         document.documentElement.classList.toggle('light', theme === 'light');
         const zoom = state?.zoom ?? 1;
         if (zoom !== 1) applyZoom(zoom);
+        applyAccent(state?.accent ?? 'gold');
       },
     },
   ),
