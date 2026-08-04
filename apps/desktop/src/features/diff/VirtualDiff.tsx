@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { DiffLine, FileDiff } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
@@ -150,10 +150,55 @@ function useDiffVirtualizer(rows: FlatRow[], scrollRef: React.RefObject<HTMLDivE
 
 /**
  * Row tints (add/del backgrounds) are painted on an underlay that spans the
- * visible pane and scrolls ONLY vertically; the text layer scrolls over it
+ * visible pane and scrolls ONLY vertically; the text layer pans over it
  * horizontally. Editors do the same — it guarantees full-width highlight
  * coverage at any horizontal offset and keeps h-scroll repaints tiny.
  */
+
+/**
+ * Wheel-driven horizontal panning via translateX. Native nested h-scrollers
+ * (document-tall elements inside the vertical scroller) force WebKit through
+ * main-thread scroll machinery and axis event chaining — visible jank. One
+ * rAF'd transform write pans every pane in the same frame instead.
+ */
+function useHorizontalPan(
+  panes: React.RefObject<HTMLDivElement>[],
+  layers: React.RefObject<HTMLDivElement>[],
+  width: number,
+) {
+  const x = useRef(0);
+  useEffect(() => {
+    let raf = 0;
+    const maxX = () => {
+      const pane = panes.find((p) => p.current)?.current;
+      return pane ? Math.max(0, width - pane.clientWidth) : 0;
+    };
+    const apply = () => {
+      raf = 0;
+      x.current = Math.min(x.current, maxX());
+      for (const layer of layers) {
+        if (layer.current) layer.current.style.transform = `translateX(${-x.current}px)`;
+      }
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical → outer scroller
+      const dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
+      const next = Math.min(Math.max(0, x.current + dx), maxX());
+      e.preventDefault();
+      if (next === x.current) return;
+      x.current = next;
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+    const els = panes.flatMap((p) => (p.current ? [p.current] : []));
+    // React registers wheel listeners passively; panning must preventDefault.
+    for (const el of els) el.addEventListener('wheel', onWheel, { passive: false });
+    apply();
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      for (const el of els) el.removeEventListener('wheel', onWheel);
+    };
+  }, [panes, layers, width]);
+}
 
 function HeaderContent({
   header,
@@ -165,7 +210,7 @@ function HeaderContent({
   hunkActions?: (hunkIndex: number) => React.ReactNode;
 }) {
   return (
-    <div className="sticky left-0 flex h-7 w-fit max-w-full items-center gap-2 px-3">
+    <div className="flex h-7 w-fit max-w-full items-center gap-2 px-3">
       <span className="truncate font-mono text-[10px] text-info">{header}</span>
       {hunkActions?.(hunkIndex)}
     </div>
@@ -182,6 +227,12 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
     () => contentWidth(rows.flatMap((row) => (row.kind === 'line' ? [row.line.content] : []))),
     [rows],
   );
+
+  const paneRef = useRef<HTMLDivElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
+  const panes = useMemo(() => [paneRef], []);
+  const layers = useMemo(() => [layerRef], []);
+  useHorizontalPan(panes, layers, width);
 
   return (
     <div className="flex items-start">
@@ -215,9 +266,9 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
         })}
       </div>
 
-      {/* code area: full-width tint underlay + horizontally scrolling text */}
-      <div className="relative min-w-0 flex-1" style={{ height: total }}>
-        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      {/* code area: full-width tint underlay + transform-panned text */}
+      <div ref={paneRef} className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
+        <div aria-hidden className="pointer-events-none absolute inset-0">
           {items.map((item) => {
             const row = rows[item.index];
             return (
@@ -234,40 +285,47 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
             );
           })}
         </div>
-        <div className="absolute inset-0 overflow-x-auto overflow-y-hidden">
-          <div className="relative h-full" style={{ width, minWidth: '100%', tabSize: 4 }}>
-            {items.map((item) => {
-              const row = rows[item.index];
-              return (
-                <div
-                  key={item.key}
-                  className="absolute left-0"
-                  style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
-                  onContextMenu={
-                    row.kind === 'line' && onLineContextMenu
-                      ? (e) => onLineContextMenu(e, { line: row.line })
-                      : undefined
-                  }
-                >
-                  {row.kind === 'header' ? (
-                    <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
-                  ) : row.kind === 'line' ? (
-                    <div className="px-2">
-                      <CodeLine
-                        line={row.line}
-                        pair={row.pair}
-                        language={language}
-                        useWordDiff={useWordDiff}
-                        side={row.line.kind === 'deletion' ? 'old' : 'new'}
-                        wrap={false}
-                      />
-                    </div>
-                  ) : null}
+        <div ref={layerRef} className="absolute inset-y-0 left-0" style={{ width, minWidth: '100%', tabSize: 4 }}>
+          {items.map((item) => {
+            const row = rows[item.index];
+            if (row.kind !== 'line') return null;
+            return (
+              <div
+                key={item.key}
+                className="absolute left-0"
+                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
+                onContextMenu={
+                  onLineContextMenu ? (e) => onLineContextMenu(e, { line: row.line }) : undefined
+                }
+              >
+                <div className="px-2">
+                  <CodeLine
+                    line={row.line}
+                    pair={row.pair}
+                    language={language}
+                    useWordDiff={useWordDiff}
+                    side={row.line.kind === 'deletion' ? 'old' : 'new'}
+                    wrap={false}
+                  />
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
+        {/* hunk headers stay put while the text pans */}
+        {items.map((item) => {
+          const row = rows[item.index];
+          if (row.kind !== 'header') return null;
+          return (
+            <div
+              key={item.key}
+              className="absolute left-0 w-full"
+              style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+            >
+              <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -284,17 +342,16 @@ function SplitHalf({
   useWordDiff,
   hunkActions,
   onLineContextMenu,
-  scrollX,
-  onScrollX,
+  paneRef,
+  layerRef,
 }: CommonProps & {
   items: ReturnType<ReturnType<typeof useDiffVirtualizer>['getVirtualItems']>;
   total: number;
-  /** SHARED between both halves — unequal scroll ranges make the clamped
-   * pane's sync echo fight the user's scroll (visible jitter). */
+  /** SHARED between both halves so panning keeps the columns aligned. */
   width: number;
   side: 'old' | 'new';
-  scrollX: React.RefObject<HTMLDivElement>;
-  onScrollX: () => void;
+  paneRef: React.RefObject<HTMLDivElement>;
+  layerRef: React.RefObject<HTMLDivElement>;
 }) {
   const bgOf = (row: FlatRow): string => {
     if (row.kind === 'header') return 'border-y border-border-subtle bg-surface-raised/60';
@@ -323,9 +380,9 @@ function SplitHalf({
           );
         })}
       </div>
-      {/* code area: full-width tint underlay + horizontally scrolling text */}
-      <div className="relative min-w-0 flex-1" style={{ height: total }}>
-        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      {/* code area: full-width tint underlay + transform-panned text */}
+      <div ref={paneRef} className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
+        <div aria-hidden className="pointer-events-none absolute inset-0">
           {items.map((item) => {
             const row = rows[item.index];
             return (
@@ -337,56 +394,69 @@ function SplitHalf({
             );
           })}
         </div>
-        <div ref={scrollX} onScroll={onScrollX} className="absolute inset-0 overflow-x-auto overflow-y-hidden">
-          <div className="relative h-full" style={{ width, minWidth: '100%', tabSize: 4 }}>
-            {items.map((item) => {
-              const row = rows[item.index];
-              const line = row.kind === 'pair' ? (side === 'old' ? row.left : row.right) : null;
-              return (
-                <div
-                  key={item.key}
-                  className="absolute left-0"
-                  style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
-                  onContextMenu={
-                    line && onLineContextMenu ? (e) => onLineContextMenu(e, { line }) : undefined
-                  }
-                >
-                  {row.kind === 'header' ? (
-                    side === 'old' ? (
-                      <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
-                    ) : null
-                  ) : line ? (
-                    <div className="px-2">
-                      <CodeLine
-                        line={line}
-                        pair={row.kind === 'pair' ? (side === 'old' ? row.right : row.left) : null}
-                        language={language}
-                        useWordDiff={useWordDiff}
-                        side={side}
-                        wrap={false}
-                      />
-                    </div>
-                  ) : null}
+        <div ref={layerRef} className="absolute inset-y-0 left-0" style={{ width, minWidth: '100%', tabSize: 4 }}>
+          {items.map((item) => {
+            const row = rows[item.index];
+            const line = row.kind === 'pair' ? (side === 'old' ? row.left : row.right) : null;
+            if (!line) return null;
+            return (
+              <div
+                key={item.key}
+                className="absolute left-0"
+                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
+                onContextMenu={
+                  onLineContextMenu ? (e) => onLineContextMenu(e, { line }) : undefined
+                }
+              >
+                <div className="px-2">
+                  <CodeLine
+                    line={line}
+                    pair={row.kind === 'pair' ? (side === 'old' ? row.right : row.left) : null}
+                    language={language}
+                    useWordDiff={useWordDiff}
+                    side={side}
+                    wrap={false}
+                  />
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
+        {/* hunk headers stay put while the text pans */}
+        {items.map((item) => {
+          const row = rows[item.index];
+          if (row.kind !== 'header') return null;
+          return (
+            <div
+              key={item.key}
+              className="absolute left-0 w-full"
+              style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+            >
+              {side === 'old' ? (
+                <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-/** Side-by-side virtualized diff with synchronized horizontal scrolling. */
+/** Side-by-side virtualized diff; both halves pan horizontally in lockstep. */
 export function VirtualSplitDiff(props: CommonProps) {
   const virtualizer = useDiffVirtualizer(props.rows, props.scrollRef);
   const items = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
-  const leftX = useRef<HTMLDivElement>(null);
-  const rightX = useRef<HTMLDivElement>(null);
+  const paneL = useRef<HTMLDivElement>(null);
+  const paneR = useRef<HTMLDivElement>(null);
+  const layerL = useRef<HTMLDivElement>(null);
+  const layerR = useRef<HTMLDivElement>(null);
+  const panes = useMemo(() => [paneL, paneR], []);
+  const layers = useMemo(() => [layerL, layerR], []);
 
-  // One scroll width for BOTH halves (widest line of either side): equal
-  // ranges mean the mirrored pane can never clamp and fight the scroll.
+  // One pan width for BOTH halves (widest line of either side) keeps the
+  // columns aligned at every offset.
   const width = useMemo(
     () =>
       contentWidth(
@@ -399,16 +469,12 @@ export function VirtualSplitDiff(props: CommonProps) {
     [props.rows],
   );
 
-  const sync = (from: React.RefObject<HTMLDivElement>, to: React.RefObject<HTMLDivElement>) => () => {
-    if (from.current && to.current && to.current.scrollLeft !== from.current.scrollLeft) {
-      to.current.scrollLeft = from.current.scrollLeft;
-    }
-  };
+  useHorizontalPan(panes, layers, width);
 
   return (
     <div className="flex items-start">
-      <SplitHalf {...props} items={items} total={total} width={width} side="old" scrollX={leftX} onScrollX={sync(leftX, rightX)} />
-      <SplitHalf {...props} items={items} total={total} width={width} side="new" scrollX={rightX} onScrollX={sync(rightX, leftX)} />
+      <SplitHalf {...props} items={items} total={total} width={width} side="old" paneRef={paneL} layerRef={layerL} />
+      <SplitHalf {...props} items={items} total={total} width={width} side="new" paneRef={paneR} layerRef={layerR} />
     </div>
   );
 }
