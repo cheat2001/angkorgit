@@ -260,9 +260,9 @@ pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
     let (upstream_name, remote_name) = {
         let repo = super::repo::open(path)?;
         let branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
-        let upstream = branch
-            .upstream()
-            .map_err(|_| AppError::other(format!("branch {branch_name} has no upstream to pull from")))?;
+        let upstream = branch.upstream().map_err(|_| {
+            AppError::other(format!("branch {branch_name} has no upstream to pull from"))
+        })?;
         let upstream_name = upstream
             .name()?
             .ok_or_else(|| AppError::other("invalid upstream name"))?
@@ -319,7 +319,10 @@ pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
     }
     // Pure fast-forward: move the ref, no checkout needed.
     let mut reference = repo.find_reference(&format!("refs/heads/{branch_name}"))?;
-    reference.set_target(upstream_oid, &format!("pull: fast-forward to {upstream_name}"))?;
+    reference.set_target(
+        upstream_oid,
+        &format!("pull: fast-forward to {upstream_name}"),
+    )?;
     Ok(OpOutcome {
         status: "fast_forward".into(),
         message: format!("Fast-forwarded {branch_name} to {upstream_name}"),

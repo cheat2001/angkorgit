@@ -52,9 +52,10 @@ Already wired in the codebase:
 - `release.yml` passes `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` to tauri-action,
   which then also generates and uploads `latest.json`.
 
-**[owner] one-time**: add GitHub secret `TAURI_SIGNING_PRIVATE_KEY` — the
-contents of `~/.tauri/angkorgit.key` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-if you set one; ours is empty → set the secret to an empty string or omit).
+**[owner] one-time**: add BOTH GitHub secrets (verified locally 2026-08-04):
+- `TAURI_SIGNING_PRIVATE_KEY` — the contents of `~/.tauri/angkorgit.key`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — set to an **empty value** (required:
+  without the env var Tauri tries an interactive prompt and headless builds fail).
 
 ## 4. Homebrew cask **[after first signed release]**
 

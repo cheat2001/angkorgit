@@ -264,8 +264,17 @@ pub async fn remote_push(
     withTags: bool,
     setUpstream: bool,
 ) -> AppResult<OpOutcome> {
-    blocking(move || remote::push(&path, &remote, branch.as_deref(), force, withTags, setUpstream))
-        .await
+    blocking(move || {
+        remote::push(
+            &path,
+            &remote,
+            branch.as_deref(),
+            force,
+            withTags,
+            setUpstream,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
