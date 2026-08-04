@@ -37,6 +37,15 @@ Click **Allow** (not "Always Allow" — it has no effect). One prompt per launch
 is expected behavior for unsigned builds; a paid Developer ID signature is the
 only way to make authorization permanent.
 
+**macOS folder-access prompts (Desktop/Documents/Downloads)**: consent is
+keyed to the app's code signature. One installed build → one prompt per
+folder, then it persists. Each UPDATE (new ad-hoc signature) may re-ask once.
+An endless prompt loop means stale/conflicting records from replaced binaries
+(typical on a dev machine installing many builds): fix with
+`tccutil reset All dev.angkorgit.app`, then relaunch and Allow once. Users
+must drag the app out of the dmg into /Applications — running it from inside
+the dmg triggers app translocation, where grants can never persist.
+
 Security honesty: unsigned ≠ unsafe. Releases are built by public GitHub
 Actions from public source, updates are minisign-verified (§3), and users can
 always build from source. If the project later earns sponsorship, Apple
