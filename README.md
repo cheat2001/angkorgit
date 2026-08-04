@@ -18,6 +18,14 @@
 
 ---
 
+<p align="center">
+  <img src="docs/assets/hero.png" alt="AngKorGit — side-by-side diff view with commit details" width="900" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/cheat2001/angkorgit/releases/latest/download/angkorgit-demo.mp4"><b>▶ Watch the 45-second demo</b></a>
+</p>
+
 AngKorGit focuses on the Git operations developers actually use every day and executes them exceptionally well — in an app that weighs **~8 MB** instead of a gigabyte.
 
 ## Highlights
