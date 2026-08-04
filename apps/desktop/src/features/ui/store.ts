@@ -96,7 +96,9 @@ export const useUi = create<UiState>()(
   closeCenterDiff: () => set({ centerDiff: null }),
   openEditor: (centerEditor) => set({ centerEditor }),
   closeEditor: () => set({ centerEditor: null }),
-  openFileHistory: (centerFileHistory) => set({ centerFileHistory }),
+  // A center diff would render above the history view and hide it — opening
+  // file history takes over the center area.
+  openFileHistory: (centerFileHistory) => set({ centerFileHistory, centerDiff: null }),
   closeFileHistory: () => set({ centerFileHistory: null }),
   openConflict: (conflictFile) => set({ conflictFile }),
     }),
