@@ -6,6 +6,22 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-08-04
+
+### Added
+- **Repository tabs**: a GitKraken-style strip above the toolbar — one tab per
+  open project, click to switch, ✕/middle-click to close, ＋ to open another;
+  tabs persist across restarts
+- **Submodules, first-class**: right-click a submodule → **Open as repository**
+  (full graph, history — double-click works too), **Update** (init + checkout
+  the recorded commit, now authenticated through the full credential chain so
+  private hosts work), Copy path
+
+### Fixed
+- Opening file history while a diff preview was open showed nothing until the
+  diff was closed — it now takes over the center area
+- Sidebar remote entries no longer wrap the raw URL (name + tooltip instead)
+
 ## [0.1.0] — 2026-08-04
 
 The first release. 🏛️
@@ -56,5 +72,6 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/cheat2001/angkorgit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cheat2001/angkorgit/releases/tag/v0.1.0
