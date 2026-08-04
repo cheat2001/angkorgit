@@ -2,6 +2,8 @@ use git2::Repository;
 
 use crate::error::{AppError, AppResult};
 
+use super::types::OpOutcome;
+
 fn default_signature(repo: &Repository) -> AppResult<git2::Signature<'static>> {
     repo.signature().map_err(|_| {
         AppError::other("Git identity is not configured. Set user.name and user.email in Settings.")
@@ -49,6 +51,48 @@ pub fn commit(path: &str, message: &str) -> AppResult<String> {
         repo.cleanup_state()?;
     }
     Ok(oid.to_string())
+}
+
+/// Revert a commit: apply its inverse to the working tree and commit it
+/// (git's conventional Revert "…" message). Conflicts pause like a merge.
+pub fn revert(path: &str, oid: &str) -> AppResult<OpOutcome> {
+    let repo = super::repo::open(path)?;
+    let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
+
+    let mut opts = git2::RevertOptions::new();
+    if commit.parent_count() > 1 {
+        // Reverting a merge needs a mainline; use the first parent, matching
+        // the graph's first-parent view.
+        opts.mainline(1);
+    }
+    repo.revert(&commit, Some(&mut opts))?;
+
+    if repo.index()?.has_conflicts() {
+        return Ok(OpOutcome {
+            status: "conflicts".into(),
+            message: "Revert has conflicts to resolve".into(),
+        });
+    }
+
+    let sig = default_signature(&repo)?;
+    let mut index = repo.index()?;
+    let tree = repo.find_tree(index.write_tree()?)?;
+    let head = repo.head()?.peel_to_commit()?;
+    let summary = commit.summary().unwrap_or("").to_string();
+    let full_oid = commit.id().to_string();
+    repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        &format!("Revert \"{summary}\"\n\nThis reverts commit {full_oid}."),
+        &tree,
+        &[&head],
+    )?;
+    repo.cleanup_state()?;
+    Ok(OpOutcome {
+        status: "ok".into(),
+        message: format!("Reverted {}", &oid[..8.min(oid.len())]),
+    })
 }
 
 /// Amend HEAD with the current index and an optional new message.

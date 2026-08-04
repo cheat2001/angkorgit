@@ -20,6 +20,7 @@ export type UndoKind =
   | 'cherryPick'
   | 'rebase'
   | 'reset'
+  | 'revert'
   | 'branchCreate'
   | 'branchDelete'
   | 'branchRename';
@@ -41,7 +42,7 @@ export interface UndoEntry {
 }
 
 /** Ops whose undo/redo moves HEAD with a hard reset (need a clean tree). */
-const HARD_KINDS: ReadonlySet<UndoKind> = new Set(['merge', 'cherryPick', 'rebase', 'reset']);
+const HARD_KINDS: ReadonlySet<UndoKind> = new Set(['merge', 'cherryPick', 'rebase', 'reset', 'revert']);
 /** Ops that move HEAD (validated against HEAD position). */
 const HEAD_KINDS: ReadonlySet<UndoKind> = new Set([
   'commit',
@@ -50,6 +51,7 @@ const HEAD_KINDS: ReadonlySet<UndoKind> = new Set([
   'cherryPick',
   'rebase',
   'reset',
+  'revert',
 ]);
 
 async function snapshot(path: string): Promise<Snapshot> {
@@ -85,7 +87,8 @@ async function applyTransition(
     case 'merge':
     case 'cherryPick':
     case 'rebase':
-    case 'reset': {
+    case 'reset':
+    case 'revert': {
       if (!to.headOid) throw new Error('nothing to reset to');
       if (!(await treeIsClean(path))) {
         throw new Error('working tree has uncommitted changes — commit or stash them first');

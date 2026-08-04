@@ -150,6 +150,10 @@ export const ipc = {
     if (!isTauri()) return 'demo-amend-oid';
     return invoke('commit_amend', { path, message });
   },
+  async revert(path: string, oid: string): Promise<OpOutcome> {
+    if (!isTauri()) return { status: 'ok', message: 'Reverted (demo)' };
+    return invoke('commit_revert', { path, oid });
+  },
 
   // ---- history ----
   async history(path: string, query: HistoryQuery): Promise<HistoryPage> {
@@ -237,12 +241,23 @@ export const ipc = {
     }
     return invoke('remote_pull', { path, remote });
   },
-  async push(path: string, remote: string, force: boolean, withTags: boolean, setUpstream: boolean): Promise<OpOutcome> {
+  async push(
+    path: string,
+    remote: string,
+    force: boolean,
+    withTags: boolean,
+    setUpstream: boolean,
+    branch?: string,
+  ): Promise<OpOutcome> {
     if (!isTauri()) {
       await delay(400);
       return { status: 'ok', message: `Pushed to ${remote} (demo)` };
     }
-    return invoke('remote_push', { path, remote, force, withTags, setUpstream });
+    return invoke('remote_push', { path, remote, branch: branch ?? null, force, withTags, setUpstream });
+  },
+  async pullBranch(path: string, branch: string): Promise<OpOutcome> {
+    if (!isTauri()) return { status: 'ok', message: `Pulled ${branch} (demo)` };
+    return invoke('remote_pull_branch', { path, branch });
   },
   async pushTag(path: string, remote: string, tag: string): Promise<OpOutcome> {
     if (!isTauri()) return { status: 'ok', message: `Pushed tag ${tag} (demo)` };

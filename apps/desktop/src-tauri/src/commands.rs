@@ -144,6 +144,11 @@ pub async fn commit_amend(path: String, message: Option<String>) -> AppResult<St
     blocking(move || commit::amend(&path, message.as_deref())).await
 }
 
+#[tauri::command]
+pub async fn commit_revert(path: String, oid: String) -> AppResult<OpOutcome> {
+    blocking(move || commit::revert(&path, &oid)).await
+}
+
 // ---- History ---------------------------------------------------------------------
 
 #[tauri::command]
@@ -254,11 +259,18 @@ pub async fn remote_pull(path: String, remote: String) -> AppResult<OpOutcome> {
 pub async fn remote_push(
     path: String,
     remote: String,
+    branch: Option<String>,
     force: bool,
     withTags: bool,
     setUpstream: bool,
 ) -> AppResult<OpOutcome> {
-    blocking(move || remote::push(&path, &remote, force, withTags, setUpstream)).await
+    blocking(move || remote::push(&path, &remote, branch.as_deref(), force, withTags, setUpstream))
+        .await
+}
+
+#[tauri::command]
+pub async fn remote_pull_branch(path: String, branch: String) -> AppResult<OpOutcome> {
+    blocking(move || remote::pull_branch(&path, &branch)).await
 }
 
 #[tauri::command]

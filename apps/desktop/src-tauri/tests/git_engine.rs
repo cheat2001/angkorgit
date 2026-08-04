@@ -274,6 +274,32 @@ fn cherry_pick_applies_commit() {
 }
 
 #[test]
+fn revert_creates_inverse_commit() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    repo.write("bad.txt", "mistake\n");
+    let bad = commit_all(&repo, "add bad file");
+
+    let outcome = core::revert(repo.path(), &bad).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert!(!repo.dir.join("bad.txt").exists());
+
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 0,
+            limit: 1,
+            search: None,
+            author: None,
+            branch: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(page.commits[0].summary, "Revert \"add bad file\"");
+}
+
+#[test]
 fn reset_modes() {
     let repo = TempRepo::new();
     repo.write("a.txt", "v1\n");

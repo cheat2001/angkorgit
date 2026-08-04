@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Filter, GitBranchPlus, ListRestart, RotateCcw, Search, Tag as TagIcon, User, X } from 'lucide-react';
+import { Filter, GitBranchPlus, ListRestart, RotateCcw, Search, Tag as TagIcon, Undo2, User, X } from 'lucide-react';
 import type { CommitInfo } from '@angkorgit/core';
 import {
   DropdownMenu,
@@ -210,6 +210,15 @@ export function CommitGraph() {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => void act(`Cherry-pick ${menu.commit.shortOid}`, () => ipc.cherryPick(path, menu.commit.oid), { kind: 'cherryPick' })}>
               <ListRestart /> Cherry-pick onto current branch
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                void act(`Revert ${menu.commit.shortOid}`, () => ipc.revert(path, menu.commit.oid), {
+                  kind: 'revert',
+                })
+              }
+            >
+              <Undo2 /> Revert commit
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => void act(`Soft reset to ${menu.commit.shortOid}`, () => ipc.reset(path, menu.commit.oid, 'soft'), { kind: 'reset' })}>

@@ -210,16 +210,20 @@ pub fn pull(path: &str, remote_name: &str) -> AppResult<OpOutcome> {
 pub fn push(
     path: &str,
     remote_name: &str,
+    branch: Option<&str>,
     force: bool,
     with_tags: bool,
     set_upstream: bool,
 ) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
-    let head = repo.head()?;
-    let branch_name = head
-        .shorthand()
-        .ok_or_else(|| AppError::other("HEAD is detached; cannot push"))?
-        .to_string();
+    let branch_name = match branch {
+        Some(name) => name.to_string(),
+        None => repo
+            .head()?
+            .shorthand()
+            .ok_or_else(|| AppError::other("HEAD is detached; cannot push"))?
+            .to_string(),
+    };
 
     let prefix = if force { "+" } else { "" };
     let mut refspecs = vec![format!(
@@ -246,6 +250,79 @@ pub fn push(
             "Pushed {branch_name} to {remote_name}{}",
             if force { " (forced)" } else { "" }
         ),
+    })
+}
+
+/// Pull a specific branch. When it's checked out this is a normal pull;
+/// otherwise the local ref fast-forwards without touching the working tree
+/// (diverged branches must be checked out to merge).
+pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
+    let (upstream_name, remote_name) = {
+        let repo = super::repo::open(path)?;
+        let branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
+        let upstream = branch
+            .upstream()
+            .map_err(|_| AppError::other(format!("branch {branch_name} has no upstream to pull from")))?;
+        let upstream_name = upstream
+            .name()?
+            .ok_or_else(|| AppError::other("invalid upstream name"))?
+            .to_string();
+        let remote_name = upstream_name
+            .split('/')
+            .next()
+            .unwrap_or("origin")
+            .to_string();
+        (upstream_name, remote_name)
+    };
+
+    fetch(path, &remote_name, false, false)?;
+
+    let repo = super::repo::open(path)?;
+    let is_head = repo
+        .head()
+        .ok()
+        .and_then(|h| h.shorthand().map(String::from))
+        .as_deref()
+        == Some(branch_name);
+    if is_head {
+        return super::branch::merge(path, &upstream_name);
+    }
+
+    let branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
+    let upstream = branch.upstream()?;
+    let local_oid = branch
+        .get()
+        .target()
+        .ok_or_else(|| AppError::other("branch has no target"))?;
+    let upstream_oid = upstream
+        .get()
+        .target()
+        .ok_or_else(|| AppError::other("upstream has no target"))?;
+
+    if local_oid == upstream_oid {
+        return Ok(OpOutcome {
+            status: "up_to_date".into(),
+            message: format!("{branch_name} is already up to date"),
+        });
+    }
+    let (ahead, behind) = repo.graph_ahead_behind(local_oid, upstream_oid)?;
+    if behind == 0 {
+        return Ok(OpOutcome {
+            status: "up_to_date".into(),
+            message: format!("{branch_name} is ahead of {upstream_name} — nothing to pull"),
+        });
+    }
+    if ahead > 0 {
+        return Err(AppError::other(format!(
+            "{branch_name} has diverged from {upstream_name} — check it out to merge"
+        )));
+    }
+    // Pure fast-forward: move the ref, no checkout needed.
+    let mut reference = repo.find_reference(&format!("refs/heads/{branch_name}"))?;
+    reference.set_target(upstream_oid, &format!("pull: fast-forward to {upstream_name}"))?;
+    Ok(OpOutcome {
+        status: "fast_forward".into(),
+        message: format!("Fast-forwarded {branch_name} to {upstream_name}"),
     })
 }
 

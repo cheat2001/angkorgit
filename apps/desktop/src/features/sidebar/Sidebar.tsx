@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Archive,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Boxes,
   Check,
   ChevronRight,
@@ -594,6 +596,30 @@ export function Sidebar() {
               >
                 <ListRestart /> Rebase current onto this
               </DropdownMenuItem>
+            )}
+            {!branchMenu.branch.isRemote && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={!branchMenu.branch.upstream}
+                  onClick={() =>
+                    void act(`Pull ${branchMenu.branch.name}`, () => ipc.pullBranch(path, branchMenu.branch.name))
+                  }
+                >
+                  <ArrowDownToLine /> Pull
+                  {branchMenu.branch.behind > 0 && <Badge tone="info">↓{branchMenu.branch.behind}</Badge>}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void act(`Push ${branchMenu.branch.name}`, () =>
+                      ipc.push(path, remotes[0]?.name ?? 'origin', false, false, true, branchMenu.branch.name),
+                    )
+                  }
+                >
+                  <ArrowUpFromLine /> Push
+                  {branchMenu.branch.ahead > 0 && <Badge tone="primary">↑{branchMenu.branch.ahead}</Badge>}
+                </DropdownMenuItem>
+              </>
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => openDialog('createBranch', branchMenu.branch.targetOid)}>

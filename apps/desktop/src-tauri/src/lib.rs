@@ -14,7 +14,7 @@ pub mod test_api {
     pub use crate::core::branch::{
         checkout_branch, cherry_pick, create as branch_create, merge, rebase, reset,
     };
-    pub use crate::core::commit::{amend, commit};
+    pub use crate::core::commit::{amend, commit, revert};
     pub use crate::core::conflict::{
         list as conflict_list, read as conflict_read, resolve as conflict_resolve,
     };
@@ -62,6 +62,7 @@ pub fn run() {
             commands::unstage_hunk,
             commands::commit_create,
             commands::commit_amend,
+            commands::commit_revert,
             commands::history_list,
             commands::history_commit,
             commands::branch_list,
@@ -80,6 +81,7 @@ pub fn run() {
             commands::remote_list,
             commands::remote_fetch,
             commands::remote_pull,
+            commands::remote_pull_branch,
             commands::remote_push,
             commands::remote_push_tag,
             commands::stash_list,
