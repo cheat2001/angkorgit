@@ -466,6 +466,13 @@ export async function openExternal(url: string): Promise<void> {
   await openUrl(url);
 }
 
+/** Installed app version (from the Tauri bundle). */
+export async function appVersion(): Promise<string> {
+  if (!isTauri()) return 'dev';
+  const { getVersion } = await import('@tauri-apps/api/app');
+  return getVersion();
+}
+
 /** Open a native folder picker (Tauri) or prompt (browser demo). */
 export async function pickDirectory(title: string): Promise<string | null> {
   if (!isTauri()) {

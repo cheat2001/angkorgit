@@ -6,6 +6,7 @@ import { useRepo } from './store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { RepoTabs } from '@/components/RepoTabs';
+import { StatusBar } from '@/components/StatusBar';
 import { Toolbar } from '@/components/Toolbar';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { CommitGraph } from '@/features/graph/CommitGraph';
@@ -201,6 +202,7 @@ export function RepositoryPage() {
           )}
         </PanelGroup>
       </div>
+      <StatusBar />
 
       <CommandPalette onRefresh={refreshAll} />
       <SettingsDialog />
