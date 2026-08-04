@@ -45,11 +45,12 @@ import {
   cn,
 } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
+import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import type { BranchInfo, SubmoduleInfo } from '@angkorgit/core';
+import type { BranchInfo, RemoteInfo, SubmoduleInfo } from '@angkorgit/core';
 
 /**
  * Branch folder tree: "feature/test" and "feature/test2" group under a
@@ -164,6 +165,9 @@ export function Sidebar() {
   /** branch menu opened by right-click or the ⋯ button, positioned at cursor */
   const [branchMenu, setBranchMenu] = useState<{ x: number; y: number; branch: BranchInfo } | null>(null);
   const [subMenu, setSubMenu] = useState<{ x: number; y: number; sub: SubmoduleInfo } | null>(null);
+  const [remoteMenu, setRemoteMenu] = useState<{ x: number; y: number; remote: RemoteInfo } | null>(null);
+  /** edit-remote dialog state; `original` is the name before editing */
+  const [editRemote, setEditRemote] = useState<{ original: string; name: string; url: string } | null>(null);
 
   /** Open a submodule as its own repository — full graph, history, everything. */
   const openSubmodule = (sub: SubmoduleInfo) => {
@@ -467,11 +471,24 @@ export function Sidebar() {
           {remotes.map((r) => (
             <div
               key={r.name}
-              className="flex items-center gap-1.5 truncate px-2 py-1 pl-7 text-xs text-faint"
+              className="group flex items-center gap-1.5 rounded-md px-2 py-1 pl-7 text-xs text-faint hover:bg-surface-raised"
               title={r.url}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setRemoteMenu({ x: e.clientX, y: e.clientY, remote: r });
+              }}
             >
               <Cloud className="size-3 shrink-0" />
-              <span className="truncate">{r.name}</span>
+              <span className="min-w-0 flex-1 truncate">{r.name}</span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 opacity-0 group-hover:opacity-100"
+                aria-label={`Remote ${r.name} actions`}
+                onClick={(e) => setRemoteMenu({ x: e.clientX, y: e.clientY, remote: r })}
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
             </div>
           ))}
         </Section>
@@ -629,6 +646,100 @@ export function Sidebar() {
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+
+      {/* Remote context menu */}
+      {remoteMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setRemoteMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: remoteMenu.x, top: remoteMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            <DropdownMenuLabel className="max-w-64 truncate font-mono">{remoteMenu.remote.name}</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => {
+                const r = remoteMenu.remote;
+                void act(`Fetch ${r.name}`, () => ipc.fetch(path, r.name, true, true));
+              }}
+            >
+              <ArrowDownToLine /> Fetch {remoteMenu.remote.name}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                const r = remoteMenu.remote;
+                setEditRemote({ original: r.name, name: r.name, url: r.url });
+              }}
+            >
+              <Pencil /> Edit remote…
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              destructive
+              onClick={() => {
+                const r = remoteMenu.remote;
+                void confirmDialog({
+                  title: `Remove remote "${r.name}"?`,
+                  description:
+                    'The remote and its remote-tracking branches are removed from this repository. Nothing is deleted on the server.',
+                  confirmLabel: 'Remove remote',
+                  destructive: true,
+                }).then((ok) => {
+                  if (ok) void act(`Remove ${r.name}`, () => ipc.remoteRemove(path, r.name));
+                });
+              }}
+            >
+              <Trash2 /> Remove remote…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {/* Edit remote dialog */}
+      <Dialog open={editRemote !== null} onOpenChange={(o) => !o && setEditRemote(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit remote</DialogTitle>
+            <DialogDescription>Rename the remote or point it at a different URL.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1.5 text-xs text-muted">
+              Name
+              <Input
+                value={editRemote?.name ?? ''}
+                onChange={(e) => setEditRemote((s) => (s ? { ...s, name: e.target.value } : s))}
+                placeholder="origin"
+                autoFocus
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-xs text-muted">
+              URL
+              <Input
+                value={editRemote?.url ?? ''}
+                onChange={(e) => setEditRemote((s) => (s ? { ...s, url: e.target.value } : s))}
+                placeholder="https://github.com/user/repo.git"
+                className="font-mono"
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setEditRemote(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!editRemote?.name.trim() || !editRemote?.url.trim()}
+              onClick={() => {
+                const edit = editRemote;
+                if (!edit) return;
+                setEditRemote(null);
+                void act(`Update remote ${edit.original}`, () =>
+                  ipc.remoteEdit(path, edit.original, edit.name, edit.url),
+                );
+              }}
+            >
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Branch context menu (right-click or ⋯) */}
       {branchMenu && (

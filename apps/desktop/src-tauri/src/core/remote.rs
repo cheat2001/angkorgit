@@ -164,6 +164,33 @@ pub fn list(path: &str) -> AppResult<Vec<RemoteInfo>> {
     Ok(result)
 }
 
+/// Rename a remote and/or change its URL.
+pub fn edit(path: &str, name: &str, new_name: &str, url: &str) -> AppResult<()> {
+    let new_name = new_name.trim();
+    let url = url.trim();
+    if new_name.is_empty() || url.is_empty() {
+        return Err(crate::error::AppError::other(
+            "remote name and URL are both required",
+        ));
+    }
+    let repo = super::repo::open(path)?;
+    let mut current = name.to_string();
+    if new_name != name {
+        // Non-default refspecs aren't rewritten automatically; the returned
+        // list is informational — default setups have none.
+        let _ = repo.remote_rename(name, new_name)?;
+        current = new_name.to_string();
+    }
+    repo.remote_set_url(&current, url)?;
+    Ok(())
+}
+
+pub fn remove(path: &str, name: &str) -> AppResult<()> {
+    let repo = super::repo::open(path)?;
+    repo.remote_delete(name)?;
+    Ok(())
+}
+
 pub fn fetch(path: &str, remote_name: &str, tags: bool, prune: bool) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
     let mut remote = repo.find_remote(remote_name)?;

@@ -94,6 +94,8 @@ pub fn run() {
             commands::cherry_pick,
             commands::reset_to,
             commands::remote_list,
+            commands::remote_edit,
+            commands::remote_remove,
             commands::remote_fetch,
             commands::remote_pull,
             commands::remote_pull_branch,
