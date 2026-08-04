@@ -16,11 +16,20 @@ All notable changes to AngKorGit are documented here. The format follows
   (full graph, history — double-click works too), **Update** (init + checkout
   the recorded commit, now authenticated through the full credential chain so
   private hosts work), Copy path
+- **Remote management**: right-click a remote → Fetch, **Edit remote…**
+  (rename + URL), **Remove remote…** (confirmed; the server is untouched)
+- **Status bar**: current branch, commits to push/pull, working-copy state,
+  a zoom picker (50–200%), and the app version doubling as a
+  check-for-updates button
+- **Minimap scrubbing**: drag the diff overview rail to scroll, like a
+  scrollbar thumb
 
 ### Fixed
 - Opening file history while a diff preview was open showed nothing until the
   diff was closed — it now takes over the center area
 - Sidebar remote entries no longer wrap the raw URL (name + tooltip instead)
+- Zoom honors exact levels (50–200%) instead of clamping to 60–160% and
+  rounding to the nearest 10%
 
 ## [0.1.0] — 2026-08-04
 
