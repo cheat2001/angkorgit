@@ -144,13 +144,27 @@ export function DiffMinimap({
     };
   }, [scrollRef, diff, view]);
 
-  const jump = (event: React.MouseEvent) => {
+  // Press-and-drag scrubbing, like a scrollbar thumb: mousedown jumps, and
+  // dragging keeps scrolling until release (instant, not smooth — smooth
+  // scrolling would fight the pointer).
+  const scrub = (event: React.MouseEvent) => {
+    event.preventDefault();
     const rail = railRef.current;
     const el = scrollRef.current;
     if (!rail || !el) return;
-    const rect = rail.getBoundingClientRect();
-    const fraction = (event.clientY - rect.top) / rect.height;
-    scrollToFraction(el, fraction);
+    const moveTo = (clientY: number) => {
+      const rect = rail.getBoundingClientRect();
+      const fraction = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+      el.scrollTop = Math.max(0, fraction * el.scrollHeight - el.clientHeight * 0.35);
+    };
+    moveTo(event.clientY);
+    const onMove = (e: MouseEvent) => moveTo(e.clientY);
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
   if (markers.length === 0) return null;
@@ -159,9 +173,9 @@ export function DiffMinimap({
     <div
       ref={railRef}
       className="relative w-3.5 shrink-0 cursor-pointer border-l border-border-subtle bg-surface"
-      onMouseDown={jump}
+      onMouseDown={scrub}
       role="scrollbar"
-      aria-label="Change overview — click to jump"
+      aria-label="Change overview — click to jump, drag to scroll"
     >
       {markers.map(({ kind, start, end }) => (
         <span
