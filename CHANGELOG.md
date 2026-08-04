@@ -18,12 +18,17 @@ The first release. 🏛️
 - Live filesystem watcher — external edits and terminal commits appear within ~½s
 
 ### Committing & review
-- Stage/unstage files **and individual hunks**; discard file/all with verified
-  outcomes (submodule-aware explanations)
+- Stage/unstage files, **individual hunks, and individual lines** (right-click
+  a line in any diff view mode); discard file/line/all with verified outcomes
+  (submodule-aware explanations, pair-aware line restore)
 - Auto-growing commit box with 50/72 summary counter; hidden when the tree is clean
 - Full-width diff view with **minimap**, previous/next-change navigation,
   inline & side-by-side, word-level diff, whole-file mode, image diffs —
-  virtualized for any file size
+  virtualized for any file size, editor-grade smooth scrolling and panning
+- **File history**: ⌘K → "File history…" (or right-click a file) — docked
+  commit list showing who changed the file and when, one-click diff switching,
+  side panels auto-collapse for a full-width review
+- **Built-in file editor**: right-click → Edit file, ⌘S saves in place
 
 ### Branching & operations
 - Branch **folder tree** with right-click context menu: checkout, merge, rebase,
