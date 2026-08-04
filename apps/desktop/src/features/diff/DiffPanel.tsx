@@ -47,6 +47,9 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   } = useUi();
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
+  /** identity of the diff currently shown — refetches of the SAME target must
+   * not blank the view (that resets the reader's scroll). */
+  const loadedKey = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   /** right-click menu on a diff line (working-copy, compact view only) */
   const [lineMenu, setLineMenu] = useState<{ x: number; y: number; info: LineMenuInfo } | null>(null);
@@ -90,7 +93,12 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   useEffect(() => {
     if (!path) return;
     let cancelled = false;
-    setLoading(true);
+    // The spinner only appears when a DIFFERENT diff is opened. Background
+    // refetches (the watcher fires on any repo file change) keep the current
+    // content mounted and swap data in place — otherwise the collapse to a
+    // spinner resets the reader's scroll position to the top.
+    const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}|${fullFileDiff}`;
+    if (loadedKey.current !== key) setLoading(true);
     // "Whole file" = diff with effectively unlimited context lines.
     const context = fullFileDiff ? 10_000_000 : undefined;
     const load = async (): Promise<FileDiff | null> => {
@@ -102,12 +110,16 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     };
     void load()
       .then((result) => {
-        if (!cancelled) setDiff(result);
+        if (!cancelled) {
+          setDiff(result);
+          loadedKey.current = key;
+        }
       })
       .catch((error) => {
         if (!cancelled) {
           toast.error(`Could not load diff: ${(error as { message?: string }).message ?? error}`);
           setDiff(null);
+          loadedKey.current = key;
         }
       })
       .finally(() => {
