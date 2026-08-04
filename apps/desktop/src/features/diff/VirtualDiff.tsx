@@ -14,7 +14,7 @@ import { CodeLine, lineBg, pairHunkLines } from './diffShared';
 
 const LINE_H = 20;
 const HEADER_H = 28;
-/** JetBrains Mono advance width at 12px ≈ 7.23px; padded slightly. */
+/** Fallback advance width at 12px if canvas measurement is unavailable. */
 const CHAR_W = 7.3;
 
 interface HeaderRow {
@@ -66,9 +66,38 @@ function visualLength(content: string): number {
   return content.length + extra;
 }
 
-function contentWidth(maxChars: number): number {
-  return Math.ceil(maxChars * CHAR_W) + 24;
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+
+/** Exact rendered width of a line in the app's mono font. Character-count
+ * estimates UNDERESTIMATE for non-Latin scripts and fallback glyphs, which
+ * left row backgrounds ending before the text when scrolled horizontally. */
+function measureWidth(content: string): number {
+  if (measureCtx === undefined) {
+    measureCtx = document.createElement('canvas').getContext('2d');
+  }
+  if (!measureCtx) return visualLength(content) * CHAR_W;
+  const family =
+    getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() ||
+    'monospace';
+  measureCtx.font = `12px ${family}`;
+  return measureCtx.measureText(content.replace(/\t/g, '    ')).width;
 }
+
+/** Scroll width for a set of lines: rank by cheap estimate, then measure the
+ * widest candidates exactly (fonts may render some glyphs wider than others,
+ * so a few runners-up are checked too). */
+function contentWidth(lines: Iterable<string>): number {
+  const candidates: { content: string; est: number }[] = [];
+  for (const content of lines) candidates.push({ content, est: visualLength(content) });
+  candidates.sort((a, b) => b.est - a.est);
+  let max = 30 * CHAR_W;
+  for (const c of candidates.slice(0, 20)) max = Math.max(max, measureWidth(c.content));
+  return Math.ceil(max) + 32;
+}
+
+/** Rows must never show text past their tinted background: cover at least the
+ * container (scroll width) and always the row's own content. */
+const ROW_W: React.CSSProperties = { minWidth: '100%', width: 'max-content' };
 
 const GutterCell = memo(function GutterCell({
   text,
@@ -145,13 +174,10 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
   const items = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
 
-  const width = useMemo(() => {
-    let max = 40;
-    for (const row of rows) {
-      if (row.kind === 'line') max = Math.max(max, visualLength(row.line.content));
-    }
-    return contentWidth(max);
-  }, [rows]);
+  const width = useMemo(
+    () => contentWidth(rows.flatMap((row) => (row.kind === 'line' ? [row.line.content] : []))),
+    [rows],
+  );
 
   return (
     <div className="flex items-start">
@@ -194,12 +220,12 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
               <div
                 key={item.key}
                 className={cn(
-                  'absolute left-0 w-full',
+                  'absolute left-0',
                   row.kind === 'header'
                     ? 'border-y border-border-subtle bg-surface-raised/60'
                     : lineBg(row.kind === 'line' ? row.line.kind : 'context'),
                 )}
-                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
                 onContextMenu={
                   row.kind === 'line' && onLineContextMenu
                     ? (e) => onLineContextMenu(e, { line: row.line })
@@ -248,15 +274,17 @@ function SplitHalf({
   scrollX: React.RefObject<HTMLDivElement>;
   onScrollX: () => void;
 }) {
-  const width = useMemo(() => {
-    let max = 30;
-    for (const row of rows) {
-      if (row.kind !== 'pair') continue;
-      const line = side === 'old' ? row.left : row.right;
-      if (line) max = Math.max(max, visualLength(line.content));
-    }
-    return contentWidth(max);
-  }, [rows, side]);
+  const width = useMemo(
+    () =>
+      contentWidth(
+        rows.flatMap((row) => {
+          if (row.kind !== 'pair') return [];
+          const line = side === 'old' ? row.left : row.right;
+          return line ? [line.content] : [];
+        }),
+      ),
+    [rows, side],
+  );
 
   const bgOf = (row: FlatRow): string => {
     if (row.kind === 'header') return 'border-y border-border-subtle bg-surface-raised/60';
@@ -293,8 +321,8 @@ function SplitHalf({
             return (
               <div
                 key={item.key}
-                className={cn('absolute left-0 w-full', bgOf(row))}
-                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+                className={cn('absolute left-0', bgOf(row))}
+                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
                 onContextMenu={
                   line && onLineContextMenu ? (e) => onLineContextMenu(e, { line }) : undefined
                 }
