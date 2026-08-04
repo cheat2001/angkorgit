@@ -9,6 +9,13 @@
   Inspired by Angkor Wat — strength, simplicity, and craftsmanship from Cambodia. 🇰🇭
 </p>
 
+<p align="center">
+  <a href="https://github.com/cheat2001/angkorgit/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cheat2001/angkorgit/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-D97706.svg" /></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-374151.svg" />
+  <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri%20v2%20%2B%20Rust-D97706.svg" />
+</p>
+
 ---
 
 AngKorGit focuses on the Git operations developers actually use every day and executes them exceptionally well — in an app that weighs **~8 MB** instead of a gigabyte.

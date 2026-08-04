@@ -1,0 +1,28 @@
+name: 💡 Feature request
+description: Suggest an improvement or a new capability
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AngKorGit deliberately implements *few features exceptionally well*.
+        The strongest proposals explain a **daily-use** pain, not feature parity
+        with other clients.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve in your daily Git work?
+      placeholder: "Every day I need to … and today that requires …"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it look and behave? Sketches and screenshots of other tools welcome (for inspiration, never copying).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered

@@ -1,0 +1,48 @@
+name: 🐛 Bug report
+description: Something isn't working the way it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a bug — screenshots help enormously.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected instead.
+      placeholder: 'Clicked X, expected Y, got Z…'
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a repository with …
+        2. Click …
+        3. See error
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: AngKorGit version
+      placeholder: '0.1.0 (Settings rail shows it)'
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Windows, Linux]
+    validations:
+      required: true
+  - type: textarea
+    id: repo-shape
+    attributes:
+      label: Repository shape (if relevant)
+      description: Submodules? Very large history? Unusual remotes? Never paste private repository contents.
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / error text

@@ -261,6 +261,17 @@ in a browser and the Playwright e2e suite run entirely on this. **Never** import
 | Unit (14) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved) |
 | E2E (5) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search — all on demo mode |
 
+## 9.5 Open-source & community files
+
+Root: `LICENSE` (MIT), `CODE_OF_CONDUCT.md`, `SECURITY.md` (incl. the app's
+privacy surface: no telemetry), `CHANGELOG.md` (Keep-a-Changelog; update
+`[Unreleased]` in feature PRs). `.github/`: issue templates (bug/feature YAML),
+PR template with the quality checklist. Crash resilience:
+`components/ErrorBoundary.tsx` wraps the Shell — never let a render error
+white-screen the app. `docs/Distribution.md` documents signing/notarization,
+the updater plan (pull-based from GitHub releases; needs owner keys before the
+plugin can be added), and the Homebrew cask.
+
 ## 10. Distribution & CI
 
 - **Local**: `pnpm tauri:build` → `AngKorGit.app` + `AngKorGit_x.y.z_aarch64.dmg`;

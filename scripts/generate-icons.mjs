@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 /**
- * Generates placeholder app icons (PNG) without any dependencies:
- * a Temple Gold rounded square with a simplified three-tower Angkor mark.
- * For release builds, replace with production art and run `pnpm tauri icon`.
+ * AngKorGit app icon generator — zero dependencies.
+ *
+ * Renders the brand mark (tiered Angkor Wat towers on a temple platform,
+ * flowing into a git branch with commit nodes) onto a dark rounded square
+ * with vertical gradients. 4×4 supersampling gives clean anti-aliased edges.
+ *
+ * For release bundles run afterwards:
+ *   pnpm --filter @angkorgit/desktop exec tauri icon src-tauri/icons/icon.png
  */
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -12,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, 'apps/desktop/src-tauri/icons');
 mkdirSync(outDir, { recursive: true });
+
+// ---- minimal PNG encoder ----------------------------------------------------
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -23,7 +30,6 @@ const crc32 = (buf) => {
   for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 };
-
 function chunk(type, data) {
   const len = Buffer.alloc(4);
   len.writeUInt32BE(data.length);
@@ -32,13 +38,12 @@ function chunk(type, data) {
   crc.writeUInt32BE(crc32(body));
   return Buffer.concat([len, body, crc]);
 }
-
 function png(size, pixelFn) {
   const raw = Buffer.alloc(size * (size * 4 + 1));
   for (let y = 0; y < size; y++) {
-    raw[y * (size * 4 + 1)] = 0; // filter: none
+    raw[y * (size * 4 + 1)] = 0;
     for (let x = 0; x < size; x++) {
-      const [r, g, b, a] = pixelFn(x, y);
+      const [r, g, b, a] = pixelFn(x, y, size);
       const off = y * (size * 4 + 1) + 1 + x * 4;
       raw[off] = r;
       raw[off + 1] = g;
@@ -49,67 +54,117 @@ function png(size, pixelFn) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);
   ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // RGBA
+  ihdr[8] = 8;
+  ihdr[9] = 6;
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw)),
+    chunk('IDAT', deflateSync(raw, { level: 9 })),
     chunk('IEND', Buffer.alloc(0)),
   ]);
 }
 
-/** point-in-triangle test */
-function inTriangle(px, py, [ax, ay], [bx, by], [cx, cy]) {
-  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
-  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
-  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
-  const neg = d1 < 0 || d2 < 0 || d3 < 0;
-  const pos = d1 > 0 || d2 > 0 || d3 > 0;
-  return !(neg && pos);
+// ---- scene ------------------------------------------------------------------
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const mix = (c1, c2, t) => [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
+
+// palette
+const BG_TOP = [27, 37, 55]; // deep slate
+const BG_BOTTOM = [11, 16, 28];
+const GOLD_TOP = [245, 166, 35]; // Temple Gold gradient
+const GOLD_BOTTOM = [196, 106, 8];
+const CREAM = [244, 214, 168];
+const NODE_GOLD = [240, 180, 41];
+
+/** trapezoid tapering upward: y0=top, y1=bottom, halfTop/halfBottom widths */
+function inTower(u, v, cx, y0, y1, halfTop, halfBottom) {
+  if (v < y0 || v > y1) return false;
+  const t = (v - y0) / (y1 - y0);
+  return Math.abs(u - cx) <= lerp(halfTop, halfBottom, t);
+}
+const inCircle = (u, v, cx, cy, r) => (u - cx) ** 2 + (v - cy) ** 2 <= r * r;
+
+/** central tower: spire + three tapering tiers (classic prasat silhouette) */
+function centerTower(u, v) {
+  return (
+    inTower(u, v, 0.5, 0.095, 0.215, 0.0, 0.038) ||
+    inTower(u, v, 0.5, 0.215, 0.3, 0.044, 0.058) ||
+    inTower(u, v, 0.5, 0.3, 0.41, 0.064, 0.078) ||
+    inTower(u, v, 0.5, 0.41, 0.6, 0.086, 0.098)
+  );
+}
+function sideTower(u, v, cx) {
+  return (
+    inTower(u, v, cx, 0.27, 0.365, 0.0, 0.032) ||
+    inTower(u, v, cx, 0.365, 0.45, 0.038, 0.05) ||
+    inTower(u, v, cx, 0.45, 0.6, 0.056, 0.068)
+  );
 }
 
-function pixel(size) {
-  const s = size;
-  // rounded-square background in deep slate; towers in temple gold
-  const radius = s * 0.22;
-  const towers = [
-    // [cx, topY, halfWidth, baseY] in unit space
-    [0.5, 0.16, 0.1, 0.62],
-    [0.26, 0.3, 0.075, 0.62],
-    [0.74, 0.3, 0.075, 0.62],
-  ];
-  return (x, y) => {
-    // rounded rect mask
-    const dx = Math.max(radius - x, x - (s - radius), 0);
-    const dy = Math.max(radius - y, y - (s - radius), 0);
-    if (dx * dx + dy * dy > radius * radius) return [0, 0, 0, 0];
+/** color for one sample point in unit space, or null for transparent */
+function sample(u, v, cornerRadius) {
+  // rounded-square mask
+  const dx = Math.max(cornerRadius - u, u - (1 - cornerRadius), 0);
+  const dy = Math.max(cornerRadius - v, v - (1 - cornerRadius), 0);
+  if (dx * dx + dy * dy > cornerRadius * cornerRadius) return null;
 
-    const u = x / s;
-    const v = y / s;
+  const goldAt = (vv) => mix(GOLD_TOP, GOLD_BOTTOM, Math.min(Math.max((vv - 0.1) / 0.6, 0), 1));
 
-    // base platform
-    if (v > 0.62 && v < 0.72 && u > 0.14 && u < 0.86) return [217, 119, 6, 255];
-    // branch line + node below the temple
-    if (v >= 0.78 && v < 0.82 && u > 0.3 && u < 0.7) return [244, 214, 168, 255];
-    const nd = Math.hypot(u - 0.5, v - 0.8);
-    if (nd < 0.045) return [244, 214, 168, 255];
+  // commit nodes (drawn on top)
+  if (inCircle(u, v, 0.3, 0.795, 0.036)) return NODE_GOLD;
+  if (inCircle(u, v, 0.7, 0.795, 0.036)) return NODE_GOLD;
+  if (inCircle(u, v, 0.5, 0.855, 0.038)) return CREAM;
 
-    for (const [cx, top, half, base] of towers) {
-      if (inTriangle(u, v, [cx, top], [cx - half, base], [cx + half, base])) {
-        return [217, 119, 6, 255];
+  // branch: horizontal rail + stem down to the lower node
+  if (v >= 0.787 && v <= 0.803 && u >= 0.3 && u <= 0.7) return CREAM;
+  if (Math.abs(u - 0.5) <= 0.008 && v >= 0.72 && v <= 0.855) return CREAM;
+
+  // temple platform (two tiers, widening downward)
+  if (inTower(u, v, 0.5, 0.6, 0.655, 0.34, 0.36)) return goldAt(v);
+  if (inTower(u, v, 0.5, 0.655, 0.7, 0.4, 0.42)) return goldAt(v);
+
+  // towers
+  if (centerTower(u, v) || sideTower(u, v, 0.285) || sideTower(u, v, 0.715)) return goldAt(v);
+
+  // background: vertical gradient with a faint glow behind the temple
+  let bg = mix(BG_TOP, BG_BOTTOM, v);
+  const glow = Math.max(0, 1 - Math.hypot((u - 0.5) / 0.55, (v - 0.42) / 0.5));
+  bg = mix(bg, [58, 63, 76], glow * glow * 0.35);
+  return bg;
+}
+
+const SS = 4; // 4×4 supersampling
+function pixel(x, y, size) {
+  const cornerRadius = 0.223;
+  let r = 0,
+    g = 0,
+    b = 0,
+    a = 0;
+  for (let sy = 0; sy < SS; sy++) {
+    for (let sx = 0; sx < SS; sx++) {
+      const u = (x + (sx + 0.5) / SS) / size;
+      const v = (y + (sy + 0.5) / SS) / size;
+      const c = sample(u, v, cornerRadius);
+      if (c) {
+        r += c[0];
+        g += c[1];
+        b += c[2];
+        a += 255;
       }
     }
-    // background: deep slate #111827
-    return [17, 24, 39, 255];
-  };
+  }
+  const n = SS * SS;
+  return a === 0
+    ? [0, 0, 0, 0]
+    : [Math.round(r / (a / 255)), Math.round(g / (a / 255)), Math.round(b / (a / 255)), Math.round(a / n)];
 }
 
 for (const [name, size] of [
   ['32x32.png', 32],
   ['128x128.png', 128],
   ['128x128@2x.png', 256],
-  ['icon.png', 512],
+  ['icon.png', 1024],
   ['Square107x107Logo.png', 107],
   ['Square142x142Logo.png', 142],
   ['Square150x150Logo.png', 150],
@@ -121,7 +176,7 @@ for (const [name, size] of [
   ['Square89x89Logo.png', 89],
   ['StoreLogo.png', 50],
 ]) {
-  writeFileSync(join(outDir, name), png(size, pixel(size)));
+  writeFileSync(join(outDir, name), png(size, pixel));
   console.log(`generated icons/${name}`);
 }
-console.log('\nDone. For .icns/.ico run: pnpm --filter @angkorgit/desktop tauri icon apps/desktop/src-tauri/icons/icon.png');
+console.log('\nDone. For .icns/.ico run: pnpm --filter @angkorgit/desktop exec tauri icon src-tauri/icons/icon.png');

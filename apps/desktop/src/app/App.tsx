@@ -5,6 +5,7 @@ import { Toaster } from 'sonner';
 import { TooltipProvider } from '@angkorgit/design-system';
 import { SplashScreen } from './SplashScreen';
 import { ConfirmHost } from '@/components/confirm';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WelcomePage } from '@/features/repository/WelcomePage';
 import { RepositoryPage } from '@/features/repository/RepositoryPage';
 import { useRepo } from '@/features/repository/store';
@@ -65,7 +66,9 @@ export function App() {
     <TooltipProvider>
       <MemoryRouter initialEntries={['/']}>
         <div className="h-full">
-          <Shell />
+          <ErrorBoundary>
+            <Shell />
+          </ErrorBoundary>
         </div>
       </MemoryRouter>
       <ConfirmHost />
