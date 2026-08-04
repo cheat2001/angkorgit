@@ -1,0 +1,291 @@
+# CLAUDE.md — AngKorGit Project Knowledge Base
+
+> **Purpose of this file**: the complete, authoritative context for AI coding assistants.
+> Read this instead of scanning the repository — it maps every subsystem, convention,
+> command, and hard-won gotcha. Keep it updated when architecture or conventions change.
+
+---
+
+## 1. What AngKorGit is
+
+**AngKorGit** is a modern, fast, beautiful cross-platform desktop **Git client**
+(macOS / Windows / Linux), inspired by the workflow efficiency of GitKraken but
+deliberately minimal: *"if GitKraken has 100 features, ship the best 25 executed
+exceptionally well."* The name honors **Angkor Wat** — strength, simplicity, and
+craftsmanship from Cambodia 🇰🇭.
+
+- **Bundle size ≈ 8 MB** (vs ~1 GB for Electron-based clients) — Tauri v2 + system webview
+- Dark theme by default (light supported), Temple Gold `#D97706` brand accent
+- Keyboard-first (⌘K palette), beginner-friendly (visual conflict resolver, confirm
+  dialogs, undo/redo), performance-first (virtualized graph & diffs, 100k-commit repos stay smooth)
+
+## 2. Tech stack
+
+| Layer | Choice | Notes |
+| --- | --- | --- |
+| Desktop shell | **Tauri v2** | system webview (WKWebView / WebView2 / WebKitGTK) |
+| Git engine | **Rust + git2 (libgit2)** | `vendored-libgit2`; no shelling out for hot paths |
+| Frontend | **React 18 + TypeScript (strict)** | Vite 6, bundler moduleResolution |
+| Styling | **TailwindCSS 3.4** + shadcn-style primitives (Radix UI) | tokens in CSS variables |
+| State | **Zustand 5** (per-feature stores, some persisted) | |
+| Animation | **Framer Motion 11** (subtle; splash logo draw) | |
+| Router | react-router-dom 6 (MemoryRouter: `/welcome`, `/repo`) | |
+| Icons / fonts | lucide-react · Inter Variable + JetBrains Mono (self-hosted @fontsource) | |
+| Key libs | @tanstack/react-virtual, react-resizable-panels, cmdk, sonner, @xterm/xterm, highlight.js (lib/core + 20 langs) | |
+| Rust deps | tauri-plugin-dialog/opener, portable-pty, keyring 3, notify-debouncer-mini, reqwest (rustls), base64, thiserror | |
+
+## 3. Monorepo layout (pnpm workspaces)
+
+```
+angkorgit/
+├── CLAUDE.md                  ← this file
+├── package.json               ← root scripts (see §4), pnpm workspace root
+├── pnpm-workspace.yaml        ← apps/*, packages/*
+├── tsconfig.base.json         ← strict TS + path aliases for both packages
+├── vitest.config.ts           ← unit tests live at repo root (tests/unit)
+├── apps/desktop/              ← THE app (@angkorgit/desktop)
+│   ├── index.html · vite.config.ts · tailwind.config.ts · postcss.config.js
+│   ├── src/                   ← React frontend (see §6)
+│   └── src-tauri/             ← Rust engine (see §5)
+├── packages/core/             ← @angkorgit/core — PURE TypeScript domain (no React)
+│   └── src/
+│       ├── git/types.ts       ← serde-mirrored domain types (CommitInfo, FileDiff…)
+│       ├── graph/layout.ts    ← incremental commit-graph lane layout (GraphLayout)
+│       ├── diff/wordDiff.ts   ← LCS word-level diff
+│       ├── conflicts/parse.ts ← conflict-marker parser + serializer (lossless)
+│       └── ai/                ← provider-agnostic AI (types, providers, capabilities)
+├── packages/design-system/    ← @angkorgit/design-system
+│   └── src/
+│       ├── tokens.css         ← ALL colors/spacing as CSS vars (dark + light)
+│       ├── tailwind-preset.ts ← maps tokens → Tailwind utilities; keyframes
+│       ├── lib/cn.ts          ← clsx + tailwind-merge
+│       └── components/        ← Button, Input, Dialog, DropdownMenu(+Sub), Tooltip/Hint,
+│                                Tabs, Select, Switch, Checkbox, Badge, Kbd, Spinner,
+│                                Separator, Logo (Angkor-towers SVG mark)
+├── docs/                      ← Architecture, UI-Guidelines, Development, Contributing,
+│                                Roadmap, Coding-Standards
+├── tests/
+│   ├── unit/                  ← vitest: graphLayout, wordDiff, conflicts (pure core logic)
+│   └── e2e/                   ← Playwright vs browser DEMO MODE (no native build needed)
+├── scripts/generate-icons.mjs ← zero-dependency PNG icon generator
+└── .github/workflows/         ← ci.yml (typecheck/test/e2e + rust matrix), release.yml (tauri-action on v* tags)
+```
+
+**Import aliases**: `@/` = `apps/desktop/src`; `@angkorgit/core` and
+`@angkorgit/design-system` resolve to package **sources** (vite alias + tsconfig paths —
+no build step for packages).
+
+## 4. Commands (run from repo root unless stated)
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm install` | install workspace deps |
+| `pnpm tauri:dev` | full desktop app, hot reload both sides |
+| `pnpm dev` | frontend only in a browser — runs on **demo mode** (see §6.1) |
+| `pnpm typecheck` / `pnpm test` | TS across packages / vitest unit tests |
+| `pnpm test:e2e` | Playwright against demo mode |
+| `cd apps/desktop/src-tauri && cargo test` | **git engine integration tests** (real temp repos) |
+| `pnpm tauri:build` | release bundles (.app + .dmg in `src-tauri/target/release/bundle/`) |
+| `pnpm install:mac` | copy built .app → /Applications and launch |
+| `pnpm release:mac` | build then open the dmg folder |
+| `pnpm icons` | regenerate placeholder icons (then `tauri icon` for .icns/.ico) |
+
+**Build gotchas (important):**
+- **Quit the running app before `tauri:build`** — the `.dmg` bundler script is flaky while the app runs (the `.app` itself still builds).
+- `source ~/.cargo/env` before cargo commands (rustup-installed toolchain).
+- Root pnpm scripts must run **from repo root**; background shells don't persist `cd`.
+- Rust fmt/clippy are CI gates: `cargo fmt --check && cargo clippy --all-targets -- -D warnings`.
+
+## 5. Rust engine — `apps/desktop/src-tauri/src/`
+
+```
+main.rs / lib.rs      ← builder: plugins(dialog, opener), setup sets accounts::CONFIG_DIR,
+                        manage(TerminalState, WatcherState), ~65 command registrations,
+                        pub mod test_api (flat re-exports for integration tests)
+commands.rs           ← THIN Tauri command layer; every git op via blocking() → spawn_blocking
+error.rs              ← AppError → serialized {code, message}; codes: conflict/auth/not_found/…
+state.rs              ← recent repositories JSON (app config dir)
+terminal.rs           ← real PTY per session (portable-pty), events term-data-{id}/term-exit-{id}
+watcher.rs            ← notify-debouncer-mini (400ms) → "repo-changed" event;
+                        filters .git noise, keeps HEAD/index/refs/packed-refs, skips *.lock
+http.rs               ← AI/HTTP proxy (reqwest, rustls) — keeps CORS + keys out of webview
+core/
+├── types.rs          ← serde structs mirroring @angkorgit/core (camelCase rename_all)
+├── repo.rs           ← open/discover/init/info/status, upstream divergence, get/set config
+├── history.rs        ← revwalk pagination + search/author/branch filters, ref decorations
+├── stage.rs          ← stage/unstage file+all, stage/unstage HUNK (patch-text split + apply),
+│                       discard_file/discard_all → return what could NOT be discarded
+├── commit.rs         ← commit (merge-aware parents), amend, revert (mainline 1 for merges)
+├── branch.rs         ← list(+ahead/behind), create/delete/rename, checkout (remote→local),
+│                       merge (ff/normal/conflicts; msg "Merge branch 'x' into y"),
+│                       rebase(+continue/abort), cherry-pick, reset soft/mixed/hard
+├── remote.rs         ← credential chain (see below), fetch/pull/push(+branch param)/clone,
+│                       pull_branch (ff-without-checkout for non-HEAD), push_tag,
+│                       credential_approve (git credential approve → OS keychain)
+├── accounts.rs       ← app-managed hosting accounts: tokens in OS keyring (service
+│                       "AngKorGit"), metadata accounts.json; lookup(host) for auth
+├── misc.rs           ← stash (list/create/apply/pop/drop), tags, submodules
+├── diff.rs           ← FileDiff w/ hunks+lines, contextLines param (huge = whole-file view),
+│                       commit_diff (first-parent, rename detection), image diffs (base64),
+│                       staged_patch_text (AI input)
+└── conflict.rs       ← conflict list/read/resolve (write + index.add_path)
+```
+
+**Credential chain** (remote.rs `make_callbacks`, in order):
+1. App **account** matched by remote host (accounts::lookup — GitLab tokens never sent to GitHub)
+2. SSH agent → `~/.ssh/id_ed25519`/`id_rsa` key files
+3. `git credential fill` subprocess (real keychain/manager, GIT_TERMINAL_PROMPT=0)
+4. libgit2 credential_helper → default. Retry-guarded (>6 attempts → descriptive error).
+
+**Engine conventions:**
+- Operations that can pause on conflicts return `OpOutcome { status: "ok"|"conflicts"|"up_to_date"|"fast_forward", message }` — never an error for conflicts.
+- Command args are **camelCase** matching the TS payloads (`#![allow(non_snake_case)]`).
+- Every new engine function gets an integration test in `tests/git_engine.rs`
+  (15 tests; TempRepo fixture creates real repos in temp dirs; uses `angkorgit_lib::test_api`).
+- Destructive ops verify outcomes (e.g. discard returns leftover paths → UI explains submodules).
+
+## 6. Frontend — `apps/desktop/src/`
+
+```
+main.tsx · app/App.tsx        ← providers, MemoryRouter, splash→welcome, ConfirmHost,
+                                Toaster (bottom-left, per-type accents), zoom shortcuts
+app/SplashScreen.tsx          ← animated logo draw (1.6s), fades to app
+app/globals.css               ← tokens import (RELATIVE path!), scrollbars, hljs palette
+core/ipc.ts                   ← THE typed IPC boundary — only place calling invoke();
+                                demo-mode fallback (browser) per command; openExternal;
+                                listen() wrapper for Tauri events
+core/demo.ts                  ← deterministic 400-commit synthetic repo for demo mode
+components/                   ← Toolbar (fetch/pull/push split-button, undo/redo,
+                                RepoSwitcher dropdown + "Commit as…" profiles submenu,
+                                sidebar toggle), CommandPalette (cmdk), Avatar (Gravatar
+                                SHA-256 + initials fallback + failure cache), confirm.tsx
+                                (promise-based confirmDialog + ConfirmHost)
+shared/                       ← useShortcuts (mod-combos, skipInInput), highlight.ts
+                                (hljs lib/core + languageOf), utils (timeAgo, modKey…)
+features/
+├── repository/               ← store (repo/status/branches/tags/stashes/remotes/submodules/
+│   │                           conflicts/recents, refresh/refreshStatus), WelcomePage,
+│   │                           RepositoryPage (layout, shortcuts, watcher subscription,
+│   │                           per-repo state reset), CloneDialog, RepoDialogs
+├── graph/                    ← store (pagination, filters, lastPath guard vs cross-repo
+│   │                           leaks), CommitGraph (virtualized, context menu incl. revert),
+│   │                           GraphRow (per-row SVG lanes), WipRow (uncommitted banner)
+├── commit/WorkingCopyPanel   ← staged/changes lists, stage/unstage/discard(+all),
+│                               auto-grow commit box (hidden when clean; amend link),
+│                               50/72 summary counter, AI message button
+├── diff/                     ← DiffPanel (center view, header toggles, minimap, prev/next
+│                               change, auto-close when file leaves working copy),
+│                               DiffViewer (wrap vs VIRTUALIZED no-wrap), VirtualDiff
+│                               (inline + synced split columns), DiffMinimap, diffShared
+├── conflicts/ConflictResolver← checkbox sides (both=keep both), prev/next nav,
+│                               EDITABLE Result pane (manual-edit guard, marker guard)
+├── sidebar/Sidebar.tsx       ← branch FOLDER TREE (buildBranchTree), right-click context
+│                               menu (checkout/merge/rebase/pull/push/create-branch-here/
+│                               rename/delete), drag-and-drop merge/rebase, tags/stashes/
+│                               remotes/submodules sections
+├── history/undoStore.ts      ← undo/redo: tracked() records before/after HEAD snapshots;
+│                               kinds commit/checkout/merge/cherryPick/rebase/reset/revert/
+│                               branchCreate/Delete/Rename; validation guards (repo moved,
+│                               dirty tree for hard kinds)
+├── inspector/                ← Inspector (working copy ⟷ commit details), CommitDetails
+├── terminal/TerminalPanel    ← xterm.js ↔ PTY events
+├── settings/                 ← store (theme, zoom, reduceMotion, ai config, identity
+│                               PROFILES — persisted), SettingsDialog (Appearance/Git/
+│                               Accounts/AI/Shortcuts tabs), AccountsTab (per-provider
+│                               token connect, host-matched)
+├── ai/client.ts              ← binds settings AI config + Rust HTTP transport to
+│                               @angkorgit/core providers (OpenAI/Anthropic/Gemini/
+│                               Ollama/LM Studio); capabilities: commit msg, explain
+│                               diff/conflict, PR description, summarize, review
+└── ui/store.ts               ← layout state (sidebar/terminal/palette/dialogs/centerDiff/
+                                diff view prefs) — view prefs PERSISTED via partialize
+```
+
+### 6.1 Demo mode (why the UI is testable without Rust)
+`ipc.ts` detects Tauri (`__TAURI_INTERNALS__`). Outside it, every command answers from
+`demo.ts` — deterministic synthetic history, status, diffs, conflict sample. `pnpm dev`
+in a browser and the Playwright e2e suite run entirely on this. **Never** import
+`@tauri-apps/*` outside `ipc.ts` (dynamic imports inside it only).
+
+### 6.2 State conventions
+- One Zustand store per feature; cross-feature access via `useX.getState()` in handlers,
+  hooks in components. No cross-store imports at module top-level that could cycle.
+- Persisted stores: `settings` (whole) and `ui` (partialize: view prefs only). Never
+  persist transient state (selections, dialogs, centerDiff).
+- Mutating git operations that should be undoable MUST go through
+  `useUndo.getState().tracked({ path, kind, label, extra, action, shouldRecord })`.
+
+## 7. Design system rules
+
+- **Colors only via tokens** (`bg-surface`, `text-muted`, `text-danger`…) — hex values in
+  components are a review blocker. Tokens: packages/design-system/src/tokens.css.
+- 8px spacing rhythm (Tailwind scale); `rounded-md` controls, `rounded-lg` surfaces.
+- Motion: 150–250ms, `cubic-bezier(0.16,1,0.3,1)`; **centered dialogs must animate with
+  the centering translate** — use `animate-dialog-in` (see gotcha G7).
+- Graph lane colors: `--graph-0…9`. Diff backgrounds: `bg-diff-add/15`, `bg-diff-del/15`.
+- Every icon button gets a `Hint` tooltip; destructive menu items use `destructive` prop.
+- Sentence case for all UI text.
+
+## 8. Hard-won gotchas (do not re-learn these)
+
+- **G1 — libgit2 pathspecs are fnmatch**: `"*"` matches everything, `"."` matches NOTHING
+  (unlike git CLI). Caused the unstage-all bug.
+- **G2 — HTML5 drag-and-drop needs `"dragDropEnabled": false`** on the window in
+  tauri.conf.json, or Tauri's native file-drop handler swallows all drag events.
+- **G3 — `window.confirm` is unreliable in the Tauri webview** — always use
+  `confirmDialog()` from `@/components/confirm`.
+- **G4 — tokens.css must be imported by RELATIVE path** in globals.css (postcss can't
+  resolve the package alias).
+- **G5 — Tauri command args are camelCase** end-to-end; crate has `allow(non_snake_case)`.
+- **G6 — GitKraken (and others) rewrite the GLOBAL gitconfig** when switching profiles.
+  AngKorGit identity profiles therefore write **repo-local config only** — never change this.
+- **G7 — dialog animation**: animating `transform` overrides the `-translate-x/y-1/2`
+  centering → visible jump. `dialog-in` keyframes include `translate(-50%,-50%)`.
+- **G8 — stage/unstage hunk indices** refer to the compact (3-context-line) diff; per-hunk
+  actions are hidden in whole-file view on purpose.
+- **G9 — graph store `lastPath` guard**: switching repos resets commits/filters/selection
+  atomically; CommitGraph is keyed by repo.path to reset input drafts. Prevents one repo's
+  history showing under another's header.
+- **G10 — discard cannot touch submodules** from the parent repo; engine returns leftover
+  paths and the UI names submodules explicitly.
+- **G11 — wrap mode in diffs is NOT virtualized** (variable heights); the default no-wrap
+  path is. Keep large-file work on the no-wrap path.
+- **G12 — first icon build**: `pnpm icons` then `pnpm --filter @angkorgit/desktop exec
+  tauri icon src-tauri/icons/icon.png` (release workflow does this).
+
+## 9. Testing map
+
+| Suite | Location | Coverage |
+| --- | --- | --- |
+| Rust integration (15) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, git-CLI interop |
+| Unit (14) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved) |
+| E2E (5) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search — all on demo mode |
+
+## 10. Distribution & CI
+
+- **Local**: `pnpm tauri:build` → `AngKorGit.app` + `AngKorGit_x.y.z_aarch64.dmg`;
+  `pnpm install:mac` installs. Locally-built apps aren't Gatekeeper-quarantined; shared
+  dmg recipients need right-click → Open (unsigned).
+- **CI** (`.github/workflows/ci.yml`): frontend typecheck+unit+build · Playwright ·
+  Rust fmt/clippy/test on ubuntu+macos+windows.
+- **Release** (`release.yml`): push tag `v*` → tauri-action builds macOS (universal),
+  Windows, Linux; attaches to draft GitHub release.
+- Repo remote: `https://github.com/cheat2001/angkorgit.git` (HTTPS by owner preference).
+
+## 11. Backlog (agreed direction, not yet built)
+
+1. OAuth device-flow "Sign in with GitHub/GitLab" popup (needs registering an OAuth app;
+   Accounts tab is the foundation).
+2. Provider avatars via connected accounts (GitLab self-hosted `/api/v4/avatar`, GitHub API)
+   layered over Gravatar.
+3. File-tree view for the working copy (deep C# paths); prev/next-file arrows in DiffPanel.
+4. Interactive rebase UI (reorder/squash/reword). 5. Blame/file history. 6. Worktrees.
+7. Forge integrations (PRs/issues) as `packages/forge` mirroring the AI adapter pattern.
+8. Plugin host (palette commands, sidebar sections, inspector tabs are list-driven already).
+
+## 12. Voice & positioning (for docs/website work)
+
+- Tagline: *"Everyday Git, made delightful."* Motto: *Strength. Simplicity. Craftsmanship.*
+- Compare on: size (8 MB vs ~1 GB), speed (native libgit2), focus (25 features done well).
+- Never copy GitKraken assets/layouts; we take workflow inspiration only.
+- License: MIT. Attribution to Angkor Wat heritage is part of the brand story.

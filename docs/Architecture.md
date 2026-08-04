@@ -21,8 +21,9 @@ AngKorGit follows Clean Architecture with feature-based folders. Dependencies po
 ├─────────────────────────────────────────────────────────────┤
 │  Rust engine (apps/desktop/src-tauri)                       │
 │  commands.rs (thin) → core/* (repo, history, stage, commit, │
-│  branch, remote, misc, diff, conflict) over git2/libgit2    │
-│  + terminal.rs (portable-pty) + http.rs (AI proxy)          │
+│  branch, remote, accounts, misc, diff, conflict) over       │
+│  git2/libgit2 · terminal.rs (portable-pty) · watcher.rs     │
+│  (filesystem events) · http.rs (AI proxy)                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -43,6 +44,14 @@ AngKorGit follows Clean Architecture with feature-based folders. Dependencies po
 **Conflict resolution as data.** Conflicted files are parsed into text/conflict blocks (`parseConflicts`), the resolver mutates block resolutions, and `serializeResolution` writes the result. Unresolved blocks re-emit their markers, so a half-finished session never destroys data.
 
 **AI is an adapter registry.** Features call capabilities (`generateCommitMessage`, `explainConflict`, …) against the `AiProvider` interface. Providers (OpenAI, Anthropic, Gemini, Ollama, LM Studio) are created from config; HTTP goes through an injected transport implemented by a Rust proxy (no CORS, keys stay out of webview fetch). Adding a provider touches exactly one file.
+
+**Credentials are layered, host-scoped, and never global.** App-managed accounts (tokens in the OS keyring under AngKorGit's own service, matched to remotes by host) come first, then SSH agent/keys, then the system `git credential` stack — so a GitLab token is never offered to GitHub. The same philosophy applies to committer identity: profiles apply to a repository's local config only, never the shared global gitconfig other tools fight over.
+
+**Undo/redo as recorded transitions.** Every mutating operation runs through a `tracked()` wrapper that snapshots HEAD before/after. Undo applies the inverse (soft reset for commits, ref restore for branch deletion, …) and validates the repository hasn't moved since — corrupting-the-repo is structurally prevented, and hard-reset-style undos refuse to run over uncommitted work.
+
+**Live updates via a debounced watcher.** A `notify`-based filesystem watcher (400 ms debounce, `.git` noise filtered down to HEAD/refs/index movements) emits a single `repo-changed` event; the frontend refreshes status — or everything, when HEAD moved externally. Editing in an IDE or committing from a terminal reflects in the UI within half a second.
+
+**Verified destructive operations.** Discard (file or all) re-checks status afterwards and reports what could *not* be discarded, so cases libgit2 silently skips (submodule pointer changes) surface as actionable messages instead of silent no-ops.
 
 ## Extension points (future features)
 

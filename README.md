@@ -11,15 +11,20 @@
 
 ---
 
-AngKorGit focuses on the Git operations developers actually use every day and executes them exceptionally well: staging (down to individual hunks), committing, branching, merging, rebasing, cherry-picking, stashing, tagging, a beautiful animated commit graph, a visual three-pane conflict resolver, a built-in terminal, and an AI assistant that works with **any** provider (OpenAI, Anthropic, Gemini, Ollama, LM Studio).
+AngKorGit focuses on the Git operations developers actually use every day and executes them exceptionally well — in an app that weighs **~8 MB** instead of a gigabyte.
 
 ## Highlights
 
-- **Fast by architecture** — Rust + libgit2 engine, virtualized graph rendering, incremental history loading. 100k-commit repositories stay smooth.
-- **Keyboard-first** — a ⌘K command palette reaches every daily operation; every panel has shortcuts.
-- **Beginner-friendly** — conflicts become three panes with *Accept Current / Incoming / Both* buttons, destructive actions confirm first, errors speak human.
+- **Fast by architecture** — Rust + libgit2 engine, virtualized graph *and* diff rendering, incremental history loading. 100k-commit repositories and multi-thousand-line diffs stay at full frame rate.
+- **The full daily toolkit** — stage down to individual hunks, commit/amend, branch folders with right-click menus, merge/rebase/cherry-pick/revert/reset, stash, tags, submodule awareness, per-branch push & pull (fast-forward without checkout), and **drag a branch onto another to merge** — every operation undoable with ⌘Z.
+- **Review like you mean it** — full-width diffs with a clickable minimap, previous/next-change hops, side-by-side or inline, word-level highlighting, whole-file view, image diffs.
+- **Conflicts without fear** — checkbox picks per side (keep both!), conflict-to-conflict navigation, and a fully **editable result pane** with marker guards.
+- **Live by default** — a filesystem watcher keeps the WIP row, status, and graph in sync while you edit in your IDE or commit from a terminal.
+- **Multi-account, multi-identity** — per-host tokens in the OS keychain (GitHub, GitLab incl. self-hosted, Bitbucket) and per-repo committer profiles, so work and personal never mix.
+- **Keyboard-first** — ⌘K palette for everything, ⌘Z/⌘⇧Z undo/redo, ⌘B sidebar, ⌘± zoom.
+- **Beginner-friendly & safe** — destructive actions get real confirmation dialogs, failures explain themselves (down to "this is a submodule — open it as its own repository").
 - **Dark by default**, light theme included. Temple Gold `#D97706` accents, Inter + JetBrains Mono, 8px spacing rhythm.
-- **AI where it helps** — generate commit messages, explain diffs and conflicts, draft PR descriptions, review staged changes. No provider hardcoded, local models welcome.
+- **AI where it helps** — commit messages, diff/conflict explanations, PR descriptions, staged-change review. Any provider: OpenAI, Anthropic, Gemini, Ollama, LM Studio. Nothing hardcoded, local models welcome.
 
 ## Getting started
 
