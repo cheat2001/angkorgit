@@ -35,7 +35,16 @@ function Shell() {
       setSplash(false);
       navigate('/welcome', { replace: true });
     }, 1600);
-    return () => clearTimeout(timer);
+    // Quiet auto-update check shortly after startup.
+    const updateTimer = setTimeout(() => {
+      void import('@/features/updater/check').then(({ checkForUpdates }) =>
+        checkForUpdates({ silent: true }),
+      );
+    }, 5000);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(updateTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

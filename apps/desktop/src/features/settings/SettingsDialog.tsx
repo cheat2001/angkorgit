@@ -206,9 +206,21 @@ export function SettingsDialog() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2 border-t border-border-subtle px-4 py-3">
-              <Logo size={18} className="text-foreground" />
-              <span className="text-xs text-faint">AngKorGit 0.1.0</span>
+            <div className="border-t border-border-subtle px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Logo size={18} className="text-foreground" />
+                <span className="text-xs text-faint">AngKorGit 0.1.0</span>
+              </div>
+              <button
+                className="mt-1.5 text-xs text-muted underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() =>
+                  void import('@/features/updater/check').then(({ checkForUpdates }) =>
+                    checkForUpdates({ silent: false }),
+                  )
+                }
+              >
+                Check for updates
+              </button>
             </div>
           </nav>
 

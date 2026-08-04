@@ -33,7 +33,26 @@ AngKorGit focuses on the Git operations developers actually use every day and ex
 - **Dark by default**, light theme included. Temple Gold `#D97706` accents, Inter + JetBrains Mono, 8px spacing rhythm.
 - **AI where it helps** — commit messages, diff/conflict explanations, PR descriptions, staged-change review. Any provider: OpenAI, Anthropic, Gemini, Ollama, LM Studio. Nothing hardcoded, local models welcome.
 
-## Getting started
+## Install
+
+Download the latest release for your platform from the
+[releases page](https://github.com/cheat2001/angkorgit/releases).
+
+AngKorGit is free, open-source software and is **not signed with a paid
+certificate**, so your OS asks for one extra confirmation on first launch:
+
+| Platform | First launch |
+| --- | --- |
+| **macOS** | Right-click `AngKorGit.app` → **Open** → Open. (Newer macOS: System Settings → Privacy & Security → **Open Anyway**.) |
+| **Windows** | SmartScreen: **More info → Run anyway** |
+| **Linux** | AppImage: `chmod +x AngKorGit_*.AppImage`, then run — or install the `.deb` |
+
+After that, AngKorGit **updates itself**: every update is cryptographically
+verified (minisign) before installing, and all releases are built in public by
+GitHub Actions from this source tree. No telemetry, ever. Prefer to audit?
+Build from source below.
+
+## Building from source
 
 Prerequisites: [Node 20+](https://nodejs.org), [pnpm 9+](https://pnpm.io), [Rust stable](https://rustup.rs) and the [Tauri v2 system deps](https://v2.tauri.app/start/prerequisites/).
 

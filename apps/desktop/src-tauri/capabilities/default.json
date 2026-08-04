@@ -8,6 +8,8 @@
     "core:window:allow-set-title",
     "core:webview:allow-set-webview-zoom",
     "dialog:default",
-    "opener:default"
+    "opener:default",
+    "process:default",
+    "updater:default"
   ]
 }

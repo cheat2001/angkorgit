@@ -13,64 +13,48 @@ cannot be automated by contributors.
    macOS (universal), Windows, and Linux bundles via `tauri-action` and attaches
    them to a **draft** GitHub release. Review, paste the changelog section, publish.
 
-## 2. macOS code signing & notarization **[owner]**
+## 2. Distribution WITHOUT paid signing (the current, chosen approach)
 
-Unsigned apps trigger Gatekeeper's "unidentified developer" wall — the #1
-adoption killer. One-time setup:
+AngKorGit ships **unsigned** — free and independent. Users get one extra step
+on first launch; document it prominently (README covers this):
 
-1. Join the [Apple Developer Program](https://developer.apple.com/programs/) (~$99/yr).
-2. In Xcode / developer portal, create a **Developer ID Application** certificate;
-   export it as `certificate.p12` with a password.
-3. Create an App Store Connect **API key** (for notarization) or use an
-   app-specific Apple ID password.
-4. Add GitHub repository secrets:
-   - `APPLE_CERTIFICATE` (base64 of the .p12), `APPLE_CERTIFICATE_PASSWORD`
-   - `APPLE_ID`, `APPLE_PASSWORD` (app-specific), `APPLE_TEAM_ID`
-5. In `release.yml`, pass them to `tauri-action`'s env — it signs and notarizes
-   automatically:
+- **macOS**: the app isn't notarized, so Gatekeeper blocks the first open.
+  Either right-click the app → **Open** → Open, or on newer macOS:
+  **System Settings → Privacy & Security → "AngKorGit was blocked" → Open Anyway**.
+  Terminal alternative: `xattr -cr /Applications/AngKorGit.app` (removes the
+  quarantine flag). Tauri ad-hoc-signs the binary automatically, so it runs
+  fine on Apple Silicon once past Gatekeeper.
+- **Windows**: SmartScreen shows "Windows protected your PC" →
+  **More info → Run anyway**.
+- **Linux**: AppImage: `chmod +x AngKorGit_*.AppImage` and run; `.deb` installs
+  normally.
 
-```yaml
-env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-  APPLE_ID: ${{ secrets.APPLE_ID }}
-  APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-```
+Security honesty: unsigned ≠ unsafe. Releases are built by public GitHub
+Actions from public source, updates are minisign-verified (§3), and users can
+always build from source. If the project later earns sponsorship, Apple
+notarization (~$99/yr) can be added — the workflow snippet lives in git
+history — purely to remove the first-launch step.
 
-Windows: an OV/EV code-signing certificate (e.g. via Azure Trusted Signing)
-removes SmartScreen warnings — same pattern, `tauri-action` supports it.
+## 3. Auto-updates — ACTIVE ✅ (free, Apple-independent)
 
-## 3. Auto-updates (tauri-plugin-updater) **[owner for keys]**
+Updates are pull-based from GitHub releases and verified with the project's
+**own minisign key** before installing — a tampered download will never run.
 
-Design decision: updates are **pull-based from GitHub releases** — no server.
+Already wired in the codebase:
+- Keypair generated; **private key: `~/.tauri/angkorgit.key` on the owner's
+  machine — BACK IT UP. If lost, existing installs can never update again.**
+  Public key: embedded in `tauri.conf.json → plugins.updater.pubkey`.
+- `tauri-plugin-updater` + `tauri-plugin-process` registered; capability
+  `updater:default`, `process:default`; `bundle.createUpdaterArtifacts: true`.
+- Frontend: silent check 5s after startup (`features/updater/check.ts`) →
+  "Update available" toast with **Update now** (download, verify, relaunch);
+  manual **Check for updates** in the Settings rail footer.
+- `release.yml` passes `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` to tauri-action,
+  which then also generates and uploads `latest.json`.
 
-1. Generate the update signing keypair (once, keep the private key safe):
-   ```bash
-   pnpm --filter @angkorgit/desktop exec tauri signer generate -w ~/.tauri/angkorgit.key
-   ```
-2. Add to `tauri.conf.json`:
-   ```json
-   "plugins": {
-     "updater": {
-       "pubkey": "<public key from step 1>",
-       "endpoints": [
-         "https://github.com/cheat2001/angkorgit/releases/latest/download/latest.json"
-       ]
-     }
-   }
-   ```
-3. Add the crate + JS plugin (`tauri-plugin-updater`, `@tauri-apps/plugin-updater`),
-   register `.plugin(tauri_plugin_updater::Builder::new().build())`, permission
-   `updater:default`.
-4. Add GitHub secrets `TAURI_SIGNING_PRIVATE_KEY` (+ password); `tauri-action`
-   then produces signed update artifacts and `latest.json` automatically.
-5. Frontend: on startup, `check()` → toast "Update available — Restart to
-   install" → `downloadAndInstall()`. Wire it in `App.tsx` behind a settings toggle.
-
-Until keys exist, this stays documentation — adding the plugin without a pubkey
-breaks builds.
+**[owner] one-time**: add GitHub secret `TAURI_SIGNING_PRIVATE_KEY` — the
+contents of `~/.tauri/angkorgit.key` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+if you set one; ours is empty → set the secret to an empty string or omit).
 
 ## 4. Homebrew cask **[after first signed release]**
 

@@ -28,10 +28,19 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCOTlBMDVERkYyNjQ4NQpSV1NGWlBMZkJacTVDNUpPR0lTZmxaNEJxSXNKMU0vVmRCQ3JFWG5NdFNLNHlta09hRUUxcC9lNgo=",
+      "endpoints": [
+        "https://github.com/cheat2001/angkorgit/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
