@@ -171,7 +171,15 @@ function useHorizontalPan(
     let raf = 0;
     const maxX = () => {
       const pane = panes.find((p) => p.current)?.current;
-      return pane ? Math.max(0, width - pane.clientWidth) : 0;
+      if (!pane) return 0;
+      // Ground truth beats the width estimate: scrollWidth is the real
+      // rendered extent of the mounted rows, so the longest visible line is
+      // always fully reachable (the range adapts like VS Code's).
+      let w = width;
+      for (const layer of layers) {
+        if (layer.current) w = Math.max(w, layer.current.scrollWidth);
+      }
+      return Math.max(0, w - pane.clientWidth);
     };
     const apply = () => {
       raf = 0;
