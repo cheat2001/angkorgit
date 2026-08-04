@@ -82,7 +82,7 @@ fn credentials_from_git_cli(url: &str, username: Option<&str>) -> Option<(String
 /// Credential negotiation: SSH agent → ~/.ssh keys → `git credential fill`
 /// (keychain/manager/store) → libgit2 helper → default. A retry guard
 /// prevents libgit2 from looping forever on rejected credentials.
-fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
+pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
     let mut callbacks = RemoteCallbacks::new();
     let attempts = AtomicUsize::new(0);
     callbacks.credentials(move |url, username_from_url, allowed| {

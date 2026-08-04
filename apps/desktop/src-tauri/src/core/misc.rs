@@ -137,7 +137,12 @@ pub fn submodule_list(path: &str) -> AppResult<Vec<SubmoduleInfo>> {
 pub fn submodule_update(path: &str, name: &str) -> AppResult<()> {
     let repo = super::repo::open(path)?;
     let mut sub = repo.find_submodule(name)?;
+    // The recorded commit may need fetching — use the full credential chain
+    // (accounts → SSH → git credential helpers), same as fetch/pull/push.
+    let mut fetch = git2::FetchOptions::new();
+    fetch.remote_callbacks(super::remote::make_callbacks());
     let mut opts = git2::SubmoduleUpdateOptions::new();
+    opts.fetch(fetch);
     sub.update(true, Some(&mut opts))?;
     Ok(())
 }

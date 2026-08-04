@@ -8,7 +8,9 @@ import {
   Check,
   ChevronRight,
   Cloud,
+  Copy,
   Folder,
+  FolderGit2,
   FolderOpen,
   GitBranch,
   GitMerge,
@@ -38,6 +40,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Hint,
   Input,
   cn,
 } from '@angkorgit/design-system';
@@ -46,7 +49,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import type { BranchInfo } from '@angkorgit/core';
+import type { BranchInfo, SubmoduleInfo } from '@angkorgit/core';
 
 /**
  * Branch folder tree: "feature/test" and "feature/test2" group under a
@@ -160,6 +163,19 @@ export function Sidebar() {
   const [dropAction, setDropAction] = useState<{ source: string; target: string } | null>(null);
   /** branch menu opened by right-click or the ⋯ button, positioned at cursor */
   const [branchMenu, setBranchMenu] = useState<{ x: number; y: number; branch: BranchInfo } | null>(null);
+  const [subMenu, setSubMenu] = useState<{ x: number; y: number; sub: SubmoduleInfo } | null>(null);
+
+  /** Open a submodule as its own repository — full graph, history, everything. */
+  const openSubmodule = (sub: SubmoduleInfo) => {
+    void useRepo
+      .getState()
+      .open(`${path}/${sub.path}`)
+      .catch(() =>
+        toast.error(
+          `Could not open ${sub.path} — the submodule may not be initialized. Run "Update" on it first.`,
+        ),
+      );
+  };
 
   const path = repo?.path ?? '';
 
@@ -538,24 +554,76 @@ export function Sidebar() {
         {submodules.length > 0 && (
           <Section icon={<Boxes className="size-3.5" />} title="Submodules" count={submodules.length} defaultOpen={false}>
             {submodules.map((sub) => (
-              <div key={sub.name} className="group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm text-muted hover:bg-surface-raised">
-                <span className="min-w-0 flex-1 truncate" title={sub.url ?? sub.path}>
-                  {sub.path}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0 opacity-0 group-hover:opacity-100"
-                  aria-label={`Update ${sub.name}`}
-                  onClick={() => void act(`Update ${sub.name}`, () => ipc.submoduleUpdate(path, sub.name))}
-                >
-                  <ListRestart className="size-3.5" />
-                </Button>
+              <div
+                key={sub.name}
+                className="group flex cursor-default items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm text-muted hover:bg-surface-raised"
+                title={sub.url ?? sub.path}
+                onDoubleClick={() => openSubmodule(sub)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setSubMenu({ x: e.clientX, y: e.clientY, sub });
+                }}
+              >
+                <span className="min-w-0 flex-1 truncate">{sub.path}</span>
+                <Hint label="Open as repository">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="shrink-0 opacity-0 group-hover:opacity-100"
+                    aria-label={`Open ${sub.name}`}
+                    onClick={() => openSubmodule(sub)}
+                  >
+                    <FolderGit2 className="size-3.5" />
+                  </Button>
+                </Hint>
+                <Hint label="Update (checkout recorded commit)">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="shrink-0 opacity-0 group-hover:opacity-100"
+                    aria-label={`Update ${sub.name}`}
+                    onClick={() => void act(`Update ${sub.name}`, () => ipc.submoduleUpdate(path, sub.name))}
+                  >
+                    <ListRestart className="size-3.5" />
+                  </Button>
+                </Hint>
               </div>
             ))}
           </Section>
         )}
       </div>
+
+      {/* Submodule context menu */}
+      {subMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setSubMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: subMenu.x, top: subMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            <DropdownMenuLabel className="max-w-64 truncate font-mono">{subMenu.sub.path}</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => openSubmodule(subMenu.sub)}>
+              <FolderGit2 /> Open as repository
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                const sub = subMenu.sub;
+                void act(`Update ${sub.name}`, () => ipc.submoduleUpdate(path, sub.name));
+              }}
+            >
+              <ListRestart /> Update (checkout recorded commit)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                void navigator.clipboard.writeText(`${path}/${subMenu.sub.path}`);
+                toast.success('Path copied');
+              }}
+            >
+              <Copy /> Copy path
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       {/* Branch context menu (right-click or ⋯) */}
       {branchMenu && (
