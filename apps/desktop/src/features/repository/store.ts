@@ -51,6 +51,11 @@ export const useRepo = create<RepoState>((set, get) => ({
   open: async (path: string) => {
     const repo = await ipc.openRepository(path);
     set({ repo });
+    // every opened repository gets a tab in the top strip (lazy import
+    // avoids a module-level store cycle)
+    void import('@/features/ui/store').then(({ useUi }) =>
+      useUi.getState().addRepoTab(repo.path),
+    );
     await get().refresh();
     void get().loadRecents();
     return repo;

@@ -44,6 +44,8 @@ interface UiState {
   centerFileHistory: string | null;
   /** conflict resolver target */
   conflictFile: string | null;
+  /** open repository tabs (paths, GitKraken-style top strip) — persisted */
+  repoTabs: string[];
 
   toggleSidebar: () => void;
   toggleTerminal: () => void;
@@ -62,6 +64,8 @@ interface UiState {
   openFileHistory: (file: string) => void;
   closeFileHistory: () => void;
   openConflict: (file: string | null) => void;
+  addRepoTab: (path: string) => void;
+  closeRepoTab: (path: string) => void;
 }
 
 export const useUi = create<UiState>()(
@@ -81,6 +85,7 @@ export const useUi = create<UiState>()(
   centerEditor: null,
   centerFileHistory: null,
   conflictFile: null,
+  repoTabs: [],
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
@@ -101,6 +106,9 @@ export const useUi = create<UiState>()(
   openFileHistory: (centerFileHistory) => set({ centerFileHistory, centerDiff: null }),
   closeFileHistory: () => set({ centerFileHistory: null }),
   openConflict: (conflictFile) => set({ conflictFile }),
+  addRepoTab: (path) =>
+    set((s) => (s.repoTabs.includes(path) ? s : { repoTabs: [...s.repoTabs, path] })),
+  closeRepoTab: (path) => set((s) => ({ repoTabs: s.repoTabs.filter((t) => t !== path) })),
     }),
     {
       name: 'angkorgit-ui',
@@ -112,6 +120,7 @@ export const useUi = create<UiState>()(
         wordDiff: state.wordDiff,
         fullFileDiff: state.fullFileDiff,
         wrapLines: state.wrapLines,
+        repoTabs: state.repoTabs,
       }),
     },
   ),

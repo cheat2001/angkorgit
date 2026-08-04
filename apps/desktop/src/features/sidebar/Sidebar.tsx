@@ -465,8 +465,13 @@ export function Sidebar() {
             ? remoteBranches.map((branch) => renderRemoteBranch(branch, branch.name, 0))
             : renderTree(remoteTree, 0, 'remote')}
           {remotes.map((r) => (
-            <div key={r.name} className="px-2 py-1 pl-7 font-mono text-[10px] text-faint" title={r.url}>
-              {r.name} · {r.url}
+            <div
+              key={r.name}
+              className="flex items-center gap-1.5 truncate px-2 py-1 pl-7 text-xs text-faint"
+              title={r.url}
+            >
+              <Cloud className="size-3 shrink-0" />
+              <span className="truncate">{r.name}</span>
             </div>
           ))}
         </Section>

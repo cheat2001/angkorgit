@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useRepo } from './store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
+import { RepoTabs } from '@/components/RepoTabs';
 import { Toolbar } from '@/components/Toolbar';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { CommitGraph } from '@/features/graph/CommitGraph';
@@ -150,6 +151,7 @@ export function RepositoryPage() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.25 }}
     >
+      <RepoTabs />
       <Toolbar onRefresh={refreshAll} />
       <div className="min-h-0 flex-1">
         <PanelGroup direction="horizontal" autoSaveId="angkorgit-main">
