@@ -139,6 +139,10 @@ export function RepositoryPage() {
 
   if (!repo) return null;
 
+  // File history is a review surface — both side panels auto-hide so the
+  // commit list + diff get the full width (they return when it closes).
+  const focusMode = !!centerFileHistory && !centerEditor && !centerDiff;
+
   return (
     <motion.div
       className="flex h-full flex-col"
@@ -149,7 +153,7 @@ export function RepositoryPage() {
       <Toolbar onRefresh={refreshAll} />
       <div className="min-h-0 flex-1">
         <PanelGroup direction="horizontal" autoSaveId="angkorgit-main">
-          {sidebarOpen && (
+          {sidebarOpen && !focusMode && (
             <>
               <Panel defaultSize={18} minSize={13} maxSize={30} order={1}>
                 <Sidebar />
@@ -185,10 +189,14 @@ export function RepositoryPage() {
               )}
             </PanelGroup>
           </Panel>
-          <PanelResizeHandle className="w-px bg-border-subtle" />
-          <Panel defaultSize={28} minSize={20} maxSize={45} order={3}>
-            <Inspector />
-          </Panel>
+          {!focusMode && (
+            <>
+              <PanelResizeHandle className="w-px bg-border-subtle" />
+              <Panel defaultSize={28} minSize={20} maxSize={45} order={3}>
+                <Inspector />
+              </Panel>
+            </>
+          )}
         </PanelGroup>
       </div>
 
