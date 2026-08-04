@@ -278,6 +278,7 @@ function SplitHalf({
   rows,
   items,
   total,
+  width,
   side,
   language,
   useWordDiff,
@@ -288,22 +289,13 @@ function SplitHalf({
 }: CommonProps & {
   items: ReturnType<ReturnType<typeof useDiffVirtualizer>['getVirtualItems']>;
   total: number;
+  /** SHARED between both halves — unequal scroll ranges make the clamped
+   * pane's sync echo fight the user's scroll (visible jitter). */
+  width: number;
   side: 'old' | 'new';
   scrollX: React.RefObject<HTMLDivElement>;
   onScrollX: () => void;
 }) {
-  const width = useMemo(
-    () =>
-      contentWidth(
-        rows.flatMap((row) => {
-          if (row.kind !== 'pair') return [];
-          const line = side === 'old' ? row.left : row.right;
-          return line ? [line.content] : [];
-        }),
-      ),
-    [rows, side],
-  );
-
   const bgOf = (row: FlatRow): string => {
     if (row.kind === 'header') return 'border-y border-border-subtle bg-surface-raised/60';
     if (row.kind !== 'pair') return '';
@@ -393,6 +385,20 @@ export function VirtualSplitDiff(props: CommonProps) {
   const leftX = useRef<HTMLDivElement>(null);
   const rightX = useRef<HTMLDivElement>(null);
 
+  // One scroll width for BOTH halves (widest line of either side): equal
+  // ranges mean the mirrored pane can never clamp and fight the scroll.
+  const width = useMemo(
+    () =>
+      contentWidth(
+        props.rows.flatMap((row) =>
+          row.kind === 'pair'
+            ? [row.left?.content ?? '', row.right?.content ?? '']
+            : [],
+        ),
+      ),
+    [props.rows],
+  );
+
   const sync = (from: React.RefObject<HTMLDivElement>, to: React.RefObject<HTMLDivElement>) => () => {
     if (from.current && to.current && to.current.scrollLeft !== from.current.scrollLeft) {
       to.current.scrollLeft = from.current.scrollLeft;
@@ -401,8 +407,8 @@ export function VirtualSplitDiff(props: CommonProps) {
 
   return (
     <div className="flex items-start">
-      <SplitHalf {...props} items={items} total={total} side="old" scrollX={leftX} onScrollX={sync(leftX, rightX)} />
-      <SplitHalf {...props} items={items} total={total} side="new" scrollX={rightX} onScrollX={sync(rightX, leftX)} />
+      <SplitHalf {...props} items={items} total={total} width={width} side="old" scrollX={leftX} onScrollX={sync(leftX, rightX)} />
+      <SplitHalf {...props} items={items} total={total} width={width} side="new" scrollX={rightX} onScrollX={sync(rightX, leftX)} />
     </div>
   );
 }
