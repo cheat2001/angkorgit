@@ -6,6 +6,32 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-08-05
+
+### Added
+- **Find in diff**: ⌘F over any diff (center panel and file history) — live
+  match count, Enter/⇧Enter navigation with wraparound, case toggle,
+  pixel-perfect highlights measured from the rendered text, and the view
+  scrolls **both vertically and horizontally** to each match
+- **12 popular editor themes**: VS Code Dark+/Light+, GitHub Dark/Light,
+  One Dark Pro, Tokyo Night, Catppuccin Mocha/Latte, Dracula, Nord,
+  Ayu Dark/Light — full surface + syntax palettes, picked from a swatch grid
+  in Settings; the accent color works on every theme
+- **Folder tree everywhere**: a persisted List/Tree toggle for the working
+  copy *and* commit file lists — collapsible folders with counts, deep
+  single-child chains compressed into one row
+- **Stash previews**: click a stash in the sidebar to see its message,
+  author, and full file diffs before applying
+- **Commit graph keyboard navigation**: ↑/↓ walk commits, Home/End jump to
+  newest/oldest, selection auto-scrolls
+- **Copy from diffs**: right-click offers Copy (selected text) and Copy line
+  in every diff — commit and file-history diffs included
+
+### Changed
+- Working copy reordered: **Changes on top, Staged at the bottom** next to
+  the commit box — staging moves files toward the commit
+- Duplicate diff-view toggles removed from the inspector header
+
 ## [0.1.1] — 2026-08-04
 
 ### Added
@@ -81,6 +107,7 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/cheat2001/angkorgit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/cheat2001/angkorgit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cheat2001/angkorgit/releases/tag/v0.1.0
