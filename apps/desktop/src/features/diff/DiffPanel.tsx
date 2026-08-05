@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { ChevronDown, ChevronUp, Columns2, Copy, FileText, Minus, Plus, Rows3, Trash2, WholeWord, WrapText, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Columns2, Copy, FileText, Minus, Plus, Rows3, TextSelect, Trash2, WholeWord, WrapText, X } from 'lucide-react';
 import type { FileDiff } from '@angkorgit/core';
 import {
   Badge,
@@ -24,6 +24,7 @@ import { useRepo } from '@/features/repository/store';
 import { useUi, type CenterDiffTarget } from '@/features/ui/store';
 import { DiffViewer } from './DiffViewer';
 import { useDiffFind } from './diffSearch';
+import { useDiffSelectAll } from './diffCopy';
 import { changeBlocks, DiffMinimap, scrollToFraction } from './DiffMinimap';
 
 export function DiffPanel({ target }: { target: CenterDiffTarget }) {
@@ -52,10 +53,9 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     info: LineMenuInfo;
     selection: string;
   } | null>(null);
-  const { findBar, search } = useDiffFind(
-    diff && !diff.isBinary && !diff.isImage ? diff : null,
-    scrollRef,
-  );
+  const textDiff = diff && !diff.isBinary && !diff.isImage ? diff : null;
+  const { findBar, search } = useDiffFind(textDiff, scrollRef);
+  const { selectAllOverlay, selectSide } = useDiffSelectAll(textDiff, scrollRef);
 
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
@@ -267,6 +267,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
 
       <div className="relative flex min-h-0 flex-1">
         {findBar}
+        {selectAllOverlay}
         <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex h-full items-center justify-center">
@@ -422,6 +423,11 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
               }}
             >
               <Copy /> Copy line
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => selectSide(lineMenu.info.side ?? 'new')}
+            >
+              <TextSelect /> Select all
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -124,6 +124,7 @@ function marker(kind: DiffLine['kind']): { char: string; cls: string } {
 
 export interface LineMenuInfo {
   line: DiffLine;
+  side?: 'old' | 'new';
 }
 
 interface CommonProps {
@@ -355,7 +356,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
         })}
       </div>
 
-      <div ref={paneRef} data-diff-pane className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
+      <div ref={paneRef} data-diff-pane="new" className="relative min-w-0 flex-1 cursor-text overflow-hidden" style={{ height: total }}>
         <div aria-hidden className="pointer-events-none absolute inset-0">
           {items.map((item) => {
             const row = rows[item.index];
@@ -373,7 +374,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
             );
           })}
         </div>
-        <div ref={layerRef} className="absolute inset-y-0 left-0" style={{ width, minWidth: '100%', tabSize: 4 }}>
+        <div ref={layerRef} data-diff-layer className="absolute inset-y-0 left-0" style={{ width, minWidth: '100%', tabSize: 4 }}>
           {items.map((item) => {
             const row = rows[item.index];
             if (row.kind !== 'line') return null;
@@ -466,7 +467,7 @@ function SplitHalf({
           );
         })}
       </div>
-      <div ref={paneRef} data-diff-pane className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
+      <div ref={paneRef} data-diff-pane={side} className="relative min-w-0 flex-1 cursor-text overflow-hidden" style={{ height: total }}>
         <div aria-hidden className="pointer-events-none absolute inset-0">
           {items.map((item) => {
             const row = rows[item.index];
@@ -479,7 +480,7 @@ function SplitHalf({
             );
           })}
         </div>
-        <div ref={layerRef} className="absolute inset-y-0 left-0" style={{ width, minWidth: '100%', tabSize: 4 }}>
+        <div ref={layerRef} data-diff-layer className="absolute inset-y-0 left-0" style={{ width, minWidth: '100%', tabSize: 4 }}>
           {items.map((item) => {
             const row = rows[item.index];
             const line = row.kind === 'pair' ? (side === 'old' ? row.left : row.right) : null;
@@ -490,7 +491,7 @@ function SplitHalf({
                 className="absolute left-0"
                 style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
                 onContextMenu={
-                  onLineContextMenu ? (e) => onLineContextMenu(e, { line }) : undefined
+                  onLineContextMenu ? (e) => onLineContextMenu(e, { line, side }) : undefined
                 }
               >
                 <LineContent line={line} search={search}>
