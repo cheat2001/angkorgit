@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { DiffLine, FileDiff } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
@@ -136,27 +136,93 @@ interface CommonProps {
   search?: SearchRanges;
 }
 
-function SearchMarks({ line, search }: { line: DiffLine; search?: SearchRanges }) {
+function rangeRect(
+  container: HTMLElement,
+  start: number,
+  end: number,
+): { left: number; width: number; top: number; height: number } | null {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let offset = 0;
+  let startNode: Text | null = null;
+  let startOffset = 0;
+  let endNode: Text | null = null;
+  let endOffset = 0;
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    const next = offset + node.length;
+    if (!startNode && start < next) {
+      startNode = node;
+      startOffset = start - offset;
+    }
+    if (startNode && end <= next) {
+      endNode = node;
+      endOffset = end - offset;
+      break;
+    }
+    offset = next;
+  }
+  if (!startNode || !endNode) return null;
+  const range = document.createRange();
+  range.setStart(startNode, Math.max(0, startOffset));
+  range.setEnd(endNode, Math.max(0, endOffset));
+  const rect = range.getBoundingClientRect();
+  const base = container.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return null;
+  return {
+    left: rect.left - base.left,
+    width: rect.width,
+    top: rect.top - base.top,
+    height: rect.height,
+  };
+}
+
+interface MarkRect {
+  left: number;
+  width: number;
+  top: number;
+  height: number;
+  current: boolean;
+}
+
+function LineContent({
+  line,
+  search,
+  children,
+}: {
+  line: DiffLine;
+  search?: SearchRanges;
+  children: React.ReactNode;
+}) {
   const ranges = search?.get(line);
-  if (!ranges) return null;
+  const ref = useRef<HTMLDivElement>(null);
+  const [marks, setMarks] = useState<MarkRect[]>([]);
+
+  useLayoutEffect(() => {
+    if (!ranges || !ref.current) {
+      setMarks((m) => (m.length > 0 ? [] : m));
+      return;
+    }
+    const out: MarkRect[] = [];
+    for (const r of ranges) {
+      const rect = rangeRect(ref.current, r.start, r.end);
+      if (rect) out.push({ ...rect, current: r.current });
+    }
+    setMarks(out);
+  }, [ranges, line]);
+
   return (
-    <>
-      {ranges.map((r, i) => (
+    <div ref={ref} className="relative px-2">
+      {marks.map((m, i) => (
         <span
           key={i}
           className={cn(
             'pointer-events-none absolute rounded-sm',
-            r.current ? 'bg-primary/50 ring-1 ring-primary' : 'bg-primary/25',
+            m.current ? 'bg-primary/50 ring-1 ring-primary' : 'bg-primary/25',
           )}
-          style={{
-            left: 8 + measureWidth(line.content.slice(0, r.start)),
-            width: Math.max(3, measureWidth(line.content.slice(r.start, r.end))),
-            top: 2,
-            height: 16,
-          }}
+          style={{ left: m.left, width: Math.max(3, m.width), top: m.top, height: m.height }}
         />
       ))}
-    </>
+      {children}
+    </div>
   );
 }
 
@@ -307,8 +373,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
                   onLineContextMenu ? (e) => onLineContextMenu(e, { line: row.line }) : undefined
                 }
               >
-                <SearchMarks line={row.line} search={search} />
-                <div className="px-2">
+                <LineContent line={row.line} search={search}>
                   <CodeLine
                     line={row.line}
                     pair={row.pair}
@@ -317,7 +382,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
                     side={row.line.kind === 'deletion' ? 'old' : 'new'}
                     wrap={false}
                   />
-                </div>
+                </LineContent>
               </div>
             );
           })}
@@ -415,8 +480,7 @@ function SplitHalf({
                   onLineContextMenu ? (e) => onLineContextMenu(e, { line }) : undefined
                 }
               >
-                <SearchMarks line={line} search={search} />
-                <div className="px-2">
+                <LineContent line={line} search={search}>
                   <CodeLine
                     line={line}
                     pair={row.kind === 'pair' ? (side === 'old' ? row.right : row.left) : null}
@@ -425,7 +489,7 @@ function SplitHalf({
                     side={side}
                     wrap={false}
                   />
-                </div>
+                </LineContent>
               </div>
             );
           })}
