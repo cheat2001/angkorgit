@@ -26,6 +26,10 @@ All notable changes to AngKorGit are documented here. The format follows
   newest/oldest, selection auto-scrolls
 - **Copy from diffs**: right-click offers Copy (selected text) and Copy line
   in every diff — commit and file-history diffs included
+- **Diffs feel like a read-only editor**: click a pane to place a blinking
+  caret, then ⌘A selects just that side (old or new) and ⌘C copies its full
+  text — every line, correctly formatted, straight from the diff data.
+  "Select all" also sits in the right-click menu
 
 ### Changed
 - Working copy reordered: **Changes on top, Staged at the bottom** next to
