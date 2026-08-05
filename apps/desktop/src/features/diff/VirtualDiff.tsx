@@ -2,10 +2,10 @@ import { memo, useEffect, useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { DiffLine, FileDiff } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
-import { CodeLine, lineBg, pairHunkLines } from './diffShared';
+import { CodeLine, lineBg, pairHunkLines, type SearchRanges } from './diffShared';
 
-const LINE_H = 20;
-const HEADER_H = 28;
+export const LINE_H = 20;
+export const HEADER_H = 28;
 const CHAR_W = 7.3;
 
 interface HeaderRow {
@@ -58,7 +58,7 @@ function visualLength(content: string): number {
 
 let measureCtx: CanvasRenderingContext2D | null | undefined;
 
-function measureWidth(content: string): number {
+export function measureWidth(content: string): number {
   if (measureCtx === undefined) {
     measureCtx = document.createElement('canvas').getContext('2d');
   }
@@ -117,6 +117,31 @@ interface CommonProps {
   scrollRef: React.RefObject<HTMLDivElement>;
   hunkActions?: (hunkIndex: number) => React.ReactNode;
   onLineContextMenu?: (event: React.MouseEvent, info: LineMenuInfo) => void;
+  search?: SearchRanges;
+}
+
+function SearchMarks({ line, search }: { line: DiffLine; search?: SearchRanges }) {
+  const ranges = search?.get(line);
+  if (!ranges) return null;
+  return (
+    <>
+      {ranges.map((r, i) => (
+        <span
+          key={i}
+          className={cn(
+            'pointer-events-none absolute rounded-sm',
+            r.current ? 'bg-primary/50 ring-1 ring-primary' : 'bg-primary/25',
+          )}
+          style={{
+            left: 8 + measureWidth(line.content.slice(0, r.start)),
+            width: Math.max(3, measureWidth(line.content.slice(r.start, r.end))),
+            top: 2,
+            height: 16,
+          }}
+        />
+      ))}
+    </>
+  );
 }
 
 function useDiffVirtualizer(rows: FlatRow[], scrollRef: React.RefObject<HTMLDivElement>) {
@@ -188,7 +213,7 @@ function HeaderContent({
   );
 }
 
-export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunkActions, onLineContextMenu }: CommonProps) {
+export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunkActions, onLineContextMenu, search }: CommonProps) {
   const virtualizer = useDiffVirtualizer(rows, scrollRef);
   const items = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
@@ -266,6 +291,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
                   onLineContextMenu ? (e) => onLineContextMenu(e, { line: row.line }) : undefined
                 }
               >
+                <SearchMarks line={row.line} search={search} />
                 <div className="px-2">
                   <CodeLine
                     line={row.line}
@@ -310,6 +336,7 @@ function SplitHalf({
   onLineContextMenu,
   paneRef,
   layerRef,
+  search,
 }: CommonProps & {
   items: ReturnType<ReturnType<typeof useDiffVirtualizer>['getVirtualItems']>;
   total: number;
@@ -372,6 +399,7 @@ function SplitHalf({
                   onLineContextMenu ? (e) => onLineContextMenu(e, { line }) : undefined
                 }
               >
+                <SearchMarks line={line} search={search} />
                 <div className="px-2">
                   <CodeLine
                     line={line}

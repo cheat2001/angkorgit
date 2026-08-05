@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import type { DiffHunk, FileDiff } from '@angkorgit/core';
+import type { DiffHunk, DiffLine, FileDiff } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
 import { useUi } from '@/features/ui/store';
 import { languageOf } from '@/shared/highlight';
-import { CodeLine, gutter, lineBg, pairHunkLines } from './diffShared';
+import { CodeLine, gutter, lineBg, pairHunkLines, type SearchRanges } from './diffShared';
 import { flattenDiff, VirtualInlineDiff, VirtualSplitDiff, type LineMenuInfo } from './VirtualDiff';
 
 interface HunkProps {
@@ -11,6 +11,18 @@ interface HunkProps {
   language: string | null;
   useWordDiff: boolean;
   actions?: React.ReactNode;
+  search?: SearchRanges;
+}
+
+function searchTint(line: DiffLine | null, search?: SearchRanges): React.CSSProperties | undefined {
+  const ranges = line ? search?.get(line) : undefined;
+  if (!ranges) return undefined;
+  const current = ranges.some((r) => r.current);
+  return { backgroundColor: `hsl(var(--primary) / ${current ? 0.28 : 0.14})` };
+}
+
+function isCurrent(line: DiffLine | null, search?: SearchRanges): true | undefined {
+  return line && search?.get(line)?.some((r) => r.current) ? true : undefined;
 }
 
 function HunkHeader({ hunk, actions }: { hunk: DiffHunk; actions?: React.ReactNode }) {
@@ -22,7 +34,7 @@ function HunkHeader({ hunk, actions }: { hunk: DiffHunk; actions?: React.ReactNo
   );
 }
 
-function WrappedInlineHunk({ hunk, language, useWordDiff, actions }: HunkProps) {
+function WrappedInlineHunk({ hunk, language, useWordDiff, actions, search }: HunkProps) {
   const pairs = useMemo(() => pairHunkLines(hunk), [hunk]);
   const counterpart = useMemo(() => {
     const map = new Map();
@@ -39,7 +51,12 @@ function WrappedInlineHunk({ hunk, language, useWordDiff, actions }: HunkProps) 
     <div>
       <HunkHeader hunk={hunk} actions={actions} />
       {hunk.lines.map((line, i) => (
-        <div key={i} className={cn('flex', lineBg(line.kind))}>
+        <div
+          key={i}
+          className={cn('flex', lineBg(line.kind))}
+          style={searchTint(line, search)}
+          data-search-current={isCurrent(line, search)}
+        >
           <span className="w-10 shrink-0 select-none border-r border-border-subtle pr-1.5 text-right font-mono text-[10px] leading-5 text-faint">
             {gutter(line.oldLineNo)}
           </span>
@@ -71,7 +88,7 @@ function WrappedInlineHunk({ hunk, language, useWordDiff, actions }: HunkProps) 
   );
 }
 
-function WrappedSplitHunk({ hunk, language, useWordDiff, actions }: HunkProps) {
+function WrappedSplitHunk({ hunk, language, useWordDiff, actions, search }: HunkProps) {
   const pairs = useMemo(() => pairHunkLines(hunk), [hunk]);
   return (
     <div>
@@ -83,6 +100,8 @@ function WrappedSplitHunk({ hunk, language, useWordDiff, actions }: HunkProps) {
               'flex w-1/2 border-r border-border-subtle',
               pair.left ? lineBg(pair.left.kind === 'context' ? 'context' : 'deletion') : 'bg-surface-raised/40',
             )}
+            style={searchTint(pair.left, search)}
+            data-search-current={isCurrent(pair.left, search)}
           >
             <span className="w-10 shrink-0 select-none border-r border-border-subtle pr-1.5 text-right font-mono text-[10px] leading-5 text-faint">
               {pair.left ? gutter(pair.left.oldLineNo) : ''}
@@ -105,6 +124,8 @@ function WrappedSplitHunk({ hunk, language, useWordDiff, actions }: HunkProps) {
               'flex w-1/2',
               pair.right ? lineBg(pair.right.kind === 'context' ? 'context' : 'addition') : 'bg-surface-raised/40',
             )}
+            style={searchTint(pair.right, search)}
+            data-search-current={isCurrent(pair.right, search)}
           >
             <span className="w-10 shrink-0 select-none border-r border-border-subtle pr-1.5 text-right font-mono text-[10px] leading-5 text-faint">
               {pair.right ? gutter(pair.right.newLineNo) : ''}
@@ -156,11 +177,13 @@ export function DiffViewer({
   scrollRef,
   hunkActions,
   onLineContextMenu,
+  search,
 }: {
   diff: FileDiff;
   scrollRef?: React.RefObject<HTMLDivElement>;
   hunkActions?: (hunkIndex: number) => React.ReactNode;
   onLineContextMenu?: (event: React.MouseEvent, info: LineMenuInfo) => void;
+  search?: SearchRanges;
 }) {
   const { diffView, wordDiff: useWord, wrapLines } = useUi();
   const language = useMemo(() => languageOf(diff.path), [diff.path]);
@@ -187,6 +210,7 @@ export function DiffViewer({
       scrollRef,
       hunkActions,
       onLineContextMenu,
+      search,
     };
     return split ? <VirtualSplitDiff {...props} /> : <VirtualInlineDiff {...props} />;
   }
@@ -199,6 +223,7 @@ export function DiffViewer({
           language,
           useWordDiff: useWord,
           actions: hunkActions?.(i),
+          search,
         };
         return split ? <WrappedSplitHunk key={i} {...props} /> : <WrappedInlineHunk key={i} {...props} />;
       })}

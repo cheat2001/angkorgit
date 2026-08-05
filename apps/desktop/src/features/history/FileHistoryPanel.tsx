@@ -11,6 +11,7 @@ import { useUi } from '@/features/ui/store';
 import { timeAgo } from '@/shared/utils';
 import { DiffViewer } from '@/features/diff/DiffViewer';
 import { DiffMinimap } from '@/features/diff/DiffMinimap';
+import { useDiffFind } from '@/features/diff/diffSearch';
 
 export function FileHistoryPanel({ file }: { file: string }) {
   const repo = useRepo((s) => s.repo);
@@ -31,6 +32,10 @@ export function FileHistoryPanel({ file }: { file: string }) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { findBar, search } = useDiffFind(
+    diff && !diff.isBinary && !diff.isImage ? diff : null,
+    scrollRef,
+  );
 
   const path = repo?.path ?? '';
 
@@ -216,14 +221,15 @@ export function FileHistoryPanel({ file }: { file: string }) {
           )}
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="relative flex min-h-0 min-w-0 flex-1">
+          {findBar}
           <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
             {diffLoading ? (
               <div className="flex h-full items-center justify-center">
                 <Spinner className="size-5" />
               </div>
             ) : diff ? (
-              <DiffViewer diff={diff} scrollRef={scrollRef} />
+              <DiffViewer diff={diff} scrollRef={scrollRef} search={search} />
             ) : (
               <p className="py-16 text-center text-sm text-faint">
                 {selected

@@ -23,6 +23,7 @@ import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi, type CenterDiffTarget } from '@/features/ui/store';
 import { DiffViewer } from './DiffViewer';
+import { useDiffFind } from './diffSearch';
 import { changeBlocks, DiffMinimap, scrollToFraction } from './DiffMinimap';
 
 export function DiffPanel({ target }: { target: CenterDiffTarget }) {
@@ -46,6 +47,10 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const loadedKey = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [lineMenu, setLineMenu] = useState<{ x: number; y: number; info: LineMenuInfo } | null>(null);
+  const { findBar, search } = useDiffFind(
+    diff && !diff.isBinary && !diff.isImage ? diff : null,
+    scrollRef,
+  );
 
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
@@ -255,7 +260,8 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
+        {findBar}
         <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex h-full items-center justify-center">
@@ -265,6 +271,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <DiffViewer
             diff={diff}
             scrollRef={scrollRef}
+            search={search}
             onLineContextMenu={
               isWorkingCopy
                 ? (e, info) => {

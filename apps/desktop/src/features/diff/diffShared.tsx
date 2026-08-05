@@ -78,6 +78,14 @@ export const CodeLine = memo(function CodeLine({
   );
 });
 
+export interface SearchRange {
+  start: number;
+  end: number;
+  current: boolean;
+}
+
+export type SearchRanges = Map<DiffLine, SearchRange[]>;
+
 export function lineBg(kind: DiffLine['kind']): string {
   if (kind === 'addition') return 'bg-diff-add/15';
   if (kind === 'deletion') return 'bg-diff-del/15';
