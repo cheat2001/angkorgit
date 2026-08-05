@@ -50,6 +50,13 @@
   --diff-add-bg: 142 60% 45%;
   --diff-del-bg: 0 70% 58%;
 
+  --syntax-keyword: 292 60% 68%;
+  --syntax-string: 95 40% 62%;
+  --syntax-number: 30 90% 65%;
+  --syntax-function: 210 90% 70%;
+  --syntax-variable: 200 70% 70%;
+  --syntax-type: 40 80% 65%;
+
   --glass: 221 39% 11%;
   --shadow-soft: 0 8px 32px -12px rgb(0 0 0 / 0.55);
   color-scheme: dark;
@@ -85,6 +92,13 @@
 
   --diff-add-bg: 142 60% 40%;
   --diff-del-bg: 0 70% 52%;
+
+  --syntax-keyword: 292 70% 42%;
+  --syntax-string: 95 60% 30%;
+  --syntax-number: 30 90% 38%;
+  --syntax-function: 210 90% 40%;
+  --syntax-variable: 200 80% 34%;
+  --syntax-type: 40 90% 34%;
 
   --glass: 0 0% 100%;
   --shadow-soft: 0 8px 32px -16px rgb(15 23 42 / 0.25);

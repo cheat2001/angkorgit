@@ -1,0 +1,245 @@
+/*
+ * Popular editor themes — each class overrides the neutral + syntax tokens
+ * and layers on top of the .dark/.light base (unset tokens inherit from it).
+ * Generated from the themes' published palettes.
+ */
+
+.theme-vscode-dark {
+  --background: 0 0% 11.8%;
+  --surface: 240 1.3% 14.7%;
+  --surface-raised: 240 3.2% 18.2%;
+  --surface-overlay: 0 0% 20%;
+  --border: 0 0% 27.1%;
+  --border-subtle: 0 0% 20%;
+  --foreground: 0 0% 83.1%;
+  --muted-foreground: 0 0% 61.6%;
+  --faint-foreground: 0 0% 43.1%;
+  --syntax-keyword: 207 61% 58.8%;
+  --syntax-string: 17 46.7% 63.9%;
+  --syntax-number: 99 27.9% 73.3%;
+  --syntax-function: 60 41.7% 76.5%;
+  --syntax-variable: 201 98% 80.4%;
+  --syntax-type: 168 53.2% 54.7%;
+  --glass: 240 1.3% 14.7%;
+  color-scheme: dark;
+}
+
+.theme-vscode-light {
+  --background: 0 0% 100%;
+  --surface: 0 0% 95.3%;
+  --surface-raised: 0 0% 92.5%;
+  --surface-overlay: 0 0% 100%;
+  --border: 0 0% 78.4%;
+  --border-subtle: 0 0% 89.8%;
+  --foreground: 0 0% 20%;
+  --muted-foreground: 0 0% 38%;
+  --faint-foreground: 0 0% 55.7%;
+  --syntax-keyword: 240 100% 50%;
+  --syntax-string: 0 77.2% 36.1%;
+  --syntax-number: 158 87.4% 28%;
+  --syntax-function: 40 52.2% 31.2%;
+  --syntax-variable: 233 100% 25.1%;
+  --syntax-type: 194 60.2% 37.5%;
+  --glass: 0 0% 95.3%;
+  color-scheme: light;
+}
+
+.theme-github-dark {
+  --background: 216 27.8% 7.1%;
+  --surface: 215 21.4% 11%;
+  --surface-raised: 215 15.4% 15.3%;
+  --surface-overlay: 215 17.6% 13.3%;
+  --border: 212 11.9% 21.4%;
+  --border-subtle: 215 15.4% 15.3%;
+  --foreground: 210 17.4% 82%;
+  --muted-foreground: 212 8.9% 58.2%;
+  --faint-foreground: 215 7.9% 46.9%;
+  --syntax-keyword: 4 100% 72.4%;
+  --syntax-string: 207 100% 82.4%;
+  --syntax-number: 208 100% 73.7%;
+  --syntax-function: 269 100% 82.9%;
+  --syntax-variable: 28 100% 67.1%;
+  --syntax-type: 125 68.6% 70%;
+  --glass: 215 21.4% 11%;
+  color-scheme: dark;
+}
+
+.theme-github-light {
+  --background: 0 0% 100%;
+  --surface: 210 28.6% 97.3%;
+  --surface-raised: 210 23.5% 93.3%;
+  --surface-overlay: 0 0% 100%;
+  --border: 210 17.5% 84.3%;
+  --border-subtle: 210 23.5% 93.3%;
+  --foreground: 213 13.3% 16.3%;
+  --muted-foreground: 212 9.8% 37.8%;
+  --faint-foreground: 212 9% 58.6%;
+  --syntax-keyword: 356 71.8% 47.3%;
+  --syntax-string: 216 82.6% 22.5%;
+  --syntax-number: 213 94.4% 35.1%;
+  --syntax-function: 261 69.1% 59.4%;
+  --syntax-variable: 23 100% 29.2%;
+  --syntax-type: 138 70.7% 22.7%;
+  --glass: 210 28.6% 97.3%;
+  color-scheme: light;
+}
+
+.theme-one-dark-pro {
+  --background: 220 13% 18%;
+  --surface: 216 13.2% 14.9%;
+  --surface-raised: 219 13.7% 20%;
+  --surface-overlay: 220 12.8% 22.9%;
+  --border: 221 13.3% 28%;
+  --border-subtle: 219 12.5% 22%;
+  --foreground: 219 13.5% 71%;
+  --muted-foreground: 220 6.2% 52.7%;
+  --faint-foreground: 219 9.8% 40%;
+  --syntax-keyword: 286 59.8% 66.9%;
+  --syntax-string: 95 38.1% 62%;
+  --syntax-number: 29 53.8% 61%;
+  --syntax-function: 207 81.6% 65.9%;
+  --syntax-variable: 355 65.2% 65.1%;
+  --syntax-type: 39 67.1% 69%;
+  --glass: 216 13.2% 14.9%;
+  color-scheme: dark;
+}
+
+.theme-tokyo-night {
+  --background: 235 18.8% 12.5%;
+  --surface: 240 15.4% 10.2%;
+  --surface-raised: 228 23.4% 21%;
+  --surface-overlay: 230 24.2% 18.6%;
+  --border: 229 24.4% 30.6%;
+  --border-subtle: 230 24.2% 18.6%;
+  --foreground: 229 72.6% 85.7%;
+  --muted-foreground: 233 13.9% 53.5%;
+  --faint-foreground: 229 22.9% 43.7%;
+  --syntax-keyword: 261 85.3% 78.6%;
+  --syntax-string: 89 50.5% 61.2%;
+  --syntax-number: 22 100% 69.6%;
+  --syntax-function: 221 88.7% 72.4%;
+  --syntax-variable: 202 100% 74.5%;
+  --syntax-type: 189 73.2% 51.8%;
+  --glass: 240 15.4% 10.2%;
+  color-scheme: dark;
+}
+
+.theme-catppuccin-mocha {
+  --background: 240 21.1% 14.9%;
+  --surface: 240 21.3% 12%;
+  --surface-raised: 237 16.2% 22.9%;
+  --surface-overlay: 231 19.6% 20%;
+  --border: 234 13.2% 31.2%;
+  --border-subtle: 237 16.2% 22.9%;
+  --foreground: 226 63.9% 88%;
+  --muted-foreground: 228 23.6% 71.8%;
+  --faint-foreground: 231 10.7% 47.5%;
+  --syntax-keyword: 267 83.5% 81%;
+  --syntax-string: 115 54.1% 76.1%;
+  --syntax-number: 23 92% 75.5%;
+  --syntax-function: 217 91.9% 75.9%;
+  --syntax-variable: 170 57.4% 73.3%;
+  --syntax-type: 41 86% 83.1%;
+  --glass: 240 21.3% 12%;
+  color-scheme: dark;
+}
+
+.theme-catppuccin-latte {
+  --background: 220 23.1% 94.9%;
+  --surface: 220 22% 92%;
+  --surface-raised: 220 20.7% 88.6%;
+  --surface-overlay: 220 23.1% 94.9%;
+  --border: 225 13.6% 76.9%;
+  --border-subtle: 223 15.9% 82.7%;
+  --foreground: 234 16% 35.5%;
+  --muted-foreground: 233 10.4% 47.3%;
+  --faint-foreground: 228 11.2% 65.1%;
+  --syntax-keyword: 266 85% 58%;
+  --syntax-string: 109 57.6% 39.8%;
+  --syntax-number: 22 99.2% 52%;
+  --syntax-function: 220 91.5% 53.9%;
+  --syntax-variable: 183 73.9% 34.5%;
+  --syntax-type: 35 77% 49.4%;
+  --glass: 220 22% 92%;
+  color-scheme: light;
+}
+
+.theme-dracula {
+  --background: 231 14.9% 18.4%;
+  --surface: 235 14.3% 15.1%;
+  --surface-raised: 230 14.8% 23.9%;
+  --surface-overlay: 234 14.5% 27.1%;
+  --border: 232 13.9% 31%;
+  --border-subtle: 230 14.8% 23.9%;
+  --foreground: 60 30% 96.1%;
+  --muted-foreground: 233 19.7% 76.1%;
+  --faint-foreground: 225 26.6% 51.4%;
+  --syntax-keyword: 326 100% 73.7%;
+  --syntax-string: 65 91.7% 76.5%;
+  --syntax-number: 265 89.5% 77.6%;
+  --syntax-function: 135 94.4% 64.7%;
+  --syntax-variable: 191 96.6% 76.9%;
+  --syntax-type: 31 100% 71.2%;
+  --glass: 235 14.3% 15.1%;
+  color-scheme: dark;
+}
+
+.theme-nord {
+  --background: 220 16.4% 21.6%;
+  --surface: 222 16.3% 27.6%;
+  --surface-raised: 220 16.8% 31.6%;
+  --surface-overlay: 222 16.3% 27.6%;
+  --border: 220 16.5% 35.7%;
+  --border-subtle: 220 16.8% 31.6%;
+  --foreground: 219 27.9% 88%;
+  --muted-foreground: 221 15.7% 68.8%;
+  --faint-foreground: 220 16.7% 45.7%;
+  --syntax-keyword: 210 34% 63.1%;
+  --syntax-string: 92 27.8% 64.7%;
+  --syntax-number: 311 20.2% 63.1%;
+  --syntax-function: 193 43.4% 67.5%;
+  --syntax-variable: 179 25.1% 64.9%;
+  --syntax-type: 179 25.1% 64.9%;
+  --glass: 222 16.3% 27.6%;
+  color-scheme: dark;
+}
+
+.theme-ayu-dark {
+  --background: 216 33.3% 5.9%;
+  --surface: 218 26.8% 8%;
+  --surface-raised: 219 24.1% 11.4%;
+  --surface-overlay: 219 24.1% 11.4%;
+  --border: 212 17.4% 21.4%;
+  --border-subtle: 215 23.3% 14.3%;
+  --foreground: 40 3.8% 69%;
+  --muted-foreground: 210 5.5% 49.8%;
+  --faint-foreground: 211 11.1% 40.6%;
+  --syntax-keyword: 25 100% 62.5%;
+  --syntax-string: 70 65% 57.5%;
+  --syntax-number: 40 75% 60.8%;
+  --syntax-function: 34 100% 66.5%;
+  --syntax-variable: 195 77.6% 56.3%;
+  --syntax-type: 202 100% 67.5%;
+  --glass: 218 26.8% 8%;
+  color-scheme: dark;
+}
+
+.theme-ayu-light {
+  --background: 0 0% 98%;
+  --surface: 210 9.1% 95.7%;
+  --surface-raised: 210 11.8% 93.3%;
+  --surface-overlay: 0 0% 100%;
+  --border: 216 7% 86.1%;
+  --border-subtle: 216 11.6% 91.6%;
+  --foreground: 211 11.1% 40.6%;
+  --muted-foreground: 212 6.8% 57.1%;
+  --faint-foreground: 213 7% 69.2%;
+  --syntax-keyword: 25 94.9% 61.2%;
+  --syntax-string: 75 100% 35.1%;
+  --syntax-number: 270 44.6% 63.9%;
+  --syntax-function: 36 86.7% 61.8%;
+  --syntax-variable: 205 77.6% 56.3%;
+  --syntax-type: 195 59.6% 58.2%;
+  --glass: 210 9.1% 95.7%;
+  color-scheme: light;
+}

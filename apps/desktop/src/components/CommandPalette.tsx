@@ -24,7 +24,7 @@ import { Kbd } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
-import { useSettings } from '@/features/settings/store';
+import { themeBase, useSettings } from '@/features/settings/store';
 import { useUndo } from '@/features/history/undoStore';
 import { modKey } from '@/shared/utils';
 
@@ -232,11 +232,11 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             }}
           />
           <PaletteItem
-            icon={theme === 'dark' ? <Sun /> : <Moon />}
-            label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            icon={themeBase(theme) === 'dark' ? <Sun /> : <Moon />}
+            label={themeBase(theme) === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             onSelect={() => {
               close();
-              setTheme(theme === 'dark' ? 'light' : 'dark');
+              setTheme(themeBase(theme) === 'dark' ? 'light' : 'dark');
             }}
           />
           <PaletteItem

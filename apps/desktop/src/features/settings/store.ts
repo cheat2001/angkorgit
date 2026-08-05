@@ -3,7 +3,59 @@ import { persist } from 'zustand/middleware';
 import type { AiConfig } from '@angkorgit/core';
 import { isTauri } from '@/core/ipc';
 
-export type Theme = 'dark' | 'light';
+export type Theme =
+  | 'dark'
+  | 'light'
+  | 'vscode-dark'
+  | 'vscode-light'
+  | 'github-dark'
+  | 'github-light'
+  | 'one-dark-pro'
+  | 'tokyo-night'
+  | 'catppuccin-mocha'
+  | 'catppuccin-latte'
+  | 'dracula'
+  | 'nord'
+  | 'ayu-dark'
+  | 'ayu-light';
+
+export interface ThemeMeta {
+  id: Theme;
+  label: string;
+  base: 'dark' | 'light';
+  swatch: { bg: string; fg: string; dots: [string, string, string] };
+}
+
+export const THEMES: ThemeMeta[] = [
+  { id: 'dark', label: 'AngKor Dark', base: 'dark', swatch: { bg: '#0d1220', fg: '#e5e9f0', dots: ['#d97706', '#22c55e', '#38bdf8'] } },
+  { id: 'light', label: 'AngKor Light', base: 'light', swatch: { bg: '#f5f7fa', fg: '#1b2437', dots: ['#d97706', '#15803d', '#0369a1'] } },
+  { id: 'vscode-dark', label: 'VS Code Dark+', base: 'dark', swatch: { bg: '#1e1e1e', fg: '#d4d4d4', dots: ['#569cd6', '#ce9178', '#dcdcaa'] } },
+  { id: 'vscode-light', label: 'VS Code Light+', base: 'light', swatch: { bg: '#ffffff', fg: '#333333', dots: ['#0000ff', '#a31515', '#795e26'] } },
+  { id: 'github-dark', label: 'GitHub Dark', base: 'dark', swatch: { bg: '#0d1117', fg: '#c9d1d9', dots: ['#ff7b72', '#a5d6ff', '#d2a8ff'] } },
+  { id: 'github-light', label: 'GitHub Light', base: 'light', swatch: { bg: '#ffffff', fg: '#24292f', dots: ['#cf222e', '#0a3069', '#8250df'] } },
+  { id: 'one-dark-pro', label: 'One Dark Pro', base: 'dark', swatch: { bg: '#282c34', fg: '#abb2bf', dots: ['#c678dd', '#98c379', '#61afef'] } },
+  { id: 'tokyo-night', label: 'Tokyo Night', base: 'dark', swatch: { bg: '#1a1b26', fg: '#c0caf5', dots: ['#bb9af7', '#9ece6a', '#7aa2f7'] } },
+  { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', base: 'dark', swatch: { bg: '#1e1e2e', fg: '#cdd6f4', dots: ['#cba6f7', '#a6e3a1', '#89b4fa'] } },
+  { id: 'catppuccin-latte', label: 'Catppuccin Latte', base: 'light', swatch: { bg: '#eff1f5', fg: '#4c4f69', dots: ['#8839ef', '#40a02b', '#1e66f5'] } },
+  { id: 'dracula', label: 'Dracula', base: 'dark', swatch: { bg: '#282a36', fg: '#f8f8f2', dots: ['#ff79c6', '#f1fa8c', '#50fa7b'] } },
+  { id: 'nord', label: 'Nord', base: 'dark', swatch: { bg: '#2e3440', fg: '#d8dee9', dots: ['#81a1c1', '#a3be8c', '#88c0d0'] } },
+  { id: 'ayu-dark', label: 'Ayu Dark', base: 'dark', swatch: { bg: '#0a0e14', fg: '#b3b1ad', dots: ['#ff8f40', '#c2d94c', '#ffb454'] } },
+  { id: 'ayu-light', label: 'Ayu Light', base: 'light', swatch: { bg: '#fafafa', fg: '#5c6773', dots: ['#fa8d3e', '#86b300', '#399ee6'] } },
+];
+
+export const themeBase = (id: Theme): 'dark' | 'light' =>
+  THEMES.find((t) => t.id === id)?.base ?? 'dark';
+
+export function applyTheme(theme: Theme): void {
+  const el = document.documentElement;
+  const base = themeBase(theme);
+  el.classList.toggle('dark', base === 'dark');
+  el.classList.toggle('light', base === 'light');
+  for (const cls of Array.from(el.classList)) {
+    if (cls.startsWith('theme-')) el.classList.remove(cls);
+  }
+  if (theme !== 'dark' && theme !== 'light') el.classList.add(`theme-${theme}`);
+}
 
 export type AccentId = 'gold' | 'jade' | 'sapphire' | 'lotus' | 'crimson';
 
@@ -89,8 +141,7 @@ export const useSettings = create<SettingsState>()(
       profiles: [],
       ai: { provider: 'ollama', apiKey: '', model: 'llama3.1', baseUrl: '' },
       setTheme: (theme) => {
-        document.documentElement.classList.toggle('dark', theme === 'dark');
-        document.documentElement.classList.toggle('light', theme === 'light');
+        applyTheme(theme);
         set({ theme });
       },
       setAccent: (accent) => {
@@ -119,9 +170,7 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'angkorgit-settings',
       onRehydrateStorage: () => (state) => {
-        const theme = state?.theme ?? 'dark';
-        document.documentElement.classList.toggle('dark', theme === 'dark');
-        document.documentElement.classList.toggle('light', theme === 'light');
+        applyTheme(state?.theme ?? 'dark');
         const zoom = state?.zoom ?? 1;
         if (zoom !== 1) applyZoom(zoom);
         applyAccent(state?.accent ?? 'gold');

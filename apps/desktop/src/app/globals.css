@@ -1,4 +1,5 @@
 @import '../../../../packages/design-system/src/tokens.css';
+@import '../../../../packages/design-system/src/themes.css';
 
 @tailwind base;
 @tailwind components;
@@ -50,20 +51,14 @@ body {
   border-radius: 2px;
 }
 
-/* Minimal syntax palette on top of design tokens (both themes) */
-.hljs-keyword, .hljs-literal, .hljs-built_in { color: hsl(292 60% 68%); }
-.hljs-string, .hljs-regexp { color: hsl(95 40% 62%); }
-.hljs-number { color: hsl(30 90% 65%); }
+/* Syntax palette flows from theme tokens (see design-system themes.css) */
+.hljs-keyword, .hljs-literal, .hljs-built_in { color: hsl(var(--syntax-keyword)); }
+.hljs-string, .hljs-regexp { color: hsl(var(--syntax-string)); }
+.hljs-number { color: hsl(var(--syntax-number)); }
 .hljs-comment { color: hsl(var(--faint-foreground)); font-style: italic; }
-.hljs-title, .hljs-function { color: hsl(210 90% 70%); }
-.hljs-attr, .hljs-property, .hljs-variable { color: hsl(200 70% 70%); }
-.hljs-type, .hljs-class { color: hsl(40 80% 65%); }
-.light .hljs-keyword, .light .hljs-literal, .light .hljs-built_in { color: hsl(292 70% 42%); }
-.light .hljs-string, .light .hljs-regexp { color: hsl(95 60% 30%); }
-.light .hljs-number { color: hsl(30 90% 38%); }
-.light .hljs-title, .light .hljs-function { color: hsl(210 90% 40%); }
-.light .hljs-attr, .light .hljs-property, .light .hljs-variable { color: hsl(200 80% 34%); }
-.light .hljs-type, .light .hljs-class { color: hsl(40 90% 34%); }
+.hljs-title, .hljs-function { color: hsl(var(--syntax-function)); }
+.hljs-attr, .hljs-property, .hljs-variable { color: hsl(var(--syntax-variable)); }
+.hljs-type, .hljs-class { color: hsl(var(--syntax-type)); }
 
 /* xterm fills its panel */
 .terminal-host .xterm {

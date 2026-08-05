@@ -9,7 +9,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WelcomePage } from '@/features/repository/WelcomePage';
 import { RepositoryPage } from '@/features/repository/RepositoryPage';
 import { useRepo } from '@/features/repository/store';
-import { useSettings } from '@/features/settings/store';
+import { applyTheme, themeBase, useSettings } from '@/features/settings/store';
 import { useShortcuts } from '@/shared/useShortcuts';
 
 function Shell() {
@@ -65,8 +65,7 @@ export function App() {
   const theme = useSettings((s) => s.theme);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    document.documentElement.classList.toggle('light', theme === 'light');
+    applyTheme(theme);
   }, [theme]);
 
   useEffect(() => {
@@ -91,7 +90,7 @@ export function App() {
       <ConfirmHost />
       <Toaster
         position="bottom-left"
-        theme={theme}
+        theme={themeBase(theme)}
         closeButton
         gap={8}
         toastOptions={{

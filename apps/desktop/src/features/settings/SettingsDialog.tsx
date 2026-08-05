@@ -40,7 +40,7 @@ import {
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
-import { ACCENTS, useSettings, ZOOM_MAX, ZOOM_MIN } from './store';
+import { ACCENTS, THEMES, useSettings, ZOOM_MAX, ZOOM_MIN } from './store';
 import { AccountsTab } from './AccountsTab';
 import { getAiProvider } from '@/features/ai/client';
 import { modKey } from '@/shared/utils';
@@ -213,21 +213,54 @@ export function SettingsDialog() {
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
               {section === 'appearance' && (
                 <div className="flex flex-col gap-4">
-                  <SettingCard title="Theme">
-                    <div className="flex gap-2">
-                      {(['dark', 'light'] as const).map((theme) => (
+                  <SettingCard
+                    title="Theme"
+                    description="Popular editor palettes — surfaces and syntax colors follow the theme."
+                  >
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {THEMES.map((t) => (
                         <button
-                          key={theme}
-                          onClick={() => settings.setTheme(theme)}
+                          key={t.id}
+                          onClick={() => settings.setTheme(t.id)}
+                          aria-label={`Theme: ${t.label}`}
                           className={cn(
-                            'flex flex-1 items-center justify-center gap-2 rounded-lg border p-3 text-sm transition-colors',
-                            settings.theme === theme
-                              ? 'border-primary bg-primary/10 text-primary'
-                              : 'border-border hover:bg-surface-raised',
+                            'group flex flex-col overflow-hidden rounded-lg border text-left transition-colors',
+                            settings.theme === t.id
+                              ? 'border-primary ring-1 ring-primary'
+                              : 'border-border hover:border-muted',
                           )}
                         >
-                          {theme === 'dark' ? <Moon className="size-4" /> : <Sun className="size-4" />}
-                          {theme === 'dark' ? 'Dark' : 'Light'}
+                          <span
+                            className="flex h-14 flex-col justify-center gap-1.5 px-3"
+                            style={{ backgroundColor: t.swatch.bg }}
+                          >
+                            <span className="flex items-center gap-1">
+                              {t.swatch.dots.map((dot) => (
+                                <span
+                                  key={dot}
+                                  className="size-2 rounded-full"
+                                  style={{ backgroundColor: dot }}
+                                />
+                              ))}
+                            </span>
+                            <span
+                              className="h-1.5 w-3/4 rounded-full opacity-60"
+                              style={{ backgroundColor: t.swatch.fg }}
+                            />
+                            <span
+                              className="h-1.5 w-1/2 rounded-full opacity-30"
+                              style={{ backgroundColor: t.swatch.fg }}
+                            />
+                          </span>
+                          <span
+                            className={cn(
+                              'flex items-center justify-between px-3 py-1.5 text-xs',
+                              settings.theme === t.id ? 'text-primary' : 'text-muted group-hover:text-foreground',
+                            )}
+                          >
+                            {t.label}
+                            {t.base === 'dark' ? <Moon className="size-3" /> : <Sun className="size-3" />}
+                          </span>
                         </button>
                       ))}
                     </div>
