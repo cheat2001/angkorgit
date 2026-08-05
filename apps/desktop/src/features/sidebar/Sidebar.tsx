@@ -531,8 +531,12 @@ export function Sidebar() {
           }
         >
           {stashes.map((stash) => (
-            <div key={stash.oid} className="group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised">
-              <span className="min-w-0 flex-1 truncate" title={stash.message}>
+            <div
+              key={stash.oid}
+              className="group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised"
+              onClick={() => useGraph.getState().select(stash.oid)}
+            >
+              <span className="min-w-0 flex-1 truncate" title={`${stash.message} — click to preview`}>
                 {stash.message}
               </span>
               <DropdownMenu>

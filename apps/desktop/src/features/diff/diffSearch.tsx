@@ -4,7 +4,7 @@ import type { DiffLine, FileDiff } from '@angkorgit/core';
 import { Button, Hint, Kbd, cn } from '@angkorgit/design-system';
 import { useUi } from '@/features/ui/store';
 import type { SearchRange, SearchRanges } from './diffShared';
-import { flattenDiff, HEADER_H, LINE_H } from './VirtualDiff';
+import { flattenDiff, HEADER_H, LINE_H, panControllers } from './VirtualDiff';
 
 interface DiffMatch {
   line: DiffLine;
@@ -80,6 +80,19 @@ export function useDiffFind(diff: FileDiff | null, scrollRef: React.RefObject<HT
       offset += row.kind === 'header' ? HEADER_H : LINE_H;
     }
     el.scrollTo({ top: Math.max(0, offset - el.clientHeight * 0.35) });
+    const revealHorizontally = () => {
+      const mark = el.querySelector('[data-search-mark="current"]');
+      const pane = mark?.closest('[data-diff-pane]');
+      if (!mark || !pane) return;
+      const panBy = panControllers.get(pane as HTMLElement);
+      if (!panBy) return;
+      const paneRect = pane.getBoundingClientRect();
+      const markRect = mark.getBoundingClientRect();
+      if (markRect.left < paneRect.left + 24 || markRect.right > paneRect.right - 24) {
+        panBy(markRect.left - paneRect.left - paneRect.width * 0.3);
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(revealHorizontally));
   }, [open, matches, bounded, diff, diffView, wrapLines, scrollRef]);
 
   useEffect(() => {

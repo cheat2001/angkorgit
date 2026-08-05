@@ -214,6 +214,7 @@ function LineContent({
       {marks.map((m, i) => (
         <span
           key={i}
+          data-search-mark={m.current ? 'current' : 'match'}
           className={cn(
             'pointer-events-none absolute rounded-sm',
             m.current ? 'bg-primary/50 ring-1 ring-primary' : 'bg-primary/25',
@@ -234,6 +235,8 @@ function useDiffVirtualizer(rows: FlatRow[], scrollRef: React.RefObject<HTMLDivE
     overscan: 60,
   });
 }
+
+export const panControllers = new WeakMap<HTMLElement, (dx: number) => void>();
 
 function useHorizontalPan(
   panes: React.RefObject<HTMLDivElement>[],
@@ -259,6 +262,10 @@ function useHorizontalPan(
         if (layer.current) layer.current.style.transform = `translateX(${-x.current}px)`;
       }
     };
+    const panBy = (dx: number) => {
+      x.current = Math.min(Math.max(0, x.current + dx), maxX());
+      apply();
+    };
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical → outer scroller
       const dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
@@ -269,11 +276,17 @@ function useHorizontalPan(
       if (!raf) raf = requestAnimationFrame(apply);
     };
     const els = panes.flatMap((p) => (p.current ? [p.current] : []));
-    for (const el of els) el.addEventListener('wheel', onWheel, { passive: false });
+    for (const el of els) {
+      el.addEventListener('wheel', onWheel, { passive: false });
+      panControllers.set(el, panBy);
+    }
     apply();
     return () => {
       if (raf) cancelAnimationFrame(raf);
-      for (const el of els) el.removeEventListener('wheel', onWheel);
+      for (const el of els) {
+        el.removeEventListener('wheel', onWheel);
+        panControllers.delete(el);
+      }
     };
   }, [panes, layers, width]);
 }
@@ -342,7 +355,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
         })}
       </div>
 
-      <div ref={paneRef} className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
+      <div ref={paneRef} data-diff-pane className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
         <div aria-hidden className="pointer-events-none absolute inset-0">
           {items.map((item) => {
             const row = rows[item.index];
@@ -453,7 +466,7 @@ function SplitHalf({
           );
         })}
       </div>
-      <div ref={paneRef} className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
+      <div ref={paneRef} data-diff-pane className="relative min-w-0 flex-1 overflow-hidden" style={{ height: total }}>
         <div aria-hidden className="pointer-events-none absolute inset-0">
           {items.map((item) => {
             const row = rows[item.index];

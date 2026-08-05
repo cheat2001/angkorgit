@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -22,6 +22,7 @@ import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import { CommitRow, ROW_HEIGHT } from './GraphRow';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
+import { useShortcuts } from '@/shared/useShortcuts';
 
 interface MenuState {
   x: number;
@@ -67,6 +68,39 @@ export function CommitGraph() {
   }, [searchDraft, authorDraft, filters.search, filters.author, path, setFilters]);
 
   const gutterWidth = Math.min(16 + (maxLane + 1) * 14, 200);
+
+  const moveSelection = useCallback(
+    (step: 1 | -1 | 'home' | 'end') => {
+      const ui = useUi.getState();
+      if (ui.centerDiff || ui.centerEditor || ui.centerFileHistory || ui.paletteOpen || ui.dialog || ui.conflictFile) return;
+      if (commits.length === 0) return;
+      const current = commits.findIndex((c) => c.oid === selectedOid);
+      const next =
+        step === 'home'
+          ? 0
+          : step === 'end'
+            ? commits.length - 1
+            : current === -1
+              ? step === 1
+                ? 0
+                : commits.length - 1
+              : Math.min(commits.length - 1, Math.max(0, current + step));
+      select(commits[next].oid);
+      virtualizer.scrollToIndex(next, { align: 'auto' });
+    },
+    [commits, selectedOid, select, virtualizer],
+  );
+
+  const keyNav = useMemo(
+    () => [
+      { combo: 'arrowdown', handler: () => moveSelection(1) },
+      { combo: 'arrowup', handler: () => moveSelection(-1) },
+      { combo: 'home', handler: () => moveSelection('home') },
+      { combo: 'end', handler: () => moveSelection('end') },
+    ],
+    [moveSelection],
+  );
+  useShortcuts(keyNav);
 
   const act = useCallback(
     async (

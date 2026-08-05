@@ -34,6 +34,7 @@ interface UiState {
   centerFileHistory: string | null;
   conflictFile: string | null;
   repoTabs: string[];
+  fileTree: boolean;
 
   toggleSidebar: () => void;
   toggleTerminal: () => void;
@@ -54,6 +55,7 @@ interface UiState {
   openConflict: (file: string | null) => void;
   addRepoTab: (path: string) => void;
   closeRepoTab: (path: string) => void;
+  setFileTree: (on: boolean) => void;
 }
 
 export const useUi = create<UiState>()(
@@ -74,6 +76,7 @@ export const useUi = create<UiState>()(
   centerFileHistory: null,
   conflictFile: null,
   repoTabs: [],
+  fileTree: false,
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
@@ -95,6 +98,7 @@ export const useUi = create<UiState>()(
   addRepoTab: (path) =>
     set((s) => (s.repoTabs.includes(path) ? s : { repoTabs: [...s.repoTabs, path] })),
   closeRepoTab: (path) => set((s) => ({ repoTabs: s.repoTabs.filter((t) => t !== path) })),
+  setFileTree: (fileTree) => set({ fileTree }),
     }),
     {
       name: 'angkorgit-ui',
@@ -105,6 +109,7 @@ export const useUi = create<UiState>()(
         fullFileDiff: state.fullFileDiff,
         wrapLines: state.wrapLines,
         repoTabs: state.repoTabs,
+        fileTree: state.fileTree,
       }),
     },
   ),

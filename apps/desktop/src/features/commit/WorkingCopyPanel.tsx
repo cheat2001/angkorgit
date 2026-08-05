@@ -25,6 +25,7 @@ import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { useUndo } from '@/features/history/undoStore';
 import { confirmDialog } from '@/components/confirm';
+import { FileTree, treeIndent as sharedTreeIndent } from '@/components/FileTree';
 import { basename, dirname } from '@/shared/utils';
 
 function statusBadge(kind: string | null) {
@@ -53,6 +54,8 @@ function FileRow({
   onPrimary,
   onDiscard,
   onContextMenu,
+  indent,
+  treeMode,
 }: {
   file: FileStatus;
   staged: boolean;
@@ -61,6 +64,8 @@ function FileRow({
   onPrimary: () => void;
   onDiscard?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
+  indent?: number;
+  treeMode?: boolean;
 }) {
   const kind = staged ? file.staged : file.unstaged;
   const conflicted = file.unstaged === 'conflicted';
@@ -70,6 +75,7 @@ function FileRow({
         'group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
         selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
       )}
+      style={indent !== undefined ? { paddingLeft: indent } : undefined}
       onClick={onClick}
       onContextMenu={onContextMenu}
     >
@@ -82,7 +88,9 @@ function FileRow({
       {statusBadge(conflicted && !staged ? 'conflicted' : kind)}
       <span className="min-w-0 flex-1 truncate">
         <span className="text-foreground">{basename(file.path)}</span>
-        {dirname(file.path) && <span className="ml-1.5 text-faint">{dirname(file.path)}</span>}
+        {!treeMode && dirname(file.path) && (
+          <span className="ml-1.5 text-faint">{dirname(file.path)}</span>
+        )}
       </span>
       {!staged && onDiscard && (
         <Hint label="Discard changes">
@@ -104,10 +112,12 @@ function FileRow({
   );
 }
 
+const fileStatusPath = (file: FileStatus) => file.path;
+
 export function WorkingCopyPanel() {
   const { repo, status, conflicts, submodules, refreshStatus } = useRepo();
   const reloadGraph = useGraph((s) => s.reload);
-  const { selectedFile, selectFile, openCenterDiff, openEditor, openConflict } = useUi();
+  const { selectedFile, selectFile, openCenterDiff, openEditor, openConflict, fileTree } = useUi();
   const [message, setMessage] = useState('');
   const [amend, setAmend] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -234,6 +244,65 @@ export function WorkingCopyPanel() {
 
   const conflictedPaths = new Set(conflicts);
 
+  const treeIndent = (depth?: number) =>
+    fileTree && depth !== undefined ? sharedTreeIndent(depth) : undefined;
+
+  const renderUnstaged = (file: FileStatus, depth?: number) =>
+    conflictedPaths.has(file.path) ? (
+      <div
+        key={`u-${file.path}`}
+        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-danger hover:bg-danger/10"
+        style={treeIndent(depth) !== undefined ? { paddingLeft: treeIndent(depth) } : undefined}
+        onClick={() => openConflict(file.path)}
+      >
+        <AlertTriangle className="size-3.5" />
+        <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
+        <span className="text-[10px]">resolve…</span>
+      </div>
+    ) : (
+      <FileRow
+        key={`u-${file.path}`}
+        file={file}
+        staged={false}
+        treeMode={fileTree}
+        indent={treeIndent(depth)}
+        selected={selectedFile?.path === file.path && !selectedFile.staged}
+        onClick={() => showDiff(file.path, false)}
+        onPrimary={() => void run(() => ipc.stageFile(path, file.path), 'Stage failed')}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setFileMenu({ x: e.clientX, y: e.clientY, file, staged: false });
+        }}
+        onDiscard={() => {
+          void confirmDialog({
+            title: 'Discard changes?',
+            description: `All changes in "${file.path}" will be reverted${file.unstaged === 'untracked' ? ' and the file deleted' : ''}. This cannot be undone.`,
+            confirmLabel: 'Discard',
+            destructive: true,
+          }).then((ok) => {
+            if (ok) void discardOne(file.path);
+          });
+        }}
+      />
+    );
+
+  const renderStaged = (file: FileStatus, depth?: number) => (
+    <FileRow
+      key={`s-${file.path}`}
+      file={file}
+      staged
+      treeMode={fileTree}
+      indent={treeIndent(depth)}
+      selected={selectedFile?.path === file.path && selectedFile.staged}
+      onClick={() => showDiff(file.path, true)}
+      onPrimary={() => void run(() => ipc.unstageFile(path, file.path), 'Unstage failed')}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setFileMenu({ x: e.clientX, y: e.clientY, file, staged: true });
+      }}
+    />
+  );
+
   return (
     <div className="flex h-full flex-col">
       {conflicts.length > 0 && (
@@ -256,32 +325,6 @@ export function WorkingCopyPanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <div className="mb-1 flex items-center justify-between px-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Staged <span className="text-faint">{stagedFiles.length}</span>
-          </span>
-          {stagedFiles.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => void run(() => ipc.unstageAll(path), 'Unstage all failed')}>
-              <Minus className="size-3" /> Unstage all
-            </Button>
-          )}
-        </div>
-        {stagedFiles.length === 0 && <p className="px-2 pb-2 text-xs text-faint">Nothing staged yet.</p>}
-        {stagedFiles.map((file) => (
-          <FileRow
-            key={`s-${file.path}`}
-            file={file}
-            staged
-            selected={selectedFile?.path === file.path && selectedFile.staged}
-            onClick={() => showDiff(file.path, true)}
-            onPrimary={() => void run(() => ipc.unstageFile(path, file.path), 'Unstage failed')}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setFileMenu({ x: e.clientX, y: e.clientY, file, staged: true });
-            }}
-          />
-        ))}
-
-        <div className="mb-1 mt-3 flex items-center justify-between px-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted">
             Changes <span className="text-faint">{unstagedFiles.length}</span>
           </span>
@@ -312,43 +355,27 @@ export function WorkingCopyPanel() {
           )}
         </div>
         {unstagedFiles.length === 0 && <p className="px-2 pb-2 text-xs text-faint">Working tree clean.</p>}
-        {unstagedFiles.map((file) =>
-          conflictedPaths.has(file.path) ? (
-            <div
-              key={`u-${file.path}`}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-danger hover:bg-danger/10"
-              onClick={() => openConflict(file.path)}
-            >
-              <AlertTriangle className="size-3.5" />
-              <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
-              <span className="text-[10px]">resolve…</span>
-            </div>
-          ) : (
-            <FileRow
-              key={`u-${file.path}`}
-              file={file}
-              staged={false}
-              selected={selectedFile?.path === file.path && !selectedFile.staged}
-              onClick={() => showDiff(file.path, false)}
-              onPrimary={() => void run(() => ipc.stageFile(path, file.path), 'Stage failed')}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setFileMenu({ x: e.clientX, y: e.clientY, file, staged: false });
-              }}
-              onDiscard={() => {
-                void confirmDialog({
-                  title: 'Discard changes?',
-                  description: `All changes in "${file.path}" will be reverted${file.unstaged === 'untracked' ? ' and the file deleted' : ''}. This cannot be undone.`,
-                  confirmLabel: 'Discard',
-                  destructive: true,
-                }).then((ok) => {
-                  if (ok) void discardOne(file.path);
-                });
-              }}
-            />
-          ),
+        {fileTree ? (
+          <FileTree items={unstagedFiles} pathOf={fileStatusPath} renderFile={renderUnstaged} />
+        ) : (
+          unstagedFiles.map((file) => renderUnstaged(file))
         )}
-
+        <div className="mb-1 mt-3 flex items-center justify-between px-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Staged <span className="text-faint">{stagedFiles.length}</span>
+          </span>
+          {stagedFiles.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => void run(() => ipc.unstageAll(path), 'Unstage all failed')}>
+              <Minus className="size-3" /> Unstage all
+            </Button>
+          )}
+        </div>
+        {stagedFiles.length === 0 && <p className="px-2 pb-2 text-xs text-faint">Nothing staged yet.</p>}
+        {fileTree ? (
+          <FileTree items={stagedFiles} pathOf={fileStatusPath} renderFile={renderStaged} />
+        ) : (
+          stagedFiles.map((file) => renderStaged(file))
+        )}
       </div>
 
       {fileMenu && (

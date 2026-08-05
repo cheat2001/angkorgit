@@ -8,7 +8,10 @@ import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { Avatar } from '@/components/Avatar';
-import { formatDate } from '@/shared/utils';
+import { FileTree, treeIndent } from '@/components/FileTree';
+import { basename, formatDate } from '@/shared/utils';
+
+const diffPath = (diff: FileDiff) => diff.path;
 
 function diffToText(diffs: FileDiff[]): string {
   return diffs
@@ -32,9 +35,35 @@ export function CommitDetails({
   loading: boolean;
 }) {
   const select = useGraph((s) => s.select);
-  const { openCenterDiff, closeCenterDiff, centerDiff } = useUi();
+  const { openCenterDiff, closeCenterDiff, centerDiff, fileTree } = useUi();
   const [aiText, setAiText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+
+  const renderDiffRow = (diff: FileDiff, depth?: number) => {
+    const active = centerDiff?.path === diff.path && centerDiff.oid === commit.oid;
+    return (
+      <button
+        key={diff.path}
+        className={cn(
+          'mb-1 flex w-full items-center gap-2 rounded-md border border-border-subtle px-2 py-1.5 text-left text-xs transition-colors',
+          active ? 'border-primary/50 bg-primary/10' : 'bg-surface-raised/60 hover:bg-surface-raised',
+        )}
+        style={fileTree && depth !== undefined ? { paddingLeft: treeIndent(depth) } : undefined}
+        title={diff.path}
+        onClick={() =>
+          active ? closeCenterDiff() : openCenterDiff({ path: diff.path, oid: commit.oid })
+        }
+      >
+        <FileText className="size-3.5 shrink-0 text-muted" />
+        <span className="min-w-0 flex-1 truncate font-mono">
+          {fileTree ? basename(diff.path) : diff.path}
+        </span>
+        <span className="shrink-0 text-success">+{diff.additions}</span>
+        <span className="shrink-0 text-danger">−{diff.deletions}</span>
+        <ChevronRight className="size-3.5 shrink-0 text-faint" />
+      </button>
+    );
+  };
 
   const close = () => {
     closeCenterDiff();
@@ -119,28 +148,11 @@ export function CommitDetails({
         <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted">
           {loading ? 'Loading changes…' : `${diffs.length} file${diffs.length === 1 ? '' : 's'} changed`}
         </p>
-        {diffs.map((diff) => {
-          const active = centerDiff?.path === diff.path && centerDiff.oid === commit.oid;
-          return (
-            <button
-              key={diff.path}
-              className={cn(
-                'mb-1 flex w-full items-center gap-2 rounded-md border border-border-subtle px-2 py-1.5 text-left text-xs transition-colors',
-                active ? 'border-primary/50 bg-primary/10' : 'bg-surface-raised/60 hover:bg-surface-raised',
-              )}
-              title="Show diff"
-              onClick={() =>
-                active ? closeCenterDiff() : openCenterDiff({ path: diff.path, oid: commit.oid })
-              }
-            >
-              <FileText className="size-3.5 shrink-0 text-muted" />
-              <span className="min-w-0 flex-1 truncate font-mono">{diff.path}</span>
-              <span className="shrink-0 text-success">+{diff.additions}</span>
-              <span className="shrink-0 text-danger">−{diff.deletions}</span>
-              <ChevronRight className="size-3.5 shrink-0 text-faint" />
-            </button>
-          );
-        })}
+        {fileTree ? (
+          <FileTree items={diffs} pathOf={diffPath} renderFile={renderDiffRow} />
+        ) : (
+          diffs.map((diff) => renderDiffRow(diff))
+        )}
       </div>
     </div>
   );

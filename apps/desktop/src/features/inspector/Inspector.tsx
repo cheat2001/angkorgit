@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CommitInfo, FileDiff } from '@angkorgit/core';
-import { Columns2, Rows3, WholeWord } from 'lucide-react';
-import { Hint, Button, Separator, cn } from '@angkorgit/design-system';
+import { FolderTree, List } from 'lucide-react';
+import { Hint, Button, cn } from '@angkorgit/design-system';
 import { useGraph } from '@/features/graph/store';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
@@ -13,7 +13,7 @@ export function Inspector() {
   const selectedOid = useGraph((s) => s.selectedOid);
   const commits = useGraph((s) => s.commits);
   const repo = useRepo((s) => s.repo);
-  const { diffView, setDiffView, wordDiff, setWordDiff } = useUi();
+  const { fileTree, setFileTree } = useUi();
 
   const [commit, setCommit] = useState<CommitInfo | null>(null);
   const [diffs, setDiffs] = useState<FileDiff[]>([]);
@@ -32,6 +32,14 @@ export function Inspector() {
     setCommit(local);
     setLoadingDiffs(true);
     let cancelled = false;
+    if (!local) {
+      void ipc
+        .commitInfo(repo.path, selectedOid)
+        .then((info) => {
+          if (!cancelled) setCommit(info);
+        })
+        .catch(() => {});
+    }
     void ipc
       .diffCommit(repo.path, selectedOid)
       .then((result) => {
@@ -55,38 +63,26 @@ export function Inspector() {
           {commit ? 'Commit' : 'Working copy'}
         </span>
         <div className="ml-auto flex items-center gap-0.5">
-          <Hint label="Inline diff">
+          <Hint label="Flat list">
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Inline diff"
-              className={cn(diffView === 'inline' && 'bg-surface-raised text-foreground')}
-              onClick={() => setDiffView('inline')}
+              aria-label="Flat file list"
+              className={cn(!fileTree && 'bg-surface-raised text-foreground')}
+              onClick={() => setFileTree(false)}
             >
-              <Rows3 className="size-3.5" />
+              <List className="size-3.5" />
             </Button>
           </Hint>
-          <Hint label="Side-by-side diff">
+          <Hint label="Folder tree">
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Side-by-side diff"
-              className={cn(diffView === 'split' && 'bg-surface-raised text-foreground')}
-              onClick={() => setDiffView('split')}
+              aria-label="Folder tree"
+              className={cn(fileTree && 'bg-surface-raised text-foreground')}
+              onClick={() => setFileTree(true)}
             >
-              <Columns2 className="size-3.5" />
-            </Button>
-          </Hint>
-          <Separator orientation="vertical" className="mx-1 h-4" />
-          <Hint label={wordDiff ? 'Word diff on' : 'Word diff off'}>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Toggle word diff"
-              className={cn(wordDiff && 'bg-surface-raised text-primary')}
-              onClick={() => setWordDiff(!wordDiff)}
-            >
-              <WholeWord className="size-3.5" />
+              <FolderTree className="size-3.5" />
             </Button>
           </Hint>
         </div>
