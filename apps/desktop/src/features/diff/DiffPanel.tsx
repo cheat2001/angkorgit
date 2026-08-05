@@ -46,7 +46,12 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const [loading, setLoading] = useState(true);
   const loadedKey = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [lineMenu, setLineMenu] = useState<{ x: number; y: number; info: LineMenuInfo } | null>(null);
+  const [lineMenu, setLineMenu] = useState<{
+    x: number;
+    y: number;
+    info: LineMenuInfo;
+    selection: string;
+  } | null>(null);
   const { findBar, search } = useDiffFind(
     diff && !diff.isBinary && !diff.isImage ? diff : null,
     scrollRef,
@@ -272,14 +277,15 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             diff={diff}
             scrollRef={scrollRef}
             search={search}
-            onLineContextMenu={
-              isWorkingCopy
-                ? (e, info) => {
-                    e.preventDefault();
-                    setLineMenu({ x: e.clientX, y: e.clientY, info });
-                  }
-                : undefined
-            }
+            onLineContextMenu={(e, info) => {
+              e.preventDefault();
+              setLineMenu({
+                x: e.clientX,
+                y: e.clientY,
+                info,
+                selection: window.getSelection()?.toString() ?? '',
+              });
+            }}
             hunkActions={
               isWorkingCopy && !fullFileDiff
                 ? (hunkIndex) => (
@@ -326,7 +332,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <span style={{ position: 'fixed', left: lineMenu.x, top: lineMenu.y }} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="bottom">
-            {lineMenu.info.line.kind !== 'context' && (
+            {isWorkingCopy && lineMenu.info.line.kind !== 'context' && (
               <>
                 {target.staged ? (
                   <DropdownMenuItem
@@ -398,6 +404,16 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
                 )}
                 <DropdownMenuSeparator />
               </>
+            )}
+            {lineMenu.selection && (
+              <DropdownMenuItem
+                onClick={() => {
+                  void navigator.clipboard.writeText(lineMenu.selection);
+                  toast.success('Copied');
+                }}
+              >
+                <Copy /> Copy
+              </DropdownMenuItem>
             )}
             <DropdownMenuItem
               onClick={() => {

@@ -1,9 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Columns2, FileText, History, Rows3, WholeWord, WrapText, X } from 'lucide-react';
+import { Columns2, Copy, FileText, History, Rows3, WholeWord, WrapText, X } from 'lucide-react';
 import type { CommitInfo, FileDiff } from '@angkorgit/core';
-import { Badge, Button, Hint, Kbd, Spinner, cn } from '@angkorgit/design-system';
+import {
+  Badge,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Hint,
+  Kbd,
+  Spinner,
+  cn,
+} from '@angkorgit/design-system';
 import { Avatar } from '@/components/Avatar';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
@@ -12,6 +23,7 @@ import { timeAgo } from '@/shared/utils';
 import { DiffViewer } from '@/features/diff/DiffViewer';
 import { DiffMinimap } from '@/features/diff/DiffMinimap';
 import { useDiffFind } from '@/features/diff/diffSearch';
+import type { LineMenuInfo } from '@/features/diff/VirtualDiff';
 
 export function FileHistoryPanel({ file }: { file: string }) {
   const repo = useRepo((s) => s.repo);
@@ -36,6 +48,12 @@ export function FileHistoryPanel({ file }: { file: string }) {
     diff && !diff.isBinary && !diff.isImage ? diff : null,
     scrollRef,
   );
+  const [lineMenu, setLineMenu] = useState<{
+    x: number;
+    y: number;
+    info: LineMenuInfo;
+    selection: string;
+  } | null>(null);
 
   const path = repo?.path ?? '';
 
@@ -229,7 +247,20 @@ export function FileHistoryPanel({ file }: { file: string }) {
                 <Spinner className="size-5" />
               </div>
             ) : diff ? (
-              <DiffViewer diff={diff} scrollRef={scrollRef} search={search} />
+              <DiffViewer
+                diff={diff}
+                scrollRef={scrollRef}
+                search={search}
+                onLineContextMenu={(e, info) => {
+                  e.preventDefault();
+                  setLineMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    info,
+                    selection: window.getSelection()?.toString() ?? '',
+                  });
+                }}
+              />
             ) : (
               <p className="py-16 text-center text-sm text-faint">
                 {selected
@@ -243,6 +274,34 @@ export function FileHistoryPanel({ file }: { file: string }) {
           )}
         </div>
       </div>
+
+      {lineMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setLineMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: lineMenu.x, top: lineMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            {lineMenu.selection && (
+              <DropdownMenuItem
+                onClick={() => {
+                  void navigator.clipboard.writeText(lineMenu.selection);
+                  toast.success('Copied');
+                }}
+              >
+                <Copy /> Copy
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={() => {
+                void navigator.clipboard.writeText(lineMenu.info.line.content);
+                toast.success('Line copied');
+              }}
+            >
+              <Copy /> Copy line
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </motion.section>
   );
 }

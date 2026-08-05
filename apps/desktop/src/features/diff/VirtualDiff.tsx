@@ -57,16 +57,32 @@ function visualLength(content: string): number {
 }
 
 let measureCtx: CanvasRenderingContext2D | null | undefined;
+let measureFont: string | undefined;
+
+function resolveMeasureFont(ctx: CanvasRenderingContext2D): string {
+  ctx.font = '10px serif';
+  const sentinel = ctx.font;
+  const family = getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim();
+  const candidates = [
+    family ? `12px ${family}` : '',
+    '12px "JetBrains Mono", monospace',
+    '12px monospace',
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    ctx.font = candidate;
+    if (ctx.font !== sentinel) return ctx.font;
+  }
+  return ctx.font;
+}
 
 export function measureWidth(content: string): number {
   if (measureCtx === undefined) {
     measureCtx = document.createElement('canvas').getContext('2d');
+    if (measureCtx) measureFont = resolveMeasureFont(measureCtx);
   }
   if (!measureCtx) return visualLength(content) * CHAR_W;
-  const family =
-    getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() ||
-    'monospace';
-  measureCtx.font = `12px ${family}`;
+  if (measureFont) measureCtx.font = measureFont;
   return measureCtx.measureText(content.replace(/\t/g, '    ')).width;
 }
 
