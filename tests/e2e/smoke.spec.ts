@@ -10,7 +10,7 @@ test('opens the demo repository and shows the commit graph', async ({ page }) =>
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText('HEAD', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('main', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Working copy')).toBeVisible();
 });
 
