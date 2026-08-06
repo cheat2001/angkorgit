@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Pencil } from 'lucide-react';
 import { Badge, cn } from '@angkorgit/design-system';
 import { useRepo } from '@/features/repository/store';
+import { REF_COL_WIDTH } from './GraphRow';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 
@@ -39,11 +40,12 @@ export function WipRow({ gutterWidth }: { gutterWidth: number }) {
         if (e.key === 'Enter' || e.key === ' ') focusWorkingCopy();
       }}
       className={cn(
-        'sticky top-0 z-10 flex h-9 cursor-pointer select-none items-center gap-2 border-b border-dashed border-primary/40 px-2 text-sm',
+        'sticky top-0 z-10 flex h-9 cursor-pointer select-none items-center gap-2 border-b border-dashed border-primary/40 pl-1 pr-2 text-sm',
         'bg-surface/95 backdrop-blur-sm transition-colors hover:bg-primary/10',
         selectedOid === null && 'bg-primary/10',
       )}
     >
+      <span className="h-full shrink-0" style={{ width: REF_COL_WIDTH }} />
       <svg width={gutterWidth} height={36} className="shrink-0" aria-hidden>
         <line x1={8} y1={18} x2={8} y2={36} stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="3 3" />
         <circle

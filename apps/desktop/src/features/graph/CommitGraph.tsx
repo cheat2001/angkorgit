@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Filter, GitBranchPlus, ListRestart, RotateCcw, Search, Tag as TagIcon, Undo2, User, X } from 'lucide-react';
-import type { CommitInfo } from '@angkorgit/core';
+import { ArrowDownToLine, ArrowUpFromLine, Check, Copy, Filter, GitBranchPlus, GitMerge, ListRestart, RotateCcw, Search, Tag as TagIcon, Undo2, User, X } from 'lucide-react';
+import type { CommitInfo, RefInfo } from '@angkorgit/core';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +30,12 @@ interface MenuState {
   commit: CommitInfo;
 }
 
+interface RefMenuState {
+  x: number;
+  y: number;
+  ref: RefInfo;
+}
+
 export function CommitGraph() {
   const repo = useRepo((s) => s.repo);
   const refresh = useRepo((s) => s.refresh);
@@ -38,6 +44,7 @@ export function CommitGraph() {
   const openDialog = useUi((s) => s.openDialog);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [refMenu, setRefMenu] = useState<RefMenuState | null>(null);
   const [searchDraft, setSearchDraft] = useState(filters.search);
   const [authorDraft, setAuthorDraft] = useState(filters.author);
 
@@ -140,6 +147,19 @@ export function CommitGraph() {
     setMenu({ x: event.clientX, y: event.clientY, commit });
   }, []);
 
+  const checkoutRef = useCallback(
+    (ref: RefInfo) => {
+      void act(`Checkout ${ref.shorthand}`, () => ipc.checkout(path, ref.shorthand), {
+        kind: 'checkout',
+      });
+    },
+    [act, path],
+  );
+
+  const onRefMenu = useCallback((event: React.MouseEvent, ref: RefInfo) => {
+    setRefMenu({ x: event.clientX, y: event.clientY, ref });
+  }, []);
+
   return (
     <section className="flex h-full flex-col bg-background" aria-label="Commit history">
       <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle bg-surface px-3 py-2">
@@ -213,6 +233,8 @@ export function CommitGraph() {
                     selected={selectedOid === commit.oid}
                     onSelect={select}
                     onContextMenu={onContextMenu}
+                    onCheckoutRef={checkoutRef}
+                    onRefMenu={(e, ref) => onRefMenu(e, ref)}
                   />
                 </motion.div>
               );
@@ -220,6 +242,74 @@ export function CommitGraph() {
           </div>
         )}
       </div>
+
+      {refMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setRefMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: refMenu.x, top: refMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            <DropdownMenuLabel className="max-w-64 truncate font-mono">{refMenu.ref.shorthand}</DropdownMenuLabel>
+            {refMenu.ref.kind !== 'tag' && (
+              <>
+                <DropdownMenuItem onClick={() => checkoutRef(refMenu.ref)}>
+                  <Check /> Checkout {refMenu.ref.shorthand}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void act(`Merge ${refMenu.ref.shorthand}`, () => ipc.merge(path, refMenu.ref.shorthand), {
+                      kind: 'merge',
+                      extra: { branch: refMenu.ref.shorthand },
+                    })
+                  }
+                >
+                  <GitMerge /> Merge into current branch
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void act(`Rebase onto ${refMenu.ref.shorthand}`, () => ipc.rebase(path, refMenu.ref.shorthand), {
+                      kind: 'rebase',
+                    })
+                  }
+                >
+                  <ListRestart /> Rebase current branch onto this
+                </DropdownMenuItem>
+                {refMenu.ref.kind === 'localBranch' && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        void act(`Pull ${refMenu.ref.shorthand}`, () =>
+                          ipc.pullBranch(path, refMenu.ref.shorthand),
+                        )
+                      }
+                    >
+                      <ArrowDownToLine /> Pull
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        void act(`Push ${refMenu.ref.shorthand}`, () =>
+                          ipc.push(path, 'origin', false, false, true, refMenu.ref.shorthand),
+                        )
+                      }
+                    >
+                      <ArrowUpFromLine /> Push
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuItem
+              onClick={() => {
+                void navigator.clipboard.writeText(refMenu.ref.shorthand);
+                toast.success('Name copied');
+              }}
+            >
+              <Copy /> Copy name
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       {menu && (
         <DropdownMenu open onOpenChange={(o) => !o && setMenu(null)}>
