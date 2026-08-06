@@ -30,6 +30,11 @@ All notable changes to AngKorGit are documented here. The format follows
   caret, then ⌘A selects just that side (old or new) and ⌘C copies its full
   text — every line, correctly formatted, straight from the diff data.
   "Select all" also sits in the right-click menu
+- **The living graph**: author avatars are the commit nodes (merges stay
+  dots), and a BRANCH/TAG rail docks one pill per branch beside the graph —
+  laptop/cloud icons for local/origin presence, ✓ on the checked-out branch,
+  lane-colored connectors, hover to expand long names. Double-click a pill
+  to checkout; right-click for checkout/merge/rebase/pull/push/copy
 
 ### Changed
 - Working copy reordered: **Changes on top, Staged at the bottom** next to
