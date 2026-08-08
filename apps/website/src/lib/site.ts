@@ -19,11 +19,11 @@ export const SITE = {
 };
 
 export const NAV = [
-  { href: '#features', label: 'Features' },
-  { href: '#screenshots', label: 'Gallery' },
-  { href: '#performance', label: 'Performance' },
-  { href: '#install', label: 'Install' },
-  { href: '#ai', label: 'AI' },
+  { href: '/#features', label: 'Features' },
+  { href: '/#screenshots', label: 'Gallery' },
+  { href: '/#performance', label: 'Performance' },
+  { href: '/#install', label: 'Install' },
+  { href: '/#ai', label: 'AI' },
   { href: '/docs/', label: 'Docs' },
-  { href: '#open-source', label: 'Open source' },
+  { href: '/#open-source', label: 'Open source' },
 ] as const;
