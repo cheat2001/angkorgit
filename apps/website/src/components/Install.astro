@@ -6,14 +6,20 @@ interface Platform {
   name: string;
   icon: string;
   viewBox: string;
+  asset: string;
+  fileLabel: string;
   steps: string[];
 }
+
+const version = SITE.latestVersion;
 
 const platforms: Platform[] = [
   {
     name: 'macOS',
     viewBox: '0 0 24 24',
     icon: 'M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.56-1.702z',
+    asset: `AngKorGit_${version}_universal.dmg`,
+    fileLabel: '.dmg',
     steps: [
       'Open the .dmg and drag AngKorGit into Applications.',
       'On first launch, System Settings → Privacy & Security → "Open Anyway".',
@@ -24,6 +30,8 @@ const platforms: Platform[] = [
     name: 'Windows',
     viewBox: '0 0 24 24',
     icon: 'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z',
+    asset: `AngKorGit_${version}_x64-setup.exe`,
+    fileLabel: '.exe',
     steps: [
       'Run the installer and launch AngKorGit.',
       'SmartScreen: More info → Run anyway.',
@@ -34,6 +42,8 @@ const platforms: Platform[] = [
     name: 'Linux',
     viewBox: '0 0 24 24',
     icon: 'M4 17l6-6-6-6M12 19h8',
+    asset: `AngKorGit_${version}_amd64.AppImage`,
+    fileLabel: '.AppImage',
     steps: [
       'AppImage: chmod +x AngKorGit_*.AppImage, then run.',
       'Or install the .deb on Debian / Ubuntu.',
@@ -64,10 +74,11 @@ const platforms: Platform[] = [
                   <path d={platform.icon} />
                 </svg>
               </span>
-              <span class="font-mono text-xs text-faint">.dmg · .exe · .AppImage</span>
+              <span class="font-mono text-xs text-faint">{platform.fileLabel}</span>
             </div>
 
             <h3 class="mt-5 text-lg font-semibold tracking-tight">{platform.name}</h3>
+            <p class="mt-1 truncate font-mono text-xs text-faint">v{version} · {platform.asset}</p>
 
             <ol class="mt-3 flex-1 space-y-2.5">
               {
@@ -83,10 +94,12 @@ const platforms: Platform[] = [
             </ol>
 
             <a
-              href="/download/"
-              class="mt-6 inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-surface-raised"
+              href={SITE.assetUrl(version, platform.asset)}
+              target="_blank"
+              rel="noreferrer"
+              class="mt-6 inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
             >
-              Download for {platform.name}
+              Download {platform.fileLabel}
               <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
               </svg>
