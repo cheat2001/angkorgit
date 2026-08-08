@@ -16,12 +16,20 @@ import { SITE } from '../lib/site';
       <p class="mt-4 max-w-md text-muted">
         The page you're looking for was never added to history. Let's get you back to a clean tree.
       </p>
-      <a
-        href={SITE.repo}
-        class="mt-8 inline-flex items-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
-      >
-        Back to the repository
-      </a>
+      <div class="mt-8 flex flex-col items-center gap-3 sm:flex-row">
+        <a
+          href="/"
+          class="inline-flex items-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
+        >
+          Back to home
+        </a>
+        <a
+          href={SITE.repo}
+          class="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-6 py-3 text-sm font-medium transition-colors hover:bg-surface-raised"
+        >
+          Back to the repository
+        </a>
+      </div>
     </div>
   </main>
   <Footer />

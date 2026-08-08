@@ -5,8 +5,8 @@ import { NAV, SITE } from '../lib/site';
 ---
 
 <header
+  id="site-header"
   class="sticky top-0 z-50 border-b border-border-subtle/70 bg-background/80 backdrop-blur-md"
-  data-astro-cid-header
 >
   <div class="container-site flex h-16 items-center justify-between gap-4">
     <a href="/" class="flex items-center gap-2.5" aria-label="AngKorGit home">
@@ -17,10 +17,7 @@ import { NAV, SITE } from '../lib/site';
     <nav class="hidden items-center gap-1 lg:flex" aria-label="Primary">
       {
         NAV.map((item) => (
-          <a
-            href={item.href}
-            class="rounded-md px-3 py-1.5 text-sm text-muted transition-colors hover:bg-surface-raised hover:text-foreground"
-          >
+          <a href={item.href} class="nav-link">
             {item.label}
           </a>
         ))
@@ -79,8 +76,7 @@ import { NAV, SITE } from '../lib/site';
             {item.label}
           </a>
         ))
-      }
-      <a
+      }      <a
         href="/#install"
         class="mt-2 inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground"
       >
@@ -91,17 +87,62 @@ import { NAV, SITE } from '../lib/site';
 </header>
 
 <script>
-  const button = document.getElementById('nav-menu-button');
+  const header = document.getElementById('site-header');
+  const menuButton = document.getElementById('nav-menu-button');
   const menu = document.getElementById('nav-menu');
-  button?.addEventListener('click', () => {
+  menuButton?.addEventListener('click', () => {
     const open = menu?.classList.toggle('hidden') === false;
-    button.setAttribute('aria-expanded', String(open));
-    button.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    menuButton.setAttribute('aria-expanded', String(open));
+    menuButton.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
   });
   menu?.querySelectorAll('a').forEach((link) =>
     link.addEventListener('click', () => {
       menu.classList.add('hidden');
-      button?.setAttribute('aria-expanded', 'false');
+      menuButton?.setAttribute('aria-expanded', 'false');
     }),
   );
+
+  const onScroll = () => {
+    header?.classList.toggle('scrolled', window.scrollY > 8);
+  };
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  const navLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('nav a[href^="/#"]'));
+  const sections = navLinks
+    .map((link) => ({ link, section: document.getElementById(link.getAttribute('href')!.slice(2)) }))
+    .filter((entry): entry is { link: HTMLAnchorElement; section: HTMLElement } => Boolean(entry.section));
+  if ('IntersectionObserver' in window && sections.length > 0) {
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          for (const { link, section } of sections) {
+            const active = section.id === entry.target.id;
+            link.classList.toggle('nav-active', active);
+            if (active) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
+          }
+        }
+      },
+      { rootMargin: '-30% 0px -60% 0px', threshold: 0 },
+    );
+    sections.forEach(({ section }) => io.observe(section));
+  }
 </script>
+
+<style>
+  header {
+    transition:
+      box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  header.scrolled {
+    border-color: hsl(var(--border));
+    box-shadow: 0 12px 32px -24px hsl(var(--foreground) / 0.18);
+  }
+  .nav-active {
+    background: hsl(var(--surface-raised));
+    color: hsl(var(--foreground));
+  }
+</style>

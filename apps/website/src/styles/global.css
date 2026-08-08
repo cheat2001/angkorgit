@@ -11,6 +11,16 @@ html {
   scroll-behavior: smooth;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  [style*="angkor-draw"] {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+  }
+}
+
 body {
   @apply bg-background font-sans text-foreground antialiased;
 }
@@ -104,5 +114,12 @@ html.reveal-ready [data-reveal].is-revealed {
 
   .link-underline {
     @apply underline decoration-border-subtle decoration-2 underline-offset-4 transition-colors hover:decoration-primary;
+  }
+
+  .nav-link {
+    @apply rounded-md px-3 py-1.5 text-sm text-muted transition-colors hover:bg-surface-raised hover:text-foreground;
+  }
+  .nav-link[aria-current='page'] {
+    @apply bg-surface-raised font-medium text-foreground;
   }
 }
