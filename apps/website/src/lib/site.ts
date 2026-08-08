@@ -12,6 +12,10 @@ export const SITE = {
   security: 'https://github.com/cheat2001/angkorgit/blob/main/SECURITY.md',
   ci: 'https://github.com/cheat2001/angkorgit/actions/workflows/ci.yml',
   tagline: 'Everyday Git, made delightful.',
+  latestVersion: '0.1.2',
+  latestUrl: 'https://github.com/cheat2001/angkorgit/releases',
+  assetUrl: (version: string, asset: string) =>
+    `https://github.com/cheat2001/angkorgit/releases/download/v${version}/${asset}`,
 };
 
 export const NAV = [
