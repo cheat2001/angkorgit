@@ -8,3 +8,14 @@ playwright-report/
 test-results/
 apps/desktop/src-tauri/gen/
 apps/website/.astro/
+
+# Secrets & credentials — never commit
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+.env
+.env.*
+!*.env.example
