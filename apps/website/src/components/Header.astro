@@ -108,8 +108,18 @@ import { NAV, SITE } from '../lib/site';
   onScroll();
   window.addEventListener('scroll', onScroll, { passive: true });
 
-  const navLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('nav a[href^="/#"]'));
-  const sections = navLinks
+  const navLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('nav a'));
+
+  const docsLinks = navLinks.filter((link) => new URL(link.href).pathname.startsWith('/docs'));
+  if (location.pathname.startsWith('/docs')) {
+    docsLinks.forEach((link) => {
+      link.classList.add('nav-active');
+      link.setAttribute('aria-current', 'page');
+    });
+  }
+
+  const sectionLinks = navLinks.filter((link) => link.getAttribute('href')?.startsWith('/#'));
+  const sections = sectionLinks
     .map((link) => ({ link, section: document.getElementById(link.getAttribute('href')!.slice(2)) }))
     .filter((entry): entry is { link: HTMLAnchorElement; section: HTMLElement } => Boolean(entry.section));
   if ('IntersectionObserver' in window && sections.length > 0) {
