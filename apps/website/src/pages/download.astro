@@ -1,0 +1,240 @@
+---
+import Base from '../layouts/Base.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import TerminalBlock from '../components/TerminalBlock.astro';
+import { SITE } from '../lib/site';
+
+const version = SITE.latestVersion;
+const assets = {
+  macos: `AngKorGit_${version}_universal.dmg`,
+  windows: `AngKorGit_${version}_x64-setup.exe`,
+  linuxAppImage: `AngKorGit_${version}_amd64.AppImage`,
+  linuxDeb: `AngKorGit_${version}_amd64.deb`,
+};
+
+interface Platform {
+  key: string;
+  name: string;
+  viewBox: string;
+  icon: string;
+  file: string;
+  hint: string;
+  cli: { label: string; code: string };
+}
+
+const platforms: Platform[] = [
+  {
+    key: 'macos',
+    name: 'macOS',
+    viewBox: '0 0 24 24',
+    icon: 'M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.56-1.702z',
+    file: assets.macos,
+    hint: 'Universal — Apple Silicon and Intel.',
+    cli: {
+      label: 'macOS',
+      code: `curl -L ${SITE.assetUrl(version, assets.macos)} -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg`,
+    },
+  },
+  {
+    key: 'windows',
+    name: 'Windows',
+    viewBox: '0 0 24 24',
+    icon: 'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z',
+    file: assets.windows,
+    hint: '64-bit installer · .exe',
+    cli: {
+      label: 'Windows',
+      code: `curl -L ${SITE.assetUrl(version, assets.windows)} -o "$env:TEMP\\AngKorGit-setup.exe"; Start-Process "$env:TEMP\\AngKorGit-setup.exe"`,
+    },
+  },
+  {
+    key: 'linux',
+    name: 'Linux',
+    viewBox: '0 0 24 24',
+    icon: 'M4 17l6-6-6-6M12 19h8',
+    file: assets.linuxAppImage,
+    hint: 'AppImage · .deb also available',
+    cli: {
+      label: 'Linux',
+      code: `curl -L ${SITE.assetUrl(version, assets.linuxAppImage)} -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage`,
+    },
+  },
+];
+---
+
+<Base
+  title={`Download AngKorGit ${version} — free Git client for macOS, Windows & Linux`}
+  description={`Download AngKorGit ${version} (~8 MB, free, open source) for macOS, Windows, or Linux — via GitHub or a one-line terminal install.`}
+>
+  <Header />
+
+  <main id="main">
+    <section class="relative overflow-hidden">
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-0"
+        style="background: radial-gradient(52% 44% at 50% 0%, hsl(var(--primary) / 0.16), transparent 70%);"
+      ></div>
+
+      <div class="container-site relative py-16 lg:py-20">
+        <div class="max-w-2xl">
+          <p class="eyebrow">Install</p>
+          <h1 class="mt-3 text-4xl font-semibold leading-[1.08] tracking-tightest sm:text-5xl">
+            Download AngKorGit
+          </h1>
+          <p class="lede">
+            Latest release <span class="font-mono text-primary">v{version}</span> · ~8 MB · free ·
+            open source. Pick a platform below — or install straight from the terminal.
+          </p>
+        </div>
+
+        <div class="mt-10 rounded-lg border border-border-subtle bg-surface p-1.5 sm:p-2">
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              data-tab="github"
+              class="tab-btn flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors"
+            >
+              <svg class="mr-2 inline h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.92.43.37.82 1.11.82 2.24v3.32c0 .32.22.7.83.58A11.99 11.99 0 0 0 24 12.5C24 5.87 18.63.5 12 .5Z"
+                />
+              </svg>
+              Download from GitHub
+            </button>
+            <button
+              type="button"
+              data-tab="cli"
+              class="tab-btn flex-1 rounded-md border border-border px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-surface-raised hover:text-foreground"
+            >
+              <svg class="mr-2 inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m4 17 6-6-6-6M12 19h8" />
+              </svg>
+              Install from the terminal
+            </button>
+          </div>
+        </div>
+
+        <div id="tab-github" class="tab-panel mt-8">
+          <div class="grid gap-4 lg:grid-cols-3">
+            {
+              platforms.map((platform) => (
+                <div
+                  class="flex flex-col rounded-lg border border-border-subtle bg-surface p-6 transition-colors hover:border-border"
+                  data-platform={platform.key}
+                >
+                  <div class="flex items-center justify-between">
+                    <span class="inline-flex h-10 w-10 items-center justify-center rounded-md bg-surface-raised text-foreground">
+                      <svg class="h-5 w-5" viewBox={platform.viewBox} fill="currentColor" aria-hidden="true">
+                        <path d={platform.icon} />
+                      </svg>
+                    </span>
+                    <span class="hidden rounded-full bg-success/15 px-2 py-0.5 font-mono text-[11px] text-success sm:inline" data-os-badge>
+                      Your OS
+                    </span>
+                  </div>
+
+                  <h2 class="mt-5 text-lg font-semibold tracking-tight">{platform.name}</h2>
+                  <p class="mt-1 text-sm text-muted">{platform.hint}</p>
+                  <p class="mt-2 truncate font-mono text-xs text-faint">{platform.file}</p>
+
+                  <a
+                    href={SITE.assetUrl(version, platform.file)}
+                    class="mt-6 inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
+                    data-download-link
+                  >
+                    Download {platform.file.replace(`${version}_`, '').replace(/_/g, ' ')}
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
+                    </svg>
+                  </a>
+
+                  <a
+                    href={SITE.releases}
+                    class="mt-2 inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-raised hover:text-foreground"
+                  >
+                    All {platform.name} assets
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M7 17 17 7M7 7h10v10" />
+                    </svg>
+                  </a>
+                </div>
+              ))
+            }
+          </div>
+
+          <p class="mt-6 text-sm text-muted">
+            Prefer something else? Every release, checksum, and signature lives on{' '}
+            <a href={SITE.releases} class="link-underline">GitHub Releases</a>. Free forever, no
+            telemetry, MIT licensed.
+          </p>
+        </div>
+
+        <div id="tab-cli" class="tab-panel mt-8 hidden">
+          <div class="rounded-lg border border-border-subtle bg-surface p-6">
+            <h2 class="text-base font-semibold">One line per OS</h2>
+            <p class="mt-2 text-sm leading-relaxed text-muted">
+              Downloads the latest release, bypasses the gatekeeper warning, and launches AngKorGit.
+            </p>
+            <div class="mt-4 grid gap-4 lg:grid-cols-3">
+              {
+                platforms.map((platform) => (
+                  <TerminalBlock label={platform.cli.label} code={platform.cli.code} />
+                ))
+              }
+            </div>
+            <p class="mt-4 text-xs text-muted">
+              <span class="font-mono text-primary">Ubuntu / Debian?</span> Replace the AppImage URL
+              with <span class="font-mono">{assets.linuxDeb}</span> and install with{' '}
+              <span class="font-mono">sudo dpkg -i</span>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <Footer />
+</Base>
+
+<script>
+  const tabs = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+  const panels = document.querySelectorAll<HTMLElement>('.tab-panel');
+
+  const activate = (name: string) => {
+    tabs.forEach((tab) => {
+      const active = tab.dataset.tab === name;
+      tab.classList.toggle('bg-primary', active);
+      tab.classList.toggle('text-primary-foreground', active);
+      tab.classList.toggle('border-border', !active);
+      tab.classList.toggle('text-muted', !active);
+    });
+    panels.forEach((panel) => {
+      panel.classList.toggle('hidden', panel.id !== `tab-${name}`);
+    });
+  };
+
+  tabs.forEach((tab) =>
+    tab.addEventListener('click', () => activate(tab.dataset.tab ?? 'github')),
+  );
+
+  const badges = document.querySelectorAll<HTMLElement>('[data-os-badge]');
+  const links = document.querySelectorAll<HTMLAnchorElement>('[data-download-link]');
+  const platformCards = document.querySelectorAll<HTMLElement>('[data-platform]');
+
+  const detect = (): string | null => {
+    const ua = navigator.userAgent;
+    if (/mac|darwin/i.test(ua)) return 'macos';
+    if (/win|windows/i.test(ua)) return 'windows';
+    return 'linux';
+  };
+
+  const os = detect();
+  if (os) {
+    badges.forEach((badge) => {
+      const card = badge.closest<HTMLElement>('[data-platform]');
+      if (card?.dataset.platform === os) badge.classList.remove('hidden');
+    });
+  }
+</script>

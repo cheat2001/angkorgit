@@ -20,7 +20,7 @@ export const SITE = {
 
 export const NAV = [
   { href: '/#features', label: 'Features' },
-  { href: '/#screenshots', label: 'Gallery' },
+  { href: '/#gallery', label: 'Gallery' },
   { href: '/#performance', label: 'Performance' },
   { href: '/#install', label: 'Install' },
   { href: '/#ai', label: 'AI' },

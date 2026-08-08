@@ -10,13 +10,6 @@ export async function getStaticPaths() {
   }));
 }
 
-interface Props {
-  doc: {
-    id: string;
-    render: () => Promise<{ Content: import('astro').MarkdownContent }>;
-  };
-}
-
 const { doc } = Astro.props;
 const { Content } = await render(doc);
 const title = doc.id.replace('.md', '').replace(/-/g, ' ');
