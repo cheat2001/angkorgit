@@ -1,0 +1,39 @@
+---
+import Logo from './Logo.astro';
+---
+
+<div
+  id="splash"
+  class="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-6 bg-background text-foreground"
+  style="transition: opacity 400ms cubic-bezier(0.16, 1, 0.3, 1)"
+  aria-hidden="true"
+>
+  <div style="animation: splash-logo-in 500ms cubic-bezier(0.16, 1, 0.3, 1) both">
+    <Logo size={96} animated />
+  </div>
+  <div class="text-center" style="animation: splash-word-in 500ms cubic-bezier(0.16, 1, 0.3, 1) 700ms both">
+    <p class="text-2xl font-semibold tracking-tight">
+      AngKor<span class="text-primary">Git</span>
+    </p>
+    <p class="mt-1 text-xs text-muted">Strength. Simplicity. Craftsmanship.</p>
+  </div>
+</div>
+
+<script>
+  const splash = document.getElementById('splash');
+  if (splash && !document.documentElement.classList.contains('no-splash')) {
+    document.body.style.overflow = 'hidden';
+    const dismiss = () => {
+      document.body.style.overflow = '';
+      splash.style.opacity = '0';
+      setTimeout(() => splash.remove(), 450);
+    };
+    let timer = window.setTimeout(dismiss, 2300);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        window.clearTimeout(timer);
+        dismiss();
+      }
+    });
+  }
+</script>

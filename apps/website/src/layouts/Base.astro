@@ -1,5 +1,6 @@
 ---
 import { SITE } from '../lib/site';
+import Splash from '../components/Splash.astro';
 import '../styles/global.css';
 
 interface Props {
@@ -87,6 +88,21 @@ const jsonLd = {
     <script is:inline>
       (() => {
         const root = document.documentElement;
+        try {
+          const seen = sessionStorage.getItem('angkorgit-splash');
+          if (seen === '1' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            root.classList.add('no-splash');
+          } else {
+            sessionStorage.setItem('angkorgit-splash', '1');
+          }
+        } catch {
+          root.classList.add('no-splash');
+        }
+      })();
+    </script>
+    <script is:inline>
+      (() => {
+        const root = document.documentElement;
         root.classList.add('reveal-ready');
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
         const reveal = () => {
@@ -124,5 +140,6 @@ const jsonLd = {
       Skip to content
     </a>
     <slot />
+    <Splash />
   </body>
 </html>
