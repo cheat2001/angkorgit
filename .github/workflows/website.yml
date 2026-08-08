@@ -37,7 +37,7 @@ jobs:
         run: pnpm website:build
         env:
           SITE_URL: https://angkorgit.app
-          SITE_BASE: /angkorgit/
+          SITE_BASE: /
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/website/dist
