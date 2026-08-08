@@ -17,25 +17,29 @@ const targets = [
   { name: 'welcome', width: 1400, quality: 85 },
 ];
 
+const variants = ['', '-light'];
+
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
 for (const { name, width, quality } of targets) {
-  const input = join(srcDir, `${name}.png`);
-  const output = join(outDir, `${name}.webp`);
-  const { width: srcWidth } = await sharp(input).metadata();
-  const scaled = width >= srcWidth ? null : width / srcWidth;
-  await sharp(input)
-    .rotate()
-    .resize(width, undefined, { withoutEnlargement: true })
-    .webp({ quality })
-    .toFile(output);
-  const { size } = await stat(output);
-  const { size: srcSize } = await stat(input);
-  const dims = scaled ? `${width}w` : `${srcWidth}w`;
-  console.log(
-    `${output}  ${dims}  ${(size / 1024).toFixed(0)} KB  (source ${(srcSize / 1024).toFixed(0)} KB, ${Math.round(100 - (size / srcSize) * 100)}% smaller)`,
-  );
+  for (const variant of variants) {
+    const input = join(srcDir, `${name}${variant}.png`);
+    const output = join(outDir, `${name}${variant}.webp`);
+    const { width: srcWidth } = await sharp(input).metadata();
+    const scaled = width >= srcWidth ? null : width / srcWidth;
+    await sharp(input)
+      .rotate()
+      .resize(width, undefined, { withoutEnlargement: true })
+      .webp({ quality })
+      .toFile(output);
+    const { size } = await stat(output);
+    const { size: srcSize } = await stat(input);
+    const dims = scaled ? `${width}w` : `${srcWidth}w`;
+    console.log(
+      `${output}  ${dims}  ${(size / 1024).toFixed(0)} KB  (source ${(srcSize / 1024).toFixed(0)} KB, ${Math.round(100 - (size / srcSize) * 100)}% smaller)`,
+    );
+  }
 }
 
 console.log('Screenshots optimized.');

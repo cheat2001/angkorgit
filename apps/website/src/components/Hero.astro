@@ -85,15 +85,26 @@ import { SITE } from '../lib/site';
         <span class="h-2.5 w-2.5 rounded-full bg-success/70" aria-hidden="true"></span>
         <span class="ml-3 hidden font-mono text-xs text-faint sm:inline">main — AngKorGit</span>
       </div>
-      <img
-        src={import.meta.env.BASE_URL + 'screenshots/graph.webp'}
-        alt="AngKorGit commit graph with repository tabs and the ⌘K command palette"
-        width="1800"
-        height="1130"
-        fetchpriority="high"
-        decoding="async"
-        class="block h-auto w-full rounded-b-lg"
-      />
+      <div class="relative">
+        <img
+          src={import.meta.env.BASE_URL + 'screenshots/graph.webp'}
+          alt="AngKorGit commit graph with repository tabs and the ⌘K command palette"
+          width="1800"
+          height="1130"
+          fetchpriority="high"
+          decoding="async"
+          class="hidden h-auto w-full rounded-b-lg dark:block"
+        />
+        <img
+          src={import.meta.env.BASE_URL + 'screenshots/graph-light.webp'}
+          alt="AngKorGit commit graph with repository tabs and the ⌘K command palette"
+          width="1800"
+          height="1130"
+          fetchpriority="high"
+          decoding="async"
+          class="block h-auto w-full rounded-b-lg dark:hidden"
+        />
+      </div>
     </div>
   </div>
 </section>

@@ -95,7 +95,18 @@ const grid = shots.filter((shot) => !shot.featured);
                 height={shot.height}
                 loading="lazy"
                 decoding="async"
-                class="pointer-events-none block h-auto w-full"
+                class="pointer-events-none hidden h-auto w-full dark:block"
+                data-screenshot-img
+              />
+              <img
+                src={shot.src.replace('.webp', '-light.webp')}
+                alt={shot.alt}
+                width={shot.width}
+                height={shot.height}
+                loading="lazy"
+                decoding="async"
+                class="pointer-events-none block h-auto w-full dark:hidden"
+                data-screenshot-img
               />
             </button>
             <figcaption class="mt-3 text-sm text-muted">{shot.caption}</figcaption>
@@ -128,7 +139,18 @@ const grid = shots.filter((shot) => !shot.featured);
                   height={shot.height}
                   loading="lazy"
                   decoding="async"
-                  class="pointer-events-none block h-auto w-full"
+                  class="pointer-events-none hidden h-auto w-full dark:block"
+                  data-screenshot-img
+                />
+                <img
+                  src={shot.src.replace('.webp', '-light.webp')}
+                  alt={shot.alt}
+                  width={shot.width}
+                  height={shot.height}
+                  loading="lazy"
+                  decoding="async"
+                  class="pointer-events-none block h-auto w-full dark:hidden"
+                  data-screenshot-img
                 />
               </button>
               <figcaption class="mt-3 text-sm text-muted">{shot.caption}</figcaption>
@@ -192,15 +214,15 @@ const grid = shots.filter((shot) => !shot.featured);
 </div>
 
 <script>
-  type Item = { src: string; caption: string; title: string };
+  type Item = { srcs: [string, string]; caption: string; title: string };
 
   const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-screenshot]'));
   const items: Item[] = buttons.map((button) => {
     const figure = button.closest<HTMLElement>('.screenshot-figure');
-    const img = button.querySelector<HTMLImageElement>('img');
+    const imgs = Array.from(button.querySelectorAll<HTMLImageElement>('[data-screenshot-img]'));
     const caption = figure?.querySelector<HTMLElement>('figcaption');
     return {
-      src: img?.src ?? '',
+      srcs: [imgs[0]?.src ?? '', imgs[1]?.src ?? ''],
       caption: caption?.textContent?.trim() ?? '',
       title: button.querySelector<HTMLElement>('.sm\\:inline')?.textContent?.trim() ?? '',
     };
@@ -219,10 +241,12 @@ const grid = shots.filter((shot) => !shot.featured);
 
   const render = (i: number) => {
     index = (i + items.length) % items.length;
-    img.src = items[index].src;
-    img.alt = items[index].caption;
-    caption.textContent = items[index].caption;
-    title.textContent = items[index].title;
+    const item = items[index];
+    const dark = document.documentElement.classList.contains('dark');
+    img.src = dark ? item.srcs[0] : item.srcs[1];
+    img.alt = item.caption;
+    caption.textContent = item.caption;
+    title.textContent = item.title;
   };
 
   const open = (i: number) => {
