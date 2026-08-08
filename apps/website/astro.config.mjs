@@ -8,4 +8,12 @@ export default defineConfig({
   base,
   trailingSlash: 'always',
   integrations: [sitemap()],
+  markdown: {
+    shikiConfig: {
+      themes: {
+        dark: 'github-dark',
+        light: 'github-light',
+      },
+    },
+  },
 });
