@@ -12,6 +12,7 @@ export const SITE = {
   codeOfConduct: 'https://github.com/cheat2001/angkorgit/blob/main/CODE_OF_CONDUCT.md',
   security: 'https://github.com/cheat2001/angkorgit/blob/main/SECURITY.md',
   ci: 'https://github.com/cheat2001/angkorgit/actions/workflows/ci.yml',
+  buyMeACoffee: 'https://buymeacoffee.com/chansocheatsok',
   tagline: 'Everyday Git, made delightful.',
   latestVersion: '0.1.2',
   latestUrl: 'https://github.com/cheat2001/angkorgit/releases',
