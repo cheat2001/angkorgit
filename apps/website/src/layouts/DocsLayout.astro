@@ -1,0 +1,187 @@
+---
+import Base from './Base.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { getCollection } from 'astro:content';
+import { SITE } from '../lib/site';
+
+interface Props {
+  title: string;
+  slug: string;
+}
+
+const { title, slug } = Astro.props;
+
+const docs = await getCollection('docs');
+const links = docs
+  .map((doc) => ({
+    slug: doc.id.replace('.md', ''),
+    label: doc.id.replace('.md', '').replace(/-/g, ' '),
+  }))
+  .sort((a, b) => a.label.localeCompare(b.label));
+
+const current = links.find((l) => l.slug === slug);
+---
+
+<Base title={`${title} — ${SITE.name}`}>
+  <Header />
+  <main id="main" class="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
+    <div class="flex items-center gap-2 text-sm text-muted">
+      <a href="/" class="transition-colors hover:text-primary">Home</a>
+      <span>/</span>
+      <a href="/docs/" class="transition-colors hover:text-primary">Docs</a>
+      <span>/</span>
+      <span class="text-faint">{current?.label ?? slug}</span>
+    </div>
+
+    <div class="mt-8 grid gap-10 lg:grid-cols-[220px_1fr]">
+      <aside class="hidden lg:block">
+        <nav class="sticky top-8">
+          <p class="font-mono text-xs uppercase tracking-wider text-faint">Docs</p>
+          <ul class="mt-4 space-y-1">
+            {
+              links.map((link) => (
+                <li>
+                  <a
+                    href={`/docs/${link.slug}/`}
+                    class={['block rounded-md px-3 py-1.5 text-sm transition-colors',
+                      link.slug === slug
+                        ? 'bg-primary/15 font-medium text-primary'
+                        : 'text-muted hover:bg-surface-raised hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    {link.label}
+                  </a>
+                </li>
+              ))
+            }
+          </ul>
+          <a
+            href={SITE.repo}
+            target="_blank"
+            rel="noreferrer"
+            class="mt-8 inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-surface-raised hover:text-foreground"
+          >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.91c.58.11.79-.25.79-.56v-2.17c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.72.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.75 2.69 1.25 3.34.95.1-.74.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.24 2.76.12 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.2.68.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z" />
+            </svg>
+            View on GitHub
+          </a>
+        </nav>
+      </aside>
+
+      <article class="min-w-0 max-w-3xl">
+        <slot />
+      </article>
+    </div>
+  </main>
+  <Footer />
+</Base>
+
+<style>
+  article :global(h1) {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: hsl(var(--foreground));
+  }
+  article :global(h2) {
+    margin-top: 2.5rem;
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: hsl(var(--foreground));
+  }
+  article :global(h3) {
+    margin-top: 1.75rem;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+  article :global(p) {
+    margin-top: 1rem;
+    line-height: 1.75;
+    color: hsl(var(--muted-foreground));
+  }
+  article :global(ul),
+  article :global(ol) {
+    margin-top: 1rem;
+    padding-left: 1.25rem;
+    color: hsl(var(--muted-foreground));
+    line-height: 1.75;
+  }
+  article :global(ul) {
+    list-style: disc;
+  }
+  article :global(ol) {
+    list-style: decimal;
+  }
+  article :global(li) {
+    margin-top: 0.375rem;
+  }
+  article :global(strong) {
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+  article :global(a) {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: color-mix(in srgb, hsl(var(--primary)) 40%, transparent);
+  }
+  article :global(a:hover) {
+    text-decoration-color: hsl(var(--primary));
+  }
+  article :global(code) {
+    border-radius: 0.25rem;
+    background: hsl(var(--surface-raised));
+    padding: 0.125rem 0.375rem;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: hsl(var(--foreground));
+  }
+  article :global(pre) {
+    margin-top: 1rem;
+    overflow-x: auto;
+    border-radius: 0.5rem;
+    background: hsl(var(--surface-raised));
+    padding: 1rem;
+  }
+  article :global(pre code) {
+    background: transparent;
+    padding: 0;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+  }
+  article :global(blockquote) {
+    margin-top: 1rem;
+    border-left: 2px solid hsl(var(--primary));
+    padding-left: 1rem;
+    color: hsl(var(--muted-foreground));
+  }
+  article :global(hr) {
+    margin-top: 2rem;
+    border-color: hsl(var(--border-subtle));
+  }
+  article :global(table) {
+    margin-top: 1rem;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  article :global(th),
+  article :global(td) {
+    border: 1px solid hsl(var(--border-subtle));
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+  }
+  article :global(th) {
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+  article :global(td) {
+    color: hsl(var(--muted-foreground));
+  }
+</style>

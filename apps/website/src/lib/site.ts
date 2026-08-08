@@ -24,5 +24,6 @@ export const NAV = [
   { href: '#performance', label: 'Performance' },
   { href: '#install', label: 'Install' },
   { href: '#ai', label: 'AI' },
+  { href: '/docs/', label: 'Docs' },
   { href: '#open-source', label: 'Open source' },
 ] as const;

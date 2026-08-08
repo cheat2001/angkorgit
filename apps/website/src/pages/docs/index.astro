@@ -1,0 +1,31 @@
+---
+import { getCollection } from 'astro:content';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import { SITE } from '../../lib/site';
+
+const docs = await getCollection('docs');
+const links = docs
+  .map((doc) => ({
+    slug: doc.id.replace('.md', ''),
+    label: doc.id.replace('.md', '').replace(/-/g, ' '),
+  }))
+  .sort((a, b) => a.label.localeCompare(b.label));
+---
+
+<DocsLayout title="Docs" slug="">
+  <h1>Documentation</h1>
+  <p>
+    Everything you need to work on AngKorGit — from the architecture and coding standards to
+    building, testing, and shipping a release. Source of truth lives in the
+    <a href={SITE.repo} target="_blank" rel="noreferrer"> repository</a>.
+  </p>
+  <ul>
+    {
+      links.map((link) => (
+        <li>
+          <a href={`/docs/${link.slug}/`}>{link.label}</a>
+        </li>
+      ))
+    }
+  </ul>
+</DocsLayout>
