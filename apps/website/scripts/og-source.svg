@@ -39,7 +39,7 @@
   </g>
 
   <text x="360" y="238" font-family="sans-serif" font-size="30" font-weight="600" letter-spacing="6" fill="#D97706">ANGKORGIT</text>
-  <text x="360" y="308" font-family="sans-serif" font-size="72" font-weight="700" fill="#f3f4f6">Everyday Git, made delightful.</text>
+  <text x="360" y="308" font-family="sans-serif" font-size="52" font-weight="700" fill="#f3f4f6">Everyday Git, made delightful.</text>
   <text x="360" y="388" font-family="sans-serif" font-size="30" fill="#9ca3af">A modern, fast, beautiful cross-platform Git client.</text>
 
   <g font-family="sans-serif" font-size="24" font-weight="600">
