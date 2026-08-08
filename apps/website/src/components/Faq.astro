@@ -58,10 +58,10 @@ const jsonLd = {
       </p>
     </div>
 
-    <div class="mt-12 grid gap-x-12 gap-y-0 lg:grid-cols-2">
+    <div class="mt-12 max-w-3xl">
       {
         faqs.map((faq) => (
-          <details class="group border-b border-border-subtle">
+          <details class="faq-item group border-b border-border-subtle">
             <summary class="flex cursor-pointer items-center justify-between gap-4 py-5 text-sm font-medium text-foreground [&::-webkit-details-marker]:hidden">
               {faq.q}
               <svg
@@ -82,6 +82,18 @@ const jsonLd = {
         ))
       }
     </div>
+
+    <script is:inline>
+      const items = document.querySelectorAll('.faq-item');
+      items.forEach((item) => {
+        item.addEventListener('toggle', () => {
+          if (!item.open) return;
+          items.forEach((other) => {
+            if (other !== item) other.open = false;
+          });
+        });
+      });
+    </script>
 
     <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
   </div>
