@@ -6,6 +6,13 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Marketing website** (`apps/website`, Astro 5): hero, features, screenshot
+  gallery, performance, AI, install, and open-source sections with dark/light
+  themes — deployed to GitHub Pages at `https://angkorgit.app/` (custom domain,
+  root base path) with SEO meta, Open Graph, sitemap, and JSON-LD
+  `SoftwareApplication` structured data
+
 ## [0.1.2] — 2026-08-05
 
 ### Added

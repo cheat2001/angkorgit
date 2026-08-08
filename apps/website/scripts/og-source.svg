@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#D97706" stop-opacity="0.18" />
+      <stop offset="55%" stop-color="#D97706" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#0f1524" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="grid" x1="0" y1="0" x2="0" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0f1524" />
+  <rect width="1200" height="630" fill="url(#glow)" />
+
+  <g stroke="#ffffff" stroke-opacity="0.05" stroke-width="1">
+    <path d="M0 126 H1200 M0 252 H1200 M0 378 H1200 M0 504 H1200" />
+    <path d="M200 0 V630 M400 0 V630 M600 0 V630 M800 0 V630 M1000 0 V630" />
+  </g>
+
+  <g>
+    <rect x="112" y="132" width="164" height="366" rx="8" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" />
+    <g transform="translate(152 300)">
+      <g stroke="#D97706" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M64 4 L55 38 L55 54 L73 54 L73 38 Z" />
+        <path d="M28 26 L22.5 44 L22.5 56 L33.5 56 L33.5 44 Z" />
+        <path d="M100 26 L94.5 44 L94.5 56 L105.5 56 L105.5 44 Z" />
+      </g>
+      <g stroke="#e5e7eb" stroke-width="5" stroke-linecap="round" fill="none">
+        <path d="M28 64 C28 78 46 74 64 74" />
+        <path d="M100 64 C100 78 82 74 64 74" />
+        <path d="M64 56 V 86" />
+      </g>
+      <circle cx="28" cy="61" r="6" fill="#D97706" />
+      <circle cx="100" cy="61" r="6" fill="#D97706" />
+      <circle cx="64" cy="94" r="6" fill="#e5e7eb" />
+    </g>
+  </g>
+
+  <text x="360" y="238" font-family="sans-serif" font-size="30" font-weight="600" letter-spacing="6" fill="#D97706">ANGKORGIT</text>
+  <text x="360" y="308" font-family="sans-serif" font-size="72" font-weight="700" fill="#f3f4f6">Everyday Git, made delightful.</text>
+  <text x="360" y="388" font-family="sans-serif" font-size="30" fill="#9ca3af">A modern, fast, beautiful cross-platform Git client.</text>
+
+  <g font-family="sans-serif" font-size="24" font-weight="600">
+    <g>
+      <circle cx="362" cy="470" r="22" fill="#D97706" />
+      <text x="402" y="479" fill="#e5e7eb">~8 MB</text>
+    </g>
+    <g>
+      <circle cx="528" cy="470" r="22" fill="#22C55E" />
+      <text x="568" y="479" fill="#e5e7eb">MIT license</text>
+    </g>
+    <g>
+      <circle cx="742" cy="470" r="22" fill="#38bdf8" />
+      <text x="782" y="479" fill="#e5e7eb">Tauri v2 · Rust · React</text>
+    </g>
+  </g>
+</svg>

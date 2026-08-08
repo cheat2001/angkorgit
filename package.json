@@ -5,6 +5,12 @@
   "description": "AngKorGit — a modern, fast, beautiful cross-platform Git client inspired by the craftsmanship of Angkor Wat.",
   "license": "MIT",
   "packageManager": "pnpm@10.32.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp"
+    ]
+  },
   "engines": {
     "node": ">=20"
   },
@@ -21,6 +27,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
+    "website": "pnpm --filter @angkorgit/website dev",
+    "website:build": "pnpm --filter @angkorgit/website build",
+    "website:preview": "pnpm --filter @angkorgit/website preview",
+    "website:images": "pnpm --filter @angkorgit/website images",
     "icons": "node scripts/generate-icons.mjs"
   },
   "devDependencies": {

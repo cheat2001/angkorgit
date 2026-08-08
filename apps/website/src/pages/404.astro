@@ -1,0 +1,28 @@
+---
+import Base from '../layouts/Base.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import Logo from '../components/Logo.astro';
+import { SITE } from '../lib/site';
+---
+
+<Base title="Page not found — AngKorGit">
+  <Header />
+  <main id="main" class="section-pad">
+    <div class="container-site flex flex-col items-center py-20 text-center">
+      <Logo size={56} class="text-foreground" />
+      <p class="mt-6 font-mono text-sm text-primary">404</p>
+      <h1 class="mt-2 text-3xl font-semibold tracking-tightest lg:text-4xl">This commit doesn't exist</h1>
+      <p class="mt-4 max-w-md text-muted">
+        The page you're looking for was never added to history. Let's get you back to a clean tree.
+      </p>
+      <a
+        href={SITE.repo}
+        class="mt-8 inline-flex items-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
+      >
+        Back to the repository
+      </a>
+    </div>
+  </main>
+  <Footer />
+</Base>

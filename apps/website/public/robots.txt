@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://angkorgit.app/sitemap-index.xml

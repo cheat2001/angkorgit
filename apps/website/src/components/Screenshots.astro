@@ -1,0 +1,126 @@
+---
+const base = import.meta.env.BASE_URL;
+
+const shots = [
+  {
+    src: base + 'screenshots/graph.webp',
+    width: 1800,
+    height: 1130,
+    alt: 'AngKorGit commit graph with repository tabs and the ⌘K command palette',
+    caption: 'Virtualized graph with animated lanes, refs, tags, and the ⌘K command palette.',
+    featured: true,
+  },
+  {
+    src: base + 'screenshots/diff.webp',
+    width: 1600,
+    height: 1004,
+    alt: 'AngKorGit side-by-side diff with commit details',
+    caption: 'Side-by-side diffs — word-level highlights, minimap, line-level staging.',
+  },
+  {
+    src: base + 'screenshots/command-palette.webp',
+    width: 1400,
+    height: 879,
+    alt: 'AngKorGit ⌘K command palette',
+    caption: 'The ⌘K command palette — every action searchable, keyboard-first by design.',
+  },
+  {
+    src: base + 'screenshots/welcome.webp',
+    width: 1400,
+    height: 879,
+    alt: 'AngKorGit welcome screen with recent repositories',
+    caption: 'Open, clone, or return to recent projects.',
+  },
+  {
+    src: base + 'screenshots/theme-setting.webp',
+    width: 1400,
+    height: 879,
+    alt: 'AngKorGit appearance settings with theme and accent colors',
+    caption: 'Dark and light themes, five accent colors, and UI zoom — all in one settings tab.',
+  },
+  {
+    src: base + 'screenshots/ai-config-setting.webp',
+    width: 1400,
+    height: 879,
+    alt: 'AngKorGit AI settings with provider configuration',
+    caption: 'AI settings — connect any provider; keys stay in your OS keychain.',
+  },
+  {
+    src: base + 'screenshots/shortcut-key.webp',
+    width: 1400,
+    height: 879,
+    alt: 'AngKorGit keyboard shortcuts overview',
+    caption: 'Shortcuts render next to every action and can be fully customized.',
+  },
+];
+---
+
+<section id="screenshots" class="section-pad scroll-mt-20 border-t border-border-subtle bg-surface">
+  <div class="container-site">
+    <div class="max-w-2xl">
+      <p class="eyebrow">Gallery</p>
+      <h2 class="h2-section">Beautiful at any scale</h2>
+      <p class="lede">
+        A focused interface: graph in the center, working copy on the right, terminal docked below.
+        Dark by default, light when you want it.
+      </p>
+    </div>
+
+    <div class="mt-14 grid gap-8">
+      {
+        shots
+          .filter((shot) => shot.featured)
+          .map((shot) => (
+            <figure class="group">
+              <div class="overflow-hidden rounded-lg border border-border-subtle bg-surface-raised shadow-soft transition-colors group-hover:border-border">
+                <div class="flex items-center gap-1.5 border-b border-border-subtle px-4 py-2.5">
+                  <span class="h-2 w-2 rounded-full bg-danger/70" aria-hidden="true"></span>
+                  <span class="h-2 w-2 rounded-full bg-amber-400/70" aria-hidden="true"></span>
+                  <span class="h-2 w-2 rounded-full bg-success/70" aria-hidden="true"></span>
+                  <span class="ml-3 hidden font-mono text-xs text-faint sm:inline">main — AngKorGit</span>
+                </div>
+                <img
+                  src={shot.src}
+                  alt={shot.alt}
+                  width={shot.width}
+                  height={shot.height}
+                  loading="lazy"
+                  decoding="async"
+                  class="block h-auto w-full"
+                />
+              </div>
+              <figcaption class="mt-3 text-sm text-muted">{shot.caption}</figcaption>
+            </figure>
+          ))
+      }
+
+      <div class="grid gap-8 md:grid-cols-2">
+        {
+          shots
+            .filter((shot) => !shot.featured)
+            .map((shot) => (
+              <figure class="group">
+                <div class="overflow-hidden rounded-lg border border-border-subtle bg-surface-raised shadow-soft transition-colors group-hover:border-border">
+                  <div class="flex items-center gap-1.5 border-b border-border-subtle px-4 py-2.5">
+                    <span class="h-2 w-2 rounded-full bg-danger/70" aria-hidden="true"></span>
+                    <span class="h-2 w-2 rounded-full bg-amber-400/70" aria-hidden="true"></span>
+                    <span class="h-2 w-2 rounded-full bg-success/70" aria-hidden="true"></span>
+                  </div>
+                  <img
+                    src={shot.src}
+                    alt={shot.alt}
+                    width={shot.width}
+                    height={shot.height}
+                    loading="lazy"
+                    decoding="async"
+                    class="block h-auto w-full"
+                  />
+                </div>
+                <figcaption class="mt-3 text-sm text-muted">{shot.caption}</figcaption>
+              </figure>
+            ))
+        }
+      </div>
+    </div>
+  </div>
+</section>

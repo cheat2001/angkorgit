@@ -14,6 +14,7 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-D97706.svg" /></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-374151.svg" />
   <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri%20v2%20%2B%20Rust-D97706.svg" />
+  <a href="https://angkorgit.app/"><img alt="Website" src="https://img.shields.io/badge/website-angkorgit.app-8B5CF6.svg" /></a>
 </p>
 
 ---
@@ -22,7 +23,7 @@
   <img src="docs/assets/graph.png" alt="AngKorGit — commit graph with repository tabs and the ⌘K command palette" width="920" />
 </p>
 
-AngKorGit focuses on the Git operations developers actually use every day and executes them exceptionally well — in an app that weighs **~8 MB** instead of a gigabyte.
+AngKorGit focuses on the Git operations developers use every day and executes them exceptionally well — in an app that weighs **~8 MB** instead of a gigabyte.
 
 <table>
   <tr>
@@ -31,14 +32,28 @@ AngKorGit focuses on the Git operations developers actually use every day and ex
       <p align="center"><em>Side-by-side diffs — word-level highlights, minimap, line-level staging</em></p>
     </td>
     <td width="50%">
-      <img src="docs/assets/settings-light.png" alt="Light theme with accent colors" />
-      <p align="center"><em>Dark & light themes, five accent colors, UI zoom</em></p>
+      <img src="docs/assets/command-palette.png" alt="⌘K command palette" />
+      <p align="center"><em>The ⌘K command palette — every action searchable, keyboard-first by design</em></p>
     </td>
   </tr>
   <tr>
-    <td colspan="2" align="center">
-      <img src="docs/assets/welcome.png" alt="Welcome screen" width="70%" />
-      <p align="center"><em>Open, clone, or jump back into recent projects</em></p>
+    <td width="50%">
+      <img src="docs/assets/theme-setting.png" alt="Appearance settings — themes and accent colors" />
+      <p align="center"><em>Dark and light themes, five accent colors, and UI zoom — all in one settings tab</em></p>
+    </td>
+    <td width="50%">
+      <img src="docs/assets/ai-config-setting.png" alt="AI settings" />
+      <p align="center"><em>AI settings — connect any provider; keys stay in your OS keychain</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/shortcut-key.png" alt="Keyboard shortcuts overview" />
+      <p align="center"><em>Shortcuts render next to every action and can be fully customized</em></p>
+    </td>
+    <td width="50%">
+      <img src="docs/assets/welcome.png" alt="Welcome screen" />
+      <p align="center"><em>Open, clone, or return to recent projects</em></p>
     </td>
   </tr>
 </table>
@@ -47,14 +62,14 @@ AngKorGit focuses on the Git operations developers actually use every day and ex
 
 - **Fast by architecture** — Rust + libgit2 engine, virtualized graph *and* diff rendering, incremental history loading. 100k-commit repositories and multi-thousand-line diffs stay at full frame rate.
 - **The full daily toolkit** — stage down to individual hunks, commit/amend, branch folders with right-click menus, merge/rebase/cherry-pick/revert/reset, stash, tags, submodule awareness, per-branch push & pull (fast-forward without checkout), and **drag a branch onto another to merge** — every operation undoable with ⌘Z.
-- **Review like you mean it** — full-width diffs with a clickable minimap, previous/next-change hops, side-by-side or inline, word-level highlighting, whole-file view, image diffs.
-- **Conflicts without fear** — checkbox picks per side (keep both!), conflict-to-conflict navigation, and a fully **editable result pane** with marker guards.
-- **Live by default** — a filesystem watcher keeps the WIP row, status, and graph in sync while you edit in your IDE or commit from a terminal.
+- **Review with intent** — full-width diffs with a clickable minimap, previous/next-change hops, side-by-side or inline, word-level highlighting, whole-file view, image diffs.
+- **Visual conflict resolution** — checkbox picks per side, conflict-to-conflict navigation, and a fully **editable result pane** with marker guards.
+- **Always in sync** — a filesystem watcher keeps the WIP row, status, and graph in sync while you edit in your IDE or commit from a terminal.
 - **Multi-account, multi-identity** — per-host tokens in the OS keychain (GitHub, GitLab incl. self-hosted, Bitbucket) and per-repo committer profiles, so work and personal never mix.
 - **Keyboard-first** — ⌘K palette for everything, ⌘Z/⌘⇧Z undo/redo, ⌘B sidebar, ⌘± zoom.
-- **Beginner-friendly & safe** — destructive actions get real confirmation dialogs, failures explain themselves (down to "this is a submodule — open it as its own repository").
+- **Beginner-friendly and safe** — destructive actions get real confirmation dialogs, failures explain themselves (down to "this is a submodule — open it as its own repository").
 - **Dark by default**, light theme included. Temple Gold `#D97706` accents, Inter + JetBrains Mono, 8px spacing rhythm.
-- **AI where it helps** — commit messages, diff/conflict explanations, PR descriptions, staged-change review. Any provider: OpenAI, Anthropic, Gemini, Ollama, LM Studio. Nothing hardcoded, local models welcome.
+- **Context-aware AI** — commit messages, diff/conflict explanations, PR descriptions, staged-change review. Any provider: OpenAI, Anthropic, Gemini, Ollama, LM Studio — local models welcome.
 
 ## Install
 
@@ -115,6 +130,14 @@ Browser-only UI development (no Rust toolchain needed — runs on a demo dataset
 
 ```bash
 pnpm dev            # http://localhost:1420
+```
+
+The marketing site lives in `apps/website` (Astro, static, GitHub Pages):
+
+```bash
+pnpm website            # http://localhost:4321/
+pnpm website:images     # regenerate WebP screenshots + og.png
+pnpm website:build      # static build → apps/website/dist
 ```
 
 Tests:

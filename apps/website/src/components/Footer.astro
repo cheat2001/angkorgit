@@ -1,0 +1,61 @@
+---
+import Logo from './Logo.astro';
+import { SITE } from '../lib/site';
+---
+
+<footer class="border-t border-border-subtle">
+  <div class="container-site grid gap-12 py-16 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+    <div class="space-y-4">
+      <a href="#" class="flex items-center gap-2.5">
+        <Logo size={28} class="text-foreground" />
+        <span class="text-[15px] font-semibold tracking-tight">AngKorGit</span>
+      </a>
+      <p class="max-w-xs text-sm leading-relaxed text-muted">
+        Everyday Git, made delightful. A modern, fast, beautiful cross-platform Git client — strength,
+        simplicity, and craftsmanship from Cambodia. 🇰🇭
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <span class="chip">~8 MB</span>
+        <span class="chip">MIT</span>
+        <span class="chip">No telemetry</span>
+      </div>
+    </div>
+
+    <div>
+      <h3 class="mb-3 text-sm font-semibold">Project</h3>
+      <ul class="space-y-2 text-sm text-muted">
+        <li><a class="transition-colors hover:text-foreground" href={SITE.repo}>Source code</a></li>
+        <li><a class="transition-colors hover:text-foreground" href={SITE.releases}>Releases</a></li>
+        <li><a class="transition-colors hover:text-foreground" href={SITE.docs}>Documentation</a></li>
+        <li><a class="transition-colors hover:text-foreground" href={SITE.ci}>CI status</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <h3 class="mb-3 text-sm font-semibold">Community</h3>
+      <ul class="space-y-2 text-sm text-muted">
+        <li><a class="transition-colors hover:text-foreground" href={SITE.contributing}>Contributing</a></li>
+        <li><a class="transition-colors hover:text-foreground" href={SITE.codeOfConduct}>Code of conduct</a></li>
+        <li><a class="transition-colors hover:text-foreground" href={SITE.security}>Security</a></li>
+        <li><a class="transition-colors hover:text-foreground" href={SITE.license}>License</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <h3 class="mb-3 text-sm font-semibold">Guides</h3>
+      <ul class="space-y-2 text-sm text-muted">
+        <li><a class="transition-colors hover:text-foreground" href="https://github.com/cheat2001/angkorgit/blob/main/docs/Architecture.md">Architecture</a></li>
+        <li><a class="transition-colors hover:text-foreground" href="https://github.com/cheat2001/angkorgit/blob/main/docs/Roadmap.md">Roadmap</a></li>
+        <li><a class="transition-colors hover:text-foreground" href="https://github.com/cheat2001/angkorgit/blob/main/docs/Development.md">Development</a></li>
+        <li><a class="transition-colors hover:text-foreground" href="https://github.com/cheat2001/angkorgit/blob/main/docs/Distribution.md">Distribution</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="border-t border-border-subtle">
+    <div class="container-site flex flex-col items-start justify-between gap-2 py-6 text-xs text-faint sm:flex-row sm:items-center">
+      <p>© {new Date().getFullYear()} AngKorGit contributors · MIT License</p>
+      <p class="font-mono">Built with Tauri v2 · Rust · React · TypeScript</p>
+    </div>
+  </div>
+</footer>

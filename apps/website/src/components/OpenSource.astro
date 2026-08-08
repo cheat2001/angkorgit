@@ -1,0 +1,90 @@
+---
+import { SITE } from '../lib/site';
+
+const pillars = [
+  {
+    title: 'MIT licensed',
+    body: 'Free to use, study, fork, and distribute — built by a community of contributors.',
+    href: SITE.license,
+    cta: 'Read the license',
+  },
+  {
+    title: 'No telemetry, ever',
+    body: 'Your repos, tokens, and activity never leave your machine. The privacy surface is documented in SECURITY.md.',
+    href: SITE.security,
+    cta: 'Privacy policy',
+  },
+  {
+    title: 'Built in public',
+    body: 'Every release is compiled by GitHub Actions from this source tree. Reproduce it yourself — the whole pipeline is in the repo.',
+    href: SITE.ci,
+    cta: 'Watch the CI',
+  },
+];
+
+const next = ['Interactive rebase UI', 'Blame & file history', 'Worktrees', 'PRs & issues in-app'];
+---
+
+<section id="open-source" class="section-pad scroll-mt-20 border-t border-border-subtle bg-surface">
+  <div class="container-site">
+    <div class="max-w-2xl">
+      <p class="eyebrow">Open source</p>
+      <h2 class="h2-section">Free software, responsibly built</h2>
+      <p class="lede">
+        A real community project: MIT licensed, reproducibly built, and open to contribution.
+      </p>
+    </div>
+
+    <div class="mt-14 grid gap-4 lg:grid-cols-3">
+      {
+        pillars.map((pillar) => (
+          <div class="flex flex-col rounded-lg border border-border-subtle bg-background p-6">
+            <h3 class="text-base font-semibold tracking-tight">{pillar.title}</h3>
+            <p class="mt-2 flex-1 text-sm leading-relaxed text-muted">{pillar.body}</p>
+            <a
+              href={pillar.href}
+              target="_blank"
+              rel="noreferrer"
+              class="link-underline mt-4 inline-flex items-center gap-1 text-sm font-medium text-foreground"
+            >
+              {pillar.cta}
+            </a>
+          </div>
+        ))
+      }
+    </div>
+
+    <div class="mt-14 grid items-center gap-10 rounded-lg border border-border-subtle bg-background p-8 lg:grid-cols-2 lg:p-12">
+      <div>
+        <p class="font-mono text-xs uppercase tracking-widest text-faint">Roadmap</p>
+        <h3 class="mt-3 text-2xl font-semibold tracking-tightest">What's next</h3>
+        <p class="mt-3 text-sm leading-relaxed text-muted">
+          The foundation is in place, and work is now focused on polish. Ideas are tracked openly on
+          the roadmap, and the strongest are adopted by contributors.
+        </p>
+        <a
+          href="https://github.com/cheat2001/angkorgit/blob/main/docs/Roadmap.md"
+          target="_blank"
+          rel="noreferrer"
+          class="mt-6 inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
+        >
+          Read the roadmap
+        </a>
+      </div>
+
+      <ul class="grid gap-3 sm:grid-cols-2">
+        {
+          next.map((item) => (
+            <li class="flex items-center gap-3 rounded-md border border-border-subtle bg-surface px-4 py-3 text-sm">
+              <svg class="h-4 w-4 shrink-0 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+              <span class="text-muted">{item}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+</section>
