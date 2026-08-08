@@ -1,5 +1,6 @@
 ---
 import { SITE } from '../lib/site';
+import TerminalBlock from './TerminalBlock.astro';
 
 interface Platform {
   name: string;
@@ -107,27 +108,18 @@ const platforms: Platform[] = [
         One line for each OS — downloads the latest release, bypasses the gatekeeper warning, and launches.
       </p>
       <div class="mt-4 grid gap-4 lg:grid-cols-3">
-        {
-          [
-            {
-              label: 'macOS',
-              command: `curl -L ${SITE.assetUrl(SITE.latestVersion, `AngKorGit_${SITE.latestVersion}_universal.dmg`)} -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg`,
-            },
-            {
-              label: 'Windows',
-              command: `curl -L ${SITE.assetUrl(SITE.latestVersion, `AngKorGit_${SITE.latestVersion}_x64-setup.exe`)} -o "$env:TEMP\\AngKorGit-setup.exe"; Start-Process "$env:TEMP\\AngKorGit-setup.exe"`,
-            },
-            {
-              label: 'Linux',
-              command: `curl -L ${SITE.assetUrl(SITE.latestVersion, `AngKorGit_${SITE.latestVersion}_amd64.AppImage`)} -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage`,
-            },
-          ].map((item) => (
-            <div>
-              <div class="font-mono text-xs text-faint">{item.label}</div>
-              <pre class="mt-2 overflow-x-auto whitespace-pre-wrap rounded-md bg-surface-raised p-3 text-[11px] leading-relaxed text-foreground">{item.command}</pre>
-            </div>
-          ))
-        }
+        <TerminalBlock
+          label="macOS"
+          code={`curl -L ${SITE.assetUrl(SITE.latestVersion, `AngKorGit_${SITE.latestVersion}_universal.dmg`)} -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg`}
+        />
+        <TerminalBlock
+          label="Windows"
+          code={`curl -L ${SITE.assetUrl(SITE.latestVersion, `AngKorGit_${SITE.latestVersion}_x64-setup.exe`)} -o "$env:TEMP\\AngKorGit-setup.exe"; Start-Process "$env:TEMP\\AngKorGit-setup.exe"`}
+        />
+        <TerminalBlock
+          label="Linux"
+          code={`curl -L ${SITE.assetUrl(SITE.latestVersion, `AngKorGit_${SITE.latestVersion}_amd64.AppImage`)} -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage`}
+        />
       </div>
       <p class="mt-4 text-xs text-muted">
         <span class="font-mono text-primary">Ubuntu / Debian?</span> Replace the AppImage URL with
