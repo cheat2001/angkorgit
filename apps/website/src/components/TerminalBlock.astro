@@ -14,28 +14,74 @@ const { label, lines, copy } = Astro.props;
     <span class="h-2.5 w-2.5 rounded-full bg-[#febc2e]"></span>
     <span class="h-2.5 w-2.5 rounded-full bg-[#28c840]"></span>
     <span class="ml-2 font-mono text-xs text-faint">{label}</span>
-    <button
-      type="button"
-      data-copy
-      data-copy-target={copy}
-      aria-label={`Copy ${label} install command`}
-      class="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-xs text-muted transition-colors hover:bg-surface hover:text-foreground"
-    >
-      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-copy-icon>
-        <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-      </svg>
-      <span data-copy-label>Copy</span>
-    </button>
+    <div class="ml-auto flex items-center gap-1">
+      <button
+        type="button"
+        data-view="wrap"
+        aria-label="Wrap long lines"
+        title="Wrap long lines"
+        class="view-toggle inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
+      >
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 6h16M4 12h16M4 18h7" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        data-view="scroll"
+        aria-label="Scroll long lines"
+        title="Scroll long lines"
+        class="view-toggle inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground"
+      >
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m5 7 4 4-4 4M13 17h6" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        data-copy
+        data-copy-target={copy}
+        aria-label={`Copy ${label} install command`}
+        class="ml-1 inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-xs text-muted transition-colors hover:bg-surface hover:text-foreground"
+      >
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-copy-icon>
+          <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+        </svg>
+        <span data-copy-label>Copy</span>
+      </button>
+    </div>
   </div>
-  <pre class="whitespace-pre-wrap break-words rounded-b-md border border-border-subtle bg-black/40 p-4 font-mono text-[12px] leading-relaxed text-foreground"><code>{lines.join('\n')}</code></pre>
+  <pre class="terminal-view whitespace-pre-wrap break-words rounded-b-md border border-border-subtle bg-black/40 p-4 font-mono text-[12px] leading-relaxed text-foreground"><code>{lines.join('\n')}</code></pre>
 </div>
 
 <script>
   const blocks = document.querySelectorAll('.terminal-block');
 
   blocks.forEach((block) => {
-    const button = block.querySelector<HTMLButtonElement>('[data-copy]');
+    const pre = block.querySelector<HTMLElement>('.terminal-view');
+    const toggles = block.querySelectorAll<HTMLButtonElement>('.view-toggle');
+    const copyBtn = block.querySelector<HTMLButtonElement>('[data-copy]');
+
+    const setView = (view: string) => {
+      if (!pre) return;
+      pre.classList.toggle('whitespace-pre-wrap', view === 'wrap');
+      pre.classList.toggle('break-words', view === 'wrap');
+      pre.classList.toggle('overflow-x-auto', view === 'scroll');
+      pre.classList.toggle('whitespace-pre', view === 'scroll');
+      toggles.forEach((toggle) => {
+        const active = toggle.dataset.view === view;
+        toggle.classList.toggle('bg-surface-raised', active);
+        toggle.classList.toggle('text-foreground', active);
+      });
+    };
+
+    toggles.forEach((toggle) =>
+      toggle.addEventListener('click', () => setView(toggle.dataset.view ?? 'wrap')),
+    );
+    setView('wrap');
+
+    const button = copyBtn;
     const label = block.querySelector<HTMLElement>('[data-copy-label]');
     const icon = block.querySelector<SVGElement>('[data-copy-icon]');
 
