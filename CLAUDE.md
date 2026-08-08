@@ -328,8 +328,9 @@ plugin can be added), and the Homebrew cask.
   Served at `https://angkorgit.app/` (custom domain; `public/CNAME` holds it and the
   workflow pins `SITE_URL=https://angkorgit.app`, `SITE_BASE=/`). Repo must have Pages
   source set to "GitHub Actions", and the DNS for `angkorgit.app` must point at GitHub
-  Pages (A records `185.199.108.153`/`.109`/`.110`/`.111`). Before the domain existed,
-  it ran at `https://cheat2001.github.io/angkorgit/` (base `/angkorgit/`, env `SITE_BASE`).
+  Pages (A records `185.199.108.153`/`.109`/`.110`/`.111`). The retired temporary
+  URL `https://cheat2001.github.io/angkorgit/` (base `/angkorgit/`, env `SITE_BASE`)
+  is no longer used — the GitHub Pages site is built at root base for the custom domain.
 - **Release** (`release.yml`): push tag `v*` → tauri-action builds macOS (universal),
   Windows, Linux; attaches to draft GitHub release.
 - Repo remote: `https://github.com/cheat2001/angkorgit.git` (HTTPS by owner preference).
