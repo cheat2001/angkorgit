@@ -12,6 +12,18 @@ All notable changes to AngKorGit are documented here. The format follows
   themes — deployed to GitHub Pages at `https://angkorgit.app/` (custom domain,
   root base path) with SEO meta, Open Graph, sitemap, and JSON-LD
   `SoftwareApplication` structured data
+- **Docs on the website**: repo `docs/*.md` now render on-site at
+  `https://angkorgit.app/docs/` (sidebar navigation, breadcrumbs, sitemap) —
+  no more tab-switching to GitHub; the GitHub repo stays for source/releases
+- **One-line terminal installs** on the website: copy-button quick-install
+  commands per OS (dmg with `xattr -cr`, NSIS exe, AppImage)
+- **Getting Started guide** (`docs/Getting-Started.md`): first-launch steps
+  per platform, now linked from the website install section
+
+### Fixed
+- **OG image clipped at the right edge**: headline reduced to fit the 1200px
+  canvas, and the `og:image` URL is cache-busted (`?v=3`) so messaging apps
+  (Telegram/Slack) refetch the corrected preview
 
 ## [0.1.2] — 2026-08-05
 

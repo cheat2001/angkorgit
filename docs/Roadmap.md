@@ -15,15 +15,16 @@
 - [x] Diff: inline & side-by-side, syntax highlight, word diff, image diff
 - [x] Settings: theme, identity, SSH, AI, shortcuts
 - [x] AI module: provider-agnostic (OpenAI, Anthropic, Gemini, Ollama, LM Studio)
+- [x] Undo stack for recent operations
+- [x] Drag-and-drop merge/rebase by dragging branches
+- [x] Per-line staging (beyond hunks)
 
 ## 0.2 — Polish
 
 - [ ] Interactive rebase (reorder/squash/reword) UI
 - [ ] Blame view & file history
-- [ ] Drag-and-drop in the graph (merge/rebase by dragging branches)
-- [ ] Per-line staging (beyond hunks)
-- [ ] Undo stack for recent operations
 - [ ] GPG/SSH commit signing
+- [ ] Find-in-diff polish & diff search refinements
 
 ## 0.3 — Connected (architecture in place, see Architecture.md)
 

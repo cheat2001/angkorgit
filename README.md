@@ -74,10 +74,25 @@ AngKorGit focuses on the Git operations developers use every day and executes th
 ## Install
 
 Download the latest release for your platform from the
-[releases page](https://github.com/cheat2001/angkorgit/releases).
+[releases page](https://github.com/cheat2001/angkorgit/releases), or install
+from the terminal (pinned to the current release — bump the version number
+when a newer release lands):
+
+```bash
+# macOS (downloads, removes the Gatekeeper quarantine flag, opens the dmg)
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.1.2/AngKorGit_0.1.2_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
+
+# Windows (PowerShell)
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.1.2/AngKorGit_0.1.2_x64-setup.exe -o "$env:TEMP\AngKorGit-setup.exe"; Start-Process "$env:TEMP\AngKorGit-setup.exe"
+
+# Linux (AppImage)
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.1.2/AngKorGit_0.1.2_amd64.AppImage -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage
+```
 
 AngKorGit is free, open-source software and is **not signed with a paid
 certificate**, so your OS asks for a few extra confirmations on first launch.
+Full first-launch walkthroughs are on the
+[Getting Started guide](https://angkorgit.app/docs/getting-started/).
 
 ### macOS — first launch, step by step
 
@@ -153,6 +168,7 @@ cd apps/desktop/src-tauri && cargo test   # git engine integration tests
 | Path | Contents |
 | --- | --- |
 | `apps/desktop` | The Tauri v2 desktop app (React frontend + Rust engine) |
+| `apps/website` | The marketing site (Astro, static) — live at [angkorgit.app](https://angkorgit.app/), docs rendered on-site |
 | `packages/core` | Domain types, graph layout, word diff, conflict parsing, AI module |
 | `packages/design-system` | Design tokens, Tailwind preset, UI primitives, logo |
 | `docs` | Architecture, UI guidelines, roadmap, coding standards |

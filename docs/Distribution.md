@@ -82,7 +82,7 @@ Create `cheat2001/homebrew-tap` with `Casks/angkorgit.rb`:
 cask "angkorgit" do
   version "0.1.0"
   sha256 "<shasum -a 256 of the dmg>"
-  url "https://github.com/cheat2001/angkorgit/releases/download/v#{version}/AngKorGit_#{version}_aarch64.dmg"
+  url "https://github.com/cheat2001/angkorgit/releases/download/v#{version}/AngKorGit_#{version}_universal.dmg"
   name "AngKorGit"
   desc "Fast, beautiful, 8 MB Git client"
   homepage "https://github.com/cheat2001/angkorgit"
@@ -94,9 +94,16 @@ Users then install with `brew install --cask cheat2001/tap/angkorgit`.
 Once the project has traction (75+ stars, 30+ forks), submit to homebrew-cask
 proper for `brew install --cask angkorgit`.
 
-## 5. Website checklist (future)
+## 5. Website (live)
 
-- Hero: dark-theme graph screenshot + "Everyday Git, made delightful" + download button
-- The 8 MB vs ~1 GB comparison, 15-second workflow GIF, feature grid
-- `latest.json` doubles as the website's "current version" source
-- Link CHANGELOG.md as the release notes page
+- Live at `https://angkorgit.app/` (Astro, static, GitHub Pages via
+  `.github/workflows/website.yml`; custom domain + HTTPS enforced).
+- Sections: hero with graph screenshot, features, gallery, performance, AI,
+  install (per-OS download cards + terminal one-liners with copy buttons),
+  open-source, final CTA.
+- Docs are rendered on-site at `/docs/` directly from `docs/*.md` (see
+  `apps/website/src/content.config.ts`) — edit a doc and the site updates on
+  the next deploy; no duplication.
+- SEO: meta/OG/JSON-LD, sitemap, Google Search Console verified
+  (URL-prefix property), `robots.txt` → `sitemap-index.xml`.
+- Launch/verification runbook: `docs/Launch-Checklist.md`.
