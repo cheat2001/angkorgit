@@ -82,6 +82,37 @@ const jsonLd = {
         root.classList.toggle('light', theme === 'light');
       })();
     </script>
+    <script is:inline>
+      (() => {
+        const root = document.documentElement;
+        root.classList.add('reveal-ready');
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const reveal = () => {
+          const els = Array.from(document.querySelectorAll('[data-reveal]'));
+          if (!('IntersectionObserver' in window)) {
+            els.forEach((el) => el.classList.add('is-revealed'));
+            return;
+          }
+          const io = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('is-revealed');
+                  io.unobserve(entry.target);
+                }
+              }
+            },
+            { rootMargin: '0px 0px -10% 0px', threshold: 0.08 },
+          );
+          els.forEach((el) => io.observe(el));
+        };
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', reveal);
+        } else {
+          reveal();
+        }
+      })();
+    </script>
   </head>
   <body class="bg-background text-foreground">
     <a

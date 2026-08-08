@@ -21,7 +21,7 @@ import { SITE } from '../lib/site';
       mask-image: radial-gradient(70% 50% at 50% 0%, black, transparent);"
   ></div>
 
-  <div class="container-site relative flex flex-col items-center pb-16 pt-20 text-center lg:pt-28">
+  <div class="container-site relative flex flex-col items-center pb-16 pt-20 text-center lg:pt-28" data-reveal>
     <Logo size={52} animated class="mb-6 text-foreground" />
 
     <p class="chip mb-6">
@@ -77,7 +77,7 @@ import { SITE } from '../lib/site';
     </div>
   </div>
 
-  <div class="container-site relative">
+  <div class="container-site relative" data-reveal style={{ '--reveal-delay': '120ms' }}>
     <div class="rounded-lg border border-border-subtle bg-surface shadow-soft">
       <div class="flex items-center gap-1.5 border-b border-border-subtle px-4 py-3">
         <span class="h-2.5 w-2.5 rounded-full bg-danger/70" aria-hidden="true"></span>

@@ -1,6 +1,4 @@
 ---
-import { SITE } from '../lib/site';
-
 const faqs = [
   {
     q: 'What is AngKorGit?',
@@ -49,7 +47,7 @@ const jsonLd = {
 
 <section id="faq" class="section-pad scroll-mt-20">
   <div class="container-site">
-    <div class="max-w-2xl">
+    <div class="max-w-2xl" data-reveal>
       <p class="eyebrow">FAQ</p>
       <h2 class="h2-section">Questions, answered</h2>
       <p class="lede">
@@ -58,7 +56,7 @@ const jsonLd = {
       </p>
     </div>
 
-    <div class="mt-12 max-w-3xl">
+    <div class="mt-12 max-w-3xl" data-reveal style={{ '--reveal-delay': '120ms' }}>
       {
         faqs.map((faq) => (
           <details class="faq-item group border-b border-border-subtle">

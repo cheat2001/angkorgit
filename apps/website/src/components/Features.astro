@@ -66,7 +66,7 @@ const features: Feature[] = [
 
 <section id="features" class="section-pad scroll-mt-20">
   <div class="container-site">
-    <div class="max-w-2xl">
+    <div class="max-w-2xl" data-reveal>
       <p class="eyebrow">Features</p>
       <h2 class="h2-section">The daily Git toolkit, done exceptionally well</h2>
       <p class="lede">
@@ -77,9 +77,11 @@ const features: Feature[] = [
 
     <div class="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {
-        features.map((feature) => (
+        features.map((feature, i) => (
           <article
             class="group rounded-lg border border-border-subtle bg-surface p-6 transition-colors hover:border-border hover:bg-surface-raised"
+            data-reveal
+            style={{ '--reveal-delay': `${(i % 3) * 90}ms` }}
           >
             <div class={`mb-4 inline-flex h-10 w-10 items-center justify-center rounded-md ${feature.tile}`}>
               <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

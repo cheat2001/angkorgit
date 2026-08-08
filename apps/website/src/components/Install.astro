@@ -55,7 +55,7 @@ const platforms: Platform[] = [
 
 <section id="install" class="section-pad scroll-mt-20">
   <div class="container-site">
-    <div class="max-w-2xl">
+    <div class="max-w-2xl" data-reveal>
       <p class="eyebrow">Install</p>
       <h2 class="h2-section">One download, three platforms</h2>
       <p class="lede">
@@ -66,8 +66,12 @@ const platforms: Platform[] = [
 
     <div class="mt-14 grid gap-4 lg:grid-cols-3">
       {
-        platforms.map((platform) => (
-          <div class="flex flex-col rounded-lg border border-border-subtle bg-surface p-6 transition-colors hover:border-border">
+        platforms.map((platform, i) => (
+          <div
+            class="flex flex-col rounded-lg border border-border-subtle bg-surface p-6 transition-colors hover:border-border"
+            data-reveal
+            style={{ '--reveal-delay': `${i * 90}ms` }}
+          >
             <div class="flex items-center justify-between">
               <span class="inline-flex h-10 w-10 items-center justify-center rounded-md bg-surface-raised text-foreground">
                 <svg class="h-5 w-5" viewBox={platform.viewBox} fill="currentColor" aria-hidden="true">
