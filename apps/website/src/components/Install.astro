@@ -112,20 +112,35 @@ const platforms: Platform[] = [
     <div class="mt-10 rounded-lg border border-border-subtle bg-surface p-6">
       <h3 class="text-base font-semibold">Quick install from the terminal</h3>
       <p class="mt-2 text-sm leading-relaxed text-muted">
-        One line for each OS — downloads the latest release, bypasses the gatekeeper warning, and launches.
+        A few short commands per OS — downloads the latest release, bypasses the gatekeeper warning,
+        and launches. Copy runs them in order.
       </p>
       <div class="mt-4 grid gap-4 lg:grid-cols-3">
         <TerminalBlock
           label="macOS"
-          code={`curl -L ${SITE.assetUrl(SITE.latestVersion, `AngKorGit_${SITE.latestVersion}_universal.dmg`)} -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg`}
+          lines={[
+            `curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_universal.dmg`)} -o ~/Downloads/AngKorGit.dmg`,
+            'xattr -cr ~/Downloads/AngKorGit.dmg',
+            'open ~/Downloads/AngKorGit.dmg',
+          ]}
+          copy={`curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_universal.dmg`)} -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg`}
         />
         <TerminalBlock
           label="Windows"
-          code={`curl -L ${SITE.assetUrl(SITE.latestVersion, `AngKorGit_${SITE.latestVersion}_x64-setup.exe`)} -o "$env:TEMP\\AngKorGit-setup.exe"; Start-Process "$env:TEMP\\AngKorGit-setup.exe"`}
+          lines={[
+            `curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_x64-setup.exe`)} -o "$env:TEMP\\AngKorGit-setup.exe"`,
+            `Start-Process "$env:TEMP\\AngKorGit-setup.exe"`,
+          ]}
+          copy={`curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_x64-setup.exe`)} -o "$env:TEMP\\AngKorGit-setup.exe"; Start-Process "$env:TEMP\\AngKorGit-setup.exe"`}
         />
         <TerminalBlock
           label="Linux"
-          code={`curl -L ${SITE.assetUrl(SITE.latestVersion, `AngKorGit_${SITE.latestVersion}_amd64.AppImage`)} -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage`}
+          lines={[
+            `curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_amd64.AppImage`)} -o ~/Downloads/AngKorGit.AppImage`,
+            'chmod +x ~/Downloads/AngKorGit.AppImage',
+            '~/Downloads/AngKorGit.AppImage',
+          ]}
+          copy={`curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_amd64.AppImage`)} -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage`}
         />
       </div>
       <p class="mt-4 text-xs text-muted">

@@ -1,10 +1,11 @@
 ---
 interface Props {
   label: string;
-  code: string;
+  lines: string[];
+  copy: string;
 }
 
-const { label, code } = Astro.props;
+const { label, lines, copy } = Astro.props;
 ---
 
 <div class="terminal-block w-full min-w-0">
@@ -16,7 +17,7 @@ const { label, code } = Astro.props;
     <button
       type="button"
       data-copy
-      data-copy-target={code}
+      data-copy-target={copy}
       aria-label={`Copy ${label} install command`}
       class="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 font-mono text-xs text-muted transition-colors hover:bg-surface hover:text-foreground"
     >
@@ -27,7 +28,7 @@ const { label, code } = Astro.props;
       <span data-copy-label>Copy</span>
     </button>
   </div>
-  <pre class="overflow-x-auto whitespace-pre rounded-b-md border border-border-subtle bg-black/40 p-4 font-mono text-[12px] leading-relaxed text-foreground"><code>{code}</code></pre>
+  <pre class="whitespace-pre-wrap break-words rounded-b-md border border-border-subtle bg-black/40 p-4 font-mono text-[12px] leading-relaxed text-foreground"><code>{lines.join('\n')}</code></pre>
 </div>
 
 <script>
