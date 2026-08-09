@@ -6,6 +6,8 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-09
+
 ### Fixed
 - **Commit message drafts no longer leak between repositories**: the draft (and
   the amend checkbox) was plain component state, so switching tabs/repos showed
