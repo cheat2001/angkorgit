@@ -201,7 +201,7 @@ export function RepositoryPage() {
       <SettingsDialog />
       <RepoDialogs onDone={refreshAll} />
       <CloneDialog onCloned={() => void refreshAll()} />
-      {conflictFile && <ConflictResolver file={conflictFile} onResolved={refreshAll} />}
+      {conflictFile && <ConflictResolver key={conflictFile} file={conflictFile} onResolved={refreshAll} />}
     </motion.div>
   );
 }

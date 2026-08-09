@@ -292,10 +292,13 @@ update CLAUDE.md or docs/ — never the code.
   actions are hidden in whole-file view on purpose.
 - **G9 — graph store `lastPath` guard**: switching repos resets commits/filters/selection
   atomically; CommitGraph is keyed by repo.path to reset input drafts. Prevents one repo's
-  history showing under another's header. Same class of bug hit the commit box: any
-  WorkingCopyPanel state that is conceptually per-repo must NOT live in useState —
+  history showing under another's header. Same class of bug hit the commit box (drafts
+  leaked across repos) and the AI explanations (stuck to the previous commit/conflict):
+  any state that is conceptually per-<something> must not outlive that something —
   commit drafts + amend live in `features/commit/draftStore.ts` keyed by repo.path
-  (drafts persisted, amend transient single-active).
+  (drafts persisted, amend transient single-active); CommitDetails is keyed by
+  commit.oid and ConflictResolver by file so aiText and in-flight requests die with
+  the selection.
 - **G10 — discard cannot touch submodules** from the parent repo; engine returns leftover
   paths and the UI names submodules explicitly.
 - **G11 — wrap mode in diffs is NOT virtualized** (variable heights); the default no-wrap

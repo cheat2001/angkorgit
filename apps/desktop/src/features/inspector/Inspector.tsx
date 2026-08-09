@@ -90,7 +90,7 @@ export function Inspector() {
 
       <div className="min-h-0 flex-1 overflow-hidden">
         {commit ? (
-          <CommitDetails commit={commit} diffs={diffs} loading={loadingDiffs} />
+          <CommitDetails key={commit.oid} commit={commit} diffs={diffs} loading={loadingDiffs} />
         ) : (
           <WorkingCopyPanel />
         )}

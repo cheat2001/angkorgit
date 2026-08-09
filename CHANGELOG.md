@@ -9,6 +9,10 @@ All notable changes to AngKorGit are documented here. The format follows
 ## [0.2.0] — 2026-08-09
 
 ### Fixed
+- **AI explanations no longer stick to the wrong commit**: selecting a
+  different commit (or conflict file) clears the previous "Explain with AI"
+  result instead of showing it under the new selection; an in-flight
+  explanation can no longer land on a commit you've already navigated away from
 - **AI explanation panels no longer clip long lines**: unbreakable tokens
   (long paths, URLs) in "Explain with AI" output and commit bodies now wrap
   instead of overflowing the inspector/conflict panels, and the assistant is
