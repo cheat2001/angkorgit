@@ -12,6 +12,7 @@ const AGENTS: &[(&str, &str, &str)] = &[
     ("codex", "Codex CLI", "codex"),
     ("gemini", "Gemini CLI", "gemini"),
     ("opencode", "OpenCode", "opencode"),
+    ("antigravity", "Antigravity CLI", "agy"),
 ];
 
 const OUTPUT_FILE_PLACEHOLDER: &str = "{OUTPUT_FILE}";

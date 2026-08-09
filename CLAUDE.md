@@ -67,7 +67,7 @@ angkorgit/
 │       ├── diff/wordDiff.ts   ← LCS word-level diff
 │       ├── conflicts/parse.ts ← conflict-marker parser + serializer (lossless)
 │       └── ai/                ← provider-agnostic AI (types, providers, capabilities,
-                                cliAgents: local AI-CLI adapters — Claude Code/Codex/Gemini/OpenCode,
+                                cliAgents: local AI-CLI adapters — Claude Code/Codex/Gemini/OpenCode/Antigravity(agy),
                                 style: per-capability AiStyleConfig — commit presets
                                 conventional/plain/custom + branch prefix rules with
                                 {branch}/{suffix}/{ticket} tokens, prefix enforced post-
@@ -229,7 +229,7 @@ features/
 │                               token connect, host-matched)
 ├── ai/client.ts              ← binds settings AI config + Rust HTTP/CLI transports to
 │                               @angkorgit/core providers ('cli' = installed AI CLI:
-│                               Claude Code/Codex/Gemini CLI/OpenCode via ai_cli.rs —
+│                               Claude Code/Codex/Gemini CLI/OpenCode/Antigravity via ai_cli.rs —
 │                               user's own login + quota, no API key; plus OpenAI/
 │                               Anthropic/Gemini/Ollama/LM Studio); capabilities:
 │                               commit msg, explain diff/conflict, PR description,

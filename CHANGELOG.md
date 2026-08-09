@@ -27,7 +27,8 @@ All notable changes to AngKorGit are documented here. The format follows
   their own conventions.
 - **AI features without an API key — use the AI CLI you already have**: a new
   "Installed AI CLI" provider in Settings → AI Assistant detects Claude Code,
-  Codex CLI, Gemini CLI and OpenCode on your machine and runs them locally for
+  Codex CLI, Gemini CLI, OpenCode and Antigravity CLI (`agy`, model overrides
+  like `gemini-3.1-pro-high`) on your machine and runs them locally for
   commit messages, diff explanations, conflict help and reviews. Requests go
   through the CLI's own login and quota — AngKorGit stores no key and sends
   nothing anywhere itself. Each request is a one-shot prompt executed in a

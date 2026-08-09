@@ -161,7 +161,8 @@ function CliAgentPicker() {
       })}
       {!scanning && agents.length === 0 && (
         <p className="rounded-md border border-dashed border-border p-3 text-xs text-faint">
-          No AI CLI found. Install Claude Code, Codex CLI, Gemini CLI or OpenCode, then scan again.
+          No AI CLI found. Install Claude Code, Codex CLI, Gemini CLI, OpenCode or Antigravity CLI, then
+          scan again.
         </p>
       )}
       <p className="mt-1 text-xs text-faint">
@@ -667,7 +668,7 @@ export function SettingsDialog() {
                     title="Provider"
                     description={
                       settings.ai.provider === 'cli'
-                        ? 'Uses an AI CLI already installed on this machine — Claude Code, Codex, Gemini CLI or OpenCode — with its own login and quota. No API key needed.'
+                        ? 'Uses an AI CLI already installed on this machine — Claude Code, Codex, Gemini CLI, OpenCode or Antigravity — with its own login and quota. No API key needed.'
                         : 'Used for commit messages, diff explanations, conflict help and reviews. Local models via Ollama or LM Studio need no API key.'
                     }
                   >

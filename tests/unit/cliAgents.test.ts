@@ -96,6 +96,14 @@ describe('cli agent specs', () => {
     expect(CLI_AGENTS.opencode.args('')[0]).toBe('run');
     expect(CLI_AGENTS.opencode.promptVia).toBe('arg');
   });
+
+  it('antigravity puts -p last so the appended prompt becomes its value', () => {
+    expect(CLI_AGENTS.antigravity.promptVia).toBe('arg');
+    expect(CLI_AGENTS.antigravity.args('').at(-1)).toBe('-p');
+    const withModel = CLI_AGENTS.antigravity.args('gemini-3.1-pro-high');
+    expect(withModel.at(-1)).toBe('-p');
+    expect(withModel.join(' ')).toBe('--output-format text --model gemini-3.1-pro-high -p');
+  });
 });
 
 describe('cleanCliOutput / composeCliPrompt', () => {

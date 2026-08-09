@@ -56,6 +56,13 @@ export const CLI_AGENTS: Record<CliAgentId, CliAgentSpec> = {
     promptVia: 'arg',
     args: (model) => ['run', ...(model ? ['--model', model] : [])],
   },
+  antigravity: {
+    id: 'antigravity',
+    label: 'Antigravity CLI',
+    binary: 'agy',
+    promptVia: 'arg',
+    args: (model) => ['--output-format', 'text', ...(model ? ['--model', model] : []), '-p'],
+  },
 };
 
 const ANSI_PATTERN = /\u001b(?:\[[0-9;?]*[0-9A-Za-z]|\][^\u0007]*(?:\u0007|\u001b\\))/g;
