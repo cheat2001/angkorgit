@@ -7,7 +7,8 @@ import {
   type CommitStyle,
 } from './style';
 
-const SYSTEM = 'You are the AI assistant inside AngKorGit, a Git client. Be precise and concise. Never invent file names or changes that are not in the provided context.';
+const SYSTEM =
+  'You are the AI assistant inside AngKorGit, a Git client. Be precise and concise. Never invent file names or changes that are not in the provided context. Answer in plain text rendered as-is: use "-" for bullets and never use markdown headings, bold markers, tables, or links.';
 
 function clip(text: string, max = 24_000): string {
   return text.length > max ? `${text.slice(0, max)}\n…(truncated)` : text;

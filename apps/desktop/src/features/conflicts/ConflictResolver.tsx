@@ -279,7 +279,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
             )}
             {aiText && (
               <div className="m-4 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs leading-relaxed">
-                <pre className="whitespace-pre-wrap font-sans">{aiText}</pre>
+                <pre className="min-w-0 whitespace-pre-wrap break-words font-sans">{aiText}</pre>
               </div>
             )}
           </div>

@@ -98,7 +98,7 @@ export function CommitDetails({
           </Hint>
         </div>
         {commit.body && (
-          <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted">{commit.body}</pre>
+          <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-muted">{commit.body}</pre>
         )}
         <div className="mt-3 flex items-center gap-2 text-xs text-muted">
           <Avatar name={commit.author.name} email={commit.author.email} size={24} />
@@ -139,7 +139,7 @@ export function CommitDetails({
         </div>
         {aiText && (
           <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs leading-relaxed">
-            <pre className="whitespace-pre-wrap font-sans">{aiText}</pre>
+            <pre className="min-w-0 whitespace-pre-wrap break-words font-sans">{aiText}</pre>
           </div>
         )}
       </div>

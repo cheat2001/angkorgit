@@ -9,6 +9,10 @@ All notable changes to AngKorGit are documented here. The format follows
 ## [0.2.0] — 2026-08-09
 
 ### Fixed
+- **AI explanation panels no longer clip long lines**: unbreakable tokens
+  (long paths, URLs) in "Explain with AI" output and commit bodies now wrap
+  instead of overflowing the inspector/conflict panels, and the assistant is
+  instructed to answer in plain text (no raw markdown syntax on screen)
 - **Commit message drafts no longer leak between repositories**: the draft (and
   the amend checkbox) was plain component state, so switching tabs/repos showed
   one project's unfinished message in another project's commit box. Drafts are
