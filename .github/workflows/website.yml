@@ -10,6 +10,8 @@ on:
       - '.github/workflows/website.yml'
   release:
     types: [published]
+  schedule:
+    - cron: '0 1 * * *'
   workflow_dispatch:
 
 permissions:

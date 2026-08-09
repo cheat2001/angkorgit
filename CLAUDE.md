@@ -334,6 +334,15 @@ plugin can be added), and the Homebrew cask.
   Rust fmt/clippy/test on ubuntu+macos+windows.
 - **Website** (`.github/workflows/website.yml`): builds the Astro site (re-runs
   `website:images`) and deploys to **GitHub Pages** via `actions/deploy-pages`.
+  The install-section version is fetched from the latest GitHub release at build
+  time (`site.ts`, hardcoded fallback). Triggers: push to main (website paths),
+  release published, nightly cron, manual dispatch. **Gotcha**: release-published
+  runs execute on the tag ref — even with a `v*` tag policy on the github-pages
+  environment (added 2026-08-09), Pages was observed to keep serving the older
+  main-ref deployment despite the tag deployment reporting success. The nightly
+  cron (runs on main) self-heals this; for an instant flip after publishing a
+  release, manually dispatch the Website workflow. Pages CDN caches HTML for
+  10 min (`max-age=600`) with no owner-facing purge.
   Served at `https://angkorgit.app/` (custom domain; `public/CNAME` holds it and the
   workflow pins `SITE_URL=https://angkorgit.app`, `SITE_BASE=/`). Repo must have Pages
   source set to "GitHub Actions", and the DNS for `angkorgit.app` must point at GitHub
