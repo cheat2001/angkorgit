@@ -27,4 +27,14 @@ describe('wordDiff', () => {
     expect(o.map((s) => s.text).join('')).toBe(a);
     expect(n.map((s) => s.text).join('')).toBe(b);
   });
+
+  it('degrades to whole-line equal segments beyond the LCS cell cap', () => {
+    const a = Array.from({ length: 1200 }, (_, i) => `col${i}`).join(', ');
+    const b = Array.from({ length: 1200 }, (_, i) => `col${i + 1}`).join(', ');
+    const start = performance.now();
+    const { old: o, new: n } = wordDiff(a, b);
+    expect(performance.now() - start).toBeLessThan(200);
+    expect(o).toEqual([{ text: a, kind: 'equal' }]);
+    expect(n).toEqual([{ text: b, kind: 'equal' }]);
+  });
 });

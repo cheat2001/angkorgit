@@ -6,7 +6,7 @@ import { REF_COL_WIDTH } from './GraphRow';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 
-export function WipRow({ gutterWidth }: { gutterWidth: number }) {
+export function WipRow({ gutterWidth, flat }: { gutterWidth: number; flat?: boolean }) {
   const status = useRepo((s) => s.status);
   const conflicts = useRepo((s) => s.conflicts);
   const select = useGraph((s) => s.select);
@@ -45,11 +45,13 @@ export function WipRow({ gutterWidth }: { gutterWidth: number }) {
         selectedOid === null && 'bg-primary/10',
       )}
     >
-      <span className="h-full shrink-0" style={{ width: REF_COL_WIDTH }} />
+      {!flat && <span className="h-full shrink-0" style={{ width: REF_COL_WIDTH }} />}
       <svg width={gutterWidth} height={36} className="shrink-0" aria-hidden>
-        <line x1={8} y1={18} x2={8} y2={36} stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="3 3" />
+        {!flat && (
+          <line x1={10} y1={18} x2={10} y2={36} stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="3 3" />
+        )}
         <circle
-          cx={8}
+          cx={flat ? gutterWidth / 2 : 10}
           cy={18}
           r={4.5}
           fill="hsl(var(--surface))"

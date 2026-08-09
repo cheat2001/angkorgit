@@ -23,6 +23,7 @@ import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi, type CenterDiffTarget } from '@/features/ui/store';
 import { DiffViewer } from './DiffViewer';
+import { wrapUnavailable } from './diffShared';
 import { useDiffFind } from './diffSearch';
 import { useDiffSelectAll } from './diffCopy';
 import { changeBlocks, DiffMinimap, scrollToFraction } from './DiffMinimap';
@@ -201,11 +202,20 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <WholeWord className="size-3.5" />
           </Button>
         </Hint>
-        <Hint label={wrapLines ? 'Lines wrapped — click for horizontal scroll' : 'Wrap long lines'}>
+        <Hint
+          label={
+            textDiff && wrapUnavailable(textDiff)
+              ? 'Wrapping is off for large files to keep scrolling smooth'
+              : wrapLines
+                ? 'Lines wrapped — click for horizontal scroll'
+                : 'Wrap long lines'
+          }
+        >
           <Button
             variant="ghost"
             size="icon-sm"
             aria-label="Toggle line wrapping"
+            disabled={!!textDiff && wrapUnavailable(textDiff)}
             className={cn(wrapLines && 'bg-surface-raised text-primary')}
             onClick={() => setWrapLines(!wrapLines)}
           >

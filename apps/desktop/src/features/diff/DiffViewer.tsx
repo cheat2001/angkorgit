@@ -3,7 +3,7 @@ import type { DiffHunk, DiffLine, FileDiff } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
 import { useUi } from '@/features/ui/store';
 import { languageOf } from '@/shared/highlight';
-import { CodeLine, gutter, lineBg, pairHunkLines, type SearchRanges } from './diffShared';
+import { CodeLine, gutter, lineBg, pairHunkLines, wrapUnavailable, type SearchRanges } from './diffShared';
 import { flattenDiff, VirtualInlineDiff, VirtualSplitDiff, type LineMenuInfo } from './VirtualDiff';
 
 interface HunkProps {
@@ -188,10 +188,11 @@ export function DiffViewer({
   const { diffView, wordDiff: useWord, wrapLines } = useUi();
   const language = useMemo(() => languageOf(diff.path), [diff.path]);
   const split = diffView === 'split';
+  const wrap = wrapLines && !wrapUnavailable(diff);
 
   const flatRows = useMemo(
-    () => (!wrapLines && scrollRef ? flattenDiff(diff, split) : []),
-    [diff, split, wrapLines, scrollRef],
+    () => (!wrap && scrollRef ? flattenDiff(diff, split) : []),
+    [diff, split, wrap, scrollRef],
   );
 
   if (diff.isImage) return <ImageDiff diff={diff} />;
@@ -202,7 +203,7 @@ export function DiffViewer({
     return <p className="py-8 text-center text-sm text-faint">No changes</p>;
   }
 
-  if (!wrapLines && scrollRef) {
+  if (!wrap && scrollRef) {
     const props = {
       rows: flatRows,
       language,

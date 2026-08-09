@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { CommitInfo } from '@angkorgit/core';
-import { GraphLayout, type GraphRow } from '@angkorgit/core';
+import { GraphLayout, flatGraphRows, type GraphRow } from '@angkorgit/core';
 import { ipc } from '@/core/ipc';
 
 const PAGE_SIZE = 200;
@@ -10,6 +10,8 @@ interface GraphFilters {
   author: string;
   branch: string;
 }
+
+const isFlat = (filters: GraphFilters) => Boolean(filters.search || filters.author);
 
 interface GraphState {
   commits: CommitInfo[];
@@ -63,11 +65,12 @@ export const useGraph = create<GraphState>((set, get) => ({
         branch: filters.branch || undefined,
       });
       const layout = new GraphLayout();
-      layout.add(page.commits);
+      const flat = isFlat(filters);
+      if (!flat) layout.add(page.commits);
       set({
         commits: page.commits,
-        rows: layout.getRows(),
-        maxLane: layout.maxLane,
+        rows: flat ? flatGraphRows(page.commits) : layout.getRows(),
+        maxLane: flat ? 0 : layout.maxLane,
         hasMore: page.hasMore,
         layout,
         loading: false,
@@ -89,11 +92,14 @@ export const useGraph = create<GraphState>((set, get) => ({
         author: filters.author || undefined,
         branch: filters.branch || undefined,
       });
-      layout.add(page.commits);
+      const flat = isFlat(filters);
+      if (!flat) layout.add(page.commits);
       set({
         commits: [...commits, ...page.commits],
-        rows: [...layout.getRows()],
-        maxLane: layout.maxLane,
+        rows: flat
+          ? [...get().rows, ...flatGraphRows(page.commits, commits.length)]
+          : [...layout.getRows()],
+        maxLane: flat ? 0 : layout.maxLane,
         hasMore: page.hasMore,
         loading: false,
       });

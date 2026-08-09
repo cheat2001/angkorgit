@@ -19,7 +19,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { CommitRow, ROW_HEIGHT } from './GraphRow';
+import { CommitRow, FLAT_GUTTER_WIDTH, ROW_HEIGHT } from './GraphRow';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { useShortcuts } from '@/shared/useShortcuts';
@@ -74,7 +74,8 @@ export function CommitGraph() {
     return () => clearTimeout(timer);
   }, [searchDraft, authorDraft, filters.search, filters.author, path, setFilters]);
 
-  const gutterWidth = Math.min(16 + (maxLane + 1) * 14, 200);
+  const flat = Boolean(filters.search || filters.author);
+  const gutterWidth = flat ? FLAT_GUTTER_WIDTH : Math.min(16 + (maxLane + 1) * 14, 200);
 
   const moveSelection = useCallback(
     (step: 1 | -1 | 'home' | 'end') => {
@@ -200,7 +201,7 @@ export function CommitGraph() {
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" role="table" aria-label="Commits">
-        <WipRow gutterWidth={gutterWidth} />
+        <WipRow gutterWidth={gutterWidth} flat={flat} />
         {rows.length === 0 && !loading ? (
           <div className="flex h-full items-center justify-center text-sm text-faint">
             No commits found
@@ -230,6 +231,7 @@ export function CommitGraph() {
                     commit={commit}
                     row={row}
                     gutterWidth={gutterWidth}
+                    flat={flat}
                     selected={selectedOid === commit.oid}
                     onSelect={select}
                     onContextMenu={onContextMenu}

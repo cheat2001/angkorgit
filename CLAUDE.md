@@ -279,7 +279,12 @@ update CLAUDE.md or docs/ — never the code.
 - **G10 — discard cannot touch submodules** from the parent repo; engine returns leftover
   paths and the UI names submodules explicitly.
 - **G11 — wrap mode in diffs is NOT virtualized** (variable heights); the default no-wrap
-  path is. Keep large-file work on the no-wrap path.
+  path is. Keep large-file work on the no-wrap path. Guards for huge files (e.g. giant
+  SQL data files): diffs over 3000 lines force the virtualized path and disable the wrap
+  toggle (`wrapUnavailable` in diffShared); `highlightLine` skips hljs above 5000 chars
+  and LRU-caches results; `wordDiff` degrades to whole-line equal segments past
+  `WORD_DIFF_MAX_CELLS` (500k LCS cells) — its O(m×n) table on two long INSERT lines
+  would otherwise allocate 100MB+ and freeze scrolling.
 - **G12 — first icon build**: `pnpm icons` then `pnpm --filter @angkorgit/desktop exec
   tauri icon src-tauri/icons/icon.png` (release workflow does this).
 - **G13 — files without a trailing newline**: libgit2 diffs contain `\ No newline at end

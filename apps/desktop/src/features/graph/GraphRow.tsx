@@ -8,6 +8,7 @@ import { timeAgo } from '@/shared/utils';
 
 export const ROW_HEIGHT = 32;
 export const REF_COL_WIDTH = 150;
+export const FLAT_GUTTER_WIDTH = 28;
 const LANE_WIDTH = 14;
 const NODE_RADIUS = 4;
 const AVATAR_SIZE = 18;
@@ -16,8 +17,30 @@ export function laneColor(color: number): string {
   return `hsl(var(--graph-${color % 10}))`;
 }
 
-const x = (lane: number) => 8 + lane * LANE_WIDTH;
+const x = (lane: number) => AVATAR_SIZE / 2 + 1 + lane * LANE_WIDTH;
 const CY = ROW_HEIGHT / 2;
+
+function FlatGutter({ author }: { author: CommitInfo['author'] }) {
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center"
+      style={{ width: FLAT_GUTTER_WIDTH, height: ROW_HEIGHT }}
+    >
+      <span
+        className="overflow-hidden rounded-full"
+        title={author.name}
+        style={{
+          width: AVATAR_SIZE,
+          height: AVATAR_SIZE,
+          boxShadow: '0 0 0 1px hsl(var(--border))',
+          background: 'hsl(var(--surface))',
+        }}
+      >
+        <Avatar name={author.name} email={author.email} size={AVATAR_SIZE} />
+      </span>
+    </div>
+  );
+}
 
 function GraphGutter({
   row,
@@ -31,9 +54,9 @@ function GraphGutter({
   hasRefs: boolean;
 }) {
   const { node, passing } = row;
-  const nx = x(node.lane);
+  const nx = Math.min(x(node.lane), width - AVATAR_SIZE / 2 - 2);
   return (
-    <div className="relative shrink-0" style={{ width, height: ROW_HEIGHT }}>
+    <div className="relative shrink-0 overflow-hidden" style={{ width, height: ROW_HEIGHT }}>
       <svg width={width} height={ROW_HEIGHT} aria-hidden>
         {hasRefs && (
           <line
@@ -153,21 +176,27 @@ function RefCell({
   refs,
   isHead,
   color,
+  flat,
   onCheckoutRef,
   onRefMenu,
 }: {
   refs: RefInfo[];
   isHead: boolean;
   color: number;
+  flat?: boolean;
   onCheckoutRef: (ref: RefInfo) => void;
   onRefMenu: (event: React.MouseEvent, ref: RefInfo) => void;
 }) {
   const groups = groupRefs(refs);
   let headMarked = false;
+  if (flat && groups.length === 0) return null;
   return (
     <span
-      className="-mr-2 flex h-full shrink-0 items-center gap-1"
-      style={{ width: REF_COL_WIDTH }}
+      className={cn(
+        'flex h-full shrink-0 items-center gap-1',
+        flat ? 'max-w-56' : '-mr-2',
+      )}
+      style={flat ? undefined : { width: REF_COL_WIDTH }}
     >
       {groups.slice(0, 2).map((group) => {
         const head = isHead && group.local && !headMarked;
@@ -210,7 +239,7 @@ function RefCell({
           +{groups.length - 2}
         </Badge>
       )}
-      {groups.length > 0 && (
+      {!flat && groups.length > 0 && (
         <span
           className="h-px min-w-1 flex-1"
           style={{ background: laneColor(color), opacity: 0.45 }}
@@ -224,6 +253,7 @@ interface Props {
   commit: CommitInfo;
   row: GraphRowData;
   gutterWidth: number;
+  flat?: boolean;
   selected: boolean;
   onSelect: (oid: string) => void;
   onContextMenu: (event: React.MouseEvent, commit: CommitInfo) => void;
@@ -235,12 +265,23 @@ export const CommitRow = memo(function CommitRow({
   commit,
   row,
   gutterWidth,
+  flat,
   selected,
   onSelect,
   onContextMenu,
   onCheckoutRef,
   onRefMenu,
 }: Props) {
+  const refCell = (
+    <RefCell
+      refs={commit.refs}
+      isHead={commit.isHead}
+      color={row.node.color}
+      flat={flat}
+      onCheckoutRef={onCheckoutRef}
+      onRefMenu={(e, ref) => onRefMenu(e, ref, commit)}
+    />
+  );
   return (
     <div
       role="row"
@@ -253,19 +294,18 @@ export const CommitRow = memo(function CommitRow({
       onClick={() => onSelect(commit.oid)}
       onContextMenu={(e) => onContextMenu(e, commit)}
     >
-      <RefCell
-        refs={commit.refs}
-        isHead={commit.isHead}
-        color={row.node.color}
-        onCheckoutRef={onCheckoutRef}
-        onRefMenu={(e, ref) => onRefMenu(e, ref, commit)}
-      />
-      <GraphGutter row={row} width={gutterWidth} author={commit.author} hasRefs={commit.refs.length > 0} />
+      {!flat && refCell}
+      {flat ? (
+        <FlatGutter author={commit.author} />
+      ) : (
+        <GraphGutter row={row} width={gutterWidth} author={commit.author} hasRefs={commit.refs.length > 0} />
+      )}
+      {flat && refCell}
       {commit.isHead && commit.refs.length === 0 && <Badge tone="primary">HEAD</Badge>}
       {commit.parents.length > 1 && <GitMerge className="size-3.5 shrink-0 text-muted" />}
       <span className="min-w-0 flex-1 truncate">{commit.summary || <span className="text-faint">(no message)</span>}</span>
       <span className="w-14 shrink-0 text-right font-mono text-[11px] text-faint">{commit.shortOid.slice(0, 7)}</span>
-      <span className="w-16 shrink-0 text-right text-[11px] text-faint">{timeAgo(commit.author.time)}</span>
+      <span className="w-[4.5rem] shrink-0 whitespace-nowrap text-right text-[11px] text-faint">{timeAgo(commit.author.time)}</span>
     </div>
   );
 });

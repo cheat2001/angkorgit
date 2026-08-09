@@ -1,8 +1,19 @@
 import { memo, useMemo } from 'react';
-import type { DiffHunk, DiffLine } from '@angkorgit/core';
+import type { DiffHunk, DiffLine, FileDiff } from '@angkorgit/core';
 import { wordDiff, type WordSegment } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
 import { highlightLine } from '@/shared/highlight';
+
+const WRAP_LINE_LIMIT = 3000;
+
+export function wrapUnavailable(diff: FileDiff): boolean {
+  let total = 0;
+  for (const hunk of diff.hunks) {
+    total += hunk.lines.length;
+    if (total > WRAP_LINE_LIMIT) return true;
+  }
+  return false;
+}
 
 export interface LinePair {
   left: DiffLine | null;

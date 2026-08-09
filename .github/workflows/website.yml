@@ -8,6 +8,8 @@ on:
       - 'docs/assets/**'
       - 'packages/design-system/**'
       - '.github/workflows/website.yml'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:

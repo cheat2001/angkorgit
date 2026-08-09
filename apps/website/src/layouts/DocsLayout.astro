@@ -8,22 +8,25 @@ import { SITE } from '../lib/site';
 interface Props {
   title: string;
   slug: string;
+  description?: string;
 }
 
-const { title, slug } = Astro.props;
+const { title, slug, description } = Astro.props;
+
+const sentenceCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
 const docs = await getCollection('docs');
 const links = docs
   .map((doc) => ({
     slug: doc.id.replace('.md', ''),
-    label: doc.id.replace('.md', '').replace(/-/g, ' '),
+    label: sentenceCase(doc.id.replace('.md', '').replace(/-/g, ' ')),
   }))
   .sort((a, b) => a.label.localeCompare(b.label));
 
 const current = links.find((l) => l.slug === slug);
 ---
 
-<Base title={`${title} — ${SITE.name}`}>
+<Base title={`${title} — ${SITE.name}`} description={description}>
   <Header />
   <main id="main" class="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
     <div class="flex items-center gap-2 text-sm text-muted">

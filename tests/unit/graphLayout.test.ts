@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GraphLayout, layoutGraph, type CommitInfo } from '@angkorgit/core';
+import { GraphLayout, flatGraphRows, layoutGraph, type CommitInfo } from '@angkorgit/core';
 
 const sig = { name: 'Test', email: 't@example.com', time: 0 };
 
@@ -87,5 +87,35 @@ describe('GraphLayout', () => {
       commit('m1', []),
     ]);
     expect(maxLane).toBe(1);
+  });
+
+  it('explodes lanes when parents are filtered out (why filtered views need flatGraphRows)', () => {
+    const disconnected = Array.from({ length: 20 }, (_, i) =>
+      commit(`c${i}`, [`missing${i}`]),
+    );
+    const { maxLane } = layoutGraph(disconnected);
+    expect(maxLane).toBe(19);
+  });
+});
+
+describe('flatGraphRows', () => {
+  it('keeps every commit on lane 0 with no connecting lines', () => {
+    const disconnected = Array.from({ length: 20 }, (_, i) =>
+      commit(`c${i}`, [`missing${i}`]),
+    );
+    const rows = flatGraphRows(disconnected);
+    expect(rows).toHaveLength(20);
+    expect(rows.every((r) => r.node.lane === 0 && r.node.color === 0)).toBe(true);
+    expect(rows.every((r) => r.passing.length === 0 && r.node.merges.length === 0)).toBe(true);
+    expect(rows.every((r) => !r.node.continues && !r.node.hasIncoming)).toBe(true);
+  });
+
+  it('numbers rows from startRow for pagination and keeps merge markers', () => {
+    const page = [commit('m1', ['a', 'b']), commit('c1', ['a'])];
+    const rows = flatGraphRows(page, 200);
+    expect(rows[0].node.row).toBe(200);
+    expect(rows[1].node.row).toBe(201);
+    expect(rows[0].node.isMerge).toBe(true);
+    expect(rows[1].node.isMerge).toBe(false);
   });
 });

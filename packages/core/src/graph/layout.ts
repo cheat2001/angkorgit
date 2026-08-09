@@ -145,6 +145,23 @@ export class GraphLayout {
   }
 }
 
+export function flatGraphRows(commits: readonly CommitInfo[], startRow = 0): GraphRow[] {
+  return commits.map((commit, i) => ({
+    node: {
+      oid: commit.oid,
+      row: startRow + i,
+      lane: 0,
+      color: 0,
+      isMerge: commit.parents.length > 1,
+      hasIncoming: false,
+      continues: false,
+      closing: [],
+      merges: [],
+    },
+    passing: [],
+  }));
+}
+
 export function layoutGraph(commits: readonly CommitInfo[]): {
   rows: readonly GraphRow[];
   maxLane: number;

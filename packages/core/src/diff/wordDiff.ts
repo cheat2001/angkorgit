@@ -8,6 +8,8 @@ function tokenize(line: string): string[] {
   return line.match(/\w+|\s+|[^\w\s]/g) ?? [];
 }
 
+export const WORD_DIFF_MAX_CELLS = 500_000;
+
 export function wordDiff(oldLine: string, newLine: string): {
   old: WordSegment[];
   new: WordSegment[];
@@ -17,6 +19,12 @@ export function wordDiff(oldLine: string, newLine: string): {
 
   const m = a.length;
   const n = b.length;
+  if (m * n > WORD_DIFF_MAX_CELLS) {
+    return {
+      old: [{ text: oldLine, kind: 'equal' }],
+      new: [{ text: newLine, kind: 'equal' }],
+    };
+  }
   const dp: Uint32Array = new Uint32Array((m + 1) * (n + 1));
   const at = (i: number, j: number) => dp[i * (n + 1) + j];
 

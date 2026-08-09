@@ -233,7 +233,7 @@ function useDiffVirtualizer(rows: FlatRow[], scrollRef: React.RefObject<HTMLDivE
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => (rows[index].kind === 'header' ? HEADER_H : LINE_H),
-    overscan: 60,
+    overscan: 24,
   });
 }
 

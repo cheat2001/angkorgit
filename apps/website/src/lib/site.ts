@@ -1,3 +1,19 @@
+const FALLBACK_VERSION = '0.1.2';
+
+async function latestReleaseVersion(): Promise<string> {
+  try {
+    const res = await fetch('https://api.github.com/repos/cheat2001/angkorgit/releases/latest', {
+      headers: { accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) return FALLBACK_VERSION;
+    const data = (await res.json()) as { tag_name?: string };
+    const tag = typeof data.tag_name === 'string' ? data.tag_name : '';
+    return /^v\d+\.\d+\.\d+$/.test(tag) ? tag.slice(1) : FALLBACK_VERSION;
+  } catch {
+    return FALLBACK_VERSION;
+  }
+}
+
 export const SITE = {
   name: 'AngKorGit',
   title:
@@ -14,7 +30,7 @@ export const SITE = {
   ci: 'https://github.com/cheat2001/angkorgit/actions/workflows/ci.yml',
   buyMeACoffee: 'https://buymeacoffee.com/chansocheatsok',
   tagline: 'Everyday Git, made delightful.',
-  latestVersion: '0.1.2',
+  latestVersion: await latestReleaseVersion(),
   latestUrl: 'https://github.com/cheat2001/angkorgit/releases',
   assetUrl: (version: string, asset: string) =>
     `https://github.com/cheat2001/angkorgit/releases/download/v${version}/${asset}`,
