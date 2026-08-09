@@ -1,5 +1,8 @@
 import type {
   BranchInfo,
+  CliAgentInfo,
+  CliRunRequest,
+  CliRunResult,
   CommitInfo,
   ConflictFile,
   FileDiff,
@@ -412,6 +415,21 @@ export const ipc = {
   async accountRemove(host: string): Promise<HostingAccount[]> {
     if (!isTauri()) return [];
     return invoke('account_remove', { host });
+  },
+
+  async aiCliDetect(): Promise<CliAgentInfo[]> {
+    if (!isTauri()) {
+      await delay(300);
+      return demo.demoCliAgents;
+    }
+    return invoke('ai_cli_detect');
+  },
+  async aiCliRun(request: CliRunRequest): Promise<CliRunResult> {
+    if (!isTauri()) {
+      await delay(600);
+      return demo.demoCliRun();
+    }
+    return invoke('ai_cli_run', { request });
   },
 
   async httpRequest(request: HttpRequest): Promise<HttpResponse> {

@@ -1,4 +1,11 @@
 import type { AiProvider } from './types';
+import {
+  DEFAULT_COMMIT_STYLE,
+  commitStyleInstructions,
+  ensureCommitPrefix,
+  resolveCommitPrefix,
+  type CommitStyle,
+} from './style';
 
 const SYSTEM = 'You are the AI assistant inside AngKorGit, a Git client. Be precise and concise. Never invent file names or changes that are not in the provided context.';
 
@@ -6,18 +13,30 @@ function clip(text: string, max = 24_000): string {
   return text.length > max ? `${text.slice(0, max)}\n…(truncated)` : text;
 }
 
-export async function generateCommitMessage(ai: AiProvider, stagedDiff: string): Promise<string> {
+export interface CommitMessageContext {
+  style?: CommitStyle;
+  branch?: string | null;
+}
+
+export async function generateCommitMessage(
+  ai: AiProvider,
+  stagedDiff: string,
+  context: CommitMessageContext = {},
+): Promise<string> {
+  const style = context.style ?? DEFAULT_COMMIT_STYLE;
+  const prefix = resolveCommitPrefix(style.prefixRules, context.branch ?? null);
   const result = await ai.complete({
     messages: [
       { role: 'system', content: SYSTEM },
       {
         role: 'user',
-        content: `Write a conventional-commit style message for this staged diff. First line: type(scope): summary under 72 chars. Then a blank line and a short body only if the change needs explanation. Output the message only, no fencing.\n\n${clip(stagedDiff)}`,
+        content: `${commitStyleInstructions(style, prefix)}\n\nStaged diff:\n\n${clip(stagedDiff)}`,
       },
     ],
     temperature: 0.3,
   });
-  return result.text.trim().replace(/^```[a-z]*\n?|```$/g, '').trim();
+  const text = result.text.trim().replace(/^```[a-z]*\n?|```$/g, '').trim();
+  return prefix ? ensureCommitPrefix(text, prefix) : text;
 }
 
 export async function explainDiff(ai: AiProvider, diff: string): Promise<string> {

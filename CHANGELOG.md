@@ -6,6 +6,34 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Commit message drafts no longer leak between repositories**: the draft (and
+  the amend checkbox) was plain component state, so switching tabs/repos showed
+  one project's unfinished message in another project's commit box. Drafts are
+  now stored per repository path — each repo keeps its own draft, drafts survive
+  app restarts, and committing clears only that repo's draft.
+
+### Added
+- **Customizable commit message style**: Settings → AI Assistant now has a
+  "Commit message style" section — pick Conventional commits, Plain summary, or
+  describe your own convention in plain words. Branch prefix rules
+  (`staging → [support]`, `feature/* → [{suffix}]`, tokens `{branch}`,
+  `{suffix}`, `{ticket}`; first match wins) are enforced by AngKorGit itself
+  after generation, so the prefix always holds even if the model ignores it. A
+  live preview shows what the current branch would produce. The style config is
+  structured per capability so future AI features (e.g. code review) can carry
+  their own conventions.
+- **AI features without an API key — use the AI CLI you already have**: a new
+  "Installed AI CLI" provider in Settings → AI Assistant detects Claude Code,
+  Codex CLI, Gemini CLI and OpenCode on your machine and runs them locally for
+  commit messages, diff explanations, conflict help and reviews. Requests go
+  through the CLI's own login and quota — AngKorGit stores no key and sends
+  nothing anywhere itself. Each request is a one-shot prompt executed in a
+  neutral directory (Codex runs sandboxed read-only), with a timeout and
+  ANSI-clean output parsing; an optional model override passes through to the
+  CLI. Detection survives Finder-launched sessions (GUI apps don't inherit the
+  shell PATH) via well-known install locations plus a login-shell fallback.
+
 ## [0.1.3] — 2026-08-09
 
 ### Fixed

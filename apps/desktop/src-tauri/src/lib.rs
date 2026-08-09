@@ -1,5 +1,6 @@
 #![allow(non_snake_case)] // command args mirror camelCase IPC payloads
 
+mod ai_cli;
 mod commands;
 mod core;
 mod error;
@@ -126,6 +127,8 @@ pub fn run() {
             commands::account_add,
             commands::account_remove,
             commands::http_request,
+            commands::ai_cli_detect,
+            commands::ai_cli_run,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AngKorGit");

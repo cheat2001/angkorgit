@@ -5,8 +5,10 @@ import {
   type AiConfig,
   type AiProvider,
   type AiProviderKind,
+  type CliRunner,
   type HttpClient,
 } from './types';
+import { cliAgentProvider } from './cliAgents';
 
 async function postJson(
   http: HttpClient,
@@ -201,8 +203,11 @@ function ollamaProvider(http: HttpClient, config: AiConfig): AiProvider {
   };
 }
 
-export function createAiProvider(config: AiConfig, http: HttpClient): AiProvider {
+export function createAiProvider(config: AiConfig, http: HttpClient, cli?: CliRunner): AiProvider {
   switch (config.provider) {
+    case 'cli':
+      if (!cli) throw new AiError('CLI agents need the desktop app', 'cli');
+      return cliAgentProvider(config, cli);
     case 'openai':
       return openAiCompatible('openai', 'OpenAI', http, config, 'https://api.openai.com/v1');
     case 'lmstudio':
@@ -220,6 +225,7 @@ export const AI_PROVIDER_PRESETS: Record<
   AiProviderKind,
   { label: string; defaultModel: string; needsApiKey: boolean; defaultBaseUrl: string }
 > = {
+  cli: { label: 'Installed AI CLI (Claude Code, Codex…)', defaultModel: '', needsApiKey: false, defaultBaseUrl: '' },
   openai: { label: 'OpenAI', defaultModel: 'gpt-4o-mini', needsApiKey: true, defaultBaseUrl: 'https://api.openai.com/v1' },
   anthropic: { label: 'Anthropic', defaultModel: 'claude-sonnet-5', needsApiKey: true, defaultBaseUrl: 'https://api.anthropic.com' },
   gemini: { label: 'Google Gemini', defaultModel: 'gemini-2.0-flash', needsApiKey: true, defaultBaseUrl: 'https://generativelanguage.googleapis.com' },

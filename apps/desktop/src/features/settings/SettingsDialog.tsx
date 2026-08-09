@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Check,
@@ -9,7 +9,9 @@ import {
   Moon,
   Palette,
   Plus,
+  RefreshCw,
   Sparkles,
+  SquareTerminal,
   Sun,
   Trash2,
   User,
@@ -17,7 +19,14 @@ import {
   UsersRound,
   Wifi,
 } from 'lucide-react';
-import { AI_PROVIDER_PRESETS, type AiProviderKind } from '@angkorgit/core';
+import {
+  AI_PROVIDER_PRESETS,
+  COMMIT_STYLE_PRESETS,
+  resolveCommitPrefix,
+  type AiProviderKind,
+  type CliAgentInfo,
+  type CommitStylePreset,
+} from '@angkorgit/core';
 import {
   Button,
   Dialog,
@@ -35,6 +44,7 @@ import {
   Separator,
   Spinner,
   Switch,
+  Textarea,
   cn,
 } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
@@ -56,7 +66,7 @@ const SECTIONS: Array<{
   { id: 'appearance', label: 'Appearance', description: 'Theme, accent color, zoom and motion', icon: Palette },
   { id: 'git', label: 'Git', description: 'Committer identity and identity profiles', icon: User },
   { id: 'accounts', label: 'Accounts', description: 'Hosting accounts for push and pull over HTTPS', icon: Github },
-  { id: 'ai', label: 'AI Assistant', description: 'Provider, model and connection', icon: Sparkles },
+  { id: 'ai', label: 'AI Assistant', description: 'Provider, connection and message style', icon: Sparkles },
   { id: 'shortcuts', label: 'Shortcuts', description: 'Keyboard reference', icon: Keyboard },
 ];
 
@@ -84,6 +94,195 @@ function SettingCard({
       {description && <p className="mt-0.5 text-xs text-faint">{description}</p>}
       <div className="mt-3">{children}</div>
     </section>
+  );
+}
+
+function CliAgentPicker() {
+  const ai = useSettings((s) => s.ai);
+  const [agents, setAgents] = useState<CliAgentInfo[]>([]);
+  const [scanning, setScanning] = useState(true);
+
+  const scan = useCallback(async () => {
+    setScanning(true);
+    try {
+      const found = await ipc.aiCliDetect();
+      setAgents(found);
+      const { ai: current, setAi } = useSettings.getState();
+      if (found.length > 0 && !found.some((a) => a.id === current.cliAgent)) {
+        setAi({ cliAgent: found[0].id, cliPath: found[0].path });
+      } else {
+        const selected = found.find((a) => a.id === current.cliAgent);
+        if (selected && selected.path !== current.cliPath) setAi({ cliPath: selected.path });
+      }
+    } catch {
+      setAgents([]);
+    } finally {
+      setScanning(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void scan();
+  }, [scan]);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted">Detected on this machine</span>
+        <Button variant="ghost" size="sm" onClick={() => void scan()} disabled={scanning}>
+          {scanning ? <Spinner /> : <RefreshCw className="size-3.5" />}
+          Scan again
+        </Button>
+      </div>
+      {agents.map((agent) => {
+        const isActive = ai.cliAgent === agent.id;
+        return (
+          <button
+            key={agent.id}
+            onClick={() => useSettings.getState().setAi({ cliAgent: agent.id, cliPath: agent.path })}
+            className={cn(
+              'flex items-center gap-2.5 rounded-md border p-2.5 text-left transition-colors',
+              isActive ? 'border-primary/50 bg-primary/10' : 'border-border-subtle hover:border-muted',
+            )}
+          >
+            <SquareTerminal className={cn('size-4 shrink-0', isActive ? 'text-primary' : 'text-muted')} />
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-sm">
+                {agent.label}
+                {isActive && <Check className="size-3.5 text-primary" />}
+              </p>
+              <p className="truncate text-xs text-faint">
+                {agent.version ? `${agent.version} · ` : ''}
+                {agent.path}
+              </p>
+            </div>
+          </button>
+        );
+      })}
+      {!scanning && agents.length === 0 && (
+        <p className="rounded-md border border-dashed border-border p-3 text-xs text-faint">
+          No AI CLI found. Install Claude Code, Codex CLI, Gemini CLI or OpenCode, then scan again.
+        </p>
+      )}
+      <p className="mt-1 text-xs text-faint">
+        Requests run through your CLI locally and use its own login and quota — AngKorGit stores no key
+        and sends nothing anywhere itself.
+      </p>
+    </div>
+  );
+}
+
+function CommitStyleCard() {
+  const commit = useSettings((s) => s.aiStyle.commit);
+  const setCommitStyle = useSettings((s) => s.setCommitStyle);
+  const branch = useRepo((s) => s.status?.branch ?? null);
+
+  const updateRule = (index: number, patch: Partial<{ pattern: string; prefix: string }>) => {
+    setCommitStyle({
+      prefixRules: commit.prefixRules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
+    });
+  };
+  const removeRule = (index: number) => {
+    setCommitStyle({ prefixRules: commit.prefixRules.filter((_, i) => i !== index) });
+  };
+
+  const preview = branch ? resolveCommitPrefix(commit.prefixRules, branch) : null;
+
+  return (
+    <SettingCard
+      title="Commit message style"
+      description="How generated commit messages are written. Branch prefix rules are applied by AngKorGit itself, so they always hold."
+    >
+      <div className="flex flex-col gap-3">
+        <Select
+          value={commit.preset}
+          onValueChange={(value) => setCommitStyle({ preset: value as CommitStylePreset })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(COMMIT_STYLE_PRESETS) as CommitStylePreset[]).map((preset) => (
+              <SelectItem key={preset} value={preset}>
+                {COMMIT_STYLE_PRESETS[preset].label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="-mt-1.5 text-xs text-faint">{COMMIT_STYLE_PRESETS[commit.preset].description}</p>
+        {commit.preset === 'custom' && (
+          <Field label="Your convention, in plain words">
+            <Textarea
+              value={commit.instructions}
+              onChange={(e) => setCommitStyle({ instructions: e.target.value })}
+              placeholder={
+                'e.g. Start with the affected module in brackets, write in past tense, and never use conventional-commit types.'
+              }
+              rows={3}
+            />
+          </Field>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-muted">Branch prefix rules (first match wins)</span>
+          {commit.prefixRules.map((rule, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <Input
+                value={rule.pattern}
+                onChange={(e) => updateRule(index, { pattern: e.target.value })}
+                placeholder="feature/*"
+                className="flex-1 font-mono text-xs"
+              />
+              <span className="text-xs text-faint">→</span>
+              <Input
+                value={rule.prefix}
+                onChange={(e) => updateRule(index, { prefix: e.target.value })}
+                placeholder="[{suffix}]"
+                className="flex-1 font-mono text-xs"
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Remove rule"
+                onClick={() => removeRule(index)}
+              >
+                <Trash2 className="size-3.5 text-danger" />
+              </Button>
+            </div>
+          ))}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-faint">
+              Patterns match the branch name (<span className="font-mono">*</span> wildcard). Prefix
+              tokens: <span className="font-mono">{'{branch}'}</span>,{' '}
+              <span className="font-mono">{'{suffix}'}</span>,{' '}
+              <span className="font-mono">{'{ticket}'}</span>.
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                setCommitStyle({ prefixRules: [...commit.prefixRules, { pattern: '', prefix: '' }] })
+              }
+            >
+              <Plus className="size-3.5" />
+              Add rule
+            </Button>
+          </div>
+          {branch && commit.prefixRules.length > 0 && (
+            <p className="rounded-md border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-muted">
+              On <span className="font-mono">{branch}</span> messages will
+              {preview ? (
+                <>
+                  {' '}
+                  start with <span className="font-mono text-foreground">{preview}</span>
+                </>
+              ) : (
+                ' have no prefix (no rule matches)'
+              )}
+            </p>
+          )}
+        </div>
+      </div>
+    </SettingCard>
   );
 }
 
@@ -466,7 +665,11 @@ export function SettingsDialog() {
                 <div className="flex flex-col gap-4">
                   <SettingCard
                     title="Provider"
-                    description="Used for commit messages, diff explanations, conflict help and reviews. Local models via Ollama or LM Studio need no API key."
+                    description={
+                      settings.ai.provider === 'cli'
+                        ? 'Uses an AI CLI already installed on this machine — Claude Code, Codex, Gemini CLI or OpenCode — with its own login and quota. No API key needed.'
+                        : 'Used for commit messages, diff explanations, conflict help and reviews. Local models via Ollama or LM Studio need no API key.'
+                    }
                   >
                     <div className="flex flex-col gap-3">
                       <Select
@@ -491,30 +694,45 @@ export function SettingsDialog() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Field label="Model">
-                        <Input
-                          value={settings.ai.model}
-                          onChange={(e) => settings.setAi({ model: e.target.value })}
-                          placeholder={preset.defaultModel}
-                        />
-                      </Field>
-                      {preset.needsApiKey && (
-                        <Field label="API key">
-                          <Input
-                            type="password"
-                            value={settings.ai.apiKey}
-                            onChange={(e) => settings.setAi({ apiKey: e.target.value })}
-                            placeholder="sk-…"
-                          />
-                        </Field>
+                      {settings.ai.provider === 'cli' ? (
+                        <>
+                          <CliAgentPicker />
+                          <Field label="Model override (optional — leave empty for the CLI's default)">
+                            <Input
+                              value={settings.ai.model}
+                              onChange={(e) => settings.setAi({ model: e.target.value })}
+                              placeholder="CLI default"
+                            />
+                          </Field>
+                        </>
+                      ) : (
+                        <>
+                          <Field label="Model">
+                            <Input
+                              value={settings.ai.model}
+                              onChange={(e) => settings.setAi({ model: e.target.value })}
+                              placeholder={preset.defaultModel}
+                            />
+                          </Field>
+                          {preset.needsApiKey && (
+                            <Field label="API key">
+                              <Input
+                                type="password"
+                                value={settings.ai.apiKey}
+                                onChange={(e) => settings.setAi({ apiKey: e.target.value })}
+                                placeholder="sk-…"
+                              />
+                            </Field>
+                          )}
+                          <Field label={`Base URL (optional — defaults to ${preset.defaultBaseUrl})`}>
+                            <Input
+                              value={settings.ai.baseUrl ?? ''}
+                              onChange={(e) => settings.setAi({ baseUrl: e.target.value })}
+                              placeholder={preset.defaultBaseUrl}
+                            />
+                          </Field>
+                        </>
                       )}
-                      <Field label={`Base URL (optional — defaults to ${preset.defaultBaseUrl})`}>
-                        <Input
-                          value={settings.ai.baseUrl ?? ''}
-                          onChange={(e) => settings.setAi({ baseUrl: e.target.value })}
-                          placeholder={preset.defaultBaseUrl}
-                        />
-                      </Field>
                       <div className="flex justify-end">
                         <Button variant="secondary" onClick={() => void testAi()} disabled={testing}>
                           {testing ? <Spinner /> : <Wifi />}
@@ -523,6 +741,7 @@ export function SettingsDialog() {
                       </div>
                     </div>
                   </SettingCard>
+                  <CommitStyleCard />
                 </div>
               )}
 

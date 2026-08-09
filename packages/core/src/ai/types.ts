@@ -38,17 +38,45 @@ export interface HttpResponse {
 export type HttpClient = (request: HttpRequest) => Promise<HttpResponse>;
 
 export type AiProviderKind =
+  | 'cli'
   | 'openai'
   | 'anthropic'
   | 'gemini'
   | 'ollama'
   | 'lmstudio';
 
+export type CliAgentId = 'claude' | 'codex' | 'gemini' | 'opencode';
+
+export interface CliAgentInfo {
+  id: CliAgentId;
+  label: string;
+  path: string;
+  version: string;
+}
+
+export interface CliRunRequest {
+  program: string;
+  args: string[];
+  stdin: string;
+  timeoutSecs?: number;
+}
+
+export interface CliRunResult {
+  status: number;
+  stdout: string;
+  stderr: string;
+  output?: string | null;
+}
+
+export type CliRunner = (request: CliRunRequest) => Promise<CliRunResult>;
+
 export interface AiConfig {
   provider: AiProviderKind;
   apiKey: string;
   model: string;
   baseUrl?: string;
+  cliAgent?: CliAgentId;
+  cliPath?: string;
 }
 
 export class AiError extends Error {

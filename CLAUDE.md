@@ -32,7 +32,7 @@ craftsmanship from Cambodia 🇰🇭.
 | Router | react-router-dom 6 (MemoryRouter: `/welcome`, `/repo`) | |
 | Icons / fonts | lucide-react · Inter Variable + JetBrains Mono (self-hosted @fontsource) | |
 | Key libs | @tanstack/react-virtual, react-resizable-panels, cmdk, sonner, @xterm/xterm, highlight.js (lib/core + 20 langs) | |
-| Rust deps | tauri-plugin-dialog/opener, portable-pty, keyring 3, notify-debouncer-mini, reqwest (rustls), base64, thiserror | |
+| Rust deps | tauri-plugin-dialog/opener, portable-pty, keyring 3, notify-debouncer-mini, reqwest (rustls), which 7, base64, thiserror | |
 
 ## 3. Monorepo layout (pnpm workspaces)
 
@@ -66,7 +66,12 @@ angkorgit/
 │       ├── graph/layout.ts    ← incremental commit-graph lane layout (GraphLayout)
 │       ├── diff/wordDiff.ts   ← LCS word-level diff
 │       ├── conflicts/parse.ts ← conflict-marker parser + serializer (lossless)
-│       └── ai/                ← provider-agnostic AI (types, providers, capabilities)
+│       └── ai/                ← provider-agnostic AI (types, providers, capabilities,
+                                cliAgents: local AI-CLI adapters — Claude Code/Codex/Gemini/OpenCode,
+                                style: per-capability AiStyleConfig — commit presets
+                                conventional/plain/custom + branch prefix rules with
+                                {branch}/{suffix}/{ticket} tokens, prefix enforced post-
+                                generation; extend AiStyleConfig for future review style)
 ├── packages/design-system/    ← @angkorgit/design-system
 │   └── src/
 │       ├── tokens.css         ← ALL colors/spacing as CSS vars (dark + light)
@@ -129,6 +134,10 @@ terminal.rs           ← real PTY per session (portable-pty), events term-data-
 watcher.rs            ← notify-debouncer-mini (400ms) → "repo-changed" event;
                         filters .git noise, keeps HEAD/index/refs/packed-refs, skips *.lock
 http.rs               ← AI/HTTP proxy (reqwest, rustls) — keeps CORS + keys out of webview
+ai_cli.rs             ← installed AI-CLI transport: detect (which_in over augmented PATH +
+                        login-shell fallback, per-agent --version) and run (allowlisted
+                        binaries only, stdin prompt, {OUTPUT_FILE} placeholder → temp file,
+                        neutral cwd, NO_COLOR/TERM=dumb env, kill-on-timeout); 4 module tests
 core/
 ├── types.rs          ← serde structs mirroring @angkorgit/core (camelCase rename_all)
 ├── repo.rs           ← open/discover/init/info/status, upstream divergence, get/set config
@@ -191,7 +200,9 @@ features/
 ├── graph/                    ← store (pagination, filters, lastPath guard vs cross-repo
 │   │                           leaks), CommitGraph (virtualized, context menu incl. revert),
 │   │                           GraphRow (per-row SVG lanes), WipRow (uncommitted banner)
-├── commit/WorkingCopyPanel   ← staged/changes lists, stage/unstage/discard(+all),
+├── commit/                   ← WorkingCopyPanel + draftStore (PER-REPO commit drafts,
+│                               persisted; amend transient) —
+│                               staged/changes lists, stage/unstage/discard(+all),
 │                               auto-grow commit box (hidden when clean; amend link),
 │                               50/72 summary counter, AI message button
 ├── diff/                     ← DiffPanel (center view, header toggles, minimap, prev/next
@@ -210,14 +221,20 @@ features/
 │                               dirty tree for hard kinds)
 ├── inspector/                ← Inspector (working copy ⟷ commit details), CommitDetails
 ├── terminal/TerminalPanel    ← xterm.js ↔ PTY events
-├── settings/                 ← store (theme, zoom, reduceMotion, ai config, identity
+├── settings/                 ← store (theme, zoom, reduceMotion, ai config, aiStyle
+│                               commit style + branch prefix rules, identity
 │                               PROFILES — persisted), SettingsDialog (Appearance/Git/
-│                               Accounts/AI/Shortcuts tabs), AccountsTab (per-provider
+│                               Accounts/AI/Shortcuts tabs incl. commit-style card w/
+│                               live branch preview), AccountsTab (per-provider
 │                               token connect, host-matched)
-├── ai/client.ts              ← binds settings AI config + Rust HTTP transport to
-│                               @angkorgit/core providers (OpenAI/Anthropic/Gemini/
-│                               Ollama/LM Studio); capabilities: commit msg, explain
-│                               diff/conflict, PR description, summarize, review
+├── ai/client.ts              ← binds settings AI config + Rust HTTP/CLI transports to
+│                               @angkorgit/core providers ('cli' = installed AI CLI:
+│                               Claude Code/Codex/Gemini CLI/OpenCode via ai_cli.rs —
+│                               user's own login + quota, no API key; plus OpenAI/
+│                               Anthropic/Gemini/Ollama/LM Studio); capabilities:
+│                               commit msg, explain diff/conflict, PR description,
+│                               summarize, review. Settings AI tab: detected-CLI
+│                               picker (scan/select/rescan, optional model override)
 └── ui/store.ts               ← layout state (sidebar/terminal/palette/dialogs/centerDiff/
                                 diff view prefs) — view prefs PERSISTED via partialize
 ```
@@ -275,7 +292,10 @@ update CLAUDE.md or docs/ — never the code.
   actions are hidden in whole-file view on purpose.
 - **G9 — graph store `lastPath` guard**: switching repos resets commits/filters/selection
   atomically; CommitGraph is keyed by repo.path to reset input drafts. Prevents one repo's
-  history showing under another's header.
+  history showing under another's header. Same class of bug hit the commit box: any
+  WorkingCopyPanel state that is conceptually per-repo must NOT live in useState —
+  commit drafts + amend live in `features/commit/draftStore.ts` keyed by repo.path
+  (drafts persisted, amend transient single-active).
 - **G10 — discard cannot touch submodules** from the parent repo; engine returns leftover
   paths and the UI names submodules explicitly.
 - **G11 — wrap mode in diffs is NOT virtualized** (variable heights); the default no-wrap
@@ -305,13 +325,26 @@ update CLAUDE.md or docs/ — never the code.
   `markdown.shikiConfig.themes = { dark: 'github-dark', light: 'github-light' }` in
   astro.config.mjs AND add CSS in global.css that swaps the inline vars when the site's
   class-based toggle is on (`html.dark .astro-code { background-color: var(--shiki-dark-bg) !important; color: var(--shiki-dark) !important }` + the `span` variant for token colors). Shiki only emits the CSS *variables* — nothing applies them, and it keys on `prefers-color-scheme`, not the app's `html.dark` class. Also never force `color: hsl(var(--foreground))` on `pre code` — it overrides the highlighter and makes diagrams dark-on-dark in light theme.
+- **G16 — GUI apps on macOS don't inherit the shell PATH**, so `which claude` from the
+  webview/Rust would miss CLIs installed via npm/homebrew/nvm when the app is launched
+  from Finder. `ai_cli.rs::search_path` augments PATH with well-known install dirs
+  (~/.local/bin, ~/.npm-global/bin, /opt/homebrew/bin, ~/.nvm/versions/node/*/bin, …)
+  and falls back to a `$SHELL -lc 'command -v …'` login-shell lookup; `run()` reuses the
+  augmented PATH (npm shims need `node` resolvable) and prepends the binary's own dir.
+  Also: killing a timed-out CLI can leave a grandchild holding the stdout pipe — never
+  join the reader threads on the timeout path or the kill blocks until the grandchild
+  exits. And the `{OUTPUT_FILE}` placeholder must be substituted only when an argument
+  IS the placeholder (exact match, never `contains`) — prompts passed as args can
+  legitimately contain the literal text, e.g. a staged diff of ai_cli.rs/cliAgents.ts
+  themselves (regression test: `leaves_prompt_args_containing_placeholder_text_untouched`).
 
 ## 9. Testing map
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (17) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
-| Unit (14) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved) |
+| Rust integration (18) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
+| Rust module (4) | `apps/desktop/src-tauri/src/ai_cli.rs` | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout |
+| Unit (44) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, preset instructions, post-generation prefix enforcement) |
 | E2E (5) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search — all on demo mode |
 
 ## 9.5 Open-source & community files

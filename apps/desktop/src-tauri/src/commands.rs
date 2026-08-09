@@ -576,3 +576,15 @@ pub async fn http_request(
 ) -> AppResult<crate::http::HttpResponse> {
     crate::http::request(request).await
 }
+
+#[tauri::command]
+pub async fn ai_cli_detect() -> AppResult<Vec<crate::ai_cli::CliAgentInfo>> {
+    blocking(|| Ok(crate::ai_cli::detect())).await
+}
+
+#[tauri::command]
+pub async fn ai_cli_run(
+    request: crate::ai_cli::CliRunRequest,
+) -> AppResult<crate::ai_cli::CliRunResult> {
+    blocking(move || crate::ai_cli::run(request)).await
+}

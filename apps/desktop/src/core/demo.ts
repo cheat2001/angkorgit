@@ -1,5 +1,7 @@
 import type {
   BranchInfo,
+  CliAgentInfo,
+  CliRunResult,
   CommitInfo,
   FileDiff,
   HistoryPage,
@@ -182,3 +184,16 @@ export function drawGraph(rows: Row[]) {
 >>>>>>> feature/lane-colors
 }
 `;
+
+export const demoCliAgents: CliAgentInfo[] = [
+  { id: 'claude', label: 'Claude Code', path: '/usr/local/bin/claude', version: '2.0.0 (demo)' },
+];
+
+export function demoCliRun(): CliRunResult {
+  return {
+    status: 0,
+    stdout: 'feat: demo response — connect a real AI CLI in the desktop app',
+    stderr: '',
+    output: null,
+  };
+}

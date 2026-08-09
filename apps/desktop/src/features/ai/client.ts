@@ -10,11 +10,13 @@ export function getAiProvider(): AiProvider {
       baseUrl: ai.baseUrl || undefined,
     },
     (request) => ipc.httpRequest(request),
+    (request) => ipc.aiCliRun(request),
   );
 }
 
 export function aiConfigured(): boolean {
   const { ai } = useSettings.getState();
+  if (ai.provider === 'cli') return !!ai.cliAgent;
   if (ai.provider === 'ollama' || ai.provider === 'lmstudio') return !!ai.model;
   return !!ai.apiKey && !!ai.model;
 }

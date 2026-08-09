@@ -23,7 +23,9 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
+import { useSettings } from '@/features/settings/store';
 import { useUndo } from '@/features/history/undoStore';
+import { useCommitDraft } from './draftStore';
 import { confirmDialog } from '@/components/confirm';
 import { FileTree, treeIndent as sharedTreeIndent } from '@/components/FileTree';
 import { basename, dirname } from '@/shared/utils';
@@ -118,8 +120,11 @@ export function WorkingCopyPanel() {
   const { repo, status, conflicts, submodules, refreshStatus } = useRepo();
   const reloadGraph = useGraph((s) => s.reload);
   const { selectedFile, selectFile, openCenterDiff, openEditor, openConflict, fileTree } = useUi();
-  const [message, setMessage] = useState('');
-  const [amend, setAmend] = useState(false);
+  const path = repo?.path ?? '';
+  const message = useCommitDraft((s) => (path ? (s.drafts[path] ?? '') : ''));
+  const amend = useCommitDraft((s) => !!path && s.amendFor === path);
+  const setMessage = (text: string) => useCommitDraft.getState().setDraft(path, text);
+  const setAmend = (value: boolean) => useCommitDraft.getState().setAmend(path, value);
   const [committing, setCommitting] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; file: FileStatus; staged: boolean } | null>(null);
@@ -132,7 +137,6 @@ export function WorkingCopyPanel() {
     el.style.height = `${Math.min(el.scrollHeight, 300)}px`;
   }, [message]);
 
-  const path = repo?.path ?? '';
   const files = status?.files ?? [];
   const stagedFiles = files.filter((f) => f.staged);
   const unstagedFiles = files.filter((f) => f.unstaged);
@@ -205,7 +209,10 @@ export function WorkingCopyPanel() {
     setAiBusy(true);
     try {
       const patch = await ipc.stagedPatch(path);
-      const generated = await aiCapabilities.generateCommitMessage(getAiProvider(), patch);
+      const generated = await aiCapabilities.generateCommitMessage(getAiProvider(), patch, {
+        style: useSettings.getState().aiStyle.commit,
+        branch: status?.branch ?? null,
+      });
       setMessage(generated);
     } catch (error) {
       toast.error(`AI request failed: ${(error as { message?: string }).message ?? error}`);

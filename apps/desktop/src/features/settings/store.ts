@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AiConfig } from '@angkorgit/core';
+import { DEFAULT_AI_STYLE, type AiConfig, type AiStyleConfig, type CommitStyle } from '@angkorgit/core';
 import { isTauri } from '@/core/ipc';
 
 export type Theme =
@@ -110,6 +110,7 @@ interface SettingsState {
   githubUser: string;
   profiles: IdentityProfile[];
   ai: AiConfig;
+  aiStyle: AiStyleConfig;
   setTheme: (theme: Theme) => void;
   setAccent: (accent: AccentId) => void;
   setZoom: (zoom: number) => void;
@@ -123,6 +124,7 @@ interface SettingsState {
   addProfile: (profile: Omit<IdentityProfile, 'id'>) => void;
   removeProfile: (id: string) => void;
   setAi: (config: Partial<AiConfig>) => void;
+  setCommitStyle: (style: Partial<CommitStyle>) => void;
 }
 
 const clampZoom = (zoom: number): number =>
@@ -140,6 +142,7 @@ export const useSettings = create<SettingsState>()(
       githubUser: '',
       profiles: [],
       ai: { provider: 'ollama', apiKey: '', model: 'llama3.1', baseUrl: '' },
+      aiStyle: DEFAULT_AI_STYLE,
       setTheme: (theme) => {
         applyTheme(theme);
         set({ theme });
@@ -166,6 +169,8 @@ export const useSettings = create<SettingsState>()(
         })),
       removeProfile: (id) => set((s) => ({ profiles: s.profiles.filter((p) => p.id !== id) })),
       setAi: (config) => set((s) => ({ ai: { ...s.ai, ...config } })),
+      setCommitStyle: (style) =>
+        set((s) => ({ aiStyle: { ...s.aiStyle, commit: { ...s.aiStyle.commit, ...style } } })),
     }),
     {
       name: 'angkorgit-settings',
