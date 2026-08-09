@@ -8,7 +8,7 @@ export const SITE = {
   releases: 'https://github.com/cheat2001/angkorgit/releases',
   license: 'https://github.com/cheat2001/angkorgit/blob/main/LICENSE',
   docs: 'https://github.com/cheat2001/angkorgit/tree/main/docs',
-  contributing: 'https://github.com/cheat2001/angkorgit/blob/main/CONTRIBUTING.md',
+  contributing: 'https://github.com/cheat2001/angkorgit/blob/main/docs/Contributing.md',
   codeOfConduct: 'https://github.com/cheat2001/angkorgit/blob/main/CODE_OF_CONDUCT.md',
   security: 'https://github.com/cheat2001/angkorgit/blob/main/SECURITY.md',
   ci: 'https://github.com/cheat2001/angkorgit/actions/workflows/ci.yml',
