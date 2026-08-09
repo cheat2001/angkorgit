@@ -16,6 +16,7 @@ async function latestReleaseVersion(): Promise<string> {
 
 export const SITE = {
   name: 'AngKorGit',
+  alternateNames: ['Angkor Git', 'AngkorGit', 'angkorgit', 'Git Angkor', 'GitAngkor', 'gitangkor'],
   title:
     'AngKorGit (Angkor Git) — fast, free Git client and Git GUI for macOS, Windows & Linux',
   description:

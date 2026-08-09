@@ -18,10 +18,16 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
   name: SITE.name,
+  alternateName: SITE.alternateNames,
   url: baseUrl.toString(),
   applicationCategory: 'DeveloperApplication',
+  applicationSubCategory: 'Git client',
   operatingSystem: 'macOS, Windows, Linux',
   description,
+  softwareVersion: SITE.latestVersion,
+  downloadUrl: SITE.releases,
+  license: SITE.license,
+  sameAs: [SITE.repo],
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
   publisher: {
     '@type': 'Organization',
@@ -38,6 +44,14 @@ const jsonLd = {
     'ai-config-setting',
     'shortcut-key',
   ].map((name) => new URL(import.meta.env.BASE_URL + `screenshots/${name}.webp`, Astro.site).toString()),
+};
+
+const websiteLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: SITE.name,
+  alternateName: SITE.alternateNames,
+  url: baseUrl.toString(),
 };
 ---
 
@@ -74,6 +88,7 @@ const jsonLd = {
     <meta name="twitter:image" content={ogImage} />
 
     <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(websiteLd)} />
 
     <script is:inline>
       (() => {
