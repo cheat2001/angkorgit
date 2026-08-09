@@ -6,6 +6,37 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-08-09
+
+### Fixed
+- **Filtered graph no longer explodes lanes**: searching commits or filtering
+  by author renders a clean flat results list — one aligned avatar column with
+  ref badges inline — instead of dots drifting endlessly to the right over the
+  commit messages (parents outside the filter used to open a new lane per
+  commit that was never freed)
+- **Commit dots can no longer paint over message text**: the graph gutter
+  clips its contents and pins the node inside the visible area even on very
+  wide graphs
+- **First-lane avatars were clipped on their left edge**: the lane origin now
+  leaves room for the full avatar circle
+- **Relative times no longer wrap to two lines**: the time column fits the
+  widest value ("11mo ago") on a single line
+- **Website**: docs pages now emit their own meta description and a correct
+  per-page canonical URL (previously every page canonicalized to the
+  homepage); footer "Contributing" link no longer 404s; docs titles are
+  sentence-cased
+
+### Changed
+- **Large diffs scroll smoothly** (huge SQL/data files): word-level diff
+  degrades gracefully on very long line pairs instead of building an O(m×n)
+  token table, syntax highlighting skips extremely long lines and caches
+  per-line results, fewer offscreen rows are rendered, and diffs over 3000
+  lines stay on the virtualized no-wrap path (the wrap toggle disables itself
+  with an explanatory hint)
+- **Website install section** reads the latest release version from GitHub at
+  build time and the site redeploys automatically when a release is published
+  — no more hardcoded version drifting stale
+
 ### Added
 - **Marketing website** (`apps/website`, Astro 5): hero, features, screenshot
   gallery, performance, AI, install, and open-source sections with dark/light
