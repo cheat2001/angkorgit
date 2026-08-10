@@ -121,7 +121,7 @@ function SshCard() {
   const generate = async () => {
     setBusy(true);
     try {
-      const created = await ipc.sshKeyGenerate('~/.ssh/angkorgit_rsa', 'AngKorGit');
+      const created = await ipc.sshKeyGenerate('~/.ssh/angkorgit_ed25519', 'AngKorGit');
       settings.setSshKeyPath(created.path);
       setPublicKey(created.publicKey);
       toast.success(`Created ${created.path} — add the public key to your host`, {
@@ -138,7 +138,7 @@ function SshCard() {
   return (
     <SettingCard
       title="SSH"
-      description="Used for git@… remotes; https:// remotes use the accounts above instead. Keys must be RSA — the bundled SSH library cannot use ed25519 or ECDSA keys."
+      description="Used for git@… remotes; https:// remotes use the accounts above instead."
     >
       <div className="flex flex-col gap-3">
         <label className="flex items-center justify-between gap-3">
@@ -184,7 +184,7 @@ function SshCard() {
           </Button>
           <Button variant="secondary" size="sm" disabled={busy} onClick={() => void generate()}>
             {busy ? <Spinner /> : null}
-            Generate an RSA key
+            Generate a key
           </Button>
         </div>
 

@@ -65,7 +65,7 @@ AngKorGit focuses on the Git operations developers use every day and executes th
 - **Review with intent** — full-width diffs with a clickable minimap, previous/next-change hops, side-by-side or inline, word-level highlighting, whole-file view, image diffs.
 - **Visual conflict resolution** — checkbox picks per side, conflict-to-conflict navigation, and a fully **editable result pane** with marker guards.
 - **Always in sync** — a filesystem watcher keeps the WIP row, status, and graph in sync while you edit in your IDE or commit from a terminal.
-- **Multi-account, multi-identity** — per-host tokens in the OS keychain (GitHub, GitLab incl. self-hosted, Bitbucket) and per-repo committer profiles, so work and personal never mix. `https://` remotes use those accounts; `git@` remotes use SSH keys — **note that SSH keys must currently be RSA** ([why](docs/Getting-Started.md#ssh-keys)).
+- **Multi-account, multi-identity** — per-host tokens in the OS keychain (GitHub, GitLab incl. self-hosted, Bitbucket) and per-repo committer profiles, so work and personal never mix. `https://` remotes use those accounts; `git@` remotes use SSH keys.
 - **Keyboard-first** — ⌘K palette for everything, ⌘Z/⌘⇧Z undo/redo, ⌘B sidebar, ⌘± zoom.
 - **Beginner-friendly and safe** — destructive actions get real confirmation dialogs, failures explain themselves (down to "this is a submodule — open it as its own repository").
 - **Dark by default**, light theme included. Temple Gold `#D97706` accents, Inter + JetBrains Mono, 8px spacing rhythm.

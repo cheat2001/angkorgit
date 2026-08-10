@@ -14,7 +14,7 @@ like they worked and did not; those are fixed or gone.
 ### Added
 - **An SSH card in Settings → Authentication**: toggle the SSH agent, browse for
   a private key instead of typing a path, show and copy the matching public key
-  (the thing you paste into GitHub/GitLab/Bitbucket), and generate a new RSA 4096
+  (the thing you paste into GitHub/GitLab/Bitbucket), and generate a new ed25519
   key without leaving the app. Generation always picks a free filename, so an
   existing key can never be overwritten
 - **A toggle for the system credential helper**: turn it off to stop AngKorGit
@@ -48,12 +48,6 @@ like they worked and did not; those are fixed or gone.
   entered a path, saw no error, and still could not authenticate. The configured
   key is now tried ahead of the defaults, `~` is expanded, and each retry advances
   to the next candidate instead of re-offering the first one forever
-- **SSH keys are checked against what the bundled library can actually use**:
-  AngKorGit links a vendored libssh2 built without ed25519 or ECDSA support, so
-  those keys could never authenticate — through the agent or a key file — even
-  though the same key works with `ssh` on the command line. The failure surfaced
-  as a generic "no usable authentication"; unusable keys are now named explicitly
-  with what to do about it. See `docs/Getting-Started.md#ssh-keys`
 - **AI provider settings survive switching providers**: model, base URL and API
   key were one shared record, so trying another provider for an hour and
   switching back meant re-entering everything. Each provider keeps its own

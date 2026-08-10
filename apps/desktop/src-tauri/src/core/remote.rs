@@ -92,21 +92,6 @@ pub(crate) fn ssh_key_candidates(configured: Option<&str>, home: Option<&Path>) 
     candidates
 }
 
-const UNSUPPORTED_KEY_ALGORITHMS: [&str; 3] = ["ssh-ed25519", "ecdsa-sha2-", "sk-"];
-
-pub(crate) fn algorithm_supported(public_key_line: &str) -> bool {
-    let algorithm = public_key_line.split_whitespace().next().unwrap_or("");
-    !UNSUPPORTED_KEY_ALGORITHMS
-        .iter()
-        .any(|unsupported| algorithm.starts_with(unsupported))
-}
-
-fn key_algorithm_supported(private: &Path) -> Option<bool> {
-    let public = PathBuf::from(format!("{}.pub", private.display()));
-    let line = std::fs::read_to_string(public).ok()?;
-    Some(algorithm_supported(&line))
-}
-
 fn resolved_key_path(path: &str) -> AppResult<PathBuf> {
     let resolved = expand_home(path, home_dir().as_deref());
     if resolved.as_os_str().is_empty() {
@@ -156,7 +141,7 @@ pub fn ssh_key_generate(base: &str, comment: &str) -> AppResult<GeneratedKey> {
     }
 
     let output = std::process::Command::new("ssh-keygen")
-        .args(["-t", "rsa", "-b", "4096", "-N", "", "-C", comment, "-f"])
+        .args(["-t", "ed25519", "-N", "", "-C", comment, "-f"])
         .arg(&private)
         .output()
         .map_err(|e| AppError::other(format!("could not run ssh-keygen: {e}")))?;
@@ -256,27 +241,11 @@ pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
                 }
             }
             let home = home_dir();
-            let present: Vec<PathBuf> =
+            let usable: Vec<PathBuf> =
                 ssh_key_candidates(prefs.ssh_key_path.as_deref(), home.as_deref())
                     .into_iter()
                     .filter(|path| path.exists())
                     .collect();
-            let usable: Vec<&PathBuf> = present
-                .iter()
-                .filter(|path| key_algorithm_supported(path) != Some(false))
-                .collect();
-            if usable.is_empty() && !present.is_empty() {
-                return Err(git2::Error::from_str(&format!(
-                    "no usable SSH key for {url} — {} uses an algorithm this build cannot use. \
-                     AngKorGit bundles libssh2 without ed25519 or ECDSA support, so SSH keys must \
-                     be RSA. Generate an RSA key in Settings → Git → SSH and add it to your host, \
-                     or use an https:// remote with an account instead",
-                    present
-                        .first()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_default()
-                )));
-            }
             let index = if prefs.use_agent {
                 attempt.saturating_sub(1)
             } else {
@@ -594,24 +563,6 @@ mod tests {
             free_key_path(&base, taken),
             Some(PathBuf::from("/Users/tester/.ssh/angkorgit_rsa_3"))
         );
-    }
-
-    #[test]
-    fn rsa_keys_are_usable_by_the_bundled_libssh2() {
-        assert!(algorithm_supported("ssh-rsa AAAAB3NzaC1yc2EAAAA user@host"));
-    }
-
-    #[test]
-    fn ed25519_and_ecdsa_keys_are_not() {
-        assert!(!algorithm_supported(
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 user@host"
-        ));
-        assert!(!algorithm_supported(
-            "ecdsa-sha2-nistp256 AAAAE2VjZHNh user@host"
-        ));
-        assert!(!algorithm_supported(
-            "sk-ssh-ed25519@openssh.com AAAAG3Nr user@host"
-        ));
     }
 
     #[test]

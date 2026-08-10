@@ -21,7 +21,7 @@ For transparency, the app's security-relevant surface is:
   saved for.
 - **SSH keys** — read from disk (and the SSH agent) to authenticate `git@`
   remotes; never copied or transmitted anywhere else. Keys created by
-  Settings → Authentication → SSH are RSA 4096 and are written **without a
+  Settings → Authentication → SSH are ed25519 and are written **without a
   passphrase**, because AngKorGit cannot prompt for one — a passphrase-protected
   key only works via your SSH agent. Generation never overwrites an existing key.
 - **Network** — outbound only: git remotes you configure, Gravatar (avatar

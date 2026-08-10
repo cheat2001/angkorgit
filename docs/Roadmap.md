@@ -28,13 +28,6 @@
 
 ## Known limitations
 
-- **SSH keys must be RSA.** The vendored libssh2 that `libssh2-sys` builds defines
-  only `LIBSSH2_OPENSSL`, never `LIBSSH2_ED25519` or `LIBSSH2_ECDSA`, so ed25519 and
-  ECDSA keys fail through both the key-file path and the SSH agent — while the same
-  key works with the `ssh` binary. Since ed25519 is the `ssh-keygen` default, this
-  affects most existing keys. Lifting it means getting those defines into the
-  vendored build (a patched `libssh2-sys`, or a different crypto backend) and is the
-  highest-priority engine fix.
 - **One account per host.** `accounts::add` keys by host, so adding a second account
   for the same host replaces the first — work and personal on one host cannot coexist.
 - **Access tokens are not checked for expiry.** Atlassian API tokens and GitLab PATs

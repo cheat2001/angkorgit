@@ -397,21 +397,19 @@ update CLAUDE.md or docs/ — never the code.
   use). Never reset model/baseUrl inline in the UI on provider change — that was the
   original bug, and it also carried one provider's API key over to the next. Old
   persisted settings with no `aiProfiles` are seeded from `ai` in `onRehydrateStorage`.
-- **G21 — the bundled libssh2 supports RSA keys ONLY — not ed25519, not ECDSA**:
-  `libssh2-sys` builds vendored libssh2 with `cc` and defines only `LIBSSH2_OPENSSL`
-  (never `LIBSSH2_ED25519` / `LIBSSH2_ECDSA`), so ed25519 keys fail through BOTH the
-  key-file path and the SSH agent, while OpenSSH on the same machine succeeds with the
-  same key — which makes this look like a config bug for hours. The strings
-  `ssh-ed25519` etc. DO appear in the binary (algorithm name tables), so grepping the
-  bundle is not evidence of support. Consequences: `ssh_key_generate` creates **RSA
-  4096** (an ed25519 key would be unusable by the app that made it), and
-  `make_callbacks` filters candidates through `algorithm_supported()` and returns a
-  specific "must be RSA" error instead of the generic no-auth message. To diagnose
-  this class of failure, add a temporary `#[ignore]`d test in `remote.rs` that fetches
-  a real remote and prints `allowed` / the candidate list — the generic final `Err`
-  otherwise MASKS libgit2's real message. Fixing it properly means getting
-  `LIBSSH2_ED25519` defined in the vendored build (patched libssh2-sys, or a different
-  crypto backend); until then modern default keys simply do not work over SSH.
+- **G21 — do NOT conclude an SSH algorithm is unsupported from the absence of a
+  build define.** `libssh2-sys` never sets `LIBSSH2_ED25519`, but it does not need
+  to: `crypto.c` includes `openssl.c`, and `openssl.h` derives the define from the
+  OpenSSL version (`>= 1.1.1` → 1). With `vendored-openssl` (3.6.x) **ed25519 and
+  ECDSA are fully supported** — verified with `nm` on
+  `target/*/build/libssh2-sys-*/out/build/libssh2.a` (23 ed25519 symbols) and by an
+  end-to-end probe. An earlier release briefly shipped an "SSH keys must be RSA"
+  gate based on this wrong inference; it was removed. To diagnose SSH auth for real,
+  add a temporary `#[ignore]`d test in `remote.rs` that calls
+  `remote.connect_auth(Direction::Fetch, Some(make_callbacks()), None)` against a
+  real host (fast — authenticates without fetching objects) and vary key/URL via env
+  vars. Remember the final `Err` in `make_callbacks` MASKS libgit2's own message, so
+  never diagnose from the toast alone.
 - **G20 — accounts are HTTPS-only; SSH remotes never consult them**:
   `accounts::host_of_url` parses only `://` URLs (scp-style `git@host:path` returns
   `None`) and the lookup lives inside the `USER_PASS_PLAINTEXT` branch, which the
@@ -424,7 +422,7 @@ update CLAUDE.md or docs/ — never the code.
 | Suite | Location | Coverage |
 | --- | --- | --- |
 | Rust integration (18) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
-| Rust module (19) | `apps/desktop/src-tauri/src/ai_cli.rs` (4), `src/error.rs` (4), `src/core/remote.rs` (11) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, RSA-supported/ed25519-unsupported algorithm gate, generation never targeting an existing key |
+| Rust module (17) | `apps/desktop/src-tauri/src/ai_cli.rs` (4), `src/error.rs` (4), `src/core/remote.rs` (9) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key |
 | Unit (45) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, preset instructions, post-generation prefix enforcement) |
 | E2E (5) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search — all on demo mode |
 
@@ -466,7 +464,7 @@ plugin can be added), and the Homebrew cask.
 - **Release** (`release.yml`): push tag `v*` → tauri-action builds macOS (universal),
   Windows, Linux; attaches to draft GitHub release.
 - Repo remote: `git@github.com:cheat2001/angkorgit.git` (SSH). The owner's key is
-  `~/.ssh/angkorgit_rsa`, selected for github.com via `~/.ssh/config` — RSA because of G21.
+  `~/.ssh/angkorgit_rsa`, selected for github.com via `~/.ssh/config`.
 
 ## 11. Backlog (agreed direction, not yet built)
 

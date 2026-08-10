@@ -57,22 +57,23 @@ to check — `git remote -v`.
 
 ### SSH keys
 
-**Keys must be RSA.** AngKorGit talks SSH through a bundled libssh2 that is
-built without ed25519 or ECDSA support, so those keys are rejected even though
-the same key works with `ssh` on the command line, and even when the key is
-loaded in your SSH agent.
+Settings → Authentication → SSH → **Generate a key** creates an ed25519 keypair
+and shows the public key to copy into your host. Existing keys are never
+overwritten — generation always picks a free filename, so a second key becomes
+`angkorgit_ed25519_2` rather than replacing the first.
 
-Since `ssh-keygen` has defaulted to ed25519 for years, most existing keys are
-affected. Settings → Authentication → SSH → **Generate an RSA key** creates a
-usable one (RSA 4096, no passphrase) and shows the public key to copy into your
-host. Existing keys are never overwritten — generation always picks a free name.
-
-Two alternatives if you would rather not add another key: use `https://` remotes
-with an account, or add your RSA public key alongside the ed25519 one on the
-host (hosts accept several keys per account).
+If your key has a name AngKorGit does not try by default (`~/.ssh/id_ed25519`
+and `~/.ssh/id_rsa`), set it in the **Private key** field or browse for it.
 
 Passphrase-protected keys only work through the SSH agent, because AngKorGit
-never prompts for a passphrase. Run `ssh-add <key>` first.
+never prompts for a passphrase. Run `ssh-add <key>` first, and leave
+**Use the SSH agent** on.
 
-Lifting the RSA-only restriction is tracked as a known limitation — see
-`docs/Roadmap.md`.
+A key generated in AngKorGit is used by AngKorGit; other tools keep using
+`~/.ssh/id_*` unless you point them at it with an `~/.ssh/config` entry:
+
+```
+Host github.com
+  IdentityFile ~/.ssh/angkorgit_ed25519
+  IdentitiesOnly yes
+```
