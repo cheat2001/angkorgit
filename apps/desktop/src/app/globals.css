@@ -84,11 +84,13 @@ body {
   50% { opacity: 0; }
 }
 
-.reduce-motion *,
-.reduce-motion *::before,
-.reduce-motion *::after {
-  animation-duration: 0.001ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
+.reduce-motion .animate-dialog-in,
+.reduce-motion .animate-fade-in,
+.reduce-motion .animate-slide-up,
+.reduce-motion .diff-caret {
+  animation: none !important;
+}
+
+.reduce-motion {
   scroll-behavior: auto !important;
 }

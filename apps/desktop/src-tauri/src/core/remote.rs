@@ -76,20 +76,49 @@ pub(crate) fn expand_home(path: &str, home: Option<&Path>) -> PathBuf {
     PathBuf::from(trimmed)
 }
 
-pub(crate) fn ssh_key_candidates(configured: Option<&str>, home: Option<&Path>) -> Vec<PathBuf> {
+const MAX_SSH_KEYS: usize = 5;
+
+pub(crate) fn ssh_key_candidates(
+    configured: Option<&str>,
+    home: Option<&Path>,
+    discovered: &[PathBuf],
+) -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
+    let push = |path: PathBuf, candidates: &mut Vec<PathBuf>| {
+        if !candidates.contains(&path) && candidates.len() < MAX_SSH_KEYS {
+            candidates.push(path);
+        }
+    };
     if let Some(configured) = configured.map(str::trim).filter(|value| !value.is_empty()) {
-        candidates.push(expand_home(configured, home));
+        push(expand_home(configured, home), &mut candidates);
     }
     if let Some(home) = home {
         for name in DEFAULT_SSH_KEYS {
-            let path = home.join(".ssh").join(name);
-            if !candidates.contains(&path) {
-                candidates.push(path);
-            }
+            push(home.join(".ssh").join(name), &mut candidates);
         }
     }
+    for path in discovered {
+        push(path.clone(), &mut candidates);
+    }
     candidates
+}
+
+fn discover_ssh_keys(home: Option<&Path>) -> Vec<PathBuf> {
+    let Some(dir) = home.map(|home| home.join(".ssh")) else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "pub"))
+        .map(|path| PathBuf::from(path.display().to_string().trim_end_matches(".pub")))
+        .filter(|path| path.is_file())
+        .collect();
+    found.sort();
+    found
 }
 
 fn resolved_key_path(path: &str) -> AppResult<PathBuf> {
@@ -241,8 +270,9 @@ pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
                 }
             }
             let home = home_dir();
+            let discovered = discover_ssh_keys(home.as_deref());
             let usable: Vec<PathBuf> =
-                ssh_key_candidates(prefs.ssh_key_path.as_deref(), home.as_deref())
+                ssh_key_candidates(prefs.ssh_key_path.as_deref(), home.as_deref(), &discovered)
                     .into_iter()
                     .filter(|path| path.exists())
                     .collect();
@@ -583,7 +613,7 @@ mod tests {
 
     #[test]
     fn configured_key_is_tried_before_the_defaults() {
-        let candidates = ssh_key_candidates(Some("~/.ssh/id_ed25519_work"), Some(&home()));
+        let candidates = ssh_key_candidates(Some("~/.ssh/id_ed25519_work"), Some(&home()), &[]);
         assert_eq!(
             candidates[0],
             PathBuf::from("/Users/tester/.ssh/id_ed25519_work")
@@ -593,7 +623,7 @@ mod tests {
 
     #[test]
     fn defaults_are_used_when_nothing_is_configured() {
-        let candidates = ssh_key_candidates(None, Some(&home()));
+        let candidates = ssh_key_candidates(None, Some(&home()), &[]);
         assert_eq!(
             candidates,
             vec![
@@ -605,7 +635,7 @@ mod tests {
 
     #[test]
     fn a_configured_default_is_not_offered_twice() {
-        let candidates = ssh_key_candidates(Some("~/.ssh/id_rsa"), Some(&home()));
+        let candidates = ssh_key_candidates(Some("~/.ssh/id_rsa"), Some(&home()), &[]);
         assert_eq!(candidates.len(), 2);
         assert_eq!(candidates[0], PathBuf::from("/Users/tester/.ssh/id_rsa"));
         assert_eq!(
@@ -615,7 +645,35 @@ mod tests {
     }
 
     #[test]
+    fn other_keys_in_dot_ssh_are_tried_after_the_defaults() {
+        let discovered = vec![
+            PathBuf::from("/Users/tester/.ssh/id_ed25519"),
+            PathBuf::from("/Users/tester/.ssh/work_gitlab"),
+        ];
+        let candidates = ssh_key_candidates(None, Some(&home()), &discovered);
+        assert_eq!(
+            candidates,
+            vec![
+                PathBuf::from("/Users/tester/.ssh/id_ed25519"),
+                PathBuf::from("/Users/tester/.ssh/id_rsa"),
+                PathBuf::from("/Users/tester/.ssh/work_gitlab"),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_candidate_list_is_capped() {
+        let discovered: Vec<PathBuf> = (0..10)
+            .map(|n| PathBuf::from(format!("/Users/tester/.ssh/key_{n}")))
+            .collect();
+        assert_eq!(
+            ssh_key_candidates(Some("~/.ssh/chosen"), Some(&home()), &discovered).len(),
+            5
+        );
+    }
+
+    #[test]
     fn blank_configuration_is_ignored() {
-        assert_eq!(ssh_key_candidates(Some("   "), Some(&home())).len(), 2);
+        assert_eq!(ssh_key_candidates(Some("   "), Some(&home()), &[]).len(), 2);
     }
 }

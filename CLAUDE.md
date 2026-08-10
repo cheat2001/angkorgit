@@ -340,8 +340,15 @@ update CLAUDE.md or docs/ — never the code.
 - **G16 — GUI apps on macOS don't inherit the shell PATH**, so `which claude` from the
   webview/Rust would miss CLIs installed via npm/homebrew/nvm when the app is launched
   from Finder. `ai_cli.rs::search_path` augments PATH with well-known install dirs
-  (~/.local/bin, ~/.npm-global/bin, /opt/homebrew/bin, ~/.nvm/versions/node/*/bin, …)
-  and falls back to a `$SHELL -lc 'command -v …'` login-shell lookup; `run()` reuses the
+  (~/.local/bin, ~/.npm-global/bin, /opt/homebrew/bin, ~/.nvm/versions/node/*/bin,
+  ~/.opencode/bin, pnpm homes, mise shims, …) and falls back to a
+  `$SHELL -lc 'command -v …'` login-shell lookup — but note `-lc` is login
+  NON-interactive: zsh reads .zprofile, NOT .zshrc, so a CLI whose installer only
+  adds PATH to .zshrc (OpenCode's curl installer does exactly this, installing to
+  ~/.opencode/bin) is invisible to BOTH nets unless its dir is in the well-known
+  list. When a "CLI not detected" report arrives, ask HOW it was installed and add
+  the installer's dir; don't switch the fallback to `-lic` (interactive rcs can be
+  slow/noisy and would break under the timeout); `run()` reuses the
   augmented PATH (npm shims need `node` resolvable) and prepends the binary's own dir.
   Also: killing a timed-out CLI can leave a grandchild holding the stdout pipe — never
   join the reader threads on the timeout path or the kill blocks until the grandchild
@@ -410,6 +417,14 @@ update CLAUDE.md or docs/ — never the code.
   real host (fast — authenticates without fetching objects) and vary key/URL via env
   vars. Remember the final `Err` in `make_callbacks` MASKS libgit2's own message, so
   never diagnose from the toast alone.
+- **G23 — libssh2 does NOT read `~/.ssh/config`**: `Host` aliases, `IdentityFile`,
+  `Port`, `ProxyCommand` — none of it applies inside AngKorGit, only in the user's
+  terminal. Verified: with `~/.ssh/config` mapping github.com to a working key and
+  the agent off, auth FAILED; with the agent on holding the same key it succeeded.
+  So the SSH agent is the multi-key/per-host path. Without the agent,
+  `ssh_key_candidates` offers the configured key, the two defaults, then any other
+  keypair discovered in `~/.ssh` (a file with a matching `.pub`), capped at
+  `MAX_SSH_KEYS` = 5 because servers refuse after a handful of failed attempts.
 - **G20 — accounts are HTTPS-only; SSH remotes never consult them**:
   `accounts::host_of_url` parses only `://` URLs (scp-style `git@host:path` returns
   `None`) and the lookup lives inside the `USER_PASS_PLAINTEXT` branch, which the

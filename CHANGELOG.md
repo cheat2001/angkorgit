@@ -54,8 +54,22 @@ like they worked and did not; those are fixed or gone.
   settings now, restored on switch and across restarts. This also stops one
   provider's API key being sent to another
 - **"Reduce motion" now reduces motion**: the toggle was stored and never read.
-  It disables CSS animations and transitions and puts Framer Motion into
-  reduced-motion mode
+  It now disables the app's movement animations (dialogs, fades, slides, the
+  diff caret, Framer Motion) — scoped to exactly those, so enabling it costs
+  nothing while scrolling — and it defaults to your OS reduce-motion preference
+  on first run
+- **Several SSH keys work without the agent**: only the configured key plus
+  `~/.ssh/id_ed25519` and `~/.ssh/id_rsa` were ever offered, so a second key
+  under any other name was never tried. The other keypairs in `~/.ssh` are now
+  offered too, up to five in total (servers refuse after a handful of failed
+  attempts). Note that AngKorGit does not read `~/.ssh/config` — `Host` and
+  `IdentityFile` rules that work in your terminal do not apply here; use the
+  SSH agent for per-host keys
+- **OpenCode installed the recommended way is now detected**: the official
+  installer puts the binary in `~/.opencode/bin` and adds PATH only to `.zshrc`,
+  which neither the well-known-locations scan nor the login-shell fallback could
+  see. That directory — plus pnpm's global bin and mise shims — is now scanned
+  directly
 - **Plan-limit and permission failures are explained**: HTTP 402 and 403 from a
   remote surfaced as raw libgit2 text (`unexpected http status code: 402;
   class=Http (34)`). They now carry a plain description and the error codes

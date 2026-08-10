@@ -87,6 +87,10 @@ fn search_path(extra: Option<&Path>) -> std::ffi::OsString {
             ".volta/bin",
             ".asdf/shims",
             ".npm-global/bin",
+            ".opencode/bin",
+            "Library/pnpm",
+            ".local/share/pnpm",
+            ".local/share/mise/shims",
             "bin",
         ] {
             push(&mut dirs, home.join(rel));
@@ -341,6 +345,15 @@ pub fn run(request: CliRunRequest) -> AppResult<CliRunResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_path_covers_dedicated_installer_dirs() {
+        let path = search_path(None);
+        let joined = path.to_string_lossy().to_string();
+        for dir in [".opencode/bin", "pnpm", ".claude/local"] {
+            assert!(joined.contains(dir), "missing {dir} in {joined}");
+        }
+    }
 
     #[test]
     fn rejects_unsupported_program() {

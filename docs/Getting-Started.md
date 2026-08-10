@@ -69,6 +69,23 @@ Passphrase-protected keys only work through the SSH agent, because AngKorGit
 never prompts for a passphrase. Run `ssh-add <key>` first, and leave
 **Use the SSH agent** on.
 
+### More than one key
+
+Many people use a different key per host — one for work, one for personal.
+That works, with one thing to know: **AngKorGit does not read `~/.ssh/config`**.
+The library it uses for SSH has never parsed it, so `Host` aliases and
+`IdentityFile` rules that work in your terminal have no effect in the app.
+
+Two ways to use several keys:
+
+- **The SSH agent** (recommended) — `ssh-add key1 key2 …`. The agent offers each
+  key in turn and the host picks the one it knows. Leave **Use the SSH agent**
+  on. This is also the only way a passphrase-protected key can work.
+- **Without the agent**, AngKorGit tries your configured key first, then
+  `~/.ssh/id_ed25519` and `~/.ssh/id_rsa`, then any other keypair it finds in
+  `~/.ssh` — up to five in total, since SSH servers cut you off after a handful
+  of failed attempts.
+
 A key generated in AngKorGit is used by AngKorGit; other tools keep using
 `~/.ssh/id_*` unless you point them at it with an `~/.ssh/config` entry:
 
