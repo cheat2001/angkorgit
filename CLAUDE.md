@@ -465,7 +465,8 @@ plugin can be added), and the Homebrew cask.
   is no longer used — the GitHub Pages site is built at root base for the custom domain.
 - **Release** (`release.yml`): push tag `v*` → tauri-action builds macOS (universal),
   Windows, Linux; attaches to draft GitHub release.
-- Repo remote: `https://github.com/cheat2001/angkorgit.git` (HTTPS by owner preference).
+- Repo remote: `git@github.com:cheat2001/angkorgit.git` (SSH). The owner's key is
+  `~/.ssh/angkorgit_rsa`, selected for github.com via `~/.ssh/config` — RSA because of G21.
 
 ## 11. Backlog (agreed direction, not yet built)
 
