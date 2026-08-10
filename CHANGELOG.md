@@ -20,6 +20,12 @@ All notable changes to AngKorGit are documented here. The format follows
   with the Advanced card that held them
 
 ### Fixed
+- **AI provider settings survive switching providers**: model, base URL and API key
+  were one shared record, so trying the installed-CLI provider for an hour and
+  switching back meant re-entering everything. Each provider now keeps its own
+  settings, restored when you switch back and remembered across restarts. This
+  also stops one provider's API key being sent to another — previously the key
+  was carried over unchanged when the provider changed
 - **"Reduce motion" now reduces motion**: the toggle was stored and never read.
   It now disables CSS animations and transitions and puts Framer Motion into
   reduced-motion mode

@@ -224,7 +224,9 @@ features/
 ├── inspector/                ← Inspector (working copy ⟷ commit details), CommitDetails
 ├── terminal/TerminalPanel    ← xterm.js ↔ PTY events
 ├── settings/                 ← store (theme, accent, zoom, reduceMotion — applied via a
-│                               `reduce-motion` class + MotionConfig, ai config, aiStyle
+│                               `reduce-motion` class + MotionConfig, ai config +
+│                               aiProfiles (PER-PROVIDER model/baseUrl/apiKey, see G22),
+│                               aiStyle
 │                               commit style + branch prefix rules, identity
 │                               PROFILES — persisted), SettingsDialog (Appearance/Git/
 │                               AUTHENTICATION/AI/Shortcuts tabs incl. commit-style card
@@ -386,6 +388,13 @@ update CLAUDE.md or docs/ — never the code.
   `Cred::ssh_key` passes `None` for the passphrase, so **passphrase-protected keys
   only work via the agent**. `ssh_key_generate` shells out to `ssh-keygen -t ed25519
   -N ""` and REFUSES to overwrite an existing file — never relax that.
+- **G22 — AI settings are per provider**: `ai` holds the ACTIVE config, `aiProfiles`
+  keeps one `AiProfile` (model/baseUrl/apiKey/cliAgent/cliPath) per `AiProviderKind`.
+  `setAi` write-through-caches into the active provider's profile; `setAiProvider`
+  saves the outgoing profile and restores the incoming one (preset defaults on first
+  use). Never reset model/baseUrl inline in the UI on provider change — that was the
+  original bug, and it also carried one provider's API key over to the next. Old
+  persisted settings with no `aiProfiles` are seeded from `ai` in `onRehydrateStorage`.
 - **G21 — the bundled libssh2 supports RSA keys ONLY — not ed25519, not ECDSA**:
   `libssh2-sys` builds vendored libssh2 with `cc` and defines only `LIBSSH2_OPENSSL`
   (never `LIBSSH2_ED25519` / `LIBSSH2_ECDSA`), so ed25519 keys fail through BOTH the

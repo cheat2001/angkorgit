@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { DEFAULT_AI_STYLE, type AiConfig, type AiStyleConfig, type CommitStyle } from '@angkorgit/core';
+import {
+  AI_PROVIDER_PRESETS,
+  DEFAULT_AI_STYLE,
+  type AiConfig,
+  type AiProviderKind,
+  type AiStyleConfig,
+  type CommitStyle,
+} from '@angkorgit/core';
 import { isTauri } from '@/core/ipc';
 
 export type Theme =
@@ -105,6 +112,17 @@ function applyZoom(zoom: number): void {
   }
 }
 
+export type AiProfile = Omit<AiConfig, 'provider'>;
+
+function splitProvider(config: AiConfig): { provider: AiProviderKind; profile: AiProfile } {
+  const { provider, ...profile } = config;
+  return { provider, profile };
+}
+
+function defaultProfile(provider: AiProviderKind): AiProfile {
+  return { apiKey: '', model: AI_PROVIDER_PRESETS[provider].defaultModel, baseUrl: '' };
+}
+
 interface SettingsState {
   theme: Theme;
   accent: AccentId;
@@ -115,6 +133,7 @@ interface SettingsState {
   reduceMotion: boolean;
   profiles: IdentityProfile[];
   ai: AiConfig;
+  aiProfiles: Partial<Record<AiProviderKind, AiProfile>>;
   aiStyle: AiStyleConfig;
   setTheme: (theme: Theme) => void;
   setAccent: (accent: AccentId) => void;
@@ -129,6 +148,7 @@ interface SettingsState {
   addProfile: (profile: Omit<IdentityProfile, 'id'>) => void;
   removeProfile: (id: string) => void;
   setAi: (config: Partial<AiConfig>) => void;
+  setAiProvider: (provider: AiProviderKind) => void;
   setCommitStyle: (style: Partial<CommitStyle>) => void;
 }
 
@@ -147,6 +167,7 @@ export const useSettings = create<SettingsState>()(
       reduceMotion: false,
       profiles: [],
       ai: { provider: 'ollama', apiKey: '', model: 'llama3.1', baseUrl: '' },
+      aiProfiles: {},
       aiStyle: DEFAULT_AI_STYLE,
       setTheme: (theme) => {
         applyTheme(theme);
@@ -176,7 +197,26 @@ export const useSettings = create<SettingsState>()(
           profiles: [...s.profiles, { ...profile, id: crypto.randomUUID() }],
         })),
       removeProfile: (id) => set((s) => ({ profiles: s.profiles.filter((p) => p.id !== id) })),
-      setAi: (config) => set((s) => ({ ai: { ...s.ai, ...config } })),
+      setAi: (config) =>
+        set((s) => {
+          const ai = { ...s.ai, ...config };
+          const { provider, profile } = splitProvider(ai);
+          return { ai, aiProfiles: { ...s.aiProfiles, [provider]: profile } };
+        }),
+      setAiProvider: (provider) =>
+        set((s) => {
+          if (provider === s.ai.provider) return s;
+          const current = splitProvider(s.ai);
+          const next = s.aiProfiles[provider] ?? defaultProfile(provider);
+          return {
+            ai: { provider, ...next },
+            aiProfiles: {
+              ...s.aiProfiles,
+              [current.provider]: current.profile,
+              [provider]: next,
+            },
+          };
+        }),
       setCommitStyle: (style) =>
         set((s) => ({ aiStyle: { ...s.aiStyle, commit: { ...s.aiStyle.commit, ...style } } })),
     }),
@@ -188,6 +228,10 @@ export const useSettings = create<SettingsState>()(
         if (zoom !== 1) applyZoom(zoom);
         applyAccent(state?.accent ?? 'gold');
         applyReduceMotion(state?.reduceMotion ?? false);
+        if (state && Object.keys(state.aiProfiles ?? {}).length === 0) {
+          const { provider, profile } = splitProvider(state.ai);
+          state.aiProfiles = { [provider]: profile };
+        }
       },
     },
   ),

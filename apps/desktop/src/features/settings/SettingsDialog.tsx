@@ -789,14 +789,7 @@ export function SettingsDialog() {
                     <div className="flex flex-col gap-3">
                       <Select
                         value={settings.ai.provider}
-                        onValueChange={(value) => {
-                          const kind = value as AiProviderKind;
-                          settings.setAi({
-                            provider: kind,
-                            model: AI_PROVIDER_PRESETS[kind].defaultModel,
-                            baseUrl: '',
-                          });
-                        }}
+                        onValueChange={(value) => settings.setAiProvider(value as AiProviderKind)}
                       >
                         <SelectTrigger>
                           <SelectValue />
