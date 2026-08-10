@@ -84,7 +84,7 @@ cask "angkorgit" do
   sha256 "<shasum -a 256 of the dmg>"
   url "https://github.com/cheat2001/angkorgit/releases/download/v#{version}/AngKorGit_#{version}_universal.dmg"
   name "AngKorGit"
-  desc "Fast, beautiful, 8 MB Git client"
+  desc "Fast, beautiful, lightweight Git client"
   homepage "https://github.com/cheat2001/angkorgit"
   app "AngKorGit.app"
 end

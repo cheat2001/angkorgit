@@ -23,7 +23,7 @@
   <img src="docs/assets/graph.png" alt="AngKorGit — commit graph with repository tabs and the ⌘K command palette" width="920" />
 </p>
 
-AngKorGit focuses on the Git operations developers use every day and executes them exceptionally well — in an app that weighs **~8 MB** instead of a gigabyte.
+AngKorGit focuses on the Git operations developers use every day and executes them exceptionally well — in an app that weighs **12 MB to download** (25 MB installed, universal macOS build) instead of a gigabyte.
 
 <table>
   <tr>
@@ -80,13 +80,13 @@ when a newer release lands):
 
 ```bash
 # macOS (downloads, removes the Gatekeeper quarantine flag, opens the dmg)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.1.2/AngKorGit_0.1.2_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.3.0/AngKorGit_0.3.0_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
 
 # Windows (PowerShell)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.1.2/AngKorGit_0.1.2_x64-setup.exe -o "$env:TEMP\AngKorGit-setup.exe"; Start-Process "$env:TEMP\AngKorGit-setup.exe"
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.3.0/AngKorGit_0.3.0_x64-setup.exe -o "$env:TEMP\AngKorGit-setup.exe"; Start-Process "$env:TEMP\AngKorGit-setup.exe"
 
 # Linux (AppImage)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.1.2/AngKorGit_0.1.2_amd64.AppImage -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.3.0/AngKorGit_0.3.0_amd64.AppImage -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage
 ```
 
 AngKorGit is free, open-source software and is **not signed with a paid
