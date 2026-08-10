@@ -21,6 +21,7 @@ interface ProviderPreset {
   hostEditable: boolean;
   tokenUrl: (host: string) => string | null;
   tokenHint: string;
+  usernameHint: string;
 }
 
 const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
@@ -30,6 +31,7 @@ const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
     hostEditable: false,
     tokenUrl: () => 'https://github.com/settings/tokens/new?scopes=repo&description=AngKorGit',
     tokenHint: 'Personal access token with the "repo" scope',
+    usernameHint: 'username (detected from the token)',
   },
   gitlab: {
     label: 'GitLab.com',
@@ -37,6 +39,7 @@ const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
     hostEditable: false,
     tokenUrl: () => 'https://gitlab.com/-/user_settings/personal_access_tokens',
     tokenHint: 'Personal access token with "read_repository" + "write_repository" scopes',
+    usernameHint: 'username (detected from the token)',
   },
   'gitlab-self': {
     label: 'GitLab (self-hosted)',
@@ -44,13 +47,15 @@ const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
     hostEditable: true,
     tokenUrl: (host) => (host ? `http://${host}/-/user_settings/personal_access_tokens` : null),
     tokenHint: 'Personal access token with "read_repository" + "write_repository" scopes',
+    usernameHint: 'username (detected from the token)',
   },
   bitbucket: {
     label: 'Bitbucket',
     defaultHost: 'bitbucket.org',
     hostEditable: false,
-    tokenUrl: () => 'https://bitbucket.org/account/settings/app-passwords/new',
-    tokenHint: 'App password with repository read/write',
+    tokenUrl: () => 'https://id.atlassian.com/manage-profile/security/api-tokens',
+    tokenHint: 'API token with read:repository:bitbucket + write:repository:bitbucket scopes',
+    usernameHint: 'Atlassian account email (your Bitbucket username is detected)',
   },
   other: {
     label: 'Other host',
@@ -58,6 +63,7 @@ const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
     hostEditable: true,
     tokenUrl: () => null,
     tokenHint: 'Token or password used for HTTPS git access',
+    usernameHint: 'username',
   },
 };
 
@@ -70,9 +76,30 @@ function providerIcon(provider: string) {
 async function validateToken(
   provider: ProviderKind,
   host: string,
+  identity: string,
   token: string,
 ): Promise<{ login: string } | null | 'unreachable'> {
   try {
+    if (provider === 'bitbucket') {
+      if (!identity) {
+        throw new Error('enter your Atlassian account email so the token can be verified');
+      }
+      const res = await ipc.httpRequest({
+        url: 'https://api.bitbucket.org/2.0/user',
+        method: 'GET',
+        headers: {
+          authorization: `Basic ${btoa(`${identity}:${token}`)}`,
+          'user-agent': 'AngKorGit',
+        },
+      });
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          `Bitbucket rejected these credentials (${res.status}) — check that this is your Atlassian account email and that the API token carries the read:repository:bitbucket scope`,
+        );
+      }
+      if (res.status !== 200) throw new Error(`Bitbucket rejected the token (${res.status})`);
+      return { login: (JSON.parse(res.body) as { username: string }).username };
+    }
     if (provider === 'github') {
       const res = await ipc.httpRequest({
         url: 'https://api.github.com/user',
@@ -137,21 +164,30 @@ export function AccountsTab() {
     setBusy(true);
     try {
       let finalUsername = username.trim();
-      const verified = await validateToken(provider, cleanHost, token.trim());
+      let isVerified = false;
+      const verified = await validateToken(provider, cleanHost, finalUsername, token.trim());
       if (verified === 'unreachable') {
         toast.warning(`${cleanHost} is unreachable right now — saving without verification`);
         if (!finalUsername) throw new Error('enter a username to save without verification');
       } else if (verified) {
         finalUsername = verified.login;
+        isVerified = true;
       } else if (!finalUsername) {
         throw new Error('username is required for this provider');
       }
 
-      const updated = await ipc.accountAdd(cleanHost, finalUsername, provider, token.trim());
+      const updated = await ipc.accountAdd(
+        cleanHost,
+        finalUsername,
+        provider,
+        token.trim(),
+        isVerified,
+      );
       setAccounts(updated);
       setToken('');
       setUsername('');
-      toast.success(`Connected ${cleanHost} as ${finalUsername}`);
+      if (isVerified) toast.success(`Connected ${cleanHost} as ${finalUsername}`);
+      else toast.warning(`Saved ${cleanHost} as ${finalUsername} — token not verified`);
     } catch (error) {
       toast.error(`Connect failed: ${(error as { message?: string }).message ?? error}`);
     } finally {
@@ -183,10 +219,11 @@ export function AccountsTab() {
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 text-sm">
                   {account.host}
-                  <CheckCircle2 className="size-3.5 text-success" />
+                  {account.verified && <CheckCircle2 className="size-3.5 text-success" />}
                 </p>
                 <p className="text-xs text-faint">
                   {account.username} · token in system keychain
+                  {account.verified ? '' : ' · not verified'}
                 </p>
               </div>
               <Button
@@ -232,7 +269,7 @@ export function AccountsTab() {
             />
           </div>
           <Input
-            placeholder={provider === 'github' || provider === 'gitlab' ? 'username (auto-detected from token)' : 'username'}
+            placeholder={preset.usernameHint}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />

@@ -6,6 +6,28 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Bitbucket accounts now use API tokens**: Bitbucket Cloud removed app
+  passwords on 2026-07-28, so the Accounts tab pointed at a dead page and asked
+  for a credential that no longer exists. The "create a token" link now opens the
+  Atlassian API token page, the hint names the required
+  `read:repository:bitbucket` + `write:repository:bitbucket` scopes, and the
+  username field asks for the Atlassian account email
+- **Connecting an account verifies the token instead of always claiming success**:
+  every account row showed a green tick whether or not anything had been checked,
+  and Bitbucket/other hosts saved any typed string as valid. Tokens are now
+  verified against the provider before saving where the provider supports it, the
+  tick appears only for verified accounts, and unverified ones are labelled as
+  such. Bitbucket verification also detects the real Bitbucket username from the
+  Atlassian email, so the stored username is the one git actually needs
+- **Plan-limit and permission push failures are explained**: HTTP 402 and 403
+  from a remote surfaced as raw libgit2 text (`unexpected http status code: 402;
+  class=Http (34)`). They now carry a plain description and the error codes
+  `plan_limit` / `forbidden`
+- **Clone dialog describes authentication accurately**: it credited only the SSH
+  agent and credential helper, never mentioning saved accounts — the first
+  credential source the engine tries
+
 ## [0.2.0] — 2026-08-09
 
 ### Fixed

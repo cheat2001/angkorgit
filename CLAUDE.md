@@ -153,7 +153,9 @@ core/
 │                       pull_branch (ff-without-checkout for non-HEAD), push_tag,
 │                       credential_approve (git credential approve → OS keychain)
 ├── accounts.rs       ← app-managed hosting accounts: tokens in OS keyring (service
-│                       "AngKorGit"), metadata accounts.json; lookup(host) for auth
+│                       "AngKorGit"), metadata accounts.json (host/username/provider +
+│                       `verified`, serde-default so pre-0.2 files still parse);
+│                       lookup(host) for auth. ONE account per host (see G17)
 ├── misc.rs           ← stash (list/create/apply/pop/drop), tags, submodules
 ├── diff.rs           ← FileDiff w/ hunks+lines, contextLines param (huge = whole-file view),
 │                       commit_diff (first-parent, rename detection), image diffs (base64),
@@ -341,12 +343,30 @@ update CLAUDE.md or docs/ — never the code.
   legitimately contain the literal text, e.g. a staged diff of ai_cli.rs/cliAgents.ts
   themselves (regression test: `leaves_prompt_args_containing_placeholder_text_untouched`).
 
+- **G17 — hosting credentials in the API-token era**: Bitbucket Cloud removed app
+  passwords 2026-07-28; the replacement is an Atlassian **API token with scopes**
+  (`read:repository:bitbucket` + `write:repository:bitbucket` — write does NOT imply
+  read). The identity differs per surface: **git over HTTPS wants the Bitbucket
+  username** (case-sensitive) or the static `x-bitbucket-api-token-auth`, while the
+  **REST API wants the Atlassian account email**. AccountsTab therefore asks for the
+  email, verifies via Basic auth against `api.bitbucket.org/2.0/user`, and stores the
+  `username` the API returns — never the email, which fails for git. Related traps:
+  API tokens **expire** (app passwords never did), so accounts silently rot and
+  nothing warns yet; `accounts::add` keys by host alone and `retain`s away any
+  existing row, so adding a second account for the same host **deletes** the first
+  (blocks work+personal on one host); the account is only offered on libgit2 attempt
+  0, so a wrong username falls through to the credential helper and the account
+  silently stops participating. Finally, HTTP **402 is not auth** — a free Bitbucket
+  workspace over its 5-user limit turns private repos read-only while public repos
+  still accept pushes, and the user count includes per-repo and group grants, not
+  just the members list.
+
 ## 9. Testing map
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
 | Rust integration (18) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
-| Rust module (4) | `apps/desktop/src-tauri/src/ai_cli.rs` | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout |
+| Rust module (8) | `apps/desktop/src-tauri/src/ai_cli.rs` (4), `src/error.rs` (4) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim |
 | Unit (44) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, preset instructions, post-generation prefix enforcement) |
 | E2E (5) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search — all on demo mode |
 

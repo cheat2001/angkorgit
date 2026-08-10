@@ -34,6 +34,7 @@ export interface HostingAccount {
   host: string;
   username: string;
   provider: string;
+  verified: boolean;
 }
 
 export const isTauri = (): boolean =>
@@ -405,12 +406,19 @@ export const ipc = {
     return invoke('credential_store', { host, username, password });
   },
   async accountList(): Promise<HostingAccount[]> {
-    if (!isTauri()) return [{ host: 'github.com', username: 'demo-user', provider: 'github' }];
+    if (!isTauri())
+      return [{ host: 'github.com', username: 'demo-user', provider: 'github', verified: true }];
     return invoke('account_list');
   },
-  async accountAdd(host: string, username: string, provider: string, token: string): Promise<HostingAccount[]> {
-    if (!isTauri()) return [{ host, username, provider }];
-    return invoke('account_add', { host, username, provider, token });
+  async accountAdd(
+    host: string,
+    username: string,
+    provider: string,
+    token: string,
+    verified: boolean,
+  ): Promise<HostingAccount[]> {
+    if (!isTauri()) return [{ host, username, provider, verified }];
+    return invoke('account_add', { host, username, provider, token, verified });
   },
   async accountRemove(host: string): Promise<HostingAccount[]> {
     if (!isTauri()) return [];

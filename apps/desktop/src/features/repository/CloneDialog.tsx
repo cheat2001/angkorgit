@@ -55,7 +55,10 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Clone repository</DialogTitle>
-          <DialogDescription>HTTPS or SSH URL. Authentication uses your SSH agent or credential helper.</DialogDescription>
+          <DialogDescription>
+            HTTPS or SSH URL. HTTPS uses your saved accounts first, then the system credential
+            helper; SSH uses your agent and keys.
+          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <Input

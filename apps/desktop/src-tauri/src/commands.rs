@@ -561,8 +561,10 @@ pub async fn account_add(
     username: String,
     provider: String,
     token: String,
+    verified: bool,
 ) -> AppResult<Vec<crate::core::accounts::AccountInfo>> {
-    blocking(move || crate::core::accounts::add(&host, &username, &provider, &token)).await
+    blocking(move || crate::core::accounts::add(&host, &username, &provider, &token, verified))
+        .await
 }
 
 #[tauri::command]

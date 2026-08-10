@@ -23,6 +23,8 @@ pub struct AccountInfo {
     pub host: String,
     pub username: String,
     pub provider: String,
+    #[serde(default)]
+    pub verified: bool,
 }
 
 fn meta_path() -> Option<PathBuf> {
@@ -59,7 +61,13 @@ fn save_list(accounts: &[AccountInfo]) -> AppResult<()> {
     Ok(())
 }
 
-pub fn add(host: &str, username: &str, provider: &str, token: &str) -> AppResult<Vec<AccountInfo>> {
+pub fn add(
+    host: &str,
+    username: &str,
+    provider: &str,
+    token: &str,
+    verified: bool,
+) -> AppResult<Vec<AccountInfo>> {
     let host = normalize_host(host);
     if host.is_empty() || username.trim().is_empty() || token.trim().is_empty() {
         return Err(AppError::other("host, username and token are all required"));
@@ -83,6 +91,7 @@ pub fn add(host: &str, username: &str, provider: &str, token: &str) -> AppResult
         host,
         username: username.trim().to_string(),
         provider: provider.to_string(),
+        verified,
     });
     accounts.sort_by(|a, b| a.host.cmp(&b.host));
     save_list(&accounts)?;
