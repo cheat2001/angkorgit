@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, MotionConfig } from 'framer-motion';
 import { Toaster } from 'sonner';
 import { TooltipProvider } from '@angkorgit/design-system';
 import { SplashScreen } from './SplashScreen';
@@ -11,6 +11,7 @@ import { RepositoryPage } from '@/features/repository/RepositoryPage';
 import { useRepo } from '@/features/repository/store';
 import { applyTheme, themeBase, useSettings } from '@/features/settings/store';
 import { useShortcuts } from '@/shared/useShortcuts';
+import { ipc } from '@/core/ipc';
 
 function Shell() {
   const [splash, setSplash] = useState(true);
@@ -63,10 +64,18 @@ function Shell() {
 
 export function App() {
   const theme = useSettings((s) => s.theme);
+  const reduceMotion = useSettings((s) => s.reduceMotion);
+  const sshKeyPath = useSettings((s) => s.sshKeyPath);
+  const sshUseAgent = useSettings((s) => s.sshUseAgent);
+  const useCredentialHelper = useSettings((s) => s.useCredentialHelper);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    void ipc.setCredentialPrefs(sshKeyPath.trim() || null, sshUseAgent, useCredentialHelper);
+  }, [sshKeyPath, sshUseAgent, useCredentialHelper]);
 
   useEffect(() => {
     const onContextMenu = (e: MouseEvent) => {
@@ -79,7 +88,8 @@ export function App() {
   }, []);
 
   return (
-    <TooltipProvider>
+    <MotionConfig reducedMotion={reduceMotion ? 'always' : 'never'}>
+      <TooltipProvider>
       <MemoryRouter initialEntries={['/']}>
         <div className="h-full">
           <ErrorBoundary>
@@ -109,6 +119,7 @@ export function App() {
           },
         }}
       />
-    </TooltipProvider>
+      </TooltipProvider>
+    </MotionConfig>
   );
 }

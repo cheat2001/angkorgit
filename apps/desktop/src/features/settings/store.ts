@@ -69,6 +69,11 @@ export const ACCENTS: Array<{ id: AccentId; label: string; color: string }> = [
 
 const ACCENT_CLASSES = ACCENTS.filter((a) => a.id !== 'gold').map((a) => `accent-${a.id}`);
 
+export function applyReduceMotion(reduceMotion: boolean): void {
+  const el = document.documentElement;
+  el.classList.toggle('reduce-motion', reduceMotion);
+}
+
 function applyAccent(accent: AccentId): void {
   const el = document.documentElement;
   el.classList.remove(...ACCENT_CLASSES);
@@ -104,10 +109,10 @@ interface SettingsState {
   theme: Theme;
   accent: AccentId;
   zoom: number;
-  gitExecutable: string;
   sshKeyPath: string;
+  sshUseAgent: boolean;
+  useCredentialHelper: boolean;
   reduceMotion: boolean;
-  githubUser: string;
   profiles: IdentityProfile[];
   ai: AiConfig;
   aiStyle: AiStyleConfig;
@@ -117,10 +122,10 @@ interface SettingsState {
   zoomIn: () => void;
   zoomOut: () => void;
   zoomReset: () => void;
-  setGitExecutable: (path: string) => void;
   setSshKeyPath: (path: string) => void;
+  setSshUseAgent: (value: boolean) => void;
+  setUseCredentialHelper: (value: boolean) => void;
   setReduceMotion: (value: boolean) => void;
-  setGithubUser: (login: string) => void;
   addProfile: (profile: Omit<IdentityProfile, 'id'>) => void;
   removeProfile: (id: string) => void;
   setAi: (config: Partial<AiConfig>) => void;
@@ -136,10 +141,10 @@ export const useSettings = create<SettingsState>()(
       theme: 'dark',
       accent: 'gold',
       zoom: 1,
-      gitExecutable: 'git',
       sshKeyPath: '',
+      sshUseAgent: true,
+      useCredentialHelper: true,
       reduceMotion: false,
-      githubUser: '',
       profiles: [],
       ai: { provider: 'ollama', apiKey: '', model: 'llama3.1', baseUrl: '' },
       aiStyle: DEFAULT_AI_STYLE,
@@ -159,10 +164,13 @@ export const useSettings = create<SettingsState>()(
       zoomIn: () => get().setZoom(get().zoom + ZOOM_STEP),
       zoomOut: () => get().setZoom(get().zoom - ZOOM_STEP),
       zoomReset: () => get().setZoom(1),
-      setGitExecutable: (gitExecutable) => set({ gitExecutable }),
       setSshKeyPath: (sshKeyPath) => set({ sshKeyPath }),
-      setReduceMotion: (reduceMotion) => set({ reduceMotion }),
-      setGithubUser: (githubUser) => set({ githubUser }),
+      setSshUseAgent: (sshUseAgent) => set({ sshUseAgent }),
+      setUseCredentialHelper: (useCredentialHelper) => set({ useCredentialHelper }),
+      setReduceMotion: (reduceMotion) => {
+        applyReduceMotion(reduceMotion);
+        set({ reduceMotion });
+      },
       addProfile: (profile) =>
         set((s) => ({
           profiles: [...s.profiles, { ...profile, id: crypto.randomUUID() }],
@@ -179,6 +187,7 @@ export const useSettings = create<SettingsState>()(
         const zoom = state?.zoom ?? 1;
         if (zoom !== 1) applyZoom(zoom);
         applyAccent(state?.accent ?? 'gold');
+        applyReduceMotion(state?.reduceMotion ?? false);
       },
     },
   ),

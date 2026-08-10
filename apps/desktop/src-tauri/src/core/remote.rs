@@ -1,4 +1,6 @@
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{OnceLock, RwLock};
 
 use git2::{
     build::CheckoutBuilder, AutotagOption, Cred, CredentialType, FetchOptions, PushOptions,
@@ -7,7 +9,169 @@ use git2::{
 
 use crate::error::{AppError, AppResult};
 
-use super::types::{OpOutcome, RemoteInfo};
+use super::types::{GeneratedKey, OpOutcome, RemoteInfo};
+
+static CREDENTIAL_PREFS: OnceLock<RwLock<CredentialPrefs>> = OnceLock::new();
+
+const DEFAULT_SSH_KEYS: [&str; 2] = ["id_ed25519", "id_rsa"];
+
+#[derive(Clone)]
+pub struct CredentialPrefs {
+    pub ssh_key_path: Option<String>,
+    pub use_agent: bool,
+    pub use_credential_helper: bool,
+}
+
+impl Default for CredentialPrefs {
+    fn default() -> Self {
+        Self {
+            ssh_key_path: None,
+            use_agent: true,
+            use_credential_helper: true,
+        }
+    }
+}
+
+fn credential_prefs() -> &'static RwLock<CredentialPrefs> {
+    CREDENTIAL_PREFS.get_or_init(|| RwLock::new(CredentialPrefs::default()))
+}
+
+pub fn set_credential_prefs(
+    ssh_key_path: Option<String>,
+    use_agent: bool,
+    use_credential_helper: bool,
+) {
+    let cleaned = ssh_key_path
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if let Ok(mut slot) = credential_prefs().write() {
+        *slot = CredentialPrefs {
+            ssh_key_path: cleaned,
+            use_agent,
+            use_credential_helper,
+        };
+    }
+}
+
+fn prefs_snapshot() -> CredentialPrefs {
+    credential_prefs()
+        .read()
+        .map(|prefs| prefs.clone())
+        .unwrap_or_default()
+}
+
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
+pub(crate) fn expand_home(path: &str, home: Option<&Path>) -> PathBuf {
+    let trimmed = path.trim();
+    if let Some(rest) = trimmed.strip_prefix("~/") {
+        if let Some(home) = home {
+            return home.join(rest);
+        }
+    }
+    PathBuf::from(trimmed)
+}
+
+pub(crate) fn ssh_key_candidates(configured: Option<&str>, home: Option<&Path>) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(configured) = configured.map(str::trim).filter(|value| !value.is_empty()) {
+        candidates.push(expand_home(configured, home));
+    }
+    if let Some(home) = home {
+        for name in DEFAULT_SSH_KEYS {
+            let path = home.join(".ssh").join(name);
+            if !candidates.contains(&path) {
+                candidates.push(path);
+            }
+        }
+    }
+    candidates
+}
+
+const UNSUPPORTED_KEY_ALGORITHMS: [&str; 3] = ["ssh-ed25519", "ecdsa-sha2-", "sk-"];
+
+pub(crate) fn algorithm_supported(public_key_line: &str) -> bool {
+    let algorithm = public_key_line.split_whitespace().next().unwrap_or("");
+    !UNSUPPORTED_KEY_ALGORITHMS
+        .iter()
+        .any(|unsupported| algorithm.starts_with(unsupported))
+}
+
+fn key_algorithm_supported(private: &Path) -> Option<bool> {
+    let public = PathBuf::from(format!("{}.pub", private.display()));
+    let line = std::fs::read_to_string(public).ok()?;
+    Some(algorithm_supported(&line))
+}
+
+fn resolved_key_path(path: &str) -> AppResult<PathBuf> {
+    let resolved = expand_home(path, home_dir().as_deref());
+    if resolved.as_os_str().is_empty() {
+        return Err(AppError::other("choose a path for the key"));
+    }
+    Ok(resolved)
+}
+
+pub fn ssh_public_key(path: &str) -> AppResult<String> {
+    let private = resolved_key_path(path)?;
+    let public = PathBuf::from(format!("{}.pub", private.display()));
+    if !public.exists() {
+        return Err(AppError::other(format!(
+            "no public key next to {} — expected {}",
+            private.display(),
+            public.display()
+        )));
+    }
+    Ok(std::fs::read_to_string(public)?.trim().to_string())
+}
+
+pub(crate) fn free_key_path(base: &Path, taken: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+    let candidate = base.to_path_buf();
+    if !taken(&candidate) {
+        return Some(candidate);
+    }
+    (2..100).find_map(|suffix| {
+        let candidate = PathBuf::from(format!("{}_{suffix}", base.display()));
+        (!taken(&candidate)).then_some(candidate)
+    })
+}
+
+fn path_in_use(path: &Path) -> bool {
+    path.exists() || PathBuf::from(format!("{}.pub", path.display())).exists()
+}
+
+pub fn ssh_key_generate(base: &str, comment: &str) -> AppResult<GeneratedKey> {
+    let requested = resolved_key_path(base)?;
+    let private = free_key_path(&requested, path_in_use).ok_or_else(|| {
+        AppError::other(format!(
+            "could not find a free name next to {} — remove some old keys first",
+            requested.display()
+        ))
+    })?;
+    if let Some(parent) = private.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let output = std::process::Command::new("ssh-keygen")
+        .args(["-t", "rsa", "-b", "4096", "-N", "", "-C", comment, "-f"])
+        .arg(&private)
+        .output()
+        .map_err(|e| AppError::other(format!("could not run ssh-keygen: {e}")))?;
+    if !output.status.success() {
+        return Err(AppError::other(format!(
+            "ssh-keygen failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    let path = private.to_string_lossy().to_string();
+    Ok(GeneratedKey {
+        public_key: ssh_public_key(&path)?,
+        path,
+    })
+}
 
 pub fn credential_approve(host: &str, username: &str, password: &str) -> AppResult<()> {
     use std::io::Write;
@@ -83,21 +247,46 @@ pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
                  offered by your SSH agent / git credential helper"
             )));
         }
+        let prefs = prefs_snapshot();
         if allowed.contains(CredentialType::SSH_KEY) {
             let user = username_from_url.unwrap_or("git");
-            if let Ok(cred) = Cred::ssh_key_from_agent(user) {
-                return Ok(cred);
+            if attempt == 0 && prefs.use_agent {
+                if let Ok(cred) = Cred::ssh_key_from_agent(user) {
+                    return Ok(cred);
+                }
             }
-            if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
-            {
-                let home = std::path::PathBuf::from(home);
-                for key in ["id_ed25519", "id_rsa"] {
-                    let private = home.join(".ssh").join(key);
-                    if private.exists() {
-                        if let Ok(cred) = Cred::ssh_key(user, None, &private, None) {
-                            return Ok(cred);
-                        }
-                    }
+            let home = home_dir();
+            let present: Vec<PathBuf> =
+                ssh_key_candidates(prefs.ssh_key_path.as_deref(), home.as_deref())
+                    .into_iter()
+                    .filter(|path| path.exists())
+                    .collect();
+            let usable: Vec<&PathBuf> = present
+                .iter()
+                .filter(|path| key_algorithm_supported(path) != Some(false))
+                .collect();
+            if usable.is_empty() && !present.is_empty() {
+                return Err(git2::Error::from_str(&format!(
+                    "no usable SSH key for {url} — {} uses an algorithm this build cannot use. \
+                     AngKorGit bundles libssh2 without ed25519 or ECDSA support, so SSH keys must \
+                     be RSA. Generate an RSA key in Settings → Git → SSH and add it to your host, \
+                     or use an https:// remote with an account instead",
+                    present
+                        .first()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default()
+                )));
+            }
+            let index = if prefs.use_agent {
+                attempt.saturating_sub(1)
+            } else {
+                attempt
+            };
+            if let Some(private) = usable.get(index) {
+                let pubkey = PathBuf::from(format!("{}.pub", private.display()));
+                let pubkey = if pubkey.exists() { Some(pubkey) } else { None };
+                if let Ok(cred) = Cred::ssh_key(user, pubkey.as_deref(), private, None) {
+                    return Ok(cred);
                 }
             }
         }
@@ -111,14 +300,16 @@ pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
                     }
                 }
             }
-            if let Some((user, pass)) = credentials_from_git_cli(url, username_from_url) {
-                if let Ok(cred) = Cred::userpass_plaintext(&user, &pass) {
-                    return Ok(cred);
+            if prefs.use_credential_helper {
+                if let Some((user, pass)) = credentials_from_git_cli(url, username_from_url) {
+                    if let Ok(cred) = Cred::userpass_plaintext(&user, &pass) {
+                        return Ok(cred);
+                    }
                 }
-            }
-            if let Ok(config) = git2::Config::open_default() {
-                if let Ok(cred) = Cred::credential_helper(&config, url, username_from_url) {
-                    return Ok(cred);
+                if let Ok(config) = git2::Config::open_default() {
+                    if let Ok(cred) = Cred::credential_helper(&config, url, username_from_url) {
+                        return Ok(cred);
+                    }
                 }
             }
         }
@@ -379,4 +570,101 @@ pub fn checkout_head_force(repo: &Repository) -> AppResult<()> {
     builder.force();
     repo.checkout_head(Some(&mut builder))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn home() -> PathBuf {
+        PathBuf::from("/Users/tester")
+    }
+
+    #[test]
+    fn generation_uses_the_base_name_when_it_is_free() {
+        let base = PathBuf::from("/Users/tester/.ssh/angkorgit_rsa");
+        assert_eq!(free_key_path(&base, |_| false), Some(base.clone()));
+    }
+
+    #[test]
+    fn generation_never_targets_an_existing_key() {
+        let base = PathBuf::from("/Users/tester/.ssh/angkorgit_rsa");
+        let taken = |p: &Path| p == base || p.ends_with("angkorgit_rsa_2");
+        assert_eq!(
+            free_key_path(&base, taken),
+            Some(PathBuf::from("/Users/tester/.ssh/angkorgit_rsa_3"))
+        );
+    }
+
+    #[test]
+    fn rsa_keys_are_usable_by_the_bundled_libssh2() {
+        assert!(algorithm_supported("ssh-rsa AAAAB3NzaC1yc2EAAAA user@host"));
+    }
+
+    #[test]
+    fn ed25519_and_ecdsa_keys_are_not() {
+        assert!(!algorithm_supported(
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 user@host"
+        ));
+        assert!(!algorithm_supported(
+            "ecdsa-sha2-nistp256 AAAAE2VjZHNh user@host"
+        ));
+        assert!(!algorithm_supported(
+            "sk-ssh-ed25519@openssh.com AAAAG3Nr user@host"
+        ));
+    }
+
+    #[test]
+    fn expands_a_leading_tilde() {
+        assert_eq!(
+            expand_home("~/.ssh/work_key", Some(&home())),
+            PathBuf::from("/Users/tester/.ssh/work_key")
+        );
+    }
+
+    #[test]
+    fn leaves_absolute_paths_alone() {
+        assert_eq!(
+            expand_home("/etc/keys/deploy", Some(&home())),
+            PathBuf::from("/etc/keys/deploy")
+        );
+    }
+
+    #[test]
+    fn configured_key_is_tried_before_the_defaults() {
+        let candidates = ssh_key_candidates(Some("~/.ssh/id_ed25519_work"), Some(&home()));
+        assert_eq!(
+            candidates[0],
+            PathBuf::from("/Users/tester/.ssh/id_ed25519_work")
+        );
+        assert_eq!(candidates.len(), 3);
+    }
+
+    #[test]
+    fn defaults_are_used_when_nothing_is_configured() {
+        let candidates = ssh_key_candidates(None, Some(&home()));
+        assert_eq!(
+            candidates,
+            vec![
+                PathBuf::from("/Users/tester/.ssh/id_ed25519"),
+                PathBuf::from("/Users/tester/.ssh/id_rsa"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_configured_default_is_not_offered_twice() {
+        let candidates = ssh_key_candidates(Some("~/.ssh/id_rsa"), Some(&home()));
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0], PathBuf::from("/Users/tester/.ssh/id_rsa"));
+        assert_eq!(
+            candidates[1],
+            PathBuf::from("/Users/tester/.ssh/id_ed25519")
+        );
+    }
+
+    #[test]
+    fn blank_configuration_is_ignored() {
+        assert_eq!(ssh_key_candidates(Some("   "), Some(&home())).len(), 2);
+    }
 }

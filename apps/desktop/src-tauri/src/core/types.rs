@@ -182,3 +182,10 @@ pub struct OpOutcome {
     pub status: String, // "ok" | "conflicts" | "up_to_date" | "fast_forward"
     pub message: String,
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedKey {
+    pub path: String,
+    pub public_key: String,
+}

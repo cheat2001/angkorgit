@@ -30,6 +30,11 @@ export interface IpcError {
   message: string;
 }
 
+export interface GeneratedKey {
+  path: string;
+  publicKey: string;
+}
+
 export interface HostingAccount {
   host: string;
   username: string;
@@ -405,6 +410,24 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('credential_store', { host, username, password });
   },
+  async setCredentialPrefs(
+    sshKeyPath: string | null,
+    useAgent: boolean,
+    useCredentialHelper: boolean,
+  ): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('credential_prefs_set', { sshKeyPath, useAgent, useCredentialHelper });
+  },
+  async sshPublicKey(path: string): Promise<string> {
+    if (!isTauri()) return 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5DEMO demo@angkorgit';
+    return invoke('ssh_public_key', { path });
+  },
+  async sshKeyGenerate(path: string, comment: string): Promise<GeneratedKey> {
+    if (!isTauri()) {
+      return { path, publicKey: 'ssh-rsa AAAAB3NzaC1yc2EDEMO demo@angkorgit' };
+    }
+    return invoke('ssh_key_generate', { path, comment });
+  },
   async accountList(): Promise<HostingAccount[]> {
     if (!isTauri())
       return [{ host: 'github.com', username: 'demo-user', provider: 'github', verified: true }];
@@ -474,5 +497,14 @@ export async function pickDirectory(title: string): Promise<string | null> {
   }
   const { open } = await import('@tauri-apps/plugin-dialog');
   const result = await open({ directory: true, multiple: false, title });
+  return typeof result === 'string' ? result : null;
+}
+
+export async function pickFile(title: string, defaultPath?: string): Promise<string | null> {
+  if (!isTauri()) {
+    return window.prompt(`${title} — enter a path (demo mode)`) || null;
+  }
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const result = await open({ directory: false, multiple: false, title, defaultPath });
   return typeof result === 'string' ? result : null;
 }

@@ -551,6 +551,21 @@ pub async fn credential_store(host: String, username: String, password: String) 
 }
 
 #[tauri::command]
+pub fn credential_prefs_set(sshKeyPath: Option<String>, useAgent: bool, useCredentialHelper: bool) {
+    remote::set_credential_prefs(sshKeyPath, useAgent, useCredentialHelper);
+}
+
+#[tauri::command]
+pub async fn ssh_public_key(path: String) -> AppResult<String> {
+    blocking(move || remote::ssh_public_key(&path)).await
+}
+
+#[tauri::command]
+pub async fn ssh_key_generate(path: String, comment: String) -> AppResult<GeneratedKey> {
+    blocking(move || remote::ssh_key_generate(&path, &comment)).await
+}
+
+#[tauri::command]
 pub fn account_list() -> Vec<crate::core::accounts::AccountInfo> {
     crate::core::accounts::list()
 }

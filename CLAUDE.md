@@ -223,12 +223,15 @@ features/
 │                               dirty tree for hard kinds)
 ├── inspector/                ← Inspector (working copy ⟷ commit details), CommitDetails
 ├── terminal/TerminalPanel    ← xterm.js ↔ PTY events
-├── settings/                 ← store (theme, zoom, reduceMotion, ai config, aiStyle
+├── settings/                 ← store (theme, accent, zoom, reduceMotion — applied via a
+│                               `reduce-motion` class + MotionConfig, ai config, aiStyle
 │                               commit style + branch prefix rules, identity
 │                               PROFILES — persisted), SettingsDialog (Appearance/Git/
-│                               Accounts/AI/Shortcuts tabs incl. commit-style card w/
-│                               live branch preview), AccountsTab (per-provider
-│                               token connect, host-matched)
+│                               AUTHENTICATION/AI/Shortcuts tabs incl. commit-style card
+│                               w/ live branch preview + SshCard), AccountsTab
+│                               (per-provider token connect, verified-on-connect,
+│                               host-matched). Authentication tab = accounts (https://)
+│                               + SSH keys (git@) together — see G20
 ├── ai/client.ts              ← binds settings AI config + Rust HTTP/CLI transports to
 │                               @angkorgit/core providers ('cli' = installed AI CLI:
 │                               Claude Code/Codex/Gemini CLI/OpenCode/Antigravity via ai_cli.rs —
@@ -361,13 +364,57 @@ update CLAUDE.md or docs/ — never the code.
   still accept pushes, and the user count includes per-repo and group grants, not
   just the members list.
 
+- **G18 — the two supported credential methods are SSH keys and access tokens**;
+  OAuth sign-in was built (GitHub device flow) and then **deliberately removed** —
+  it only ever helps github.com, ties the client id to the maintainer's personal
+  OAuth app registration (forks cannot use it, deleting it breaks every user), and
+  leaves Bitbucket/self-hosted second-class. Do not re-add it without a reason that
+  survives those three points. Consequences to keep in mind: GitLab and Bitbucket
+  OAuth tokens expire in **2 hours** with refresh tokens (GitHub's do not), so any
+  future OAuth work needs refresh support in the credential callback FIRST — a bare
+  access token there is worse than a PAT. Atlassian has no device grant at all.
+- **G19 — credential preferences reach the engine through a process-global**, not
+  through command arguments: `make_callbacks()` takes no parameters, so `App.tsx`
+  pushes `{sshKeyPath, sshUseAgent, useCredentialHelper}` via
+  `ipc.setCredentialPrefs` → `commands::credential_prefs_set` →
+  `remote::set_credential_prefs` (an `OnceLock<RwLock<CredentialPrefs>>`), mirroring
+  `accounts::CONFIG_DIR`. Any new credential setting goes in that struct. The SSH
+  branch is **attempt-aware**: attempt 0 tries the agent (when enabled), later
+  attempts walk `ssh_key_candidates()` one key per retry — without that, a
+  present-but-useless agent credential is re-offered forever and the configured key
+  is never reached; the candidate index shifts by one when the agent is disabled.
+  `Cred::ssh_key` passes `None` for the passphrase, so **passphrase-protected keys
+  only work via the agent**. `ssh_key_generate` shells out to `ssh-keygen -t ed25519
+  -N ""` and REFUSES to overwrite an existing file — never relax that.
+- **G21 — the bundled libssh2 supports RSA keys ONLY — not ed25519, not ECDSA**:
+  `libssh2-sys` builds vendored libssh2 with `cc` and defines only `LIBSSH2_OPENSSL`
+  (never `LIBSSH2_ED25519` / `LIBSSH2_ECDSA`), so ed25519 keys fail through BOTH the
+  key-file path and the SSH agent, while OpenSSH on the same machine succeeds with the
+  same key — which makes this look like a config bug for hours. The strings
+  `ssh-ed25519` etc. DO appear in the binary (algorithm name tables), so grepping the
+  bundle is not evidence of support. Consequences: `ssh_key_generate` creates **RSA
+  4096** (an ed25519 key would be unusable by the app that made it), and
+  `make_callbacks` filters candidates through `algorithm_supported()` and returns a
+  specific "must be RSA" error instead of the generic no-auth message. To diagnose
+  this class of failure, add a temporary `#[ignore]`d test in `remote.rs` that fetches
+  a real remote and prints `allowed` / the candidate list — the generic final `Err`
+  otherwise MASKS libgit2's real message. Fixing it properly means getting
+  `LIBSSH2_ED25519` defined in the vendored build (patched libssh2-sys, or a different
+  crypto backend); until then modern default keys simply do not work over SSH.
+- **G20 — accounts are HTTPS-only; SSH remotes never consult them**:
+  `accounts::host_of_url` parses only `://` URLs (scp-style `git@host:path` returns
+  `None`) and the lookup lives inside the `USER_PASS_PLAINTEXT` branch, which the
+  SSH transport does not offer. A user who adds a verified account and then pushes
+  an SSH remote gets `class=Ssh; code=Auth` and no hint that the account was never
+  involved. Keep the Accounts and SSH cards clearly separated in copy.
+
 ## 9. Testing map
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
 | Rust integration (18) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
-| Rust module (8) | `apps/desktop/src-tauri/src/ai_cli.rs` (4), `src/error.rs` (4) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim |
-| Unit (44) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, preset instructions, post-generation prefix enforcement) |
+| Rust module (15) | `apps/desktop/src-tauri/src/ai_cli.rs` (4), `src/error.rs` (4), `src/core/remote.rs` (6) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored |
+| Unit (45) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, preset instructions, post-generation prefix enforcement) |
 | E2E (5) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search — all on demo mode |
 
 ## 9.5 Open-source & community files

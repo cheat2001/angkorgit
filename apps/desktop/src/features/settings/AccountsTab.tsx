@@ -262,7 +262,7 @@ export function AccountsTab() {
               </SelectContent>
             </Select>
             <Input
-              placeholder="host, e.g. gitlab-01.remotes.local"
+              placeholder="host, e.g. gitlab-selfhost.com"
               value={host}
               disabled={!preset.hostEditable}
               onChange={(e) => setHost(e.target.value)}

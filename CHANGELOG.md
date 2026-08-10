@@ -6,7 +6,49 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Settings → Accounts is now Settings → Authentication**, and holds both hosting
+  accounts and SSH keys. Which credential applies was the single most confusing
+  thing about connecting to a remote — the tab now states it plainly
+  (`https://` remotes use accounts, `git@` remotes use SSH keys) and shows both
+  in one place. The Git tab keeps committer identity and profiles
+
+### Removed
+- **Settings that did nothing**: the "Git executable" field claimed to configure
+  the built-in terminal but was read by nothing (the terminal spawns your shell),
+  and an unused `githubUser` value sat in stored settings. Both are gone along
+  with the Advanced card that held them
+
 ### Fixed
+- **"Reduce motion" now reduces motion**: the toggle was stored and never read.
+  It now disables CSS animations and transitions and puts Framer Motion into
+  reduced-motion mode
+- **SSH keys are checked against what the bundled library can actually use**:
+  AngKorGit links a vendored libssh2 built without ed25519 or ECDSA support, so
+  those keys could never authenticate — through the agent or a key file — even
+  though the same key worked with `ssh` on the command line, and the failure
+  surfaced as a generic "no usable authentication". Unusable keys are now named
+  explicitly, and key generation creates an RSA 4096 key so the app can never
+  hand you a key it cannot use itself
+
+### Added
+- **A real SSH card in Settings → Git**: toggle the SSH agent on or off, browse
+  for a private key instead of typing the path, show and copy the matching public
+  key (the thing you actually paste into GitHub/GitLab/Bitbucket), and generate a
+  new ed25519 key without leaving the app. Generation refuses to overwrite an
+  existing key
+- **A toggle for the system credential helper**: turn it off to stop AngKorGit
+  falling back to credentials saved by git or another client, so a configured
+  account can be tested on its own
+
+### Fixed
+- **The "SSH private key" setting now does something**: the field had been in
+  Settings → Git since the first commit, but its value was never sent to the git
+  engine — only `~/.ssh/id_ed25519` and `~/.ssh/id_rsa` were ever tried. Anyone
+  with a differently-named key (`id_ed25519_work`, a company key) entered a path,
+  saw no error, and still could not authenticate. The configured key is now tried
+  ahead of the defaults, `~` is expanded, and each retry advances to the next
+  candidate key instead of re-offering the first one forever
 - **Bitbucket accounts now use API tokens**: Bitbucket Cloud removed app
   passwords on 2026-07-28, so the Accounts tab pointed at a dead page and asked
   for a credential that no longer exists. The "create a token" link now opens the

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Check,
+  Copy,
+  FolderOpen,
   Github,
   Keyboard,
   KeyRound,
@@ -47,7 +49,7 @@ import {
   Textarea,
   cn,
 } from '@angkorgit/design-system';
-import { ipc } from '@/core/ipc';
+import { ipc, pickFile } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { ACCENTS, THEMES, useSettings, ZOOM_MAX, ZOOM_MIN } from './store';
@@ -65,7 +67,7 @@ const SECTIONS: Array<{
 }> = [
   { id: 'appearance', label: 'Appearance', description: 'Theme, accent color, zoom and motion', icon: Palette },
   { id: 'git', label: 'Git', description: 'Committer identity and identity profiles', icon: User },
-  { id: 'accounts', label: 'Accounts', description: 'Hosting accounts for push and pull over HTTPS', icon: Github },
+  { id: 'accounts', label: 'Authentication', description: 'https:// remotes use accounts · git@ remotes use SSH keys', icon: Github },
   { id: 'ai', label: 'AI Assistant', description: 'Provider, connection and message style', icon: Sparkles },
   { id: 'shortcuts', label: 'Shortcuts', description: 'Keyboard reference', icon: Keyboard },
 ];
@@ -94,6 +96,130 @@ function SettingCard({
       {description && <p className="mt-0.5 text-xs text-faint">{description}</p>}
       <div className="mt-3">{children}</div>
     </section>
+  );
+}
+
+function SshCard() {
+  const settings = useSettings();
+  const [publicKey, setPublicKey] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const keyPath = settings.sshKeyPath.trim() || '~/.ssh/id_ed25519';
+
+  const showPublicKey = async () => {
+    setBusy(true);
+    try {
+      setPublicKey(await ipc.sshPublicKey(keyPath));
+    } catch (error) {
+      setPublicKey('');
+      toast.error(`${(error as { message?: string }).message ?? error}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const generate = async () => {
+    setBusy(true);
+    try {
+      const created = await ipc.sshKeyGenerate('~/.ssh/angkorgit_rsa', 'AngKorGit');
+      settings.setSshKeyPath(created.path);
+      setPublicKey(created.publicKey);
+      toast.success(`Created ${created.path} — add the public key to your host`, {
+        description:
+          'Other tools keep using ~/.ssh/id_* unless you add this path to ~/.ssh/config.',
+      });
+    } catch (error) {
+      toast.error(`${(error as { message?: string }).message ?? error}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SettingCard
+      title="SSH"
+      description="Used for git@… remotes; https:// remotes use the accounts above instead. Keys must be RSA — the bundled SSH library cannot use ed25519 or ECDSA keys."
+    >
+      <div className="flex flex-col gap-3">
+        <label className="flex items-center justify-between gap-3">
+          <span className="flex flex-col">
+            <span className="text-xs font-medium text-muted">Use the SSH agent</span>
+            <span className="text-xs text-faint">
+              Tried before any key file, and the only way a passphrase-protected key can work.
+            </span>
+          </span>
+          <Switch checked={settings.sshUseAgent} onCheckedChange={settings.setSshUseAgent} />
+        </label>
+
+        <Field label="Private key">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <KeyRound className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
+              <Input
+                className="pl-8"
+                value={settings.sshKeyPath}
+                onChange={(e) => settings.setSshKeyPath(e.target.value)}
+                placeholder="~/.ssh/id_ed25519"
+              />
+            </div>
+            <Hint label="Browse for a key">
+              <Button
+                variant="secondary"
+                size="icon"
+                aria-label="Browse for a private key"
+                onClick={async () => {
+                  const picked = await pickFile('Choose an SSH private key');
+                  if (picked) settings.setSshKeyPath(picked);
+                }}
+              >
+                <FolderOpen />
+              </Button>
+            </Hint>
+          </div>
+        </Field>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void showPublicKey()}>
+            Show public key
+          </Button>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void generate()}>
+            {busy ? <Spinner /> : null}
+            Generate an RSA key
+          </Button>
+        </div>
+
+        {publicKey && (
+          <div className="flex flex-col gap-2 rounded-md border border-border-subtle bg-surface-raised p-2">
+            <p className="break-all font-mono text-xs text-muted">{publicKey}</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-start"
+              onClick={() => {
+                void navigator.clipboard.writeText(publicKey);
+                toast.success('Public key copied — paste it into your host');
+              }}
+            >
+              <Copy /> Copy public key
+            </Button>
+          </div>
+        )}
+
+        <label className="flex items-center justify-between gap-3">
+          <span className="flex flex-col">
+            <span className="text-xs font-medium text-muted">Use the system credential helper</span>
+            <span className="text-xs text-faint">
+              Falls back to credentials saved by git or another client. Turn off to test the
+              accounts above on their own.
+            </span>
+          </span>
+          <Switch
+            checked={settings.useCredentialHelper}
+            onCheckedChange={settings.setUseCredentialHelper}
+          />
+        </label>
+      </div>
+    </SettingCard>
   );
 }
 
@@ -639,28 +765,16 @@ export function SettingsDialog() {
                     </div>
                   </SettingCard>
 
-                  <SettingCard title="Advanced">
-                    <div className="flex flex-col gap-3">
-                      <Field label="Git executable (used by the built-in terminal)">
-                        <Input value={settings.gitExecutable} onChange={(e) => settings.setGitExecutable(e.target.value)} />
-                      </Field>
-                      <Field label="SSH private key (optional — SSH agent is tried first)">
-                        <div className="relative">
-                          <KeyRound className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
-                          <Input
-                            className="pl-8"
-                            value={settings.sshKeyPath}
-                            onChange={(e) => settings.setSshKeyPath(e.target.value)}
-                            placeholder="~/.ssh/id_ed25519"
-                          />
-                        </div>
-                      </Field>
-                    </div>
-                  </SettingCard>
+
                 </div>
               )}
 
-              {section === 'accounts' && <AccountsTab />}
+              {section === 'accounts' && (
+                <div className="flex flex-col gap-4">
+                  <AccountsTab />
+                  <SshCard />
+                </div>
+              )}
 
               {section === 'ai' && (
                 <div className="flex flex-col gap-4">
