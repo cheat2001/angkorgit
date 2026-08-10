@@ -6,75 +6,75 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
-### Changed
-- **Settings → Accounts is now Settings → Authentication**, and holds both hosting
-  accounts and SSH keys. Which credential applies was the single most confusing
-  thing about connecting to a remote — the tab now states it plainly
-  (`https://` remotes use accounts, `git@` remotes use SSH keys) and shows both
-  in one place. The Git tab keeps committer identity and profiles
+## [0.3.0] — 2026-08-10
 
-### Removed
-- **Settings that did nothing**: the "Git executable" field claimed to configure
-  the built-in terminal but was read by nothing (the terminal spawns your shell),
-  and an unused `githubUser` value sat in stored settings. Both are gone along
-  with the Advanced card that held them
-
-### Fixed
-- **AI provider settings survive switching providers**: model, base URL and API key
-  were one shared record, so trying the installed-CLI provider for an hour and
-  switching back meant re-entering everything. Each provider now keeps its own
-  settings, restored when you switch back and remembered across restarts. This
-  also stops one provider's API key being sent to another — previously the key
-  was carried over unchanged when the provider changed
-- **"Reduce motion" now reduces motion**: the toggle was stored and never read.
-  It now disables CSS animations and transitions and puts Framer Motion into
-  reduced-motion mode
-- **SSH keys are checked against what the bundled library can actually use**:
-  AngKorGit links a vendored libssh2 built without ed25519 or ECDSA support, so
-  those keys could never authenticate — through the agent or a key file — even
-  though the same key worked with `ssh` on the command line, and the failure
-  surfaced as a generic "no usable authentication". Unusable keys are now named
-  explicitly, and key generation creates an RSA 4096 key so the app can never
-  hand you a key it cannot use itself
+Connecting to a remote is the theme of this release. Several controls looked
+like they worked and did not; those are fixed or gone.
 
 ### Added
-- **A real SSH card in Settings → Git**: toggle the SSH agent on or off, browse
-  for a private key instead of typing the path, show and copy the matching public
-  key (the thing you actually paste into GitHub/GitLab/Bitbucket), and generate a
-  new ed25519 key without leaving the app. Generation refuses to overwrite an
-  existing key
+- **An SSH card in Settings → Authentication**: toggle the SSH agent, browse for
+  a private key instead of typing a path, show and copy the matching public key
+  (the thing you paste into GitHub/GitLab/Bitbucket), and generate a new RSA 4096
+  key without leaving the app. Generation always picks a free filename, so an
+  existing key can never be overwritten
 - **A toggle for the system credential helper**: turn it off to stop AngKorGit
   falling back to credentials saved by git or another client, so a configured
   account can be tested on its own
 
+### Changed
+- **Settings → Accounts is now Settings → Authentication**, holding both hosting
+  accounts and SSH keys. Which credential applies was the most confusing thing
+  about connecting to a remote — the tab now states it plainly (`https://`
+  remotes use accounts, `git@` remotes use SSH keys). The Git tab keeps committer
+  identity and profiles
+
 ### Fixed
-- **The "SSH private key" setting now does something**: the field had been in
-  Settings → Git since the first commit, but its value was never sent to the git
-  engine — only `~/.ssh/id_ed25519` and `~/.ssh/id_rsa` were ever tried. Anyone
-  with a differently-named key (`id_ed25519_work`, a company key) entered a path,
-  saw no error, and still could not authenticate. The configured key is now tried
-  ahead of the defaults, `~` is expanded, and each retry advances to the next
-  candidate key instead of re-offering the first one forever
 - **Bitbucket accounts now use API tokens**: Bitbucket Cloud removed app
-  passwords on 2026-07-28, so the Accounts tab pointed at a dead page and asked
-  for a credential that no longer exists. The "create a token" link now opens the
-  Atlassian API token page, the hint names the required
-  `read:repository:bitbucket` + `write:repository:bitbucket` scopes, and the
-  username field asks for the Atlassian account email
+  passwords on 2026-07-28, so the tab pointed at a dead page and asked for a
+  credential that no longer exists. The link now opens the Atlassian API token
+  page, the hint names the required `read:repository:bitbucket` +
+  `write:repository:bitbucket` scopes, and the username field asks for the
+  Atlassian account email
 - **Connecting an account verifies the token instead of always claiming success**:
-  every account row showed a green tick whether or not anything had been checked,
-  and Bitbucket/other hosts saved any typed string as valid. Tokens are now
-  verified against the provider before saving where the provider supports it, the
-  tick appears only for verified accounts, and unverified ones are labelled as
-  such. Bitbucket verification also detects the real Bitbucket username from the
+  every row showed a green tick whether or not anything had been checked, and
+  Bitbucket and other hosts saved any typed string as valid. Tokens are verified
+  against the provider before saving where the provider supports it, the tick
+  appears only for verified accounts, and unverified ones are labelled as such.
+  Bitbucket verification also detects the real Bitbucket username from the
   Atlassian email, so the stored username is the one git actually needs
-- **Plan-limit and permission push failures are explained**: HTTP 402 and 403
-  from a remote surfaced as raw libgit2 text (`unexpected http status code: 402;
+- **The "SSH private key" setting now does something**: present since the first
+  commit, its value was never sent to the git engine — only `~/.ssh/id_ed25519`
+  and `~/.ssh/id_rsa` were ever tried, so anyone with a differently-named key
+  entered a path, saw no error, and still could not authenticate. The configured
+  key is now tried ahead of the defaults, `~` is expanded, and each retry advances
+  to the next candidate instead of re-offering the first one forever
+- **SSH keys are checked against what the bundled library can actually use**:
+  AngKorGit links a vendored libssh2 built without ed25519 or ECDSA support, so
+  those keys could never authenticate — through the agent or a key file — even
+  though the same key works with `ssh` on the command line. The failure surfaced
+  as a generic "no usable authentication"; unusable keys are now named explicitly
+  with what to do about it. See `docs/Getting-Started.md#ssh-keys`
+- **AI provider settings survive switching providers**: model, base URL and API
+  key were one shared record, so trying another provider for an hour and
+  switching back meant re-entering everything. Each provider keeps its own
+  settings now, restored on switch and across restarts. This also stops one
+  provider's API key being sent to another
+- **"Reduce motion" now reduces motion**: the toggle was stored and never read.
+  It disables CSS animations and transitions and puts Framer Motion into
+  reduced-motion mode
+- **Plan-limit and permission failures are explained**: HTTP 402 and 403 from a
+  remote surfaced as raw libgit2 text (`unexpected http status code: 402;
   class=Http (34)`). They now carry a plain description and the error codes
   `plan_limit` / `forbidden`
 - **Clone dialog describes authentication accurately**: it credited only the SSH
   agent and credential helper, never mentioning saved accounts — the first
   credential source the engine tries
+
+### Removed
+- **Settings that did nothing**: the "Git executable" field claimed to configure
+  the built-in terminal but was read by no code (the terminal spawns your shell),
+  and an unused `githubUser` value sat in stored settings. Both are gone, along
+  with the Advanced card that held them and an unused `repo_discover` IPC command
 
 ## [0.2.0] — 2026-08-09
 
@@ -275,7 +275,10 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/cheat2001/angkorgit/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/cheat2001/angkorgit/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/cheat2001/angkorgit/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/cheat2001/angkorgit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/cheat2001/angkorgit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cheat2001/angkorgit/releases/tag/v0.1.0

@@ -14,11 +14,6 @@ async fn blocking<T: Send + 'static>(
 }
 
 #[tauri::command]
-pub async fn repo_discover(path: String) -> AppResult<String> {
-    blocking(move || repo::discover(&path)).await
-}
-
-#[tauri::command]
 pub async fn repo_open(app: AppHandle, path: String) -> AppResult<RepositoryInfo> {
     let info = blocking(move || {
         let root = repo::discover(&path)?;

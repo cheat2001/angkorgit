@@ -46,7 +46,6 @@ pub fn run() {
         .manage(terminal::TerminalState::default())
         .manage(watcher::WatcherState::default())
         .invoke_handler(tauri::generate_handler![
-            commands::repo_discover,
             commands::repo_open,
             commands::repo_info,
             commands::repo_init,

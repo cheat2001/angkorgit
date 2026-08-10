@@ -16,6 +16,14 @@ For transparency, the app's security-relevant surface is:
 - **Your repositories** — read/write via libgit2, only for repositories you open.
 - **OS keychain** — hosting-account tokens are stored under the `AngKorGit`
   keychain service; committer identity is written to per-repository git config.
+  Tokens never reach `accounts.json`, which holds only host, username, provider
+  and whether the token was verified. A token is offered only to the host it was
+  saved for.
+- **SSH keys** — read from disk (and the SSH agent) to authenticate `git@`
+  remotes; never copied or transmitted anywhere else. Keys created by
+  Settings → Authentication → SSH are RSA 4096 and are written **without a
+  passphrase**, because AngKorGit cannot prompt for one — a passphrase-protected
+  key only works via your SSH agent. Generation never overwrites an existing key.
 - **Network** — outbound only: git remotes you configure, Gravatar (avatar
   lookup by email hash), and the AI provider you explicitly configure.
   There is **no telemetry, no analytics, and no phoning home.**

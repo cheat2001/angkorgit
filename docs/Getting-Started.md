@@ -41,3 +41,38 @@ tccutil reset All dev.angkorgit.app
 After that, AngKorGit **updates itself**: every update is cryptographically
 verified (minisign) before installing, and all releases are built in public by
 GitHub Actions from this source tree. No telemetry, ever.
+
+## Connecting to a remote
+
+AngKorGit picks its credential from the **remote URL**, not from a setting:
+
+| Remote | Credential |
+| --- | --- |
+| `https://host/group/repo.git` | an account in **Settings → Authentication** (a token in your OS keychain) |
+| `git@host:group/repo.git` | an **SSH key** |
+
+Adding an account does nothing for an SSH remote, and an SSH key does nothing
+for an HTTPS one. If a pull or push fails, the remote URL is the first thing
+to check — `git remote -v`.
+
+### SSH keys
+
+**Keys must be RSA.** AngKorGit talks SSH through a bundled libssh2 that is
+built without ed25519 or ECDSA support, so those keys are rejected even though
+the same key works with `ssh` on the command line, and even when the key is
+loaded in your SSH agent.
+
+Since `ssh-keygen` has defaulted to ed25519 for years, most existing keys are
+affected. Settings → Authentication → SSH → **Generate an RSA key** creates a
+usable one (RSA 4096, no passphrase) and shows the public key to copy into your
+host. Existing keys are never overwritten — generation always picks a free name.
+
+Two alternatives if you would rather not add another key: use `https://` remotes
+with an account, or add your RSA public key alongside the ed25519 one on the
+host (hosts accept several keys per account).
+
+Passphrase-protected keys only work through the SSH agent, because AngKorGit
+never prompts for a passphrase. Run `ssh-add <key>` first.
+
+Lifting the RSA-only restriction is tracked as a known limitation — see
+`docs/Roadmap.md`.
