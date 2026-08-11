@@ -372,7 +372,7 @@ export const ipc = {
   },
 
   async conflicts(path: string): Promise<string[]> {
-    if (!isTauri()) return [];
+    if (!isTauri()) return ['src/features/graph/drawGraph.ts'];
     return invoke('conflict_list', { path });
   },
   async conflictRead(path: string, file: string): Promise<ConflictFile> {

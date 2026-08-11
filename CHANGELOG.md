@@ -12,6 +12,13 @@ Merging is the theme of this release: it now behaves the way the graph leads
 you to expect, and explains itself along the way.
 
 ### Added
+- **A GitKraken-style conflict resolver.** Sides A and B sit in aligned panes
+  with a checkbox on every line — take a whole side from the pane header, or
+  cherry-pick individual lines. The Output pane below shows the clean merged
+  result with no `<<<<<<<`/`>>>>>>>` markers: picked lines carry an A/B tag in
+  their side's colour (in the order you picked them) and unresolved sections
+  show a clear placeholder. Hand-editing moved behind an explicit pencil
+  button, with the same guards as before
 - **Commit details show a change-type summary** — "M 72 modified · A 57 added ·
   D 1 deleted" instead of a flat file count, and each file row's icon is tinted
   by its change type, matching the working copy's A/M/D/R colour convention

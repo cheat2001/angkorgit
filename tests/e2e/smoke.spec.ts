@@ -37,3 +37,17 @@ test('commit search filters the graph', async ({ page }) => {
   await search.fill('virtualize');
   await expect(page.getByText(/feat\(graph\): virtualize commit rows/).first()).toBeVisible();
 });
+
+test('conflict resolver picks lines into a clean output', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByText('src/features/graph/drawGraph.ts').click();
+  await expect(page.getByText('0/1 resolved')).toBeVisible();
+  await expect(page.getByText('Unresolved', { exact: true })).toBeVisible();
+  await expect(page.getByText('<<<<<<<')).toHaveCount(0);
+  await page.getByLabel('Take all lines from side A').click();
+  await expect(page.getByText('1/1 resolved')).toBeVisible();
+  await expect(page.getByText('const palette = useThemePalette();')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeEnabled();
+});
