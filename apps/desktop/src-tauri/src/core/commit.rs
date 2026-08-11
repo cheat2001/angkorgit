@@ -50,6 +50,24 @@ pub fn commit(path: &str, message: &str) -> AppResult<String> {
     Ok(oid.to_string())
 }
 
+pub fn merge_message(path: &str) -> AppResult<Option<String>> {
+    let repo = super::repo::open(path)?;
+    if repo.state() != git2::RepositoryState::Merge {
+        return Ok(None);
+    }
+    let Ok(raw) = std::fs::read_to_string(repo.path().join("MERGE_MSG")) else {
+        return Ok(None);
+    };
+    let message = raw
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string();
+    Ok((!message.is_empty()).then_some(message))
+}
+
 pub fn revert(path: &str, oid: &str) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;

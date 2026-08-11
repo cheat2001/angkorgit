@@ -13,7 +13,7 @@ pub mod test_api {
     pub use crate::core::branch::{
         checkout_branch, cherry_pick, create as branch_create, merge, rebase, reset,
     };
-    pub use crate::core::commit::{amend, commit, revert};
+    pub use crate::core::commit::{amend, commit, merge_message, revert};
     pub use crate::core::conflict::{
         list as conflict_list, read as conflict_read, resolve as conflict_resolve,
     };
@@ -73,6 +73,7 @@ pub fn run() {
             commands::delete_file,
             commands::commit_create,
             commands::commit_amend,
+            commands::merge_message,
             commands::commit_revert,
             commands::history_list,
             commands::history_commit,

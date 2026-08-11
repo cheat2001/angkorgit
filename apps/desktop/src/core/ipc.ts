@@ -241,6 +241,10 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('merge_abort', { path });
   },
+  async mergeMessage(path: string): Promise<string | null> {
+    if (!isTauri()) return null;
+    return invoke('merge_message', { path });
+  },
   async rebase(path: string, upstream: string): Promise<OpOutcome> {
     if (!isTauri()) return { status: 'ok', message: `Rebased onto ${upstream} (demo)` };
     return invoke('branch_rebase', { path, upstream });

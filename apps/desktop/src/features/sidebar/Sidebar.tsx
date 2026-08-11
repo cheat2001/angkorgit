@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { toastOutcome } from '@/shared/toastOutcome';
 import {
   Archive,
   ArrowDownToLine,
@@ -15,6 +16,7 @@ import {
   GitBranch,
   FastForward,
   GitMerge,
+  MoveRight,
   ListRestart,
   MoreHorizontal,
   GitBranchPlus,
@@ -194,9 +196,7 @@ export function Sidebar() {
             shouldRecord: outcomeOk,
           })
         : await op();
-      const outcome = result as { status?: string; message?: string } | undefined;
-      if (outcome?.status === 'conflicts') toast.warning(outcome.message);
-      else toast.success(outcome?.message ?? `${label} done`);
+      toastOutcome(result as { status?: string; message?: string } | undefined, `${label} done`);
       await refreshAll();
     } catch (error) {
       toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
@@ -825,9 +825,14 @@ export function Sidebar() {
       <Dialog open={dropAction !== null} onOpenChange={(o) => !o && setDropAction(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              <span className="font-mono text-sm">{dropAction?.source}</span> →{' '}
-              <span className="font-mono text-sm">{dropAction?.target}</span>
+            <DialogTitle className="flex items-center gap-2">
+              <Badge tone="info" className="min-w-0 max-w-44">
+                <span className="truncate">{dropAction?.source}</span>
+              </Badge>
+              <MoveRight className="size-3.5 shrink-0 text-faint" />
+              <Badge tone="success" className="min-w-0 max-w-44">
+                <span className="truncate">{dropAction?.target}</span>
+              </Badge>
             </DialogTitle>
             <DialogDescription>
               {dropAction && useRepo.getState().repo?.headBranch !== dropAction.target
@@ -837,25 +842,47 @@ export function Sidebar() {
           </DialogHeader>
           <div className="flex flex-col gap-2">
             <Button
-              className="justify-start"
+              className="h-auto justify-start whitespace-normal py-2"
               onClick={() => dropAction && void dropMerge(dropAction.source, dropAction.target, true)}
             >
-              <GitMerge /> Merge {dropAction?.source} into {dropAction?.target}
+              <GitMerge className="shrink-0" />
+              <span className="flex min-w-0 flex-col items-start gap-0.5 text-left">
+                <span className="max-w-full truncate">
+                  Merge {dropAction?.source} into {dropAction?.target}
+                </span>
+                <span className="text-[11px] font-normal opacity-75">
+                  Records a merge commit on {dropAction?.target}
+                </span>
+              </span>
             </Button>
             <Button
               variant="secondary"
-              className="justify-start"
+              className="h-auto justify-start whitespace-normal py-2"
               onClick={() => dropAction && void dropMerge(dropAction.source, dropAction.target, false)}
             >
-              <FastForward /> Fast-forward {dropAction?.target} if possible
+              <FastForward className="shrink-0" />
+              <span className="flex min-w-0 flex-col items-start gap-0.5 text-left">
+                <span className="max-w-full truncate">Fast-forward {dropAction?.target}</span>
+                <span className="text-[11px] font-normal text-muted">
+                  Moves the branch pointer without a merge commit; merges normally if the branches diverged
+                </span>
+              </span>
             </Button>
             {dropAction && !branches.find((b) => b.name === dropAction.source)?.isRemote && (
               <Button
                 variant="secondary"
-                className="justify-start"
+                className="h-auto justify-start whitespace-normal py-2"
                 onClick={() => void dropRebase(dropAction.source, dropAction.target)}
               >
-                <ListRestart /> Rebase {dropAction.source} onto {dropAction.target}
+                <ListRestart className="shrink-0" />
+                <span className="flex min-w-0 flex-col items-start gap-0.5 text-left">
+                  <span className="max-w-full truncate">
+                    Rebase {dropAction.source} onto {dropAction.target}
+                  </span>
+                  <span className="text-[11px] font-normal text-muted">
+                    Replays {dropAction.source}'s commits on top of {dropAction.target} — rewrites history
+                  </span>
+                </span>
               </Button>
             )}
           </div>

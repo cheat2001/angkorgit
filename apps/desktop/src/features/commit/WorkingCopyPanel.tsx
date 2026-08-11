@@ -137,6 +137,19 @@ export function WorkingCopyPanel() {
     el.style.height = `${Math.min(el.scrollHeight, 300)}px`;
   }, [message]);
 
+  useEffect(() => {
+    if (!path || useCommitDraft.getState().drafts[path]) return;
+    let cancelled = false;
+    void ipc.mergeMessage(path).then((mergeMsg) => {
+      if (cancelled || !mergeMsg) return;
+      if (useCommitDraft.getState().drafts[path]) return;
+      useCommitDraft.getState().setDraft(path, mergeMsg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [path, status]);
+
   const files = status?.files ?? [];
   const stagedFiles = files.filter((f) => f.staged);
   const unstagedFiles = files.filter((f) => f.unstaged);

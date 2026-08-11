@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Command } from 'cmdk';
 import { toast } from 'sonner';
+import { toastOutcome } from '@/shared/toastOutcome';
 import {
   Archive,
   ArrowDownToLine,
@@ -71,8 +72,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
     void (async () => {
       try {
         const result = (await op()) as { status?: string; message?: string } | undefined;
-        if (result?.status === 'conflicts') toast.warning(result.message);
-        else toast.success(result?.message ?? `${label} done`);
+        toastOutcome(result, `${label} done`);
         await onRefresh();
       } catch (error) {
         toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);

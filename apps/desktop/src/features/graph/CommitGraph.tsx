@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { toastOutcome } from '@/shared/toastOutcome';
 import { ArrowDownToLine, ArrowUpFromLine, Check, Copy, Filter, GitBranchPlus, GitMerge, ListRestart, RotateCcw, Search, Tag as TagIcon, Undo2, User, X } from 'lucide-react';
 import type { CommitInfo, RefInfo } from '@angkorgit/core';
 import {
@@ -132,8 +133,7 @@ export function CommitGraph() {
               })
           : op;
         const result = (await run()) as { status?: string; message?: string } | undefined;
-        if (result?.status === 'conflicts') toast.warning(result.message);
-        else toast.success(result?.message ?? `${label} done`);
+        toastOutcome(result, `${label} done`);
         await refresh();
         await reload(path);
       } catch (error) {

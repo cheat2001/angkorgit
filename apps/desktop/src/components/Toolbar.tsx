@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { toastOutcome } from '@/shared/toastOutcome';
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -252,8 +253,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     try {
       const outcome = await op();
       if (outcome && 'message' in outcome) {
-        if (outcome.status === 'conflicts') toast.warning(outcome.message);
-        else toast.success(outcome.message);
+        toastOutcome(outcome, `${label} complete`);
       } else {
         toast.success(`${label} complete`);
       }

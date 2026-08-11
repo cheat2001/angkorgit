@@ -231,6 +231,11 @@ pub async fn commit_amend(path: String, message: Option<String>) -> AppResult<St
 }
 
 #[tauri::command]
+pub async fn merge_message(path: String) -> AppResult<Option<String>> {
+    blocking(move || commit::merge_message(&path)).await
+}
+
+#[tauri::command]
 pub async fn commit_revert(path: String, oid: String) -> AppResult<OpOutcome> {
     blocking(move || commit::revert(&path, &oid)).await
 }

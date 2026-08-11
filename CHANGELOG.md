@@ -14,7 +14,17 @@ All notable changes to AngKorGit are documented here. The format follows
   a branch 1172 commits ahead no longer stretches its row; hover tooltips keep
   the exact count where one exists
 
+### Added
+- **The commit box pre-fills git's merge message** ("Merge branch 'x' into y")
+  after a conflicted merge, so finishing the merge is one click once conflicts
+  are resolved — it never overwrites a message you already typed
+- **The drag-and-drop dialog explains each action** — merge (records a merge
+  commit), fast-forward (moves the pointer), rebase (replays commits, rewrites
+  history) — so the choice is clear without knowing git terminology
+
 ### Changed
+- **"Already up to date" now shows as an info toast, not a green success** —
+  everywhere an operation can report it (merge, pull, fast-forward)
 - **Explicit branch merges now always create a merge commit** (like GitKraken).
   Previously, merging a branch whose changes were already contained in the
   source fast-forwarded — the branch pointer moved with no visible

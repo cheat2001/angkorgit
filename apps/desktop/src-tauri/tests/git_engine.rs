@@ -667,3 +667,30 @@ fn merge_no_ff_creates_merge_commit_when_fast_forward_possible() {
     let outcome = core::merge(repo.path(), "production", true).unwrap();
     assert_eq!(outcome.status, "up_to_date");
 }
+
+#[test]
+fn merge_message_available_during_conflicted_merge_only() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "line\n");
+    commit_all(&repo, "base");
+
+    assert_eq!(core::merge_message(repo.path()).unwrap(), None);
+
+    core::branch_create(repo.path(), "other", None, true).unwrap();
+    repo.write("a.txt", "other change\n");
+    commit_all(&repo, "other");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("a.txt", "master change\n");
+    commit_all(&repo, "master");
+
+    let outcome = core::merge(repo.path(), "other", false).unwrap();
+    assert_eq!(outcome.status, "conflicts");
+
+    let message = core::merge_message(repo.path()).unwrap().unwrap();
+    assert!(message.starts_with("Merge branch 'other'"));
+    assert!(!message.contains('#'));
+
+    core::conflict_resolve(repo.path(), "a.txt", "resolved\n").unwrap();
+    core::commit(repo.path(), &message).unwrap();
+    assert_eq!(core::merge_message(repo.path()).unwrap(), None);
+}
