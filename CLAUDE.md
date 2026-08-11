@@ -500,6 +500,16 @@ plugin can be added), and the Homebrew cask.
   is no longer used — the GitHub Pages site is built at root base for the custom domain.
 - **Release** (`release.yml`): push tag `v*` → tauri-action builds macOS (universal),
   Windows, Linux; attaches to draft GitHub release.
+- **Release notes follow a fixed house template** (see any published release, e.g.
+  v0.3.0 — the owner rejects ad-hoc formats): (1) themed opening line ("The X
+  release. …") + the standing updater sentence "Already on AngKorGit? **Your app
+  will offer this update by itself** — one click, signature-verified. 🏛️";
+  (2) `## Highlights` — emoji-prefixed bold titles written as user benefits in
+  narrative voice, NOT changelog Added/Changed categories; (3) `## Fixed` — plain
+  bullets, lead with the user-visible symptom; (4) optional `## Removed` /
+  `## Notes`; (5) `## Install` — Platform/File table with this version's exact
+  artifact names; (6) footer line: first-launch guide · changelog · issues links.
+  Never paste raw CHANGELOG sections as release notes.
 - Repo remote: `git@github.com:cheat2001/angkorgit.git` (SSH). The owner's key is
   `~/.ssh/angkorgit_rsa`, selected for github.com via `~/.ssh/config`.
 
