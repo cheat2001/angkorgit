@@ -7,4 +7,5 @@ export * from './components/Tooltip';
 export * from './components/Tabs';
 export * from './components/misc';
 export * from './components/Logo';
+export * from './components/TemplePattern';
 export { default as tailwindPreset } from './tailwind-preset';

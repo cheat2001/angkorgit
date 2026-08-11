@@ -6,6 +6,13 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Angkor Dusk and Angkor Dawn signature themes** — a warm laterite dark and a
+  sandstone light, with a kbach-inspired colonnade pattern (Angkor's baluster
+  window columns) etched at low opacity into the welcome and splash screens.
+  The ornament never appears behind the graph, diffs, or code, is invisible in
+  every other theme, and your accent colour still applies on top
+
 ## [0.4.0] — 2026-08-11
 
 Merging is the theme of this release: it now behaves the way the graph leads

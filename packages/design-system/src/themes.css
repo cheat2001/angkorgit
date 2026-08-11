@@ -4,6 +4,50 @@
  * Generated from the themes' published palettes.
  */
 
+.theme-angkor-dusk {
+  --background: 26 26% 6.5%;
+  --surface: 26 22% 9.5%;
+  --surface-raised: 27 19% 12.5%;
+  --surface-overlay: 28 18% 14.5%;
+  --border: 30 16% 21%;
+  --border-subtle: 28 17% 15.5%;
+  --foreground: 36 28% 90%;
+  --muted-foreground: 33 13% 62%;
+  --faint-foreground: 31 9% 44%;
+  --syntax-keyword: 292 52% 70%;
+  --syntax-string: 88 38% 62%;
+  --syntax-number: 32 88% 64%;
+  --syntax-function: 210 82% 70%;
+  --syntax-variable: 196 62% 70%;
+  --syntax-type: 42 78% 64%;
+  --glass: 26 22% 9.5%;
+  --shadow-soft: 0 8px 32px -12px rgb(10 6 2 / 0.6);
+  --ornament: 0.05;
+  color-scheme: dark;
+}
+
+.theme-angkor-dawn {
+  --background: 38 34% 93%;
+  --surface: 40 45% 97.5%;
+  --surface-raised: 39 38% 95%;
+  --surface-overlay: 42 50% 98.5%;
+  --border: 35 22% 80%;
+  --border-subtle: 37 26% 87%;
+  --foreground: 27 32% 15%;
+  --muted-foreground: 29 15% 37%;
+  --faint-foreground: 31 11% 53%;
+  --syntax-keyword: 292 68% 40%;
+  --syntax-string: 92 58% 28%;
+  --syntax-number: 28 88% 36%;
+  --syntax-function: 212 85% 38%;
+  --syntax-variable: 198 78% 32%;
+  --syntax-type: 38 88% 32%;
+  --glass: 40 45% 97.5%;
+  --shadow-soft: 0 8px 32px -16px rgb(64 44 22 / 0.28);
+  --ornament: 0.06;
+  color-scheme: light;
+}
+
 .theme-vscode-dark {
   --background: 0 0% 11.8%;
   --surface: 240 1.3% 14.7%;

@@ -13,6 +13,8 @@ import { isTauri } from '@/core/ipc';
 export type Theme =
   | 'dark'
   | 'light'
+  | 'angkor-dusk'
+  | 'angkor-dawn'
   | 'vscode-dark'
   | 'vscode-light'
   | 'github-dark'
@@ -36,6 +38,8 @@ export interface ThemeMeta {
 export const THEMES: ThemeMeta[] = [
   { id: 'dark', label: 'AngKor Dark', base: 'dark', swatch: { bg: '#0d1220', fg: '#e5e9f0', dots: ['#d97706', '#22c55e', '#38bdf8'] } },
   { id: 'light', label: 'AngKor Light', base: 'light', swatch: { bg: '#f5f7fa', fg: '#1b2437', dots: ['#d97706', '#15803d', '#0369a1'] } },
+  { id: 'angkor-dusk', label: 'Angkor Dusk', base: 'dark', swatch: { bg: '#1e150d', fg: '#eae1d1', dots: ['#e08c16', '#22c55e', '#38bdf8'] } },
+  { id: 'angkor-dawn', label: 'Angkor Dawn', base: 'light', swatch: { bg: '#f3edde', fg: '#31251a', dots: ['#b45f06', '#15803d', '#0369a1'] } },
   { id: 'vscode-dark', label: 'VS Code Dark+', base: 'dark', swatch: { bg: '#1e1e1e', fg: '#d4d4d4', dots: ['#569cd6', '#ce9178', '#dcdcaa'] } },
   { id: 'vscode-light', label: 'VS Code Light+', base: 'light', swatch: { bg: '#ffffff', fg: '#333333', dots: ['#0000ff', '#a31515', '#795e26'] } },
   { id: 'github-dark', label: 'GitHub Dark', base: 'dark', swatch: { bg: '#0d1117', fg: '#c9d1d9', dots: ['#ff7b72', '#a5d6ff', '#d2a8ff'] } },

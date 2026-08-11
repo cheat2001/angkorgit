@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Clock, FolderOpen, GitBranchPlus, Search, Settings, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button, Input, Logo } from '@angkorgit/design-system';
+import { Button, Input, Logo, TemplePattern } from '@angkorgit/design-system';
 import { pickDirectory } from '@/core/ipc';
 import { useRepo } from './store';
 import { useUi } from '@/features/ui/store';
@@ -47,12 +47,13 @@ export function WelcomePage() {
 
   return (
     <motion.div
-      className="flex h-full items-center justify-center p-8"
+      className="relative flex h-full items-center justify-center p-8"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
-      <div className="w-full max-w-3xl">
+      <TemplePattern className="[mask-image:radial-gradient(ellipse_at_center,transparent_30%,black_75%)]" />
+      <div className="relative w-full max-w-3xl">
         <div className="mb-10 flex items-center gap-4">
           <div className="text-foreground">
             <Logo size={56} />
