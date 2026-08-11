@@ -6,6 +6,12 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-11
+
+Merging is the theme of this release: it now behaves the way the graph leads
+you to expect, and explains itself along the way — dressed in new signature
+themes and kept fresh by background fetching.
+
 ### Added
 - **Angkor Dusk and Angkor Dawn signature themes** — a warm laterite dark and a
   sandstone light, with a kbach-inspired colonnade pattern (Angkor's baluster
@@ -18,19 +24,6 @@ All notable changes to AngKorGit are documented here. The format follows
   appear on the graph by themselves. Failures are silent and back off
 - **Repository tabs can be reordered by drag and drop**, and the order is
   remembered
-
-### Fixed
-- **The graph now updates when only remote refs change.** A fetch that moved
-  `origin/…` without touching your checked-out branch used to refresh the file
-  status only — new remote commits and behind-badges never appeared until a
-  manual reload
-
-## [0.4.0] — 2026-08-11
-
-Merging is the theme of this release: it now behaves the way the graph leads
-you to expect, and explains itself along the way.
-
-### Added
 - **A GitKraken-style conflict resolver.** Sides A and B sit in aligned panes
   with a checkbox on every line — take a whole side from the pane header, or
   cherry-pick individual lines. The Output pane below shows the clean merged
@@ -64,6 +57,10 @@ you to expect, and explains itself along the way.
   fast-forwards when it can
 
 ### Fixed
+- **The graph now updates when only remote refs change.** A fetch that moved
+  `origin/…` without touching your checked-out branch used to refresh the file
+  status only — new remote commits and behind-badges never appeared until a
+  manual reload
 - **Graph avatars on the first lane no longer have their coloured ring clipped**
   on the left edge of the graph column
 - **Merge and rebase now always target the branch, never a same-named tag.** In
