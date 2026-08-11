@@ -123,6 +123,14 @@ pub fn resolve_branch_ref<'repo>(
     Ok(repo.resolve_reference_from_short_name(name)?)
 }
 
+pub fn can_fast_forward(path: &str, target: &str, source: &str) -> AppResult<bool> {
+    let repo = super::repo::open(path)?;
+    let target_oid = resolve_branch_ref(&repo, target)?.peel_to_commit()?.id();
+    let source_oid = resolve_branch_ref(&repo, source)?.peel_to_commit()?.id();
+    let (target_unique, source_unique) = repo.graph_ahead_behind(target_oid, source_oid)?;
+    Ok(target_unique == 0 && source_unique > 0)
+}
+
 fn do_checkout(repo: &Repository, refname: &str) -> AppResult<()> {
     let obj = repo.revparse_single(refname)?;
     let mut builder = CheckoutBuilder::new();

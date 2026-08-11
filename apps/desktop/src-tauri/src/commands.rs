@@ -236,6 +236,11 @@ pub async fn merge_message(path: String) -> AppResult<Option<String>> {
 }
 
 #[tauri::command]
+pub async fn merge_can_ff(path: String, target: String, source: String) -> AppResult<bool> {
+    blocking(move || branch::can_fast_forward(&path, &target, &source)).await
+}
+
+#[tauri::command]
 pub async fn commit_revert(path: String, oid: String) -> AppResult<OpOutcome> {
     blocking(move || commit::revert(&path, &oid)).await
 }

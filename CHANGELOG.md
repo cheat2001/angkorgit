@@ -40,8 +40,9 @@ you to expect, and explains itself along the way.
   source fast-forwarded — the branch pointer moved with no visible
   "Merge branch 'x' into y" commit on the graph, which read as "the merge did
   nothing". Drag-and-drop merge and the "Merge into current" context menus now
-  record a real merge commit; the drop dialog offers "Fast-forward if possible"
-  for the old pointer-move behaviour. Pull still fast-forwards when it can
+  record a real merge commit; the drop dialog offers a fast-forward option —
+  shown only when the target is strictly behind, like GitKraken. Pull still
+  fast-forwards when it can
 
 ### Fixed
 - **Graph avatars on the first lane no longer have their coloured ring clipped**

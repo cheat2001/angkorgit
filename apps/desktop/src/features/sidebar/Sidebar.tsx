@@ -156,7 +156,7 @@ export function Sidebar() {
   const [query, setQuery] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [dropAction, setDropAction] = useState<{ source: string; target: string } | null>(null);
+  const [dropAction, setDropAction] = useState<{ source: string; target: string; canFf?: boolean } | null>(null);
   const [branchMenu, setBranchMenu] = useState<{ x: number; y: number; branch: BranchInfo } | null>(null);
   const [subMenu, setSubMenu] = useState<{ x: number; y: number; sub: SubmoduleInfo } | null>(null);
   const [remoteMenu, setRemoteMenu] = useState<{ x: number; y: number; remote: RemoteInfo } | null>(null);
@@ -300,7 +300,13 @@ export function Sidebar() {
         setDropTarget(null);
         setDragging(null);
         if (source && source !== branch.name) {
-          setDropAction({ source, target: branch.name });
+          const target = branch.name;
+          setDropAction({ source, target });
+          void ipc.mergeCanFastForward(path, target, source).then((canFf) => {
+            setDropAction((cur) =>
+              cur && cur.source === source && cur.target === target ? { ...cur, canFf } : cur,
+            );
+          });
         }
       }}
       onContextMenu={(e) => {
@@ -855,19 +861,23 @@ export function Sidebar() {
                 </span>
               </span>
             </Button>
-            <Button
-              variant="secondary"
-              className="h-auto justify-start whitespace-normal py-2"
-              onClick={() => dropAction && void dropMerge(dropAction.source, dropAction.target, false)}
-            >
-              <FastForward className="shrink-0" />
-              <span className="flex min-w-0 flex-col items-start gap-0.5 text-left">
-                <span className="max-w-full truncate">Fast-forward {dropAction?.target}</span>
-                <span className="text-[11px] font-normal text-muted">
-                  Moves the branch pointer without a merge commit; merges normally if the branches diverged
+            {dropAction?.canFf && (
+              <Button
+                variant="secondary"
+                className="h-auto justify-start whitespace-normal py-2"
+                onClick={() => void dropMerge(dropAction.source, dropAction.target, false)}
+              >
+                <FastForward className="shrink-0" />
+                <span className="flex min-w-0 flex-col items-start gap-0.5 text-left">
+                  <span className="max-w-full truncate">
+                    Fast-forward {dropAction.target} to {dropAction.source}
+                  </span>
+                  <span className="text-[11px] font-normal text-muted">
+                    Moves the branch pointer without creating a merge commit
+                  </span>
                 </span>
-              </span>
-            </Button>
+              </Button>
+            )}
             {dropAction && !branches.find((b) => b.name === dropAction.source)?.isRemote && (
               <Button
                 variant="secondary"

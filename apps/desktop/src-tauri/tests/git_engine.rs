@@ -694,3 +694,24 @@ fn merge_message_available_during_conflicted_merge_only() {
     core::commit(repo.path(), &message).unwrap();
     assert_eq!(core::merge_message(repo.path()).unwrap(), None);
 }
+
+#[test]
+fn can_fast_forward_only_when_target_is_strictly_behind() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "feature", None, true).unwrap();
+    repo.write("b.txt", "feature\n");
+    commit_all(&repo, "feature work");
+
+    assert!(core::can_fast_forward(repo.path(), "master", "feature").unwrap());
+    assert!(!core::can_fast_forward(repo.path(), "feature", "master").unwrap());
+
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("c.txt", "master\n");
+    commit_all(&repo, "master work");
+
+    assert!(!core::can_fast_forward(repo.path(), "master", "feature").unwrap());
+    assert!(!core::can_fast_forward(repo.path(), "feature", "feature").unwrap());
+}
