@@ -66,7 +66,7 @@ const SECTIONS: Array<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   { id: 'appearance', label: 'Appearance', description: 'Theme, accent color, zoom and motion', icon: Palette },
-  { id: 'git', label: 'Git', description: 'Committer identity and identity profiles', icon: User },
+  { id: 'git', label: 'Git', description: 'Auto fetch, committer identity and identity profiles', icon: User },
   { id: 'accounts', label: 'Authentication', description: 'https:// remotes use accounts · git@ remotes use SSH keys', icon: Github },
   { id: 'ai', label: 'AI Assistant', description: 'Provider, connection and message style', icon: Sparkles },
   { id: 'shortcuts', label: 'Shortcuts', description: 'Keyboard reference', icon: Keyboard },
@@ -659,6 +659,28 @@ export function SettingsDialog() {
 
               {section === 'git' && (
                 <div className="flex flex-col gap-4">
+                  <SettingCard
+                    title="Auto fetch"
+                    description="Fetch from the first remote in the background so teammates' commits appear on the graph by themselves. Failures are silent and never interrupt you."
+                  >
+                    <Field label="Fetch every">
+                      <Select
+                        value={String(settings.autoFetchMinutes)}
+                        onValueChange={(v) => settings.setAutoFetchMinutes(Number(v))}
+                      >
+                        <SelectTrigger className="w-44">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Off</SelectItem>
+                          <SelectItem value="1">Minute</SelectItem>
+                          <SelectItem value="5">5 minutes</SelectItem>
+                          <SelectItem value="15">15 minutes</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </SettingCard>
+
                   <SettingCard
                     title="Committer identity"
                     description={

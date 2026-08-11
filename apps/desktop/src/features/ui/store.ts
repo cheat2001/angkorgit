@@ -55,6 +55,7 @@ interface UiState {
   openConflict: (file: string | null) => void;
   addRepoTab: (path: string) => void;
   closeRepoTab: (path: string) => void;
+  moveRepoTab: (from: string, to: string) => void;
   setFileTree: (on: boolean) => void;
 }
 
@@ -98,6 +99,16 @@ export const useUi = create<UiState>()(
   addRepoTab: (path) =>
     set((s) => (s.repoTabs.includes(path) ? s : { repoTabs: [...s.repoTabs, path] })),
   closeRepoTab: (path) => set((s) => ({ repoTabs: s.repoTabs.filter((t) => t !== path) })),
+  moveRepoTab: (from, to) =>
+    set((s) => {
+      const fromIdx = s.repoTabs.indexOf(from);
+      const toIdx = s.repoTabs.indexOf(to);
+      if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return s;
+      const repoTabs = [...s.repoTabs];
+      repoTabs.splice(fromIdx, 1);
+      repoTabs.splice(toIdx, 0, from);
+      return { repoTabs };
+    }),
   setFileTree: (fileTree) => set({ fileTree }),
     }),
     {

@@ -22,6 +22,7 @@ import { RepoDialogs } from './RepoDialogs';
 import { CloneDialog } from './CloneDialog';
 import { useShortcuts } from '@/shared/useShortcuts';
 import { useUndo } from '@/features/history/undoStore';
+import { useSettings } from '@/features/settings/store';
 import { ipc, listen } from '@/core/ipc';
 
 export function RepositoryPage() {
@@ -66,7 +67,16 @@ export function RepositoryPage() {
         try {
           const info = await ipc.repoInfo(repoPath);
           const current = useRepo.getState().repo;
-          if (info.headOid !== current?.headOid || info.headBranch !== current?.headBranch) {
+          const headChanged =
+            info.headOid !== current?.headOid || info.headBranch !== current?.headBranch;
+          let refsChanged = false;
+          if (!headChanged) {
+            const branches = await ipc.branches(repoPath);
+            const fingerprint = (list: { name: string; targetOid: string }[]) =>
+              list.map((b) => `${b.name}:${b.targetOid}`).join('|');
+            refsChanged = fingerprint(branches) !== fingerprint(useRepo.getState().branches);
+          }
+          if (headChanged || refsChanged) {
             await useRepo.getState().refresh();
             await useGraph.getState().reload(repoPath);
           } else {
@@ -85,6 +95,38 @@ export function RepositoryPage() {
       void ipc.watchStop();
     };
   }, [repoPath, reload, navigate]);
+
+  const autoFetchMinutes = useSettings((s) => s.autoFetchMinutes);
+  useEffect(() => {
+    if (!repoPath || !autoFetchMinutes) return;
+    let fetching = false;
+    let lastFetch = 0;
+    const tick = async () => {
+      if (fetching || document.hidden) return;
+      if (Date.now() - lastFetch < 30_000) return;
+      const state = useRepo.getState();
+      if (state.busy || state.repo?.path !== repoPath) return;
+      const remote = state.remotes[0]?.name;
+      if (!remote) return;
+      fetching = true;
+      lastFetch = Date.now();
+      try {
+        await ipc.fetch(repoPath, remote, true, false);
+      } catch {
+        lastFetch = Date.now() + 4 * 60_000;
+      } finally {
+        fetching = false;
+      }
+    };
+    const id = window.setInterval(() => void tick(), autoFetchMinutes * 60_000);
+    const onFocus = () => void tick();
+    window.addEventListener('focus', onFocus);
+    void tick();
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [repoPath, autoFetchMinutes]);
 
   const refreshAll = useCallback(async () => {
     if (!repo) return;

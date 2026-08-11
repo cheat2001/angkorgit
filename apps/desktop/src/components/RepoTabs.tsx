@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { Plus, X } from 'lucide-react';
 import { Button, Hint, cn } from '@angkorgit/design-system';
@@ -8,6 +9,8 @@ import { useUi } from '@/features/ui/store';
 export function RepoTabs() {
   const repo = useRepo((s) => s.repo);
   const tabs = useUi((s) => s.repoTabs);
+  const [draggingTab, setDraggingTab] = useState<string | null>(null);
+  const [dropTab, setDropTab] = useState<string | null>(null);
 
   const activate = (path: string) => {
     if (path === repo?.path) return;
@@ -57,6 +60,31 @@ export function RepoTabs() {
               role="tab"
               aria-selected={active}
               title={path}
+              draggable
+              onDragStart={(e) => {
+                setDraggingTab(path);
+                e.dataTransfer.setData('text/angkorgit-repo-tab', path);
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragEnd={() => {
+                setDraggingTab(null);
+                setDropTab(null);
+              }}
+              onDragOver={(e) => {
+                if (draggingTab && draggingTab !== path) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDropTab(path);
+                }
+              }}
+              onDragLeave={() => setDropTab((t) => (t === path ? null : t))}
+              onDrop={(e) => {
+                e.preventDefault();
+                const source = e.dataTransfer.getData('text/angkorgit-repo-tab');
+                setDraggingTab(null);
+                setDropTab(null);
+                if (source && source !== path) useUi.getState().moveRepoTab(source, path);
+              }}
               onClick={() => activate(path)}
               onAuxClick={(e) => {
                 if (e.button === 1) close(path); // middle-click closes
@@ -66,6 +94,8 @@ export function RepoTabs() {
                 active
                   ? 'border-border-subtle bg-background text-foreground'
                   : 'border-transparent text-muted hover:bg-surface-raised hover:text-foreground',
+                draggingTab === path && 'opacity-40',
+                dropTab === path && 'ring-1 ring-inset ring-primary/60',
               )}
             >
               <span className="min-w-0 truncate">{label(path)}</span>
