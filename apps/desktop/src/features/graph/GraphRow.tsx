@@ -17,7 +17,8 @@ export function laneColor(color: number): string {
   return `hsl(var(--graph-${color % 10}))`;
 }
 
-const x = (lane: number) => AVATAR_SIZE / 2 + 1 + lane * LANE_WIDTH;
+export const laneX = (lane: number) => AVATAR_SIZE / 2 + 3 + lane * LANE_WIDTH;
+const x = laneX;
 const CY = ROW_HEIGHT / 2;
 
 function FlatGutter({ author }: { author: CommitInfo['author'] }) {

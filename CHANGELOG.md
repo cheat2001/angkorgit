@@ -24,6 +24,8 @@ All notable changes to AngKorGit are documented here. The format follows
   for the old pointer-move behaviour. Pull still fast-forwards when it can
 
 ### Fixed
+- **Graph avatars on the first lane no longer have their coloured ring clipped**
+  on the left edge of the graph column
 - **Merge and rebase now always target the branch, never a same-named tag.** In
   repositories with a tag named like a branch (deployment tags such as `demo` or
   `production` are common), merging that branch silently resolved to the old
