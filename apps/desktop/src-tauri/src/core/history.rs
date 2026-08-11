@@ -74,9 +74,10 @@ pub fn list(path: &str, query: HistoryQuery) -> AppResult<HistoryPage> {
 
     match &query.branch {
         Some(branch) => {
-            let reference = repo
-                .resolve_reference_from_short_name(branch)
-                .or_else(|_| repo.find_reference(branch))?;
+            let reference = match super::branch::resolve_branch_ref(&repo, branch) {
+                Ok(r) => r,
+                Err(_) => repo.find_reference(branch)?,
+            };
             if let Some(oid) = reference.peel_to_commit().ok().map(|c| c.id()) {
                 walk.push(oid)?;
             }

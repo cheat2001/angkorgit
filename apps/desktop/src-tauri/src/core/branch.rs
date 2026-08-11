@@ -110,6 +110,19 @@ fn local_name_of(remote_branch: &str) -> &str {
         .unwrap_or(remote_branch)
 }
 
+pub fn resolve_branch_ref<'repo>(
+    repo: &'repo Repository,
+    name: &str,
+) -> AppResult<git2::Reference<'repo>> {
+    if let Ok(local) = repo.find_reference(&format!("refs/heads/{name}")) {
+        return Ok(local);
+    }
+    if let Ok(remote) = repo.find_reference(&format!("refs/remotes/{name}")) {
+        return Ok(remote);
+    }
+    Ok(repo.resolve_reference_from_short_name(name)?)
+}
+
 fn do_checkout(repo: &Repository, refname: &str) -> AppResult<()> {
     let obj = repo.revparse_single(refname)?;
     let mut builder = CheckoutBuilder::new();
@@ -130,9 +143,9 @@ pub fn checkout_detached(path: &str, rev: &str) -> AppResult<()> {
     Ok(())
 }
 
-pub fn merge(path: &str, branch: &str) -> AppResult<OpOutcome> {
+pub fn merge(path: &str, branch: &str, no_ff: bool) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
-    let reference = repo.resolve_reference_from_short_name(branch)?;
+    let reference = resolve_branch_ref(&repo, branch)?;
     let annotated = repo.reference_to_annotated_commit(&reference)?;
     let (analysis, _pref) = repo.merge_analysis(&[&annotated])?;
 
@@ -143,13 +156,14 @@ pub fn merge(path: &str, branch: &str) -> AppResult<OpOutcome> {
         });
     }
 
-    if analysis.is_fast_forward() {
+    if analysis.is_fast_forward() && !no_ff {
         let target = annotated.id();
+        let target_commit = repo.find_commit(target)?;
+        let mut builder = CheckoutBuilder::new();
+        builder.safe();
+        repo.checkout_tree(target_commit.as_object(), Some(&mut builder))?;
         let mut head_ref = repo.head()?;
         head_ref.set_target(target, &format!("fast-forward merge {branch}"))?;
-        let mut builder = CheckoutBuilder::new();
-        builder.force();
-        repo.checkout_head(Some(&mut builder))?;
         return Ok(OpOutcome {
             status: "fast_forward".into(),
             message: format!("Fast-forwarded to {branch}"),
@@ -197,7 +211,7 @@ pub fn abort_merge(path: &str) -> AppResult<()> {
 
 pub fn rebase(path: &str, upstream: &str) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
-    let reference = repo.resolve_reference_from_short_name(upstream)?;
+    let reference = resolve_branch_ref(&repo, upstream)?;
     let upstream_annotated = repo.reference_to_annotated_commit(&reference)?;
     let sig = repo.signature()?;
 

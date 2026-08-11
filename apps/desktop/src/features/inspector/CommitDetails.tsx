@@ -13,6 +13,31 @@ import { basename, formatDate } from '@/shared/utils';
 
 const diffPath = (diff: FileDiff) => diff.path;
 
+const statusMeta: Record<FileDiff['status'], { label: string; mark: string; className: string }> = {
+  modified: { label: 'modified', mark: 'M', className: 'text-info' },
+  new: { label: 'added', mark: 'A', className: 'text-success' },
+  deleted: { label: 'deleted', mark: 'D', className: 'text-danger' },
+  renamed: { label: 'renamed', mark: 'R', className: 'text-primary' },
+};
+
+function ChangeSummary({ diffs }: { diffs: FileDiff[] }) {
+  if (diffs.length === 0) return <>No changes</>;
+  const order: FileDiff['status'][] = ['modified', 'new', 'deleted', 'renamed'];
+  const parts = order
+    .map((status) => ({ status, count: diffs.filter((d) => d.status === status).length }))
+    .filter((p) => p.count > 0);
+  return (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {parts.map(({ status, count }) => (
+        <span key={status} className={cn('flex items-center gap-1', statusMeta[status].className)}>
+          <span className="font-mono">{statusMeta[status].mark}</span>
+          {count} {statusMeta[status].label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function diffToText(diffs: FileDiff[]): string {
   return diffs
     .map(
@@ -54,7 +79,7 @@ export function CommitDetails({
           active ? closeCenterDiff() : openCenterDiff({ path: diff.path, oid: commit.oid })
         }
       >
-        <FileText className="size-3.5 shrink-0 text-muted" />
+        <FileText className={cn('size-3.5 shrink-0', statusMeta[diff.status]?.className ?? 'text-muted')} />
         <span className="min-w-0 flex-1 truncate font-mono">
           {fileTree ? basename(diff.path) : diff.path}
         </span>
@@ -146,7 +171,7 @@ export function CommitDetails({
 
       <div className="p-2">
         <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted">
-          {loading ? 'Loading changes…' : `${diffs.length} file${diffs.length === 1 ? '' : 's'} changed`}
+          {loading ? 'Loading changes…' : <ChangeSummary diffs={diffs} />}
         </p>
         {fileTree ? (
           <FileTree items={diffs} pathOf={diffPath} renderFile={renderDiffRow} />

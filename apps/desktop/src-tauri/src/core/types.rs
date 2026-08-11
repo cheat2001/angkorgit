@@ -159,6 +159,7 @@ pub struct DiffHunk {
 pub struct FileDiff {
     pub path: String,
     pub old_path: Option<String>,
+    pub status: String,
     pub hunks: Vec<DiffHunk>,
     pub is_binary: bool,
     pub is_image: bool,

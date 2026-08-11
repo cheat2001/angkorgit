@@ -45,7 +45,7 @@ import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo } from '@/features/history/undoStore';
 import { useSettings } from '@/features/settings/store';
-import { modKey } from '@/shared/utils';
+import { capCount, modKey } from '@/shared/utils';
 
 function RepoSwitcher() {
   const { repo, recents, open, busy } = useRepo();
@@ -316,7 +316,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
         >
           <ArrowDownToLine />
           Pull
-          {status && status.behind > 0 && <Badge tone="info">{status.behind}</Badge>}
+          {status && status.behind > 0 && <Badge tone="info">{capCount(status.behind)}</Badge>}
         </Button>
       </Hint>
       <div className="flex items-center">
@@ -330,7 +330,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
           >
             <ArrowUpFromLine />
             Push
-            {status && status.ahead > 0 && <Badge tone="primary">{status.ahead}</Badge>}
+            {status && status.ahead > 0 && <Badge tone="primary">{capCount(status.ahead)}</Badge>}
           </Button>
         </Hint>
         <DropdownMenu>

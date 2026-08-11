@@ -295,8 +295,8 @@ pub async fn checkout_detached(path: String, rev: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn branch_merge(path: String, name: String) -> AppResult<OpOutcome> {
-    blocking(move || branch::merge(&path, &name)).await
+pub async fn branch_merge(path: String, name: String, noFf: Option<bool>) -> AppResult<OpOutcome> {
+    blocking(move || branch::merge(&path, &name, noFf.unwrap_or(false))).await
 }
 
 #[tauri::command]

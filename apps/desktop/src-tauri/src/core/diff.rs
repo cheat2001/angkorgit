@@ -134,6 +134,14 @@ fn file_diff_from(
         .map(|p| p.to_string_lossy().to_string())
         .filter(|p| *p != new_path && delta.status() == Delta::Renamed);
 
+    let status = match delta.status() {
+        Delta::Added | Delta::Copied | Delta::Untracked => "new",
+        Delta::Deleted => "deleted",
+        Delta::Renamed => "renamed",
+        _ => "modified",
+    }
+    .to_string();
+
     let is_binary = delta.flags().is_binary();
     let is_image = is_image_path(&new_path);
 
@@ -161,6 +169,7 @@ fn file_diff_from(
     Ok(FileDiff {
         path: new_path,
         old_path,
+        status,
         hunks,
         is_binary,
         is_image,
@@ -183,6 +192,7 @@ pub fn file_diff(path: &str, file: &str, staged: bool, context_lines: u32) -> Ap
         return Ok(FileDiff {
             path: file.to_string(),
             old_path: None,
+            status: "modified".into(),
             hunks: Vec::new(),
             is_binary: false,
             is_image: is_image_path(file),

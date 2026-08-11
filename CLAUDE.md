@@ -425,6 +425,28 @@ update CLAUDE.md or docs/ — never the code.
   `ssh_key_candidates` offers the configured key, the two defaults, then any other
   keypair discovered in `~/.ssh` (a file with a matching `.pub`), capped at
   `MAX_SSH_KEYS` = 5 because servers refuse after a handful of failed attempts.
+- **G24 — never resolve a branch name with `resolve_reference_from_short_name`
+  alone**: libgit2's dwim follows gitrevisions precedence, where **tags shadow
+  branches** (`refs/tags/x` before `refs/heads/x`). Real repos routinely carry
+  deployment tags named `demo`/`production` next to the branches — merge then
+  reported "Already up to date" (tag commit was an ancestor) and the graph's
+  branch filter showed the tag's stale history, i.e. "merge doesn't work but
+  GitKraken is fine". `branch::resolve_branch_ref` tries `refs/heads/<name>`,
+  then `refs/remotes/<name>`, then falls back to dwim (kept so filtering by tag
+  still works) — use it for every branch-name lookup (merge, rebase, history
+  filter use it today). Related: the fast-forward merge path must use SAFE
+  checkout (checkout_tree before set_target) — it originally force-checked-out
+  and silently destroyed uncommitted changes. Regression tests:
+  `*_prefers_branch_over_same_named_tag`, `merge_fast_forward_preserves_uncommitted_changes`.
+- **G25 — explicit merges are no-ff; only pull fast-forwards by default**: in
+  merge-flow teams (feature→staging→demo→production) the target often already
+  contains the source, so git's default fast-forward moves the pointer and
+  leaves NO merge commit — users read the empty graph as "merge didn't work"
+  (verified via a user repo's reflog: `fast-forward merge production` followed
+  by their manual reset + a GitKraken no-ff redo). `branch::merge` takes
+  `no_ff`; drag-merge and both "Merge into current" menus pass `true`, the drop
+  dialog's "Fast-forward if possible" and `remote.rs` pull paths pass `false`.
+  Regression test: `merge_no_ff_creates_merge_commit_when_fast_forward_possible`.
 - **G20 — accounts are HTTPS-only; SSH remotes never consult them**:
   `accounts::host_of_url` parses only `://` URLs (scp-style `git@host:path` returns
   `None`) and the lookup lives inside the `USER_PASS_PLAINTEXT` branch, which the
@@ -436,7 +458,7 @@ update CLAUDE.md or docs/ — never the code.
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (18) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
+| Rust integration (24) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
 | Rust module (17) | `apps/desktop/src-tauri/src/ai_cli.rs` (4), `src/error.rs` (4), `src/core/remote.rs` (9) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key |
 | Unit (45) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, preset instructions, post-generation prefix enforcement) |
 | E2E (5) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search — all on demo mode |

@@ -11,6 +11,7 @@ import {
 import { appVersion } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useSettings } from '@/features/settings/store';
+import { capCount } from '@/shared/utils';
 
 const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 
@@ -40,7 +41,7 @@ export function StatusBar() {
             <Hint label={`${status.ahead} commit${status.ahead === 1 ? '' : 's'} to push`}>
               <span className="flex items-center gap-0.5 text-success">
                 <ArrowUp className="size-3" />
-                {status.ahead}
+                {capCount(status.ahead)}
               </span>
             </Hint>
           )}
@@ -48,7 +49,7 @@ export function StatusBar() {
             <Hint label={`${status.behind} commit${status.behind === 1 ? '' : 's'} to pull`}>
               <span className="flex items-center gap-0.5 text-info">
                 <ArrowDown className="size-3" />
-                {status.behind}
+                {capCount(status.behind)}
               </span>
             </Hint>
           )}

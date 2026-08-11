@@ -126,7 +126,7 @@ fn branch_create_checkout_merge_ff_and_normal() {
     commit_all(&repo, "feature work");
 
     core::checkout_branch(repo.path(), "master").unwrap();
-    let outcome = core::merge(repo.path(), "feature").unwrap();
+    let outcome = core::merge(repo.path(), "feature", false).unwrap();
     assert_eq!(outcome.status, "fast_forward");
     assert!(repo.dir.join("b.txt").exists());
 
@@ -136,7 +136,7 @@ fn branch_create_checkout_merge_ff_and_normal() {
     core::checkout_branch(repo.path(), "master").unwrap();
     repo.write("d.txt", "master\n");
     commit_all(&repo, "master work");
-    let outcome = core::merge(repo.path(), "topic").unwrap();
+    let outcome = core::merge(repo.path(), "topic", false).unwrap();
     assert_eq!(outcome.status, "ok");
 }
 
@@ -154,7 +154,7 @@ fn merge_conflict_detect_and_resolve() {
     repo.write("a.txt", "master change\n");
     commit_all(&repo, "master");
 
-    let outcome = core::merge(repo.path(), "other").unwrap();
+    let outcome = core::merge(repo.path(), "other", false).unwrap();
     assert_eq!(outcome.status, "conflicts");
 
     let conflicts = core::conflict_list(repo.path()).unwrap();
@@ -203,7 +203,7 @@ fn merge_message_includes_into_branch() {
     repo.write("m.txt", "master\n");
     commit_all(&repo, "master work");
 
-    let outcome = core::merge(repo.path(), "topic").unwrap();
+    let outcome = core::merge(repo.path(), "topic", false).unwrap();
     assert_eq!(outcome.status, "ok");
     let page = core::history(
         repo.path(),
@@ -502,4 +502,168 @@ fn interoperates_with_git_cli() {
         .expect("git CLI available");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("from engine"));
+}
+
+#[test]
+fn merge_prefers_branch_over_same_named_tag() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "production", None, false).unwrap();
+    core::branch_create(repo.path(), "demo", None, true).unwrap();
+    repo.write("demo.txt", "demo work\n");
+    commit_all(&repo, "demo work");
+    core::tag_create(repo.path(), "demo", Some(&base), None).unwrap();
+
+    core::checkout_branch(repo.path(), "production").unwrap();
+    let outcome = core::merge(repo.path(), "demo", false).unwrap();
+    assert_eq!(outcome.status, "fast_forward");
+    assert!(repo.dir.join("demo.txt").exists());
+    assert_eq!(repo.read("demo.txt"), "demo work\n");
+}
+
+#[test]
+fn rebase_prefers_branch_over_same_named_tag() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "demo", None, true).unwrap();
+    repo.write("demo.txt", "demo work\n");
+    commit_all(&repo, "demo work");
+    core::tag_create(repo.path(), "demo", Some(&base), None).unwrap();
+
+    core::checkout_branch(repo.path(), "master").unwrap();
+    core::branch_create(repo.path(), "production", None, true).unwrap();
+    repo.write("prod.txt", "prod work\n");
+    commit_all(&repo, "prod work");
+
+    let outcome = core::rebase(repo.path(), "demo").unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert!(repo.dir.join("demo.txt").exists());
+    assert!(repo.dir.join("prod.txt").exists());
+}
+
+#[test]
+fn history_branch_filter_prefers_branch_over_tag() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "demo", None, true).unwrap();
+    repo.write("demo.txt", "demo work\n");
+    commit_all(&repo, "demo work");
+    core::tag_create(repo.path(), "demo", Some(&base), None).unwrap();
+
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 0,
+            limit: 10,
+            search: None,
+            author: None,
+            branch: Some("demo".into()),
+        },
+    )
+    .unwrap();
+    assert_eq!(page.commits.len(), 2);
+    assert_eq!(page.commits[0].summary, "demo work");
+}
+
+#[test]
+fn merge_fast_forward_preserves_uncommitted_changes() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "feature", None, true).unwrap();
+    repo.write("b.txt", "feature\n");
+    commit_all(&repo, "feature work");
+
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("a.txt", "local edit\n");
+    repo.write("wip.txt", "untracked\n");
+
+    let outcome = core::merge(repo.path(), "feature", false).unwrap();
+    assert_eq!(outcome.status, "fast_forward");
+    assert!(repo.dir.join("b.txt").exists());
+    assert_eq!(repo.read("a.txt"), "local edit\n");
+    assert_eq!(repo.read("wip.txt"), "untracked\n");
+}
+
+#[test]
+fn drag_merge_sequence_checkout_target_then_merge_source() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "production", None, false).unwrap();
+    core::branch_create(repo.path(), "demo", None, true).unwrap();
+    repo.write("feature.txt", "demo change\n");
+    commit_all(&repo, "demo change");
+
+    core::checkout_branch(repo.path(), "production").unwrap();
+    repo.write("prod.txt", "production change\n");
+    commit_all(&repo, "production change");
+    core::checkout_branch(repo.path(), "master").unwrap();
+
+    core::checkout_branch(repo.path(), "production").unwrap();
+    let outcome = core::merge(repo.path(), "demo", false).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_eq!(repo.read("feature.txt"), "demo change\n");
+    assert_eq!(repo.read("prod.txt"), "production change\n");
+
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 0,
+            limit: 1,
+            search: None,
+            author: None,
+            branch: Some("production".into()),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        page.commits[0].summary,
+        "Merge branch 'demo' into production"
+    );
+    assert_eq!(page.commits[0].parents.len(), 2);
+}
+
+#[test]
+fn merge_no_ff_creates_merge_commit_when_fast_forward_possible() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "production", None, true).unwrap();
+    repo.write("prod.txt", "released\n");
+    commit_all(&repo, "release work");
+
+    core::checkout_branch(repo.path(), "master").unwrap();
+    let outcome = core::merge(repo.path(), "production", true).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_eq!(repo.read("prod.txt"), "released\n");
+
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 0,
+            limit: 1,
+            search: None,
+            author: None,
+            branch: Some("master".into()),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        page.commits[0].summary,
+        "Merge branch 'production' into master"
+    );
+    assert_eq!(page.commits[0].parents.len(), 2);
+
+    let outcome = core::merge(repo.path(), "production", true).unwrap();
+    assert_eq!(outcome.status, "up_to_date");
 }

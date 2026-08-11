@@ -404,7 +404,7 @@ pub fn pull(path: &str, remote_name: &str) -> AppResult<OpOutcome> {
     drop(branch);
     drop(head);
 
-    super::branch::merge(path, &upstream_name)
+    super::branch::merge(path, &upstream_name, false)
 }
 
 pub fn push(
@@ -482,7 +482,7 @@ pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
         .as_deref()
         == Some(branch_name);
     if is_head {
-        return super::branch::merge(path, &upstream_name);
+        return super::branch::merge(path, &upstream_name, false);
     }
 
     let branch = repo.find_branch(branch_name, git2::BranchType::Local)?;

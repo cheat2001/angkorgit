@@ -233,9 +233,9 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('checkout_detached', { path, rev });
   },
-  async merge(path: string, name: string): Promise<OpOutcome> {
+  async merge(path: string, name: string, noFf = false): Promise<OpOutcome> {
     if (!isTauri()) return { status: 'ok', message: `Merged ${name} (demo)` };
-    return invoke('branch_merge', { path, name });
+    return invoke('branch_merge', { path, name, noFf });
   },
   async mergeAbort(path: string): Promise<void> {
     if (!isTauri()) return;

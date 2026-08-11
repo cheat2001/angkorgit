@@ -6,6 +6,39 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Commit details show a change-type summary** — "M 72 modified · A 57 added ·
+  D 1 deleted" instead of a flat file count, and each file row's icon is tinted
+  by its change type, matching the working copy's A/M/D/R colour convention
+- **Ahead/behind badges cap at 99+** in the sidebar, toolbar, and status bar —
+  a branch 1172 commits ahead no longer stretches its row; hover tooltips keep
+  the exact count where one exists
+
+### Changed
+- **Explicit branch merges now always create a merge commit** (like GitKraken).
+  Previously, merging a branch whose changes were already contained in the
+  source fast-forwarded — the branch pointer moved with no visible
+  "Merge branch 'x' into y" commit on the graph, which read as "the merge did
+  nothing". Drag-and-drop merge and the "Merge into current" context menus now
+  record a real merge commit; the drop dialog offers "Fast-forward if possible"
+  for the old pointer-move behaviour. Pull still fast-forwards when it can
+
+### Fixed
+- **Merge and rebase now always target the branch, never a same-named tag.** In
+  repositories with a tag named like a branch (deployment tags such as `demo` or
+  `production` are common), merging that branch silently resolved to the old
+  tagged commit — the merge reported "Already up to date" or merged stale
+  content. The graph's branch filter had the same flaw, so sidebar clicks could
+  show a tag's old history instead of the branch's. Branch names now resolve to
+  `refs/heads/…`, then `refs/remotes/…`, before anything else
+- **Fast-forward merges no longer discard uncommitted changes.** The
+  fast-forward path used a force checkout, silently wiping local edits; it now
+  uses a safe checkout and refuses (with an error) if local changes would be
+  overwritten, matching git's own behaviour
+- **Drag-and-drop merge/rebase reads the current branch from the repository**,
+  not from possibly stale UI state, before deciding whether to check out the
+  target branch first
+
 ## [0.3.0] — 2026-08-10
 
 Connecting to a remote is the theme of this release. Several controls looked

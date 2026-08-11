@@ -13,6 +13,7 @@ import {
   FolderGit2,
   FolderOpen,
   GitBranch,
+  FastForward,
   GitMerge,
   ListRestart,
   MoreHorizontal,
@@ -51,6 +52,7 @@ import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import type { BranchInfo, RemoteInfo, SubmoduleInfo } from '@angkorgit/core';
+import { capCount } from '@/shared/utils';
 
 interface BranchTreeNode {
   key: string;
@@ -201,10 +203,11 @@ export function Sidebar() {
     }
   };
 
-  const dropMerge = async (source: string, target: string) => {
+  const dropMerge = async (source: string, target: string, noFf: boolean) => {
     setDropAction(null);
     try {
-      if (useRepo.getState().repo?.headBranch !== target) {
+      const info = await ipc.repoInfo(path);
+      if (info.headBranch !== target) {
         await useUndo.getState().tracked({
           path,
           kind: 'checkout',
@@ -212,7 +215,7 @@ export function Sidebar() {
           action: () => ipc.checkout(path, target),
         });
       }
-      await act(`Merge ${source} into ${target}`, () => ipc.merge(path, source), { kind: 'merge' });
+      await act(`Merge ${source} into ${target}`, () => ipc.merge(path, source, noFf), { kind: 'merge' });
     } catch (error) {
       toast.error(`Merge failed: ${(error as { message?: string }).message ?? error}`);
     }
@@ -221,7 +224,8 @@ export function Sidebar() {
   const dropRebase = async (source: string, target: string) => {
     setDropAction(null);
     try {
-      if (useRepo.getState().repo?.headBranch !== source) {
+      const info = await ipc.repoInfo(path);
+      if (info.headBranch !== source) {
         await useUndo.getState().tracked({
           path,
           kind: 'checkout',
@@ -321,8 +325,8 @@ export function Sidebar() {
       >
         {branch.isHead && <Check className="size-3.5 shrink-0" />}
         <span className="truncate">{label}</span>
-        {branch.ahead > 0 && <Badge tone="primary">↑{branch.ahead}</Badge>}
-        {branch.behind > 0 && <Badge tone="info">↓{branch.behind}</Badge>}
+        {branch.ahead > 0 && <Badge tone="primary">↑{capCount(branch.ahead)}</Badge>}
+        {branch.behind > 0 && <Badge tone="info">↓{capCount(branch.behind)}</Badge>}
       </button>
       <Button
         variant="ghost"
@@ -747,7 +751,7 @@ export function Sidebar() {
             <DropdownMenuItem
               disabled={branchMenu.branch.isHead}
               onClick={() =>
-                void act(`Merge ${branchMenu.branch.name}`, () => ipc.merge(path, branchMenu.branch.name), {
+                void act(`Merge ${branchMenu.branch.name}`, () => ipc.merge(path, branchMenu.branch.name, true), {
                   kind: 'merge',
                 })
               }
@@ -776,7 +780,7 @@ export function Sidebar() {
                   }
                 >
                   <ArrowDownToLine /> Pull
-                  {branchMenu.branch.behind > 0 && <Badge tone="info">↓{branchMenu.branch.behind}</Badge>}
+                  {branchMenu.branch.behind > 0 && <Badge tone="info">↓{capCount(branchMenu.branch.behind)}</Badge>}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() =>
@@ -786,7 +790,7 @@ export function Sidebar() {
                   }
                 >
                   <ArrowUpFromLine /> Push
-                  {branchMenu.branch.ahead > 0 && <Badge tone="primary">↑{branchMenu.branch.ahead}</Badge>}
+                  {branchMenu.branch.ahead > 0 && <Badge tone="primary">↑{capCount(branchMenu.branch.ahead)}</Badge>}
                 </DropdownMenuItem>
               </>
             )}
@@ -834,9 +838,16 @@ export function Sidebar() {
           <div className="flex flex-col gap-2">
             <Button
               className="justify-start"
-              onClick={() => dropAction && void dropMerge(dropAction.source, dropAction.target)}
+              onClick={() => dropAction && void dropMerge(dropAction.source, dropAction.target, true)}
             >
               <GitMerge /> Merge {dropAction?.source} into {dropAction?.target}
+            </Button>
+            <Button
+              variant="secondary"
+              className="justify-start"
+              onClick={() => dropAction && void dropMerge(dropAction.source, dropAction.target, false)}
+            >
+              <FastForward /> Fast-forward {dropAction?.target} if possible
             </Button>
             {dropAction && !branches.find((b) => b.name === dropAction.source)?.isRemote && (
               <Button

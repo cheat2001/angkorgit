@@ -49,3 +49,7 @@ export function dirname(path: string): string {
   const idx = path.lastIndexOf('/');
   return idx > 0 ? path.slice(0, idx) : '';
 }
+
+export function capCount(count: number, max = 99): string {
+  return count > max ? `${max}+` : String(count);
+}

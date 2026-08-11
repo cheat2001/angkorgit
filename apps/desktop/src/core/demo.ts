@@ -137,6 +137,7 @@ export const demoStashes: StashInfo[] = [
 export const demoFileDiff: FileDiff = {
   path: 'src/features/graph/CommitGraph.tsx',
   oldPath: null,
+  status: 'modified',
   isBinary: false,
   isImage: false,
   oldImage: null,

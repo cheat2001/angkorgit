@@ -128,6 +128,7 @@ export interface DiffHunk {
 export interface FileDiff {
   path: string;
   oldPath: string | null;
+  status: 'new' | 'modified' | 'deleted' | 'renamed';
   hunks: DiffHunk[];
   isBinary: boolean;
   isImage: boolean;

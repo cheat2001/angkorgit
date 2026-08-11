@@ -259,7 +259,7 @@ export function CommitGraph() {
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() =>
-                    void act(`Merge ${refMenu.ref.shorthand}`, () => ipc.merge(path, refMenu.ref.shorthand), {
+                    void act(`Merge ${refMenu.ref.shorthand}`, () => ipc.merge(path, refMenu.ref.shorthand, true), {
                       kind: 'merge',
                       extra: { branch: refMenu.ref.shorthand },
                     })
