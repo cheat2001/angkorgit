@@ -6,6 +6,11 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-11
+
+Merging is the theme of this release: it now behaves the way the graph leads
+you to expect, and explains itself along the way.
+
 ### Added
 - **Commit details show a change-type summary** — "M 72 modified · A 57 added ·
   D 1 deleted" instead of a flat file count, and each file row's icon is tinted
@@ -13,8 +18,6 @@ All notable changes to AngKorGit are documented here. The format follows
 - **Ahead/behind badges cap at 99+** in the sidebar, toolbar, and status bar —
   a branch 1172 commits ahead no longer stretches its row; hover tooltips keep
   the exact count where one exists
-
-### Added
 - **The commit box pre-fills git's merge message** ("Merge branch 'x' into y")
   after a conflicted merge, so finishing the merge is one click once conflicts
   are resolved — it never overwrites a message you already typed
@@ -328,7 +331,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/cheat2001/angkorgit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/cheat2001/angkorgit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/cheat2001/angkorgit/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/cheat2001/angkorgit/compare/v0.1.2...v0.1.3
