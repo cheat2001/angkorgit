@@ -164,7 +164,7 @@ const clampZoom = (zoom: number): number =>
 export const useSettings = create<SettingsState>()(
   persist(
     (set, get) => ({
-      theme: 'dark',
+      theme: 'angkor-dusk',
       accent: 'gold',
       zoom: 1,
       sshKeyPath: '',
@@ -233,7 +233,7 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'angkorgit-settings',
       onRehydrateStorage: () => (state) => {
-        applyTheme(state?.theme ?? 'dark');
+        applyTheme(state?.theme ?? 'angkor-dusk');
         const zoom = state?.zoom ?? 1;
         if (zoom !== 1) applyZoom(zoom);
         applyAccent(state?.accent ?? 'gold');

@@ -11,7 +11,19 @@ All notable changes to AngKorGit are documented here. The format follows
   sandstone light, with a kbach-inspired colonnade pattern (Angkor's baluster
   window columns) etched at low opacity into the welcome and splash screens.
   The ornament never appears behind the graph, diffs, or code, is invisible in
-  every other theme, and your accent colour still applies on top
+  every other theme, and your accent colour still applies on top. **Angkor Dusk
+  is the default for new installs**; existing users keep their chosen theme
+- **Auto fetch** — the app fetches from your remote in the background (Settings
+  → Git, default every minute, also on window focus), so teammates' commits
+  appear on the graph by themselves. Failures are silent and back off
+- **Repository tabs can be reordered by drag and drop**, and the order is
+  remembered
+
+### Fixed
+- **The graph now updates when only remote refs change.** A fetch that moved
+  `origin/…` without touching your checked-out branch used to refresh the file
+  status only — new remote commits and behind-badges never appeared until a
+  manual reload
 
 ## [0.4.0] — 2026-08-11
 
