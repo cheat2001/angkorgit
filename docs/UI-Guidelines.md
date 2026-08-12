@@ -11,15 +11,24 @@ AngKorGit's interface should feel like a professional developer tool: minimal, f
 
 ## Design tokens
 
-Everything visual flows from `packages/design-system/src/tokens.css`:
+Everything visual flows from CSS variables: the base dark/light palettes live in
+`packages/design-system/src/tokens.css`, and every other theme (including the
+default **Angkor Dusk** and its light counterpart **Angkor Dawn**) redefines the
+same tokens in `packages/design-system/src/themes.css`. Sixteen themes ship in
+total; a change must hold up at least in the default Angkor Dusk plus one light
+theme.
 
-| Token | Dark | Purpose |
+| Token | Base dark values | Purpose |
 | --- | --- | --- |
 | `--primary` | Temple Gold `#D97706` | actions, HEAD, brand |
-| `--background` / `--surface` / `--surface-raised` / `--surface-overlay` | slate scale around `#111827` | depth levels 0–3 |
+| `--background` / `--surface` / `--surface-raised` / `--surface-overlay` | slate scale around `#111827` (Angkor Dusk: warm laterite around `#1e150d`) | depth levels 0–3 |
 | `--danger` | `#EF4444` | destructive actions, deletions |
 | `--success` | `#22C55E` | additions, confirmations |
 | `--graph-0…9` | 10-color wheel | commit graph lanes |
+
+The kbach colonnade ornament (`TemplePattern`) appears only on the welcome and
+splash screens, only in the Angkor Dusk/Dawn themes, at low opacity — never
+behind the graph, diffs, or code, and invisible in every other theme.
 
 Rules:
 

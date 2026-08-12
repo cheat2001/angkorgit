@@ -69,18 +69,19 @@ Already wired in the codebase:
 - `release.yml` passes `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` to tauri-action,
   which then also generates and uploads `latest.json`.
 
-**[owner] one-time**: add BOTH GitHub secrets (verified locally 2026-08-04):
+**[owner] one-time — done**: both GitHub secrets are configured (releases since
+0.2.0 ship `.sig` files and `latest.json`):
 - `TAURI_SIGNING_PRIVATE_KEY` — the contents of `~/.tauri/angkorgit.key`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — set to an **empty value** (required:
   without the env var Tauri tries an interactive prompt and headless builds fail).
 
-## 4. Homebrew cask **[after first signed release]**
+## 4. Homebrew cask **[not yet published]**
 
 Create `cheat2001/homebrew-tap` with `Casks/angkorgit.rb`:
 
 ```ruby
 cask "angkorgit" do
-  version "0.1.0"
+  version "0.4.0"
   sha256 "<shasum -a 256 of the dmg>"
   url "https://github.com/cheat2001/angkorgit/releases/download/v#{version}/AngKorGit_#{version}_universal.dmg"
   name "AngKorGit"

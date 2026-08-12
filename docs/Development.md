@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node 20+ and pnpm 9+ (`corepack enable`)
+- Node 20+ and pnpm 10+ (`corepack enable` — the repo pins the exact version via `packageManager`)
 - Rust stable via [rustup](https://rustup.rs)
 - Tauri v2 system dependencies — see the [official list](https://v2.tauri.app/start/prerequisites/):
   - **macOS**: Xcode command line tools
@@ -24,6 +24,9 @@
 | `pnpm tauri:build` | production bundles (.dmg/.msi/.deb/.AppImage) |
 | `pnpm release:mac` | build, then open the folder containing the .dmg |
 | `pnpm install:mac` | copy the built AngKorGit.app into /Applications and launch it |
+| `pnpm website` | dev-server the marketing site (http://localhost:4321/) |
+| `pnpm website:build` / `pnpm website:preview` | build / preview the static site |
+| `pnpm website:images` | regenerate WebP screenshots + og.png from `docs/assets` |
 
 ## Demo mode
 
@@ -43,6 +46,10 @@ The engine lives in `apps/desktop/src-tauri/src/core/`, one module per domain ar
 1. Implement the adapter in `packages/core/src/ai/providers.ts` (one function, ~40 lines).
 2. Register it in `createAiProvider` and `AI_PROVIDER_PRESETS`.
 3. Done — settings UI, capabilities and transport pick it up automatically.
+
+Installed AI-CLI agents (Claude Code, Codex, Gemini CLI, OpenCode) follow a different
+path: add the agent's argv/stdin shape in `packages/core/src/ai/cliAgents.ts` and its
+binary to the allowlist in `apps/desktop/src-tauri/src/ai_cli.rs`.
 
 ## Release
 

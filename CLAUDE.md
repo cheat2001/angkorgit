@@ -17,7 +17,7 @@ craftsmanship from Cambodia 🇰🇭.
 - **Bundle size: 12 MB universal .dmg / 25 MB installed** — measured, not estimated; a
   single-arch build is 6.5 MB / 12 MB. (vs ~1 GB for Electron-based clients.) Re-measure
   before quoting it: `du -sh target/universal-apple-darwin/release/bundle/macos/AngKorGit.app`
-- Dark theme by default (light supported), Temple Gold `#D97706` brand accent
+- Angkor Dusk theme by default for new installs (16 themes total, dark + light), Temple Gold `#D97706` brand accent
 - Keyboard-first (⌘K palette), beginner-friendly (visual conflict resolver, confirm
   dialogs, undo/redo), performance-first (virtualized graph & diffs, 100k-commit repos stay smooth)
 
@@ -139,7 +139,7 @@ http.rs               ← AI/HTTP proxy (reqwest, rustls) — keeps CORS + keys 
 ai_cli.rs             ← installed AI-CLI transport: detect (which_in over augmented PATH +
                         login-shell fallback, per-agent --version) and run (allowlisted
                         binaries only, stdin prompt, {OUTPUT_FILE} placeholder → temp file,
-                        neutral cwd, NO_COLOR/TERM=dumb env, kill-on-timeout); 4 module tests
+                        neutral cwd, NO_COLOR/TERM=dumb env, kill-on-timeout); 6 module tests
 core/
 ├── types.rs          ← serde structs mirroring @angkorgit/core (camelCase rename_all)
 ├── repo.rs           ← open/discover/init/info/status, upstream divergence, get/set config
@@ -175,7 +175,7 @@ core/
 - Operations that can pause on conflicts return `OpOutcome { status: "ok"|"conflicts"|"up_to_date"|"fast_forward", message }` — never an error for conflicts.
 - Command args are **camelCase** matching the TS payloads (`#![allow(non_snake_case)]`).
 - Every new engine function gets an integration test in `tests/git_engine.rs`
-  (15 tests; TempRepo fixture creates real repos in temp dirs; uses `angkorgit_lib::test_api`).
+  (26 tests; TempRepo fixture creates real repos in temp dirs; uses `angkorgit_lib::test_api`).
 - Destructive ops verify outcomes (e.g. discard returns leftover paths → UI explains submodules).
 
 ## 6. Frontend — `apps/desktop/src/`
@@ -213,8 +213,10 @@ features/
 │                               change, auto-close when file leaves working copy),
 │                               DiffViewer (wrap vs VIRTUALIZED no-wrap), VirtualDiff
 │                               (inline + synced split columns), DiffMinimap, diffShared
-├── conflicts/ConflictResolver← checkbox sides (both=keep both), prev/next nav,
-│                               EDITABLE Result pane (manual-edit guard, marker guard)
+├── conflicts/ConflictResolver← aligned A/B panes, per-LINE checkboxes (whole side via
+│                               pane header), prev/next nav, clean Output pane (A/B
+│                               tags, no markers); hand-editing behind an explicit
+│                               pencil button (manual-edit guard, marker guard)
 ├── sidebar/Sidebar.tsx       ← branch FOLDER TREE (buildBranchTree), right-click context
 │                               menu (checkout/merge/rebase/pull/push/create-branch-here/
 │                               rename/delete), drag-and-drop merge/rebase, tags/stashes/
@@ -458,10 +460,10 @@ update CLAUDE.md or docs/ — never the code.
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (24) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
-| Rust module (17) | `apps/desktop/src-tauri/src/ai_cli.rs` (4), `src/error.rs` (4), `src/core/remote.rs` (9) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key |
+| Rust integration (26) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, file history lists only touching commits, conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
+| Rust module (20) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (4), `src/core/remote.rs` (10) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key |
 | Unit (45) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, preset instructions, post-generation prefix enforcement) |
-| E2E (5) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search — all on demo mode |
+| E2E (6) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks — all on demo mode |
 
 ## 9.5 Open-source & community files
 

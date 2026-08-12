@@ -24,9 +24,17 @@ For transparency, the app's security-relevant surface is:
   Settings → Authentication → SSH are ed25519 and are written **without a
   passphrase**, because AngKorGit cannot prompt for one — a passphrase-protected
   key only works via your SSH agent. Generation never overwrites an existing key.
+- **AI provider keys** — API keys you enter in Settings → AI are stored in the
+  app's local settings (the webview's local storage on your machine), **not** in
+  the OS keychain, and are sent only to the provider you configured. Prefer the
+  installed-CLI or local-model providers if you'd rather store no key at all.
+- **AI CLIs** — if you select an installed AI CLI (Claude Code, Codex, Gemini
+  CLI, OpenCode), AngKorGit runs that binary as a local subprocess with your
+  user's permissions. Only a fixed allowlist of known CLI programs can be run.
 - **Network** — outbound only: git remotes you configure, Gravatar (avatar
-  lookup by email hash), and the AI provider you explicitly configure.
-  There is **no telemetry, no analytics, and no phoning home.**
+  lookup by email hash), the AI provider you explicitly configure, and the
+  updater, which checks GitHub Releases for a new signed build shortly after
+  startup. There is **no telemetry and no analytics.**
 - **PTY** — the built-in terminal runs your login shell in the repository
   directory, with your user's normal permissions.
 

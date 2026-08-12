@@ -1,5 +1,5 @@
 ---
-const providers = ['OpenAI', 'Anthropic', 'Gemini', 'Ollama', 'LM Studio'];
+const providers = ['Installed AI CLIs', 'OpenAI', 'Anthropic', 'Gemini', 'Ollama', 'LM Studio'];
 const capabilities = [
   'Commit messages from your staged changes',
   'Plain-English explanations of diffs and conflicts',
@@ -14,8 +14,9 @@ const capabilities = [
       <p class="eyebrow">AI, done tastefully</p>
       <h2 class="h2-section">AI assistance on your terms</h2>
       <p class="lede">
-        AngKorGit works with any provider you already use, from hosted APIs to fully local models. Your
-        code and keys never touch a service you didn't choose.
+        AngKorGit works with any provider you already use — hosted APIs, fully local models, or an AI
+        CLI already on your machine (Claude Code, Codex, Gemini CLI, OpenCode) with no API key at all.
+        Your code and keys never touch a service you didn't choose.
       </p>
 
       <ul class="mt-8 space-y-4">
@@ -100,8 +101,8 @@ const capabilities = [
           }
         </div>
         <p class="mt-4 text-xs leading-relaxed text-faint">
-          Keys stay in your OS keychain. Local models (Ollama, LM Studio) run entirely on your
-          machine.
+          Keys are stored locally and sent only to the provider you chose. Local models (Ollama,
+          LM Studio) and installed AI CLIs run entirely on your machine.
         </p>
       </div>
     </div>

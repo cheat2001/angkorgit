@@ -39,17 +39,17 @@ AngKorGit focuses on the Git operations developers use every day and executes th
   <tr>
     <td width="50%">
       <img src="docs/assets/theme-setting.png" alt="Appearance settings — themes and accent colors" />
-      <p align="center"><em>Dark and light themes, five accent colors, and UI zoom — all in one settings tab</em></p>
+      <p align="center"><em>Sixteen themes, five accent colors, and UI zoom — all in one settings tab</em></p>
     </td>
     <td width="50%">
       <img src="docs/assets/ai-config-setting.png" alt="AI settings" />
-      <p align="center"><em>AI settings — connect any provider; keys stay in your OS keychain</em></p>
+      <p align="center"><em>AI settings — bring your own provider, or use an AI CLI you already have with no API key at all</em></p>
     </td>
   </tr>
   <tr>
     <td width="50%">
       <img src="docs/assets/shortcut-key.png" alt="Keyboard shortcuts overview" />
-      <p align="center"><em>Shortcuts render next to every action and can be fully customized</em></p>
+      <p align="center"><em>Shortcuts render next to every action — the full keyboard reference lives in settings</em></p>
     </td>
     <td width="50%">
       <img src="docs/assets/welcome.png" alt="Welcome screen" />
@@ -61,15 +61,15 @@ AngKorGit focuses on the Git operations developers use every day and executes th
 ## Highlights
 
 - **Fast by architecture** — Rust + libgit2 engine, virtualized graph *and* diff rendering, incremental history loading. 100k-commit repositories and multi-thousand-line diffs stay at full frame rate.
-- **The full daily toolkit** — stage down to individual hunks, commit/amend, branch folders with right-click menus, merge/rebase/cherry-pick/revert/reset, stash, tags, submodule awareness, per-branch push & pull (fast-forward without checkout), and **drag a branch onto another to merge** — every operation undoable with ⌘Z.
-- **Review with intent** — full-width diffs with a clickable minimap, previous/next-change hops, side-by-side or inline, word-level highlighting, whole-file view, image diffs.
-- **Visual conflict resolution** — checkbox picks per side, conflict-to-conflict navigation, and a fully **editable result pane** with marker guards.
-- **Always in sync** — a filesystem watcher keeps the WIP row, status, and graph in sync while you edit in your IDE or commit from a terminal.
+- **The full daily toolkit** — stage down to individual hunks, commit/amend, branch folders with right-click menus, merge/rebase/cherry-pick/revert/reset, stash, tags, submodule awareness, per-branch push & pull (fast-forward without checkout), file history, a built-in terminal, and **drag a branch onto another to merge** — explicit merges always record a real merge commit, and every operation is undoable with ⌘Z.
+- **Review with intent** — full-width diffs with a clickable minimap, previous/next-change hops, side-by-side or inline, word-level highlighting, whole-file view, find in diff (⌘F), image diffs.
+- **Visual conflict resolution** — sides A and B in aligned panes with a checkbox on every line; take a whole side or cherry-pick line by line while the Output pane shows the clean merged result, with hand-editing one pencil click away.
+- **Always in sync** — a filesystem watcher keeps the WIP row, status, and graph live while you edit in your IDE, and auto fetch brings teammates' commits onto the graph by itself.
 - **Multi-account, multi-identity** — per-host tokens in the OS keychain (GitHub, GitLab incl. self-hosted, Bitbucket) and per-repo committer profiles, so work and personal never mix. `https://` remotes use those accounts; `git@` remotes use SSH keys.
 - **Keyboard-first** — ⌘K palette for everything, ⌘Z/⌘⇧Z undo/redo, ⌘B sidebar, ⌘± zoom.
 - **Beginner-friendly and safe** — destructive actions get real confirmation dialogs, failures explain themselves (down to "this is a submodule — open it as its own repository").
-- **Dark by default**, light theme included. Temple Gold `#D97706` accents, Inter + JetBrains Mono, 8px spacing rhythm.
-- **Context-aware AI** — commit messages, diff/conflict explanations, PR descriptions, staged-change review. Any provider: OpenAI, Anthropic, Gemini, Ollama, LM Studio — local models welcome.
+- **Angkor Dusk by default** — a warm laterite signature theme, with Angkor Dawn as its sandstone light counterpart, among sixteen themes (VS Code, GitHub, Tokyo Night, Catppuccin, Dracula, Nord, and more). Temple Gold `#D97706` accents, Inter + JetBrains Mono, 8px spacing rhythm.
+- **Context-aware AI** — commit messages, diff/conflict explanations, PR descriptions, staged-change review. Any provider: OpenAI, Anthropic, Gemini, Ollama, LM Studio — or **no API key at all**, using an AI CLI you already have installed (Claude Code, Codex, Gemini CLI, OpenCode).
 
 ## Install
 
@@ -80,13 +80,13 @@ when a newer release lands):
 
 ```bash
 # macOS (downloads, removes the Gatekeeper quarantine flag, opens the dmg)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.3.0/AngKorGit_0.3.0_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.4.0/AngKorGit_0.4.0_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
 
 # Windows (PowerShell)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.3.0/AngKorGit_0.3.0_x64-setup.exe -o "$env:TEMP\AngKorGit-setup.exe"; Start-Process "$env:TEMP\AngKorGit-setup.exe"
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.4.0/AngKorGit_0.4.0_x64-setup.exe -o "$env:TEMP\AngKorGit-setup.exe"; Start-Process "$env:TEMP\AngKorGit-setup.exe"
 
 # Linux (AppImage)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.3.0/AngKorGit_0.3.0_amd64.AppImage -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.4.0/AngKorGit_0.4.0_amd64.AppImage -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage
 ```
 
 AngKorGit is free, open-source software and is **not signed with a paid
@@ -133,7 +133,7 @@ Build from source below.
 
 ## Building from source
 
-Prerequisites: [Node 20+](https://nodejs.org), [pnpm 9+](https://pnpm.io), [Rust stable](https://rustup.rs) and the [Tauri v2 system deps](https://v2.tauri.app/start/prerequisites/).
+Prerequisites: [Node 20+](https://nodejs.org), [pnpm 10+](https://pnpm.io), [Rust stable](https://rustup.rs) and the [Tauri v2 system deps](https://v2.tauri.app/start/prerequisites/).
 
 ```bash
 pnpm install
@@ -158,7 +158,7 @@ pnpm website:build      # static build → apps/website/dist
 Tests:
 
 ```bash
-pnpm test           # unit tests (graph layout, word diff, conflict parser)
+pnpm test           # unit tests (graph layout, word diff, conflict parser, AI CLI adapters, commit style)
 pnpm test:e2e       # Playwright, against demo mode
 cd apps/desktop/src-tauri && cargo test   # git engine integration tests
 ```
@@ -171,7 +171,7 @@ cd apps/desktop/src-tauri && cargo test   # git engine integration tests
 | `apps/website` | The marketing site (Astro, static) — live at [angkorgit.app](https://angkorgit.app/), docs rendered on-site |
 | `packages/core` | Domain types, graph layout, word diff, conflict parsing, AI module |
 | `packages/design-system` | Design tokens, Tailwind preset, UI primitives, logo |
-| `docs` | Architecture, UI guidelines, roadmap, coding standards |
+| `docs` | Architecture, UI guidelines, development, contributing, distribution, roadmap, coding standards |
 | `tests` | Unit + e2e tests |
 | `scripts` | Icon generation and tooling |
 

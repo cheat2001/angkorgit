@@ -6,7 +6,8 @@ AngKorGit follows Clean Architecture with feature-based folders. Dependencies po
 ┌─────────────────────────────────────────────────────────────┐
 │  React UI (apps/desktop/src)                                │
 │  features/* — repository, graph, commit, diff, conflicts,   │
-│               sidebar, terminal, settings, ai               │
+│               sidebar, history, inspector, editor, terminal,│
+│               settings, ai, updater, ui                     │
 │  components/* — Toolbar, CommandPalette (app-level shell)   │
 ├─────────────────────────────────────────────────────────────┤
 │  State: Zustand stores per feature (repository, graph, ui,  │
@@ -23,7 +24,8 @@ AngKorGit follows Clean Architecture with feature-based folders. Dependencies po
 │  commands.rs (thin) → core/* (repo, history, stage, commit, │
 │  branch, remote, accounts, misc, diff, conflict) over       │
 │  git2/libgit2 · terminal.rs (portable-pty) · watcher.rs     │
-│  (filesystem events) · http.rs (AI proxy)                   │
+│  (filesystem events) · http.rs (AI proxy) · ai_cli.rs       │
+│  (installed AI-CLI runner) · state.rs (recents) · error.rs  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -43,7 +45,7 @@ AngKorGit follows Clean Architecture with feature-based folders. Dependencies po
 
 **Conflict resolution as data.** Conflicted files are parsed into text/conflict blocks (`parseConflicts`), the resolver mutates block resolutions, and `serializeResolution` writes the result. Unresolved blocks re-emit their markers, so a half-finished session never destroys data.
 
-**AI is an adapter registry.** Features call capabilities (`generateCommitMessage`, `explainConflict`, …) against the `AiProvider` interface. Providers (OpenAI, Anthropic, Gemini, Ollama, LM Studio) are created from config; HTTP goes through an injected transport implemented by a Rust proxy (no CORS, keys stay out of webview fetch). Adding a provider touches exactly one file.
+**AI is an adapter registry.** Features call capabilities (`generateCommitMessage`, `explainConflict`, …) against the `AiProvider` interface. API providers (OpenAI, Anthropic, Gemini, Ollama, LM Studio) are created from config; HTTP goes through an injected transport implemented by a Rust proxy (no CORS, keys stay out of webview fetch). The `cli` provider is different: it runs an AI CLI already installed on the machine (Claude Code, Codex, Gemini CLI, OpenCode) as an allowlisted local subprocess via `ai_cli.rs` — the user's own login and quota, no API key. Adding an API provider touches one file; adding a CLI agent touches `cliAgents.ts` plus the `ai_cli.rs` allowlist.
 
 **Credentials are layered, host-scoped, and never global.** App-managed accounts (tokens in the OS keyring under AngKorGit's own service, matched to remotes by host) come first, then SSH agent/keys, then the system `git credential` stack — so a GitLab token is never offered to GitHub. The same philosophy applies to committer identity: profiles apply to a repository's local config only, never the shared global gitconfig other tools fight over.
 
