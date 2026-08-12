@@ -20,7 +20,11 @@
 ---
 
 <p align="center">
-  <img src="docs/assets/graph.png" alt="AngKorGit — commit graph with repository tabs and the ⌘K command palette" width="920" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/graph.png" />
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/graph-light.png" />
+    <img src="docs/assets/graph.png" alt="AngKorGit — the commit graph in the Angkor Dusk theme, with branches, working copy, and staged changes" width="920" />
+  </picture>
 </p>
 
 AngKorGit focuses on the Git operations developers use every day and executes them exceptionally well — in an app that weighs **12 MB to download** (25 MB installed, universal macOS build) instead of a gigabyte.
@@ -28,31 +32,55 @@ AngKorGit focuses on the Git operations developers use every day and executes th
 <table>
   <tr>
     <td width="50%">
-      <img src="docs/assets/diff.png" alt="Side-by-side diff with commit details" />
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diff.png" />
+        <source media="(prefers-color-scheme: light)" srcset="docs/assets/diff-light.png" />
+        <img src="docs/assets/diff.png" alt="Side-by-side diff with commit details" />
+      </picture>
       <p align="center"><em>Side-by-side diffs — word-level highlights, minimap, line-level staging</em></p>
     </td>
     <td width="50%">
-      <img src="docs/assets/command-palette.png" alt="⌘K command palette" />
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/command-palette.png" />
+        <source media="(prefers-color-scheme: light)" srcset="docs/assets/command-palette-light.png" />
+        <img src="docs/assets/command-palette.png" alt="⌘K command palette" />
+      </picture>
       <p align="center"><em>The ⌘K command palette — every action searchable, keyboard-first by design</em></p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="docs/assets/theme-setting.png" alt="Appearance settings — themes and accent colors" />
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/theme-setting.png" />
+        <source media="(prefers-color-scheme: light)" srcset="docs/assets/theme-setting-light.png" />
+        <img src="docs/assets/theme-setting.png" alt="Appearance settings — themes and accent colors" />
+      </picture>
       <p align="center"><em>Sixteen themes, five accent colors, and UI zoom — all in one settings tab</em></p>
     </td>
     <td width="50%">
-      <img src="docs/assets/ai-config-setting.png" alt="AI settings" />
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ai-config-setting.png" />
+        <source media="(prefers-color-scheme: light)" srcset="docs/assets/ai-config-setting-light.png" />
+        <img src="docs/assets/ai-config-setting.png" alt="AI settings" />
+      </picture>
       <p align="center"><em>AI settings — bring your own provider, or use an AI CLI you already have with no API key at all</em></p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="docs/assets/shortcut-key.png" alt="Keyboard shortcuts overview" />
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/shortcut-key.png" />
+        <source media="(prefers-color-scheme: light)" srcset="docs/assets/shortcut-key-light.png" />
+        <img src="docs/assets/shortcut-key.png" alt="Keyboard shortcuts overview" />
+      </picture>
       <p align="center"><em>Shortcuts render next to every action — the full keyboard reference lives in settings</em></p>
     </td>
     <td width="50%">
-      <img src="docs/assets/welcome.png" alt="Welcome screen" />
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/welcome.png" />
+        <source media="(prefers-color-scheme: light)" srcset="docs/assets/welcome-light.png" />
+        <img src="docs/assets/welcome.png" alt="Welcome screen" />
+      </picture>
       <p align="center"><em>Open, clone, or return to recent projects</em></p>
     </td>
   </tr>
