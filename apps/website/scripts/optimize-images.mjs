@@ -46,7 +46,7 @@ console.log('Screenshots optimized.');
 
 const ogOut = join(outDir, '..', 'og.png');
 await sharp(join(root, 'scripts', 'og-source.svg'))
-  .png({ quality: 90 })
+  .png()
   .toFile(ogOut);
 const ogMeta = await sharp(ogOut).metadata();
 const ogSize = await stat(ogOut);

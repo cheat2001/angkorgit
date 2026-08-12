@@ -12,7 +12,7 @@ interface Props {
 const { title = SITE.title, description = SITE.description } = Astro.props;
 const baseUrl = new URL(import.meta.env.BASE_URL, Astro.site);
 const canonical = new URL(Astro.url.pathname, Astro.site).toString();
-const ogImage = Astro.props.ogImage ?? new URL('./og.png', baseUrl).toString() + '?v=4';
+const ogImage = Astro.props.ogImage ?? new URL('./og.png', baseUrl).toString() + '?v=5';
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -66,7 +66,7 @@ const websiteLd = {
 
     <title>{title}</title>
     <meta name="description" content={description} />
-    <meta name="theme-color" id="theme-color" content="#0C111C" />
+    <meta name="theme-color" id="theme-color" content="#15100C" />
 
     <link rel="icon" type="image/svg+xml" href={import.meta.env.BASE_URL + 'favicon.svg'} />
     <link rel="apple-touch-icon" href={import.meta.env.BASE_URL + 'icon.png'} />
@@ -98,7 +98,7 @@ const websiteLd = {
         root.classList.toggle('dark', theme === 'dark');
         root.classList.toggle('light', theme === 'light');
         const meta = document.getElementById('theme-color');
-        if (meta) meta.setAttribute('content', theme === 'dark' ? '#0C111C' : '#F5F7F9');
+        if (meta) meta.setAttribute('content', theme === 'dark' ? '#15100C' : '#F3EFE7');
       })();
     </script>
     <script is:inline>

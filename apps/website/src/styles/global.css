@@ -3,6 +3,34 @@
 @import '@fontsource/jetbrains-mono/500.css';
 @import '../../../../packages/design-system/src/tokens.css';
 
+.dark {
+  --background: 26 26% 6.5%;
+  --surface: 26 22% 9.5%;
+  --surface-raised: 27 19% 12.5%;
+  --surface-overlay: 28 18% 14.5%;
+  --border: 30 16% 21%;
+  --border-subtle: 28 17% 15.5%;
+  --foreground: 36 28% 90%;
+  --muted-foreground: 33 13% 62%;
+  --faint-foreground: 31 9% 44%;
+  --glass: 26 22% 9.5%;
+  --shadow-soft: 0 8px 32px -12px rgb(10 6 2 / 0.6);
+}
+
+.light {
+  --background: 38 34% 93%;
+  --surface: 40 45% 97.5%;
+  --surface-raised: 39 38% 95%;
+  --surface-overlay: 42 50% 98.5%;
+  --border: 35 22% 80%;
+  --border-subtle: 37 26% 87%;
+  --foreground: 27 32% 15%;
+  --muted-foreground: 29 15% 37%;
+  --faint-foreground: 31 11% 53%;
+  --glass: 40 45% 97.5%;
+  --shadow-soft: 0 8px 32px -16px rgb(64 44 22 / 0.28);
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
