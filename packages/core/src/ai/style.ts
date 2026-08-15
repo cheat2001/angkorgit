@@ -55,9 +55,9 @@ function expandPrefixTokens(prefix: string, branch: string): string | null {
   const ticket = branch.match(TICKET_PATTERN)?.[0] ?? null;
   if (prefix.includes('{ticket}') && !ticket) return null;
   return prefix
-    .replace(/\{branch\}/g, branch)
-    .replace(/\{suffix\}/g, suffix)
-    .replace(/\{ticket\}/g, ticket ?? '');
+    .replace(/\{branch\}/g, () => branch)
+    .replace(/\{suffix\}/g, () => suffix)
+    .replace(/\{ticket\}/g, () => ticket ?? '');
 }
 
 export function resolveCommitPrefix(rules: CommitPrefixRule[], branch: string | null): string | null {

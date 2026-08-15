@@ -60,7 +60,10 @@ export function CommitDetails({
   loading: boolean;
 }) {
   const select = useGraph((s) => s.select);
-  const { openCenterDiff, closeCenterDiff, centerDiff, fileTree } = useUi();
+  const openCenterDiff = useUi((s) => s.openCenterDiff);
+  const closeCenterDiff = useUi((s) => s.closeCenterDiff);
+  const centerDiff = useUi((s) => s.centerDiff);
+  const fileTree = useUi((s) => s.fileTree);
   const [aiText, setAiText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
 

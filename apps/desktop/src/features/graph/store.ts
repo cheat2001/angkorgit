@@ -30,6 +30,8 @@ interface GraphState {
   select: (oid: string | null) => void;
 }
 
+let requestSeq = 0;
+
 export const useGraph = create<GraphState>((set, get) => ({
   commits: [],
   rows: [],
@@ -55,6 +57,7 @@ export const useGraph = create<GraphState>((set, get) => ({
       });
     }
     const { filters } = get();
+    const seq = ++requestSeq;
     set({ loading: true });
     try {
       const page = await ipc.history(path, {
@@ -64,6 +67,7 @@ export const useGraph = create<GraphState>((set, get) => ({
         author: filters.author || undefined,
         branch: filters.branch || undefined,
       });
+      if (seq !== requestSeq || get().lastPath !== path) return;
       const layout = new GraphLayout();
       const flat = isFlat(filters);
       if (!flat) layout.add(page.commits);
@@ -76,13 +80,14 @@ export const useGraph = create<GraphState>((set, get) => ({
         loading: false,
       });
     } catch {
-      set({ loading: false });
+      if (seq === requestSeq) set({ loading: false });
     }
   },
 
   loadMore: async (path: string) => {
     const { commits, hasMore, loading, filters, layout } = get();
     if (!hasMore || loading) return;
+    const seq = ++requestSeq;
     set({ loading: true });
     try {
       const page = await ipc.history(path, {
@@ -92,6 +97,7 @@ export const useGraph = create<GraphState>((set, get) => ({
         author: filters.author || undefined,
         branch: filters.branch || undefined,
       });
+      if (seq !== requestSeq || get().lastPath !== path || get().layout !== layout) return;
       const flat = isFlat(filters);
       if (!flat) layout.add(page.commits);
       set({
@@ -104,7 +110,7 @@ export const useGraph = create<GraphState>((set, get) => ({
         loading: false,
       });
     } catch {
-      set({ loading: false });
+      if (seq === requestSeq) set({ loading: false });
     }
   },
 

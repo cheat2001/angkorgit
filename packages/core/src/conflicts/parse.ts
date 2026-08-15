@@ -4,6 +4,13 @@ export interface TextBlock {
   lines: string[];
 }
 
+export interface ConflictMarkers {
+  open: string;
+  base: string | null;
+  separator: string;
+  close: string;
+}
+
 export interface ConflictBlock {
   kind: 'conflict';
   current: string[];
@@ -11,12 +18,18 @@ export interface ConflictBlock {
   incoming: string[];
   currentLabel: string;
   incomingLabel: string;
+  markers: ConflictMarkers;
   resolution: Resolution;
 }
 
 export type Resolution = 'unresolved' | 'current' | 'incoming' | 'both' | 'manual';
 
 export type Block = TextBlock | ConflictBlock;
+
+const OPEN_MARKER = /^<{7}(?: |\r?$)/;
+const BASE_MARKER = /^\|{7}(?: |\r?$)/;
+const SEPARATOR_MARKER = /^={7}\r?$/;
+const CLOSE_MARKER = /^>{7}(?: |\r?$)/;
 
 export function parseConflicts(content: string): Block[] {
   const lines = content.split('\n');
@@ -33,26 +46,29 @@ export function parseConflicts(content: string): Block[] {
 
   while (i < lines.length) {
     const line = lines[i];
-    if (line.startsWith('<<<<<<<')) {
-      flushText();
-      const currentLabel = line.slice(7).trim();
+    if (OPEN_MARKER.test(line)) {
+      const start = i;
       const current: string[] = [];
       const incoming: string[] = [];
       let base: string[] | null = null;
+      let baseMarker: string | null = null;
+      let separator: string | null = null;
+      let close: string | null = null;
       let incomingLabel = '';
       i++;
       let section: 'current' | 'base' | 'incoming' = 'current';
-      let closed = false;
       while (i < lines.length) {
         const l = lines[i];
-        if (l.startsWith('|||||||') && section === 'current') {
+        if (BASE_MARKER.test(l) && section === 'current') {
           section = 'base';
           base = [];
-        } else if (l.startsWith('=======') && section !== 'incoming') {
+          baseMarker = l;
+        } else if (SEPARATOR_MARKER.test(l) && section !== 'incoming') {
           section = 'incoming';
-        } else if (l.startsWith('>>>>>>>')) {
+          separator = l;
+        } else if (CLOSE_MARKER.test(l)) {
           incomingLabel = l.slice(7).trim();
-          closed = true;
+          close = l;
           i++;
           break;
         } else if (section === 'current') {
@@ -64,18 +80,20 @@ export function parseConflicts(content: string): Block[] {
         }
         i++;
       }
-      if (closed) {
+      if (close !== null && separator !== null) {
+        flushText();
         blocks.push({
           kind: 'conflict',
           current,
           base,
           incoming,
-          currentLabel,
+          currentLabel: line.slice(7).trim(),
           incomingLabel,
+          markers: { open: line, base: baseMarker, separator, close },
           resolution: 'unresolved',
         });
       } else {
-        text.push(line, ...current, ...(base ?? []), ...incoming);
+        text.push(...lines.slice(start, i));
       }
       continue;
     }
@@ -111,9 +129,9 @@ export function serializeResolution(
         out.push(...(manual ?? []));
         break;
       case 'unresolved':
-        out.push(`<<<<<<< ${block.currentLabel}`, ...block.current);
-        if (block.base) out.push('|||||||', ...block.base);
-        out.push('=======', ...block.incoming, `>>>>>>> ${block.incomingLabel}`);
+        out.push(block.markers.open, ...block.current);
+        if (block.markers.base !== null) out.push(block.markers.base, ...(block.base ?? []));
+        out.push(block.markers.separator, ...block.incoming, block.markers.close);
         break;
     }
   });

@@ -30,9 +30,21 @@ import { useUndo } from '@/features/history/undoStore';
 import { modKey } from '@/shared/utils';
 
 export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }) {
-  const { repo, branches, remotes, recents, open } = useRepo();
-  const { paletteOpen, setPaletteOpen, toggleTerminal, toggleSidebar, sidebarOpen, openDialog } = useUi();
-  const { theme, setTheme, zoomIn, zoomOut } = useSettings();
+  const repo = useRepo((s) => s.repo);
+  const branches = useRepo((s) => s.branches);
+  const remotes = useRepo((s) => s.remotes);
+  const recents = useRepo((s) => s.recents);
+  const open = useRepo((s) => s.open);
+  const paletteOpen = useUi((s) => s.paletteOpen);
+  const setPaletteOpen = useUi((s) => s.setPaletteOpen);
+  const toggleTerminal = useUi((s) => s.toggleTerminal);
+  const toggleSidebar = useUi((s) => s.toggleSidebar);
+  const sidebarOpen = useUi((s) => s.sidebarOpen);
+  const openDialog = useUi((s) => s.openDialog);
+  const theme = useSettings((s) => s.theme);
+  const setTheme = useSettings((s) => s.setTheme);
+  const zoomIn = useSettings((s) => s.zoomIn);
+  const zoomOut = useSettings((s) => s.zoomOut);
 
   const path = repo?.path ?? '';
   const remote = remotes[0]?.name ?? 'origin';

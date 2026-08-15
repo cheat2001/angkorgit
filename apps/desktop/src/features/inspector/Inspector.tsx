@@ -11,9 +11,9 @@ import { CommitDetails } from './CommitDetails';
 
 export function Inspector() {
   const selectedOid = useGraph((s) => s.selectedOid);
-  const commits = useGraph((s) => s.commits);
-  const repo = useRepo((s) => s.repo);
-  const { fileTree, setFileTree } = useUi();
+  const repoPath = useRepo((s) => s.repo?.path);
+  const fileTree = useUi((s) => s.fileTree);
+  const setFileTree = useUi((s) => s.setFileTree);
 
   const [commit, setCommit] = useState<CommitInfo | null>(null);
   const [diffs, setDiffs] = useState<FileDiff[]>([]);
@@ -23,25 +23,25 @@ export function Inspector() {
     const { centerDiff, closeCenterDiff } = useUi.getState();
     if (centerDiff?.oid && centerDiff.oid !== selectedOid) closeCenterDiff();
 
-    if (!selectedOid || !repo) {
+    if (!selectedOid || !repoPath) {
       setCommit(null);
       setDiffs([]);
       return;
     }
-    const local = commits.find((c) => c.oid === selectedOid) ?? null;
+    const local = useGraph.getState().commits.find((c) => c.oid === selectedOid) ?? null;
     setCommit(local);
     setLoadingDiffs(true);
     let cancelled = false;
     if (!local) {
       void ipc
-        .commitInfo(repo.path, selectedOid)
+        .commitInfo(repoPath, selectedOid)
         .then((info) => {
           if (!cancelled) setCommit(info);
         })
         .catch(() => {});
     }
     void ipc
-      .diffCommit(repo.path, selectedOid)
+      .diffCommit(repoPath, selectedOid)
       .then((result) => {
         if (!cancelled) setDiffs(result);
       })
@@ -54,7 +54,7 @@ export function Inspector() {
     return () => {
       cancelled = true;
     };
-  }, [selectedOid, commits, repo]);
+  }, [selectedOid, repoPath]);
 
   return (
     <aside className="flex h-full flex-col bg-surface" aria-label="Inspector">

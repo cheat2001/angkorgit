@@ -73,6 +73,11 @@ describe('resolveCommitPrefix', () => {
     expect(resolveCommitPrefix(rules, 'main')).toBeNull();
   });
 
+  it('keeps dollar sequences in branch names literal', () => {
+    expect(resolveCommitPrefix([{ pattern: '*', prefix: '[{branch}]' }], 'fix/a$&b')).toBe('[fix/a$&b]');
+    expect(resolveCommitPrefix([{ pattern: '*', prefix: '[{suffix}]' }], "fix/a$'b")).toBe("[a$'b]");
+  });
+
   it('does not let regex metacharacters in patterns escape', () => {
     expect(resolveCommitPrefix([{ pattern: 'release-1.0', prefix: '[rel]' }], 'release-1x0')).toBeNull();
     expect(resolveCommitPrefix([{ pattern: 'release-1.0', prefix: '[rel]' }], 'release-1.0')).toBe('[rel]');

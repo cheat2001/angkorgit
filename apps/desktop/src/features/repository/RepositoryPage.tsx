@@ -30,18 +30,16 @@ export function RepositoryPage() {
   const refresh = useRepo((s) => s.refresh);
   const reload = useGraph((s) => s.reload);
   const navigate = useNavigate();
-  const {
-    toggleTerminal,
-    toggleSidebar,
-    sidebarOpen,
-    setPaletteOpen,
-    terminalOpen,
-    conflictFile,
-    centerDiff,
-    centerEditor,
-    centerFileHistory,
-    closeCenterDiff,
-  } = useUi();
+  const toggleTerminal = useUi((s) => s.toggleTerminal);
+  const toggleSidebar = useUi((s) => s.toggleSidebar);
+  const sidebarOpen = useUi((s) => s.sidebarOpen);
+  const setPaletteOpen = useUi((s) => s.setPaletteOpen);
+  const terminalOpen = useUi((s) => s.terminalOpen);
+  const conflictFile = useUi((s) => s.conflictFile);
+  const centerDiff = useUi((s) => s.centerDiff);
+  const centerEditor = useUi((s) => s.centerEditor);
+  const centerFileHistory = useUi((s) => s.centerFileHistory);
+  const closeCenterDiff = useUi((s) => s.closeCenterDiff);
 
   const repoPath = repo?.path ?? null;
   useEffect(() => {
@@ -55,42 +53,59 @@ export function RepositoryPage() {
     ui.closeEditor();
     ui.closeFileHistory();
     ui.selectFile(null);
+    ui.openConflict(null);
     void reload(repoPath);
 
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
     let refreshing = false;
-    void ipc.watchRepo(repoPath);
-    void listen('repo-changed', () => {
-      if (refreshing) return;
+    let pending = false;
+    const stillCurrent = () => !cancelled && useRepo.getState().repo?.path === repoPath;
+    const handleChange = async () => {
+      if (refreshing) {
+        pending = true;
+        return;
+      }
       refreshing = true;
-      void (async () => {
-        try {
+      try {
+        do {
+          pending = false;
+          if (!stillCurrent()) return;
           const info = await ipc.repoInfo(repoPath);
+          if (!stillCurrent()) return;
           const current = useRepo.getState().repo;
           const headChanged =
             info.headOid !== current?.headOid || info.headBranch !== current?.headBranch;
           let refsChanged = false;
           if (!headChanged) {
             const branches = await ipc.branches(repoPath);
+            if (!stillCurrent()) return;
             const fingerprint = (list: { name: string; targetOid: string }[]) =>
               list.map((b) => `${b.name}:${b.targetOid}`).join('|');
             refsChanged = fingerprint(branches) !== fingerprint(useRepo.getState().branches);
           }
           if (headChanged || refsChanged) {
             await useRepo.getState().refresh();
+            if (!stillCurrent()) return;
             await useGraph.getState().reload(repoPath);
           } else {
             await useRepo.getState().refreshStatus();
           }
-        } finally {
-          refreshing = false;
-        }
-      })();
+        } while (pending && stillCurrent());
+      } finally {
+        refreshing = false;
+      }
+    };
+    void ipc.watchRepo(repoPath);
+    void listen('repo-changed', () => {
+      void handleChange();
     }).then((fn) => {
-      unlisten = fn;
+      if (cancelled) fn();
+      else unlisten = fn;
     });
 
     return () => {
+      cancelled = true;
       unlisten?.();
       void ipc.watchStop();
     };

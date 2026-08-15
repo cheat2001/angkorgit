@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AlertTriangle, Copy, ExternalLink, FolderOpen, History, Minus, Pencil, Plus, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import type { FileStatus } from '@angkorgit/core';
@@ -48,7 +48,7 @@ function statusBadge(kind: string | null) {
   }
 }
 
-function FileRow({
+const FileRow = memo(function FileRow({
   file,
   staged,
   selected,
@@ -62,10 +62,10 @@ function FileRow({
   file: FileStatus;
   staged: boolean;
   selected: boolean;
-  onClick: () => void;
-  onPrimary: () => void;
-  onDiscard?: () => void;
-  onContextMenu?: (event: React.MouseEvent) => void;
+  onClick: (file: FileStatus, staged: boolean) => void;
+  onPrimary: (file: FileStatus, staged: boolean) => void;
+  onDiscard?: (file: FileStatus) => void;
+  onContextMenu?: (event: React.MouseEvent, file: FileStatus, staged: boolean) => void;
   indent?: number;
   treeMode?: boolean;
 }) {
@@ -78,13 +78,13 @@ function FileRow({
         selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
       )}
       style={indent !== undefined ? { paddingLeft: indent } : undefined}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
+      onClick={() => onClick(file, staged)}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, file, staged) : undefined}
     >
       <Checkbox
         checked={staged}
         aria-label={staged ? `Unstage ${file.path}` : `Stage ${file.path}`}
-        onCheckedChange={() => onPrimary()}
+        onCheckedChange={() => onPrimary(file, staged)}
         onClick={(e) => e.stopPropagation()}
       />
       {statusBadge(conflicted && !staged ? 'conflicted' : kind)}
@@ -103,7 +103,7 @@ function FileRow({
             className="opacity-0 group-hover:opacity-100"
             onClick={(e) => {
               e.stopPropagation();
-              onDiscard();
+              onDiscard(file);
             }}
           >
             <Trash2 className="size-3 text-danger" />
@@ -112,14 +112,23 @@ function FileRow({
       )}
     </div>
   );
-}
+});
 
 const fileStatusPath = (file: FileStatus) => file.path;
 
 export function WorkingCopyPanel() {
-  const { repo, status, conflicts, submodules, refreshStatus } = useRepo();
+  const repo = useRepo((s) => s.repo);
+  const status = useRepo((s) => s.status);
+  const conflicts = useRepo((s) => s.conflicts);
+  const submodules = useRepo((s) => s.submodules);
+  const refreshStatus = useRepo((s) => s.refreshStatus);
   const reloadGraph = useGraph((s) => s.reload);
-  const { selectedFile, selectFile, openCenterDiff, openEditor, openConflict, fileTree } = useUi();
+  const selectedFile = useUi((s) => s.selectedFile);
+  const selectFile = useUi((s) => s.selectFile);
+  const openCenterDiff = useUi((s) => s.openCenterDiff);
+  const openEditor = useUi((s) => s.openEditor);
+  const openConflict = useUi((s) => s.openConflict);
+  const fileTree = useUi((s) => s.fileTree);
   const path = repo?.path ?? '';
   const message = useCommitDraft((s) => (path ? (s.drafts[path] ?? '') : ''));
   const amend = useCommitDraft((s) => !!path && s.amendFor === path);
@@ -154,28 +163,34 @@ export function WorkingCopyPanel() {
   const stagedFiles = files.filter((f) => f.staged);
   const unstagedFiles = files.filter((f) => f.unstaged);
 
-  const showDiff = (file: string, staged: boolean) => {
-    selectFile({ path: file, staged });
-    openCenterDiff({ path: file, staged });
-  };
+  const showDiff = useCallback(
+    (file: FileStatus, staged: boolean) => {
+      selectFile({ path: file.path, staged });
+      openCenterDiff({ path: file.path, staged });
+    },
+    [selectFile, openCenterDiff],
+  );
 
   const isSubmodule = (file: string) => submodules.some((s) => s.path === file);
 
-  const discardOne = async (file: string) => {
-    try {
-      const clean = await ipc.discardFile(path, file);
-      await refreshStatus();
-      if (!clean) {
-        toast.error(
-          isSubmodule(file)
-            ? `"${file}" is a submodule — open it as its own repository to discard the changes inside it.`
-            : `Could not discard "${file}" — the change is still present.`,
-        );
+  const discardOne = useCallback(
+    async (file: string) => {
+      try {
+        const clean = await ipc.discardFile(path, file);
+        await refreshStatus();
+        if (!clean) {
+          toast.error(
+            useRepo.getState().submodules.some((s) => s.path === file)
+              ? `"${file}" is a submodule — open it as its own repository to discard the changes inside it.`
+              : `Could not discard "${file}" — the change is still present.`,
+          );
+        }
+      } catch (error) {
+        toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
       }
-    } catch (error) {
-      toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
-    }
-  };
+    },
+    [path, refreshStatus],
+  );
 
   const discardEverything = async () => {
     const before = unstagedFiles.length;
@@ -208,6 +223,35 @@ export function WorkingCopyPanel() {
       }
     },
     [refreshStatus],
+  );
+
+  const toggleStage = useCallback(
+    (file: FileStatus, staged: boolean) => {
+      void run(
+        () => (staged ? ipc.unstageFile(path, file.path) : ipc.stageFile(path, file.path)),
+        staged ? 'Unstage failed' : 'Stage failed',
+      );
+    },
+    [run, path],
+  );
+
+  const openFileMenu = useCallback((event: React.MouseEvent, file: FileStatus, staged: boolean) => {
+    event.preventDefault();
+    setFileMenu({ x: event.clientX, y: event.clientY, file, staged });
+  }, []);
+
+  const requestDiscard = useCallback(
+    (file: FileStatus) => {
+      void confirmDialog({
+        title: 'Discard changes?',
+        description: `All changes in "${file.path}" will be reverted${file.unstaged === 'untracked' ? ' and the file deleted' : ''}. This cannot be undone.`,
+        confirmLabel: 'Discard',
+        destructive: true,
+      }).then((ok) => {
+        if (ok) void discardOne(file.path);
+      });
+    },
+    [discardOne],
   );
 
   const generateMessage = async () => {
@@ -287,22 +331,10 @@ export function WorkingCopyPanel() {
         treeMode={fileTree}
         indent={treeIndent(depth)}
         selected={selectedFile?.path === file.path && !selectedFile.staged}
-        onClick={() => showDiff(file.path, false)}
-        onPrimary={() => void run(() => ipc.stageFile(path, file.path), 'Stage failed')}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setFileMenu({ x: e.clientX, y: e.clientY, file, staged: false });
-        }}
-        onDiscard={() => {
-          void confirmDialog({
-            title: 'Discard changes?',
-            description: `All changes in "${file.path}" will be reverted${file.unstaged === 'untracked' ? ' and the file deleted' : ''}. This cannot be undone.`,
-            confirmLabel: 'Discard',
-            destructive: true,
-          }).then((ok) => {
-            if (ok) void discardOne(file.path);
-          });
-        }}
+        onClick={showDiff}
+        onPrimary={toggleStage}
+        onContextMenu={openFileMenu}
+        onDiscard={requestDiscard}
       />
     );
 
@@ -314,12 +346,9 @@ export function WorkingCopyPanel() {
       treeMode={fileTree}
       indent={treeIndent(depth)}
       selected={selectedFile?.path === file.path && selectedFile.staged}
-      onClick={() => showDiff(file.path, true)}
-      onPrimary={() => void run(() => ipc.unstageFile(path, file.path), 'Unstage failed')}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        setFileMenu({ x: e.clientX, y: e.clientY, file, staged: true });
-      }}
+      onClick={showDiff}
+      onPrimary={toggleStage}
+      onContextMenu={openFileMenu}
     />
   );
 
@@ -418,20 +447,7 @@ export function WorkingCopyPanel() {
                 >
                   <Plus /> Stage file
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  destructive
-                  onClick={() => {
-                    const file = fileMenu.file;
-                    void confirmDialog({
-                      title: 'Discard changes?',
-                      description: `All changes in "${file.path}" will be reverted${file.unstaged === 'untracked' ? ' and the file deleted' : ''}. This cannot be undone.`,
-                      confirmLabel: 'Discard',
-                      destructive: true,
-                    }).then((ok) => {
-                      if (ok) void discardOne(file.path);
-                    });
-                  }}
-                >
+                <DropdownMenuItem destructive onClick={() => requestDiscard(fileMenu.file)}>
                   <Trash2 /> Discard changes…
                 </DropdownMenuItem>
               </>

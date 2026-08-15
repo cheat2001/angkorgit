@@ -98,17 +98,25 @@ fn hunks_from_patch(patch: &Patch) -> AppResult<(Vec<DiffHunk>, u32, u32)> {
     Ok((hunks, additions, deletions))
 }
 
+const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+
 fn blob_base64(repo: &Repository, oid: git2::Oid) -> Option<String> {
     if oid.is_zero() {
         return None;
     }
-    repo.find_blob(oid)
-        .ok()
-        .map(|b| base64::engine::general_purpose::STANDARD.encode(b.content()))
+    let blob = repo.find_blob(oid).ok()?;
+    if blob.content().len() > MAX_IMAGE_BYTES {
+        return None;
+    }
+    Some(base64::engine::general_purpose::STANDARD.encode(blob.content()))
 }
 
 fn workdir_base64(repo: &Repository, path: &str) -> Option<String> {
     let full = repo.workdir()?.join(path);
+    let meta = std::fs::metadata(&full).ok()?;
+    if meta.len() > MAX_IMAGE_BYTES as u64 {
+        return None;
+    }
     std::fs::read(full)
         .ok()
         .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes))

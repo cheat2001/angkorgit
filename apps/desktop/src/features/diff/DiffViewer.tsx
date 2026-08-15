@@ -185,7 +185,9 @@ export function DiffViewer({
   onLineContextMenu?: (event: React.MouseEvent, info: LineMenuInfo) => void;
   search?: SearchRanges;
 }) {
-  const { diffView, wordDiff: useWord, wrapLines } = useUi();
+  const diffView = useUi((s) => s.diffView);
+  const useWord = useUi((s) => s.wordDiff);
+  const wrapLines = useUi((s) => s.wrapLines);
   const language = useMemo(() => languageOf(diff.path), [diff.path]);
   const split = diffView === 'split';
   const wrap = wrapLines && !wrapUnavailable(diff);

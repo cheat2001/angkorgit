@@ -4,7 +4,7 @@ use crate::error::{AppError, AppResult};
 
 use super::types::OpOutcome;
 
-fn default_signature(repo: &Repository) -> AppResult<git2::Signature<'static>> {
+pub(crate) fn default_signature(repo: &Repository) -> AppResult<git2::Signature<'static>> {
     repo.signature().map_err(|_| {
         AppError::other("Git identity is not configured. Set user.name and user.email in Settings.")
     })
@@ -70,6 +70,7 @@ pub fn merge_message(path: &str) -> AppResult<Option<String>> {
 
 pub fn revert(path: &str, oid: &str) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
+    let sig = default_signature(&repo)?;
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
 
     let mut opts = git2::RevertOptions::new();
@@ -85,7 +86,6 @@ pub fn revert(path: &str, oid: &str) -> AppResult<OpOutcome> {
         });
     }
 
-    let sig = default_signature(&repo)?;
     let mut index = repo.index()?;
     let tree = repo.find_tree(index.write_tree()?)?;
     let head = repo.head()?.peel_to_commit()?;

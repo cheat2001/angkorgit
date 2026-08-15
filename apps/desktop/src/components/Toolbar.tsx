@@ -49,7 +49,10 @@ import { useSettings } from '@/features/settings/store';
 import { capCount, modKey } from '@/shared/utils';
 
 function RepoSwitcher() {
-  const { repo, recents, open, busy } = useRepo();
+  const repo = useRepo((s) => s.repo);
+  const recents = useRepo((s) => s.recents);
+  const open = useRepo((s) => s.open);
+  const busy = useRepo((s) => s.busy);
   const openDialog = useUi((s) => s.openDialog);
   const profiles = useSettings((s) => s.profiles);
   const [activeEmail, setActiveEmail] = useState('');
@@ -239,8 +242,16 @@ function UndoRedoButtons({ onRefresh }: { onRefresh: () => Promise<void> }) {
 }
 
 export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
-  const { repo, status, remotes, busy, setBusy } = useRepo();
-  const { toggleTerminal, toggleSidebar, sidebarOpen, openDialog, setPaletteOpen } = useUi();
+  const repo = useRepo((s) => s.repo);
+  const status = useRepo((s) => s.status);
+  const remotes = useRepo((s) => s.remotes);
+  const busy = useRepo((s) => s.busy);
+  const setBusy = useRepo((s) => s.setBusy);
+  const toggleTerminal = useUi((s) => s.toggleTerminal);
+  const toggleSidebar = useUi((s) => s.toggleSidebar);
+  const sidebarOpen = useUi((s) => s.sidebarOpen);
+  const openDialog = useUi((s) => s.openDialog);
+  const setPaletteOpen = useUi((s) => s.setPaletteOpen);
   const navigate = useNavigate();
   const [spinning, setSpinning] = useState(false);
 

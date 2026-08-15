@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
 import { ArrowDownToLine, ArrowUpFromLine, Check, Copy, Filter, GitBranchPlus, GitMerge, ListRestart, RotateCcw, Search, Tag as TagIcon, Undo2, User, X } from 'lucide-react';
@@ -213,11 +212,8 @@ export function CommitGraph() {
               const commit = commits[item.index];
               if (!row || !commit) return null;
               return (
-                <motion.div
+                <div
                   key={commit.oid}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.15 }}
                   style={{
                     position: 'absolute',
                     top: 0,
@@ -236,9 +232,9 @@ export function CommitGraph() {
                     onSelect={select}
                     onContextMenu={onContextMenu}
                     onCheckoutRef={checkoutRef}
-                    onRefMenu={(e, ref) => onRefMenu(e, ref)}
+                    onRefMenu={onRefMenu}
                   />
-                </motion.div>
+                </div>
               );
             })}
           </div>

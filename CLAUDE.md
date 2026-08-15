@@ -175,7 +175,7 @@ core/
 - Operations that can pause on conflicts return `OpOutcome { status: "ok"|"conflicts"|"up_to_date"|"fast_forward", message }` — never an error for conflicts.
 - Command args are **camelCase** matching the TS payloads (`#![allow(non_snake_case)]`).
 - Every new engine function gets an integration test in `tests/git_engine.rs`
-  (26 tests; TempRepo fixture creates real repos in temp dirs; uses `angkorgit_lib::test_api`).
+  (30 tests; TempRepo fixture creates real repos in temp dirs; uses `angkorgit_lib::test_api`).
 - Destructive ops verify outcomes (e.g. discard returns leftover paths → UI explains submodules).
 
 ## 6. Frontend — `apps/desktop/src/`
@@ -455,14 +455,37 @@ update CLAUDE.md or docs/ — never the code.
   SSH transport does not offer. A user who adds a verified account and then pushes
   an SSH remote gets `class=Ssh; code=Auth` and no hint that the account was never
   involved. Keep the Accounts and SSH cards clearly separated in copy.
+- **G26 — every store action that awaits MUST re-validate before set()**: a slow
+  response resolving after a repo switch/newer request used to overwrite fresh state —
+  a stale `refresh()` flipped the whole app back to the previous repo, `loadMore`
+  appended repo A's page under repo B, older filter results replaced newer ones, and
+  an in-flight watcher handler (closure over `repoPath`) reloaded the old repo's graph
+  after `unlisten()`. The convention now: capture a module-level sequence token
+  (`++seq`) before the await and bail if it moved or `get().repo?.path !== path`
+  after; repository/store.ts (openSeq/fullSeq/statusSeq — statusSeq is shared between
+  refresh and refreshStatus so an older full refresh can't clobber a newer status),
+  graph/store.ts (requestSeq + `get().layout !== layout` before mutating the shared
+  GraphLayout), DiffPanel (requestSeq ref), and RepositoryPage's watcher handler
+  (`stillCurrent()` after every await + trailing `pending` re-run instead of dropping
+  events mid-refresh) all follow it. Apply the same pattern to any new async store
+  action. Related: the `void listen(...).then((fn) => unlisten = fn)` pattern leaks
+  the subscription if cleanup runs first — always `if (cancelled) fn(); else unlisten = fn`.
+- **G27 — conflict markers are exactly 7 chars; the parser must be lossless**:
+  `startsWith('=======')` once consumed legitimate content (setext/RST underlines,
+  `========` dividers) as the separator and silently deleted it on resolve. parse.ts
+  now matches `/^={7}\r?$/` etc. (7 chars + space-or-EOL), stores the RAW marker
+  lines on each block (`markers.open/base/separator/close`), and serializes
+  unresolved blocks from those raw lines — preserving diff3 base labels, CRLF, and
+  bare markers byte-for-byte. A close marker without a separator is malformed and
+  falls back to plain text. Never rebuild marker lines from labels.
 
 ## 9. Testing map
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (26) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, file history lists only touching commits, conflict resolve, stash, tags, cherry-pick, revert, reset, diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
-| Rust module (20) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (4), `src/core/remote.rs` (10) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key |
-| Unit (45) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3, lossless unresolved), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, preset instructions, post-generation prefix enforcement) |
+| Rust integration (30) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, file history lists only touching commits, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
+| Rust module (23) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (4), `src/core/remote.rs` (13) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) |
+| Unit (51) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement) |
 | E2E (6) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks — all on demo mode |
 
 ## 9.5 Open-source & community files

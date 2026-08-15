@@ -132,87 +132,102 @@ pub async fn discard_line(path: String, file: String, kind: String, lineNo: u32)
 const MAX_EDITABLE_BYTES: u64 = 5 * 1024 * 1024;
 
 #[tauri::command]
-pub fn read_file(path: String, file: String) -> AppResult<String> {
-    let full = std::path::Path::new(&path).join(&file);
-    let meta = std::fs::metadata(&full)?;
-    if meta.len() > MAX_EDITABLE_BYTES {
-        return Err(crate::error::AppError::other(
-            "file is larger than 5 MB — open it in an external editor",
-        ));
-    }
-    let bytes = std::fs::read(&full)?;
-    String::from_utf8(bytes)
-        .map_err(|_| crate::error::AppError::other("file is not valid UTF-8 text"))
+pub async fn read_file(path: String, file: String) -> AppResult<String> {
+    blocking(move || {
+        let full = std::path::Path::new(&path).join(&file);
+        let meta = std::fs::metadata(&full)?;
+        if meta.len() > MAX_EDITABLE_BYTES {
+            return Err(crate::error::AppError::other(
+                "file is larger than 5 MB — open it in an external editor",
+            ));
+        }
+        let bytes = std::fs::read(&full)?;
+        String::from_utf8(bytes)
+            .map_err(|_| crate::error::AppError::other("file is not valid UTF-8 text"))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn write_file(path: String, file: String, content: String) -> AppResult<()> {
-    let full = std::path::Path::new(&path).join(&file);
-    std::fs::write(full, content)?;
-    Ok(())
+pub async fn write_file(path: String, file: String, content: String) -> AppResult<()> {
+    blocking(move || {
+        let full = std::path::Path::new(&path).join(&file);
+        std::fs::write(full, content)?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn open_path(path: String) -> AppResult<()> {
-    let status = {
-        #[cfg(target_os = "macos")]
-        {
-            std::process::Command::new("open").arg(&path).status()
+pub async fn open_path(path: String) -> AppResult<()> {
+    blocking(move || {
+        let status = {
+            #[cfg(target_os = "macos")]
+            {
+                std::process::Command::new("open").arg(&path).status()
+            }
+            #[cfg(target_os = "windows")]
+            {
+                std::process::Command::new("cmd")
+                    .args(["/C", "start", "", &path])
+                    .status()
+            }
+            #[cfg(all(unix, not(target_os = "macos")))]
+            {
+                std::process::Command::new("xdg-open").arg(&path).status()
+            }
+        }?;
+        if !status.success() {
+            return Err(crate::error::AppError::other("could not open path"));
         }
-        #[cfg(target_os = "windows")]
-        {
-            std::process::Command::new("cmd")
-                .args(["/C", "start", "", &path])
-                .status()
-        }
-        #[cfg(all(unix, not(target_os = "macos")))]
-        {
-            std::process::Command::new("xdg-open").arg(&path).status()
-        }
-    }?;
-    if !status.success() {
-        return Err(crate::error::AppError::other("could not open path"));
-    }
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn reveal_path(path: String) -> AppResult<()> {
-    let status = {
-        #[cfg(target_os = "macos")]
-        {
-            std::process::Command::new("open")
-                .args(["-R", &path])
-                .status()
-        }
-        #[cfg(target_os = "windows")]
-        {
-            std::process::Command::new("explorer")
-                .arg(format!("/select,{path}"))
-                .status()
-        }
-        #[cfg(all(unix, not(target_os = "macos")))]
-        {
-            let parent = std::path::Path::new(&path)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.clone());
-            std::process::Command::new("xdg-open").arg(parent).status()
-        }
-    }?;
-    let _ = status;
-    Ok(())
+pub async fn reveal_path(path: String) -> AppResult<()> {
+    blocking(move || {
+        let status = {
+            #[cfg(target_os = "macos")]
+            {
+                std::process::Command::new("open")
+                    .args(["-R", &path])
+                    .status()
+            }
+            #[cfg(target_os = "windows")]
+            {
+                std::process::Command::new("explorer")
+                    .arg(format!("/select,{path}"))
+                    .status()
+            }
+            #[cfg(all(unix, not(target_os = "macos")))]
+            {
+                let parent = std::path::Path::new(&path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.clone());
+                std::process::Command::new("xdg-open").arg(parent).status()
+            }
+        }?;
+        let _ = status;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn delete_file(path: String, file: String) -> AppResult<()> {
-    let full = std::path::Path::new(&path).join(&file);
-    if full.is_file() {
-        std::fs::remove_file(full)?;
-    } else if full.is_dir() {
-        std::fs::remove_dir_all(full)?;
-    }
-    Ok(())
+pub async fn delete_file(path: String, file: String) -> AppResult<()> {
+    blocking(move || {
+        let full = std::path::Path::new(&path).join(&file);
+        if full.is_file() {
+            std::fs::remove_file(full)?;
+        } else if full.is_dir() {
+            std::fs::remove_dir_all(full)?;
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -505,49 +520,58 @@ pub async fn conflict_resolve(path: String, file: String, content: String) -> Ap
 }
 
 #[tauri::command]
-pub fn term_create(
+pub async fn term_create(
     app: AppHandle,
     state: State<'_, TerminalState>,
     cwd: String,
     cols: u16,
     rows: u16,
 ) -> AppResult<u32> {
-    crate::terminal::create(&app, &state, &cwd, cols, rows)
+    let sessions = state.sessions();
+    blocking(move || crate::terminal::create(&app, &sessions, &cwd, cols, rows)).await
 }
 
 #[tauri::command]
-pub fn term_write(state: State<'_, TerminalState>, id: u32, data: String) -> AppResult<()> {
-    crate::terminal::write(&state, id, &data)
+pub async fn term_write(state: State<'_, TerminalState>, id: u32, data: String) -> AppResult<()> {
+    let sessions = state.sessions();
+    blocking(move || crate::terminal::write(&sessions, id, &data)).await
 }
 
 #[tauri::command]
-pub fn term_resize(
+pub async fn term_resize(
     state: State<'_, TerminalState>,
     id: u32,
     cols: u16,
     rows: u16,
 ) -> AppResult<()> {
-    crate::terminal::resize(&state, id, cols, rows)
+    let sessions = state.sessions();
+    blocking(move || crate::terminal::resize(&sessions, id, cols, rows)).await
 }
 
 #[tauri::command]
-pub fn term_kill(state: State<'_, TerminalState>, id: u32) -> AppResult<()> {
-    crate::terminal::kill(&state, id)
+pub async fn term_kill(state: State<'_, TerminalState>, id: u32) -> AppResult<()> {
+    let sessions = state.sessions();
+    blocking(move || crate::terminal::kill(&sessions, id)).await
 }
 
 #[tauri::command]
-pub fn watch_repo(
+pub async fn watch_repo(
     app: AppHandle,
     state: State<'_, crate::watcher::WatcherState>,
     path: String,
 ) -> AppResult<()> {
-    crate::watcher::watch(&app, &state, &path)
+    let slot = state.slot();
+    blocking(move || crate::watcher::watch(&app, &slot, &path)).await
 }
 
 #[tauri::command]
-pub fn watch_stop(state: State<'_, crate::watcher::WatcherState>) -> AppResult<()> {
-    crate::watcher::stop(&state);
-    Ok(())
+pub async fn watch_stop(state: State<'_, crate::watcher::WatcherState>) -> AppResult<()> {
+    let slot = state.slot();
+    blocking(move || {
+        crate::watcher::stop(&slot);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]

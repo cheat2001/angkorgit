@@ -19,14 +19,23 @@ pub struct HttpResponse {
     pub body: String,
 }
 
+fn shared_client() -> AppResult<&'static reqwest::Client> {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    if let Some(client) = CLIENT.get() {
+        return Ok(client);
+    }
+    let built = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| AppError::other(e.to_string()))?;
+    Ok(CLIENT.get_or_init(|| built))
+}
+
 pub async fn request(req: HttpRequest) -> AppResult<HttpResponse> {
     if !req.url.starts_with("http://") && !req.url.starts_with("https://") {
         return Err(AppError::other("only http(s) URLs are allowed"));
     }
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| AppError::other(e.to_string()))?;
+    let client = shared_client()?;
 
     let mut builder = match req.method.as_str() {
         "GET" => client.get(&req.url),

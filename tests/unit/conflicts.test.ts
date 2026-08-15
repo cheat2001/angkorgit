@@ -65,4 +65,52 @@ theirs
     expect(conflictCount(blocks)).toBe(0);
     expect(serializeResolution(blocks)).toBe(malformed);
   });
+
+  it('treats content lines of 8+ marker characters as content, not markers', () => {
+    const input = `<<<<<<< HEAD
+title
+========
+ours body
+=======
+theirs
+>>>>>>> other`;
+    const blocks = parseConflicts(input);
+    const conflict = blocks.find((b) => b.kind === 'conflict') as ConflictBlock;
+    expect(conflict.current).toEqual(['title', '========', 'ours body']);
+    expect(conflict.incoming).toEqual(['theirs']);
+    expect(serializeResolution(blocks)).toBe(input);
+  });
+
+  it('round-trips diff3 base labels losslessly', () => {
+    const diff3 = `<<<<<<< HEAD
+ours
+||||||| merged common ancestors
+original
+=======
+theirs
+>>>>>>> other`;
+    const blocks = parseConflicts(diff3);
+    expect(serializeResolution(blocks)).toBe(diff3);
+  });
+
+  it('round-trips CRLF content without changing line endings', () => {
+    const crlf = 'a\r\n<<<<<<< HEAD\r\nours\r\n=======\r\ntheirs\r\n>>>>>>> feat\r\nb\r\n';
+    const blocks = parseConflicts(crlf);
+    expect(conflictCount(blocks)).toBe(1);
+    expect(serializeResolution(blocks)).toBe(crlf);
+  });
+
+  it('round-trips bare markers without adding trailing spaces', () => {
+    const bare = '<<<<<<<\nours\n=======\ntheirs\n>>>>>>>';
+    const blocks = parseConflicts(bare);
+    expect(conflictCount(blocks)).toBe(1);
+    expect(serializeResolution(blocks)).toBe(bare);
+  });
+
+  it('treats a close marker without a separator as plain text', () => {
+    const invalid = 'a\n<<<<<<< HEAD\nours\n>>>>>>> other\nb';
+    const blocks = parseConflicts(invalid);
+    expect(conflictCount(blocks)).toBe(0);
+    expect(serializeResolution(blocks)).toBe(invalid);
+  });
 });

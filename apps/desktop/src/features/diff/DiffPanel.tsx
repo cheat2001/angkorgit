@@ -32,21 +32,20 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const repo = useRepo((s) => s.repo);
   const status = useRepo((s) => s.status);
   const refreshStatus = useRepo((s) => s.refreshStatus);
-  const {
-    closeCenterDiff,
-    openCenterDiff,
-    diffView,
-    setDiffView,
-    wordDiff,
-    setWordDiff,
-    fullFileDiff,
-    setFullFileDiff,
-    wrapLines,
-    setWrapLines,
-  } = useUi();
+  const closeCenterDiff = useUi((s) => s.closeCenterDiff);
+  const openCenterDiff = useUi((s) => s.openCenterDiff);
+  const diffView = useUi((s) => s.diffView);
+  const setDiffView = useUi((s) => s.setDiffView);
+  const wordDiff = useUi((s) => s.wordDiff);
+  const setWordDiff = useUi((s) => s.setWordDiff);
+  const fullFileDiff = useUi((s) => s.fullFileDiff);
+  const setFullFileDiff = useUi((s) => s.setFullFileDiff);
+  const wrapLines = useUi((s) => s.wrapLines);
+  const setWrapLines = useUi((s) => s.setWrapLines);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const loadedKey = useRef<string | null>(null);
+  const requestSeq = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [lineMenu, setLineMenu] = useState<{
     x: number;
@@ -92,6 +91,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   useEffect(() => {
     if (!path) return;
     let cancelled = false;
+    const seq = ++requestSeq.current;
     const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}|${fullFileDiff}`;
     if (loadedKey.current !== key) setLoading(true);
     const context = fullFileDiff ? 10_000_000 : undefined;
@@ -104,20 +104,20 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     };
     void load()
       .then((result) => {
-        if (!cancelled) {
+        if (!cancelled && seq === requestSeq.current) {
           setDiff(result);
           loadedKey.current = key;
         }
       })
       .catch((error) => {
-        if (!cancelled) {
+        if (!cancelled && seq === requestSeq.current) {
           toast.error(`Could not load diff: ${(error as { message?: string }).message ?? error}`);
           setDiff(null);
           loadedKey.current = key;
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && seq === requestSeq.current) setLoading(false);
       });
     return () => {
       cancelled = true;

@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use git2::Repository;
 use notify_debouncer_mini::{
     new_debouncer,
     notify::{RecommendedWatcher, RecursiveMode},
@@ -11,10 +12,18 @@ use tauri::{AppHandle, Emitter};
 
 use crate::error::{AppError, AppResult};
 
-#[derive(Default)]
-pub struct WatcherState(Mutex<Option<Debouncer<RecommendedWatcher>>>);
+pub type WatcherSlot = Mutex<Option<Debouncer<RecommendedWatcher>>>;
 
-fn relevant(path: &Path, root: &Path) -> bool {
+#[derive(Default)]
+pub struct WatcherState(Arc<WatcherSlot>);
+
+impl WatcherState {
+    pub fn slot(&self) -> Arc<WatcherSlot> {
+        Arc::clone(&self.0)
+    }
+}
+
+fn relevant(path: &Path, root: &Path, repo: Option<&Repository>) -> bool {
     let rel = match path.strip_prefix(root) {
         Ok(rel) => rel,
         Err(_) => return true,
@@ -25,7 +34,10 @@ fn relevant(path: &Path, root: &Path) -> bool {
         .and_then(|c| c.as_os_str().to_str())
         .unwrap_or("");
     if first != ".git" {
-        return true;
+        return match repo {
+            Some(repo) => !repo.is_path_ignored(rel).unwrap_or(false),
+            None => true,
+        };
     }
     let rest: PathBuf = components.collect();
     let rest = rest.to_string_lossy();
@@ -39,7 +51,7 @@ fn relevant(path: &Path, root: &Path) -> bool {
         || rest == "packed-refs"
 }
 
-pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> AppResult<()> {
+pub fn watch(app: &AppHandle, slot: &WatcherSlot, path: &str) -> AppResult<()> {
     let root = PathBuf::from(path);
     let emitter = app.clone();
     let filter_root = root.clone();
@@ -48,7 +60,11 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> AppResult<()>
         Duration::from_millis(400),
         move |result: DebounceEventResult| {
             if let Ok(events) = result {
-                if events.iter().any(|e| relevant(&e.path, &filter_root)) {
+                let repo = Repository::open(&filter_root).ok();
+                if events
+                    .iter()
+                    .any(|e| relevant(&e.path, &filter_root, repo.as_ref()))
+                {
                     let _ = emitter.emit("repo-changed", ());
                 }
             }
@@ -61,10 +77,10 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> AppResult<()>
         .watch(&root, RecursiveMode::Recursive)
         .map_err(|e| AppError::other(format!("could not watch {path}: {e}")))?;
 
-    *state.0.lock().unwrap() = Some(debouncer);
+    *slot.lock().unwrap() = Some(debouncer);
     Ok(())
 }
 
-pub fn stop(state: &WatcherState) {
-    *state.0.lock().unwrap() = None;
+pub fn stop(slot: &WatcherSlot) {
+    *slot.lock().unwrap() = None;
 }

@@ -147,7 +147,12 @@ function Section({
 }
 
 export function Sidebar() {
-  const { repo, branches, tags, stashes, remotes, submodules } = useRepo();
+  const repo = useRepo((s) => s.repo);
+  const branches = useRepo((s) => s.branches);
+  const tags = useRepo((s) => s.tags);
+  const stashes = useRepo((s) => s.stashes);
+  const remotes = useRepo((s) => s.remotes);
+  const submodules = useRepo((s) => s.submodules);
   const refresh = useRepo((s) => s.refresh);
   const graphReload = useGraph((s) => s.reload);
   const setFilters = useGraph((s) => s.setFilters);
@@ -259,7 +264,9 @@ export function Sidebar() {
     if (!head) return;
     const paths = ancestorFolders(head.name);
     if (paths.length > 0) {
-      setExpandedFolders((prev) => new Set([...prev, ...paths]));
+      setExpandedFolders((prev) =>
+        paths.every((p) => prev.has(p)) ? prev : new Set([...prev, ...paths]),
+      );
     }
   }, [branches]);
   const toggleFolder = (folderPath: string) =>

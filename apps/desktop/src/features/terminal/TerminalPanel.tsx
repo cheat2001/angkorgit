@@ -9,12 +9,12 @@ import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 
 export function TerminalPanel() {
-  const repo = useRepo((s) => s.repo);
+  const repoPath = useRepo((s) => s.repo?.path ?? null);
   const toggleTerminal = useUi((s) => s.toggleTerminal);
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!hostRef.current || !repo) return;
+    if (!hostRef.current || !repoPath) return;
 
     const dark = document.documentElement.classList.contains('dark');
     const terminal = new Terminal({
@@ -45,18 +45,28 @@ export function TerminalPanel() {
       });
     } else {
       void (async () => {
-        const id = await ipc.termCreate(repo.path, terminal.cols, terminal.rows);
+        const id = await ipc.termCreate(repoPath, terminal.cols, terminal.rows);
         if (disposed) {
           void ipc.termKill(id);
           return;
         }
         termId = id;
-        unlistenData = await listen(`term-data-${id}`, (payload) => {
+        const dataUnlisten = await listen(`term-data-${id}`, (payload) => {
           terminal.write((payload as { data: string }).data);
         });
-        unlistenExit = await listen(`term-exit-${id}`, () => {
+        if (disposed) {
+          dataUnlisten();
+          return;
+        }
+        unlistenData = dataUnlisten;
+        const exitUnlisten = await listen(`term-exit-${id}`, () => {
           terminal.writeln('\r\n[process exited]');
         });
+        if (disposed) {
+          exitUnlisten();
+          return;
+        }
+        unlistenExit = exitUnlisten;
         terminal.onData((data) => void ipc.termWrite(id, data));
         terminal.onResize(({ cols, rows }) => void ipc.termResize(id, cols, rows));
       })();
@@ -73,13 +83,13 @@ export function TerminalPanel() {
       if (termId !== null) void ipc.termKill(termId);
       terminal.dispose();
     };
-  }, [repo]);
+  }, [repoPath]);
 
   return (
     <div className="flex h-full flex-col bg-surface">
       <div className="flex h-7 shrink-0 items-center border-b border-border-subtle px-3">
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Terminal</span>
-        <span className="ml-2 truncate font-mono text-[10px] text-faint">{repo?.path}</span>
+        <span className="ml-2 truncate font-mono text-[10px] text-faint">{repoPath}</span>
         <Button variant="ghost" size="icon-sm" className="ml-auto" aria-label="Close terminal" onClick={toggleTerminal}>
           <X className="size-3" />
         </Button>

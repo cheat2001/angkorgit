@@ -28,10 +28,15 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
       return;
     }
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
     void listen('clone-progress', (pct) => setProgress(pct as number)).then((fn) => {
-      unlisten = fn;
+      if (cancelled) fn();
+      else unlisten = fn;
     });
-    return () => unlisten?.();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, [open]);
 
   const clone = async () => {

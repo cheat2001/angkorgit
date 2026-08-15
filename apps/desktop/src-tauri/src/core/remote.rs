@@ -407,6 +407,15 @@ pub fn pull(path: &str, remote_name: &str) -> AppResult<OpOutcome> {
     super::branch::merge(path, &upstream_name, false)
 }
 
+pub(crate) fn push_refspecs(branch: &str, force: bool, with_tags: bool) -> Vec<String> {
+    let prefix = if force { "+" } else { "" };
+    let mut refspecs = vec![format!("{prefix}refs/heads/{branch}:refs/heads/{branch}")];
+    if with_tags {
+        refspecs.push("refs/tags/*:refs/tags/*".to_string());
+    }
+    refspecs
+}
+
 pub fn push(
     path: &str,
     remote_name: &str,
@@ -425,13 +434,7 @@ pub fn push(
             .to_string(),
     };
 
-    let prefix = if force { "+" } else { "" };
-    let mut refspecs = vec![format!(
-        "{prefix}refs/heads/{branch_name}:refs/heads/{branch_name}"
-    )];
-    if with_tags {
-        refspecs.push(format!("{prefix}refs/tags/*:refs/tags/*"));
-    }
+    let refspecs = push_refspecs(&branch_name, force, with_tags);
 
     let mut remote = repo.find_remote(remote_name)?;
     let mut opts = PushOptions::new();
@@ -542,10 +545,14 @@ pub fn push_tag(path: &str, remote_name: &str, tag: &str) -> AppResult<OpOutcome
 
 pub fn clone(url: &str, into: &str, on_progress: impl Fn(u32) + Send) -> AppResult<String> {
     let mut callbacks = make_callbacks();
+    let mut last_pct: Option<u32> = None;
     callbacks.transfer_progress(move |stats| {
         let total = stats.total_objects().max(1);
         let pct = (stats.received_objects() * 100 / total) as u32;
-        on_progress(pct);
+        if last_pct != Some(pct) {
+            last_pct = Some(pct);
+            on_progress(pct);
+        }
         true
     });
     let mut opts = FetchOptions::new();
@@ -675,5 +682,35 @@ mod tests {
     #[test]
     fn blank_configuration_is_ignored() {
         assert_eq!(ssh_key_candidates(Some("   "), Some(&home()), &[]).len(), 2);
+    }
+
+    #[test]
+    fn plain_push_refspecs_have_no_force_prefix() {
+        assert_eq!(
+            push_refspecs("main", false, true),
+            vec![
+                "refs/heads/main:refs/heads/main".to_string(),
+                "refs/tags/*:refs/tags/*".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn force_push_forces_only_the_branch_refspec() {
+        assert_eq!(
+            push_refspecs("main", true, true),
+            vec![
+                "+refs/heads/main:refs/heads/main".to_string(),
+                "refs/tags/*:refs/tags/*".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn push_without_tags_sends_only_the_branch() {
+        assert_eq!(
+            push_refspecs("feature/x", true, false),
+            vec!["+refs/heads/feature/x:refs/heads/feature/x".to_string()]
+        );
     }
 }

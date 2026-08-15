@@ -10,7 +10,7 @@ pub fn stage_file(path: &str, file: &str) -> AppResult<()> {
     let workdir = repo
         .workdir()
         .ok_or_else(|| AppError::other("bare repository"))?;
-    if workdir.join(file).exists() {
+    if workdir.join(file).symlink_metadata().is_ok() {
         index.add_path(Path::new(file))?;
     } else {
         index.remove_path(Path::new(file))?;

@@ -232,6 +232,19 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'angkorgit-settings',
+      merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Partial<SettingsState>;
+        return {
+          ...current,
+          ...stored,
+          ai: { ...current.ai, ...(stored.ai ?? {}) },
+          aiStyle: {
+            ...current.aiStyle,
+            ...(stored.aiStyle ?? {}),
+            commit: { ...current.aiStyle.commit, ...(stored.aiStyle?.commit ?? {}) },
+          },
+        };
+      },
       onRehydrateStorage: () => (state) => {
         applyTheme(state?.theme ?? 'angkor-dusk');
         const zoom = state?.zoom ?? 1;

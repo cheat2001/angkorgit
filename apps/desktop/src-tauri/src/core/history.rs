@@ -102,6 +102,11 @@ pub fn list(path: &str, query: HistoryQuery) -> AppResult<HistoryPage> {
     let mut has_more = false;
 
     for oid in walk.flatten() {
+        if !filtered && matched < query.skip {
+            matched += 1;
+            continue;
+        }
+
         let commit = match repo.find_commit(oid) {
             Ok(c) => c,
             Err(_) => continue,

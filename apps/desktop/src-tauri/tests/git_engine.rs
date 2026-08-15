@@ -320,6 +320,98 @@ fn reset_modes() {
     assert_eq!(page.commits.len(), 1);
 }
 
+#[cfg(unix)]
+#[test]
+fn staging_a_broken_symlink_adds_it_to_the_index() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+
+    std::os::unix::fs::symlink("missing-target", repo.dir.join("dangling")).unwrap();
+    core::stage_file(repo.path(), "dangling").unwrap();
+
+    let status = core::status(repo.path()).unwrap();
+    let entry = status.files.iter().find(|f| f.path == "dangling").unwrap();
+    assert_eq!(entry.staged.as_deref(), Some("new"));
+}
+
+#[test]
+fn reset_rejects_unknown_mode() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "v1\n");
+    let first = commit_all(&repo, "v1");
+    repo.write("a.txt", "v2\n");
+    commit_all(&repo, "v2");
+
+    assert!(core::reset(repo.path(), &first, "sneaky").is_err());
+    assert_eq!(repo.read("a.txt"), "v2\n");
+}
+
+#[test]
+fn history_pagination_without_filters() {
+    let repo = TempRepo::new();
+    for i in 0..5 {
+        repo.write("a.txt", &format!("v{i}\n"));
+        commit_all(&repo, &format!("commit {i}"));
+    }
+
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 2,
+            limit: 2,
+            search: None,
+            author: None,
+            branch: None,
+        },
+    )
+    .unwrap();
+    let summaries: Vec<_> = page.commits.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(summaries, vec!["commit 2", "commit 1"]);
+    assert!(page.has_more);
+
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 4,
+            limit: 2,
+            search: None,
+            author: None,
+            branch: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(page.commits.len(), 1);
+    assert_eq!(page.commits[0].summary, "commit 0");
+    assert!(!page.has_more);
+}
+
+#[test]
+fn history_pagination_with_search_filter() {
+    let repo = TempRepo::new();
+    for i in 0..4 {
+        repo.write("a.txt", &format!("f{i}\n"));
+        commit_all(&repo, &format!("feature {i}"));
+        repo.write("a.txt", &format!("c{i}\n"));
+        commit_all(&repo, &format!("chore {i}"));
+    }
+
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 1,
+            limit: 2,
+            search: Some("feature".into()),
+            author: None,
+            branch: None,
+        },
+    )
+    .unwrap();
+    let summaries: Vec<_> = page.commits.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(summaries, vec!["feature 2", "feature 1"]);
+    assert!(page.has_more);
+}
+
 #[test]
 fn line_level_stage_unstage_discard() {
     let repo = TempRepo::new();

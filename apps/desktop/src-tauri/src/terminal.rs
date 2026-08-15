@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
@@ -16,9 +16,18 @@ struct PtySession {
 }
 
 #[derive(Default)]
-pub struct TerminalState {
+pub struct TerminalSessions {
     sessions: Mutex<HashMap<u32, PtySession>>,
     next_id: AtomicU32,
+}
+
+#[derive(Default)]
+pub struct TerminalState(Arc<TerminalSessions>);
+
+impl TerminalState {
+    pub fn sessions(&self) -> Arc<TerminalSessions> {
+        Arc::clone(&self.0)
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -42,7 +51,7 @@ fn default_shell() -> CommandBuilder {
 
 pub fn create(
     app: &AppHandle,
-    state: &TerminalState,
+    state: &Arc<TerminalSessions>,
     cwd: &str,
     cols: u16,
     rows: u16,
@@ -59,7 +68,7 @@ pub fn create(
 
     let mut cmd = default_shell();
     cmd.cwd(cwd);
-    let child = pair
+    let mut child = pair
         .slave
         .spawn_command(cmd)
         .map_err(|e| AppError::other(format!("failed to spawn shell: {e}")))?;
@@ -76,6 +85,15 @@ pub fn create(
         .take_writer()
         .map_err(|e| AppError::other(format!("failed to take pty writer: {e}")))?;
 
+    state.sessions.lock().unwrap().insert(
+        id,
+        PtySession {
+            writer,
+            master: pair.master,
+            killer,
+        },
+    );
+
     let app_handle = app.clone();
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
@@ -88,21 +106,20 @@ pub fn create(
                 }
             }
         }
-        let _ = app_handle.emit(&format!("term-exit-{id}"), ());
     });
 
-    state.sessions.lock().unwrap().insert(
-        id,
-        PtySession {
-            writer,
-            master: pair.master,
-            killer,
-        },
-    );
+    let exit_app = app.clone();
+    let exit_sessions = Arc::clone(state);
+    std::thread::spawn(move || {
+        let _ = child.wait();
+        exit_sessions.sessions.lock().unwrap().remove(&id);
+        let _ = exit_app.emit(&format!("term-exit-{id}"), ());
+    });
+
     Ok(id)
 }
 
-pub fn write(state: &TerminalState, id: u32, data: &str) -> AppResult<()> {
+pub fn write(state: &TerminalSessions, id: u32, data: &str) -> AppResult<()> {
     let mut sessions = state.sessions.lock().unwrap();
     let session = sessions
         .get_mut(&id)
@@ -115,7 +132,7 @@ pub fn write(state: &TerminalState, id: u32, data: &str) -> AppResult<()> {
     Ok(())
 }
 
-pub fn resize(state: &TerminalState, id: u32, cols: u16, rows: u16) -> AppResult<()> {
+pub fn resize(state: &TerminalSessions, id: u32, cols: u16, rows: u16) -> AppResult<()> {
     let sessions = state.sessions.lock().unwrap();
     let session = sessions
         .get(&id)
@@ -132,7 +149,7 @@ pub fn resize(state: &TerminalState, id: u32, cols: u16, rows: u16) -> AppResult
     Ok(())
 }
 
-pub fn kill(state: &TerminalState, id: u32) -> AppResult<()> {
+pub fn kill(state: &TerminalSessions, id: u32) -> AppResult<()> {
     if let Some(mut session) = state.sessions.lock().unwrap().remove(&id) {
         session.killer.kill().ok();
     }

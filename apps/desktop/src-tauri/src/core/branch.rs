@@ -178,6 +178,7 @@ pub fn merge(path: &str, branch: &str, no_ff: bool) -> AppResult<OpOutcome> {
         });
     }
 
+    let sig = super::commit::default_signature(&repo)?;
     repo.merge(&[&annotated], None, None)?;
     let index = repo.index()?;
     if index.has_conflicts() {
@@ -187,7 +188,6 @@ pub fn merge(path: &str, branch: &str, no_ff: bool) -> AppResult<OpOutcome> {
         });
     }
 
-    let sig = repo.signature().map_err(AppError::from)?;
     let mut index = repo.index()?;
     let tree = repo.find_tree(index.write_tree()?)?;
     let head_ref = repo.head()?;
@@ -299,6 +299,7 @@ pub fn rebase_abort(path: &str) -> AppResult<()> {
 
 pub fn cherry_pick(path: &str, oid: &str) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
+    let sig = super::commit::default_signature(&repo)?;
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
     repo.cherrypick(&commit, None)?;
 
@@ -310,7 +311,6 @@ pub fn cherry_pick(path: &str, oid: &str) -> AppResult<OpOutcome> {
         });
     }
 
-    let sig = repo.signature()?;
     let mut index = repo.index()?;
     let tree = repo.find_tree(index.write_tree()?)?;
     let head_commit = repo.head()?.peel_to_commit()?;
@@ -335,8 +335,9 @@ pub fn reset(path: &str, oid: &str, mode: &str) -> AppResult<()> {
     let obj = repo.find_object(git2::Oid::from_str(oid)?, None)?;
     let kind = match mode {
         "soft" => ResetType::Soft,
+        "mixed" => ResetType::Mixed,
         "hard" => ResetType::Hard,
-        _ => ResetType::Mixed,
+        _ => return Err(AppError::other(format!("unknown reset mode: {mode}"))),
     };
     repo.reset(&obj, kind, None)?;
     Ok(())

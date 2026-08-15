@@ -31,6 +31,10 @@ interface RepoState {
   setBusy: (label: string | null) => void;
 }
 
+let openSeq = 0;
+let fullSeq = 0;
+let statusSeq = 0;
+
 export const useRepo = create<RepoState>((set, get) => ({
   repo: null,
   status: null,
@@ -49,7 +53,9 @@ export const useRepo = create<RepoState>((set, get) => ({
   },
 
   open: async (path: string) => {
+    const seq = ++openSeq;
     const repo = await ipc.openRepository(path);
+    if (seq !== openSeq) return repo;
     set({ repo });
     void import('@/features/ui/store').then(({ useUi }) =>
       useUi.getState().addRepoTab(repo.path),
@@ -75,6 +81,8 @@ export const useRepo = create<RepoState>((set, get) => ({
     const { repo } = get();
     if (!repo) return;
     const path = repo.path;
+    const seq = ++fullSeq;
+    const statusEpoch = ++statusSeq;
     const [info, status, branches, tags, stashes, remotes, submodules, conflicts] =
       await Promise.all([
         ipc.repoInfo(path),
@@ -86,16 +94,21 @@ export const useRepo = create<RepoState>((set, get) => ({
         ipc.submodules(path),
         ipc.conflicts(path),
       ]);
-    set({ repo: info, status, branches, tags, stashes, remotes, submodules, conflicts });
+    if (get().repo?.path !== path || seq !== fullSeq) return;
+    if (statusEpoch === statusSeq) {
+      set({ repo: info, status, branches, tags, stashes, remotes, submodules, conflicts });
+    } else {
+      set({ repo: info, branches, tags, stashes, remotes, submodules });
+    }
   },
 
   refreshStatus: async () => {
     const { repo } = get();
     if (!repo) return;
-    const [status, conflicts] = await Promise.all([
-      ipc.status(repo.path),
-      ipc.conflicts(repo.path),
-    ]);
+    const path = repo.path;
+    const statusEpoch = ++statusSeq;
+    const [status, conflicts] = await Promise.all([ipc.status(path), ipc.conflicts(path)]);
+    if (get().repo?.path !== path || statusEpoch !== statusSeq) return;
     set({ status, conflicts });
   },
 

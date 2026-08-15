@@ -6,6 +6,42 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- The conflict resolver no longer corrupts files whose content contains lines of
+  8 or more marker characters (`========` dividers, setext/RST underlines) —
+  markers are now matched at exactly 7 characters, and unresolved conflicts
+  round-trip byte-for-byte, preserving diff3 base labels, CRLF line endings, and
+  bare markers
+- Switching repositories while a slow refresh or history load was still in
+  flight could flip the app back to the previous repository, show one repo's
+  history under another's header, or apply an older filter's results over a
+  newer one — every async store action now discards stale responses
+- The built-in terminal no longer kills your running shell on every commit,
+  fetch, or file change — the session now survives refreshes and is only
+  recreated when you switch repositories
+- Pasting large input into the terminal (or a paused pager) could freeze the
+  entire app — terminal, file, and watcher commands now run off the main thread
+- Builds running inside the repository (`pnpm install`, `cargo build`) no
+  longer cause a continuous refresh storm — the file watcher now ignores
+  gitignored paths; changes arriving during a refresh trigger one trailing
+  re-run instead of being dropped
+- Merge, cherry-pick, and revert now check your git identity before touching
+  the repository, so a missing user.name can no longer strand a repo
+  mid-operation
+- Force-pushing with tags no longer force-pushes the tags themselves
+- Staging a broken symlink now stages it instead of deleting it from the index
+- AI commit prefixes keep `$` sequences in branch names literal
+- Undoing to an unknown reset mode is now rejected instead of silently
+  performing a mixed reset
+
+### Changed
+- Large-repo performance: deep history scrolling no longer re-parses every
+  skipped commit; the sidebar, working-copy lists, commit graph rows, and
+  inspector re-render only when their own data changes; the selected commit's
+  diff is no longer re-fetched while scrolling the graph; image diffs are
+  capped at 10 MB per side instead of loading unbounded payloads; clone
+  progress and AI requests generate less overhead
+
 ## [0.4.0] — 2026-08-11
 
 Merging is the theme of this release: it now behaves the way the graph leads
