@@ -6,6 +6,12 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Terminal sessions persist per repository** — switching to another repo tab
+  and back reattaches the same shell with its scrollback and any running
+  command intact. A session ends only when its repo tab is closed, the shell
+  exits, or the app quits
+
 ### Fixed
 - The conflict resolver no longer corrupts files whose content contains lines of
   8 or more marker characters (`========` dividers, setext/RST underlines) —

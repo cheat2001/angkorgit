@@ -4,6 +4,7 @@ import { Plus, X } from 'lucide-react';
 import { Button, Hint, cn } from '@angkorgit/design-system';
 import { pickDirectory } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
+import { killTerminalSession } from '@/features/terminal/TerminalPanel';
 import { useUi } from '@/features/ui/store';
 
 export function RepoTabs() {
@@ -22,12 +23,14 @@ export function RepoTabs() {
           `Could not open: ${(error as { message?: string }).message ?? error}`,
         );
         useUi.getState().closeRepoTab(path);
+        killTerminalSession(path);
       });
   };
 
   const close = (path: string) => {
     const remaining = tabs.filter((t) => t !== path);
     useUi.getState().closeRepoTab(path);
+    killTerminalSession(path);
     if (repo?.path !== path) return;
     if (remaining.length > 0) activate(remaining[remaining.length - 1]);
     else useRepo.getState().close();

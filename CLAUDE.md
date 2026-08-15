@@ -226,7 +226,13 @@ features/
 │                               branchCreate/Delete/Rename; validation guards (repo moved,
 │                               dirty tree for hard kinds)
 ├── inspector/                ← Inspector (working copy ⟷ commit details), CommitDetails
-├── terminal/TerminalPanel    ← xterm.js ↔ PTY events
+├── terminal/TerminalPanel    ← xterm.js ↔ PTY events; sessions are PER-REPO and
+│                               persistent: a module-level Map keyed by repo path holds
+│                               each xterm + its DOM container, unmount only detaches
+│                               (container.remove()), remount re-appends — scrollback and
+│                               running processes survive repo switches. Killed only via
+│                               killTerminalSession(path) (RepoTabs close) or shell exit
+│                               (exited flag → fresh session on next mount)
 ├── settings/                 ← store (theme, accent, zoom, reduceMotion — applied via a
 │                               `reduce-motion` class + MotionConfig, ai config +
 │                               aiProfiles (PER-PROVIDER model/baseUrl/apiKey, see G22),
