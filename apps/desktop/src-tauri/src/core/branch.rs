@@ -2,7 +2,7 @@ use git2::{build::CheckoutBuilder, BranchType, Repository, ResetType};
 
 use crate::error::{AppError, AppResult};
 
-use super::types::{BranchInfo, OpOutcome};
+use super::types::{BranchInfo, CommitInfo, OpOutcome, RebaseTodoEntry};
 
 pub fn list(path: &str) -> AppResult<Vec<BranchInfo>> {
     let repo = super::repo::open(path)?;
@@ -295,6 +295,142 @@ pub fn rebase_abort(path: &str) -> AppResult<()> {
     let mut rebase = repo.open_rebase(None)?;
     rebase.abort()?;
     Ok(())
+}
+
+const MAX_INTERACTIVE_COMMITS: usize = 500;
+
+pub fn rebase_commits(path: &str, base: &str) -> AppResult<Vec<CommitInfo>> {
+    let repo = super::repo::open(path)?;
+    let base_oid = git2::Oid::from_str(base)?;
+    let head = repo.head()?.peel_to_commit()?;
+    if head.id() == base_oid {
+        return Ok(Vec::new());
+    }
+    let decorations = std::collections::HashMap::new();
+    let head_oid = Some(head.id());
+    let mut commits = Vec::new();
+    let mut current = head;
+    loop {
+        if current.parent_count() > 1 {
+            return Err(AppError::other(format!(
+                "'{}' is a merge commit — interactive rebase across merges isn't supported",
+                current.summary().unwrap_or("")
+            )));
+        }
+        commits.push(super::history::commit_info(
+            &repo,
+            &current,
+            &decorations,
+            head_oid,
+        ));
+        if commits.len() > MAX_INTERACTIVE_COMMITS {
+            return Err(AppError::other(
+                "the rebase range is too large — pick a closer base commit",
+            ));
+        }
+        let parent = current.parent(0).map_err(|_| {
+            AppError::other("the selected base is not a first-parent ancestor of HEAD")
+        })?;
+        if parent.id() == base_oid {
+            break;
+        }
+        current = parent;
+    }
+    Ok(commits)
+}
+
+fn ensure_tracked_clean(repo: &Repository) -> AppResult<()> {
+    let mut opts = git2::StatusOptions::new();
+    opts.include_untracked(false).include_ignored(false);
+    let statuses = repo.statuses(Some(&mut opts))?;
+    if !statuses.is_empty() {
+        return Err(AppError::other(
+            "working tree has uncommitted changes — commit or stash them first",
+        ));
+    }
+    Ok(())
+}
+
+pub fn rebase_interactive(path: &str, base: &str, todo: &[RebaseTodoEntry]) -> AppResult<String> {
+    let repo = super::repo::open(path)?;
+    let sig = super::commit::default_signature(&repo)?;
+    ensure_tracked_clean(&repo)?;
+
+    let range = rebase_commits(path, base)?;
+    let allowed: std::collections::HashSet<&str> = range.iter().map(|c| c.oid.as_str()).collect();
+    let mut seen = std::collections::HashSet::new();
+    for entry in todo {
+        if !allowed.contains(entry.oid.as_str()) {
+            return Err(AppError::other(
+                "the rebase plan contains a commit outside the rebase range",
+            ));
+        }
+        if !seen.insert(entry.oid.as_str()) {
+            return Err(AppError::other("the rebase plan lists a commit twice"));
+        }
+        if !matches!(
+            entry.action.as_str(),
+            "pick" | "reword" | "squash" | "fixup" | "drop"
+        ) {
+            return Err(AppError::other(format!(
+                "unknown rebase action: {}",
+                entry.action
+            )));
+        }
+    }
+
+    let base_commit = repo.find_commit(git2::Oid::from_str(base)?)?;
+    let mut parent = base_commit;
+    let mut built_any = false;
+    for entry in todo {
+        if entry.action == "drop" {
+            continue;
+        }
+        let commit = repo.find_commit(git2::Oid::from_str(&entry.oid)?)?;
+        let mut index = repo.cherrypick_commit(&commit, &parent, 0, None)?;
+        if index.has_conflicts() {
+            return Err(AppError::Conflict(format!(
+                "'{}' would conflict at this position — reorder or drop it (nothing was changed)",
+                commit.summary().unwrap_or("")
+            )));
+        }
+        let tree = repo.find_tree(index.write_tree_to(&repo)?)?;
+        let squashing = matches!(entry.action.as_str(), "squash" | "fixup");
+        if squashing {
+            if !built_any {
+                return Err(AppError::other(
+                    "cannot squash the first commit — there is no earlier commit to fold it into",
+                ));
+            }
+            let message = if entry.action == "fixup" {
+                parent.message().unwrap_or("").to_string()
+            } else {
+                match entry.message.as_deref().map(str::trim) {
+                    Some(m) if !m.is_empty() => m.to_string(),
+                    _ => format!(
+                        "{}\n\n{}",
+                        parent.message().unwrap_or("").trim_end(),
+                        commit.message().unwrap_or("")
+                    ),
+                }
+            };
+            let grandparents: Vec<git2::Commit> = parent.parents().collect();
+            let parent_refs: Vec<&git2::Commit> = grandparents.iter().collect();
+            let oid = repo.commit(None, &parent.author(), &sig, &message, &tree, &parent_refs)?;
+            parent = repo.find_commit(oid)?;
+        } else {
+            let message = match entry.message.as_deref().map(str::trim) {
+                Some(m) if entry.action == "reword" && !m.is_empty() => m.to_string(),
+                _ => commit.message().unwrap_or("").to_string(),
+            };
+            let oid = repo.commit(None, &commit.author(), &sig, &message, &tree, &[&parent])?;
+            parent = repo.find_commit(oid)?;
+            built_any = true;
+        }
+    }
+
+    repo.reset(parent.as_object(), ResetType::Hard, None)?;
+    Ok(parent.id().to_string())
 }
 
 pub fn cherry_pick(path: &str, oid: &str) -> AppResult<OpOutcome> {

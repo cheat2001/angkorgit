@@ -10,6 +10,7 @@ export type DialogKind =
   | 'createStash'
   | 'settings'
   | 'rename'
+  | 'interactiveRebase'
   | null;
 
 export interface CenterDiffTarget {
@@ -18,12 +19,20 @@ export interface CenterDiffTarget {
   oid?: string;
 }
 
+export interface InteractiveRebasePreset {
+  baseOid: string;
+  squashOids?: string[];
+  dropOids?: string[];
+}
+
+export type DialogContext = string | InteractiveRebasePreset | null;
+
 interface UiState {
   sidebarOpen: boolean;
   terminalOpen: boolean;
   paletteOpen: boolean;
   dialog: DialogKind;
-  dialogContext: string | null;
+  dialogContext: DialogContext;
   diffView: DiffViewMode;
   wordDiff: boolean;
   fullFileDiff: boolean;
@@ -39,7 +48,7 @@ interface UiState {
   toggleSidebar: () => void;
   toggleTerminal: () => void;
   setPaletteOpen: (open: boolean) => void;
-  openDialog: (dialog: DialogKind, context?: string | null) => void;
+  openDialog: (dialog: DialogKind, context?: DialogContext) => void;
   closeDialog: () => void;
   setDiffView: (mode: DiffViewMode) => void;
   setWordDiff: (on: boolean) => void;

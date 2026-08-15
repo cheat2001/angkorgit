@@ -60,6 +60,15 @@ pub struct HistoryPage {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RebaseTodoEntry {
+    pub oid: String,
+    pub action: String,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HistoryQuery {
     pub skip: usize,
     pub limit: usize,

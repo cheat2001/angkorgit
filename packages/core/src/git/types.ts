@@ -157,3 +157,11 @@ export interface HistoryPage {
   hasMore: boolean;
   total: number | null;
 }
+
+export type RebaseTodoAction = 'pick' | 'reword' | 'squash' | 'fixup' | 'drop';
+
+export interface RebaseTodoEntry {
+  oid: string;
+  action: RebaseTodoAction;
+  message?: string;
+}

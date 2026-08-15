@@ -7,6 +7,15 @@ All notable changes to AngKorGit are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Interactive rebase** — right-click a commit in the graph and choose
+  "Interactively rebase onto here…" to reorder, reword, squash, fixup, or drop
+  the commits above it. The rebase is all-or-nothing: if a step would
+  conflict, nothing is changed and the message names the commit to reorder or
+  drop. Undo restores the previous state with one click
+- **Select commits and squash them directly** — ⌘-click or shift-click to
+  select several commits in the graph, then right-click for "Squash N
+  commits" or "Drop N commits"; the rebase plan opens pre-filled so you can
+  adjust the combined message and confirm in one click
 - **Terminal sessions persist per repository** — switching to another repo tab
   and back reattaches the same shell with its scrollback and any running
   command intact. A session ends only when its repo tab is closed, the shell
@@ -19,6 +28,11 @@ All notable changes to AngKorGit are documented here. The format follows
   automatically on first launch and are scrubbed from the old storage
 
 ### Fixed
+- The "rebase" badge no longer sticks forever after a conflicted rebase was
+  resolved by hand — the state badge in the toolbar is now a menu offering
+  continue, abort, or "clear state, keep everything as is" for rebase, merge,
+  cherry-pick, revert, and bisect states (previously the app had no way to
+  continue or conclude a paused rebase at all)
 - The conflict resolver no longer corrupts files whose content contains lines of
   8 or more marker characters (`========` dividers, setext/RST underlines) —
   markers are now matched at exactly 7 characters, and unresolved conflicts

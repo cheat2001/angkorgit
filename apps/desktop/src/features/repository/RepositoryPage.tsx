@@ -10,6 +10,7 @@ import { StatusBar } from '@/components/StatusBar';
 import { Toolbar } from '@/components/Toolbar';
 import { Sidebar } from '@/features/sidebar/Sidebar';
 import { CommitGraph } from '@/features/graph/CommitGraph';
+import { InteractiveRebaseDialog } from '@/features/graph/InteractiveRebaseDialog';
 import { DiffPanel } from '@/features/diff/DiffPanel';
 import { EditorPanel } from '@/features/editor/EditorPanel';
 import { FileHistoryPanel } from '@/features/history/FileHistoryPanel';
@@ -257,6 +258,7 @@ export function RepositoryPage() {
       <CommandPalette onRefresh={refreshAll} />
       <SettingsDialog />
       <RepoDialogs onDone={refreshAll} />
+      <InteractiveRebaseDialog />
       <CloneDialog onCloned={() => void refreshAll()} />
       {conflictFile && <ConflictResolver key={conflictFile} file={conflictFile} onResolved={refreshAll} />}
     </motion.div>

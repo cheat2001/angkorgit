@@ -150,7 +150,15 @@ core/
 ├── commit.rs         ← commit (merge-aware parents), amend, revert (mainline 1 for merges)
 ├── branch.rs         ← list(+ahead/behind), create/delete/rename, checkout (remote→local),
 │                       merge (ff/normal/conflicts; msg "Merge branch 'x' into y"),
-│                       rebase(+continue/abort), cherry-pick, reset soft/mixed/hard
+│                       rebase(+continue/abort), cherry-pick, reset soft/mixed/hard,
+│                       INTERACTIVE rebase: rebase_commits (first-parent range walk
+│                       HEAD→base, newest first, refuses merges + non-ancestors, cap 500)
+│                       + rebase_interactive (todo in APPLICATION order: pick/reword/
+│                       squash/fixup/drop; builds the chain IN MEMORY via
+│                       cherrypick_commit → commit(update_ref None), so a conflict
+│                       aborts with AppError::Conflict and the repo is UNTOUCHED —
+│                       no pause/continue; only the final reset --hard moves anything;
+│                       requires clean tracked tree, keeps authors, committer = sig)
 ├── remote.rs         ← credential chain (see below), fetch/pull/push(+branch param)/clone,
 │                       pull_branch (ff-without-checkout for non-HEAD), push_tag,
 │                       credential_approve (git credential approve → OS keychain)
@@ -181,7 +189,7 @@ core/
 - Operations that can pause on conflicts return `OpOutcome { status: "ok"|"conflicts"|"up_to_date"|"fast_forward", message }` — never an error for conflicts.
 - Command args are **camelCase** matching the TS payloads (`#![allow(non_snake_case)]`).
 - Every new engine function gets an integration test in `tests/git_engine.rs`
-  (31 tests; TempRepo fixture creates real repos in temp dirs; uses `angkorgit_lib::test_api`).
+  (36 tests; TempRepo fixture creates real repos in temp dirs; uses `angkorgit_lib::test_api`).
 - Destructive ops verify outcomes (e.g. discard returns leftover paths → UI explains submodules).
 
 ## 6. Frontend — `apps/desktop/src/`
@@ -473,6 +481,18 @@ update CLAUDE.md or docs/ — never the code.
   SSH transport does not offer. A user who adds a verified account and then pushes
   an SSH remote gets `class=Ssh; code=Auth` and no hint that the account was never
   involved. Keep the Accounts and SSH cards clearly separated in copy.
+- **G28 — a paused libgit2 rebase never concludes by committing**: when
+  `branch::rebase` pauses on conflicts, resolving the files and committing by
+  hand leaves `.git/rebase-merge` behind, so `repo.state()` reports "rebase"
+  forever (the original bug: rebase → resolve → merge → red badge stuck).
+  `commit()` cleans up MERGE state but not rebase. The toolbar state badge
+  (Toolbar.tsx `StateActions`) is therefore an ACTION menu: continue rebase
+  (rebase_continue), abort rebase (rewinds — destructive confirm), abort
+  merge, and "clear state, keep everything as is" (`repo::cleanup_state` →
+  libgit2 `git_repository_state_cleanup`, which removes state markers without
+  touching HEAD/worktree). Never auto-clear state; a paused rebase may be
+  genuinely in progress. Regression test:
+  `cleanup_state_clears_a_stale_rebase_without_touching_files`.
 - **G26 — every store action that awaits MUST re-validate before set()**: a slow
   response resolving after a repo switch/newer request used to overwrite fresh state —
   a stale `refresh()` flipped the whole app back to the previous repo, `loadMore`
@@ -501,7 +521,7 @@ update CLAUDE.md or docs/ — never the code.
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (31) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
+| Rust integration (36) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
 | Rust module (23) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (4), `src/core/remote.rs` (13) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) |
 | Unit (51) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement) |
 | E2E (6) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks — all on demo mode |
@@ -563,7 +583,7 @@ plugin can be added), and the Homebrew cask.
 2. Provider avatars via connected accounts (GitLab self-hosted `/api/v4/avatar`, GitHub API)
    layered over Gravatar.
 3. File-tree view for the working copy (deep C# paths); prev/next-file arrows in DiffPanel.
-4. Interactive rebase UI (reorder/squash/reword). 5. Blame/file history. 6. Worktrees.
+4. Blame (file history shipped; annotate view remains). 5. Worktrees.
 7. Forge integrations (PRs/issues) as `packages/forge` mirroring the AI adapter pattern.
 8. Plugin host (palette commands, sidebar sections, inspector tabs are list-driven already).
 

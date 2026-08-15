@@ -539,6 +539,174 @@ fn file_history_lists_only_touching_commits() {
     assert!(page.has_more);
 }
 
+fn todo_entry(oid: &str, action: &str, message: Option<&str>) -> core::RebaseTodoEntry {
+    core::RebaseTodoEntry {
+        oid: oid.to_string(),
+        action: action.to_string(),
+        message: message.map(String::from),
+    }
+}
+
+fn history_summaries(repo: &TempRepo) -> Vec<String> {
+    core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 0,
+            limit: 20,
+            search: None,
+            author: None,
+            branch: None,
+        },
+    )
+    .unwrap()
+    .commits
+    .iter()
+    .map(|c| c.summary.clone())
+    .collect()
+}
+
+#[test]
+fn interactive_rebase_reorders_drops_and_lists_range() {
+    let repo = TempRepo::new();
+    repo.write("base.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    repo.write("f1.txt", "1\n");
+    let c1 = commit_all(&repo, "one");
+    repo.write("f2.txt", "2\n");
+    let c2 = commit_all(&repo, "two");
+    repo.write("f3.txt", "3\n");
+    let c3 = commit_all(&repo, "three");
+
+    let range = core::rebase_commits(repo.path(), &base).unwrap();
+    let summaries: Vec<_> = range.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(summaries, vec!["three", "two", "one"]);
+
+    let todo = vec![
+        todo_entry(&c3, "pick", None),
+        todo_entry(&c2, "drop", None),
+        todo_entry(&c1, "pick", None),
+    ];
+    core::rebase_interactive(repo.path(), &base, &todo).unwrap();
+
+    assert_eq!(history_summaries(&repo), vec!["one", "three", "base"]);
+    assert_eq!(repo.read("f1.txt"), "1\n");
+    assert_eq!(repo.read("f3.txt"), "3\n");
+    assert!(!repo.dir.join("f2.txt").exists());
+}
+
+#[test]
+fn interactive_rebase_squashes_and_rewords() {
+    let repo = TempRepo::new();
+    repo.write("base.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    repo.write("f1.txt", "1\n");
+    let c1 = commit_all(&repo, "one");
+    repo.write("f2.txt", "2\n");
+    let c2 = commit_all(&repo, "two");
+    repo.write("f3.txt", "3\n");
+    let c3 = commit_all(&repo, "three");
+
+    let todo = vec![
+        todo_entry(&c1, "pick", None),
+        todo_entry(&c2, "squash", None),
+        todo_entry(&c3, "reword", Some("three renamed")),
+    ];
+    core::rebase_interactive(repo.path(), &base, &todo).unwrap();
+
+    assert_eq!(
+        history_summaries(&repo),
+        vec!["three renamed", "one", "base"]
+    );
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 1,
+            limit: 1,
+            search: None,
+            author: None,
+            branch: None,
+        },
+    )
+    .unwrap();
+    assert!(page.commits[0].body.contains("two"));
+    assert_eq!(repo.read("f1.txt"), "1\n");
+    assert_eq!(repo.read("f2.txt"), "2\n");
+    assert_eq!(repo.read("f3.txt"), "3\n");
+}
+
+#[test]
+fn interactive_rebase_conflict_aborts_without_touching_the_repo() {
+    let repo = TempRepo::new();
+    repo.write("f.txt", "zero\n");
+    let base = commit_all(&repo, "base");
+    repo.write("f.txt", "one\n");
+    let c1 = commit_all(&repo, "one");
+    repo.write("f.txt", "two\n");
+    let c2 = commit_all(&repo, "two");
+
+    let todo = vec![todo_entry(&c2, "pick", None), todo_entry(&c1, "pick", None)];
+    let result = core::rebase_interactive(repo.path(), &base, &todo);
+    assert!(result.is_err());
+
+    assert_eq!(history_summaries(&repo), vec!["two", "one", "base"]);
+    assert_eq!(repo.read("f.txt"), "two\n");
+}
+
+#[test]
+fn interactive_rebase_rejects_invalid_plans() {
+    let repo = TempRepo::new();
+    repo.write("base.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    repo.write("f1.txt", "1\n");
+    let c1 = commit_all(&repo, "one");
+
+    assert!(
+        core::rebase_interactive(repo.path(), &base, &[todo_entry(&c1, "squash", None)]).is_err()
+    );
+    assert!(
+        core::rebase_interactive(repo.path(), &base, &[todo_entry(&c1, "explode", None)]).is_err()
+    );
+    assert!(
+        core::rebase_interactive(repo.path(), &base, &[todo_entry(&base, "pick", None)]).is_err()
+    );
+
+    repo.write("f1.txt", "dirty\n");
+    assert!(
+        core::rebase_interactive(repo.path(), &base, &[todo_entry(&c1, "pick", None)]).is_err()
+    );
+
+    assert_eq!(history_summaries(&repo), vec!["one", "base"]);
+}
+
+#[test]
+fn cleanup_state_clears_a_stale_rebase_without_touching_files() {
+    let repo = TempRepo::new();
+    repo.write("f.txt", "base\n");
+    commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "topic", None, true).unwrap();
+    repo.write("f.txt", "topic\n");
+    commit_all(&repo, "topic change");
+
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("f.txt", "master\n");
+    commit_all(&repo, "master change");
+
+    core::checkout_branch(repo.path(), "topic").unwrap();
+    let outcome = core::rebase(repo.path(), "master").unwrap();
+    assert_eq!(outcome.status, "conflicts");
+    assert_eq!(core::repo_info(repo.path()).unwrap().state, "rebase");
+
+    core::conflict_resolve(repo.path(), "f.txt", "resolved\n").unwrap();
+    core::commit(repo.path(), "resolved by hand").unwrap();
+    assert_eq!(core::repo_info(repo.path()).unwrap().state, "rebase");
+
+    core::cleanup_state(repo.path()).unwrap();
+    assert_eq!(core::repo_info(repo.path()).unwrap().state, "clean");
+    assert_eq!(repo.read("f.txt"), "resolved\n");
+    assert_eq!(core::status(repo.path()).unwrap().files.len(), 0);
+}
+
 #[test]
 fn file_history_paginates_with_skip() {
     let repo = TempRepo::new();

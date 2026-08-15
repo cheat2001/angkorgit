@@ -42,6 +42,7 @@ import {
   cn,
 } from '@angkorgit/design-system';
 import { ipc, pickDirectory } from '@/core/ipc';
+import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo } from '@/features/history/undoStore';
@@ -105,11 +106,6 @@ function RepoSwitcher() {
             </span>
             <span className="block font-mono text-[10px] text-faint">
               {repo.isDetached ? 'detached HEAD' : repo.headBranch ?? 'no branch'}
-              {repo.state !== 'clean' && (
-                <Badge tone="danger" className="ml-2">
-                  {repo.state}
-                </Badge>
-              )}
             </span>
           </span>
         </button>
@@ -169,6 +165,132 @@ function RepoSwitcher() {
             </DropdownMenuSub>
           </>
         )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const STATE_LABELS: Record<string, string> = {
+  rebase: 'Rebase in progress',
+  merge: 'Merge in progress',
+  cherrypick: 'Cherry-pick in progress',
+  revert: 'Revert in progress',
+  bisect: 'Bisect in progress',
+};
+
+function StateActions({ onRefresh }: { onRefresh: () => Promise<void> }) {
+  const repo = useRepo((s) => s.repo);
+  if (!repo || repo.state === 'clean') return null;
+  const path = repo.path;
+  const state = repo.state;
+
+  const finish = () => void onRefresh();
+
+  const continueRebase = () =>
+    void (async () => {
+      try {
+        const outcome = await ipc.rebaseContinue(path);
+        toastOutcome(outcome, 'Rebase continued');
+      } catch (error) {
+        toast.error(`Continue failed: ${(error as { message?: string }).message ?? error}`);
+      }
+      finish();
+    })();
+
+  const abortRebase = () =>
+    void (async () => {
+      const ok = await confirmDialog({
+        title: 'Abort rebase?',
+        description:
+          'This rewinds the branch to where it was before the rebase started. Commits made during the rebase are discarded.',
+        confirmLabel: 'Abort rebase',
+        destructive: true,
+      });
+      if (!ok) return;
+      try {
+        await ipc.rebaseAbort(path);
+        toast.success('Rebase aborted');
+      } catch (error) {
+        toast.error(`Abort failed: ${(error as { message?: string }).message ?? error}`);
+      }
+      finish();
+    })();
+
+  const abortMerge = () =>
+    void (async () => {
+      const ok = await confirmDialog({
+        title: 'Abort merge?',
+        description: 'This resets the working copy to the state before the merge started.',
+        confirmLabel: 'Abort merge',
+        destructive: true,
+      });
+      if (!ok) return;
+      try {
+        await ipc.mergeAbort(path);
+        toast.success('Merge aborted');
+      } catch (error) {
+        toast.error(`Abort failed: ${(error as { message?: string }).message ?? error}`);
+      }
+      finish();
+    })();
+
+  const clearState = () =>
+    void (async () => {
+      const ok = await confirmDialog({
+        title: `Clear ${state} state?`,
+        description:
+          `Git still marks this repository as mid-${state}. Clearing removes that marker and keeps every file and commit exactly as it is now. Use this when the ${state} is already finished.`,
+        confirmLabel: 'Clear state',
+      });
+      if (!ok) return;
+      try {
+        await ipc.stateCleanup(path);
+        toast.success('State cleared');
+      } catch (error) {
+        toast.error(`Clear failed: ${(error as { message?: string }).message ?? error}`);
+      }
+      finish();
+    })();
+
+  return (
+    <DropdownMenu>
+      <Hint label={STATE_LABELS[state] ?? state}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              'flex items-center gap-1 rounded-md border border-danger/40 bg-danger/10 px-2 py-1',
+              'font-mono text-[11px] text-danger hover:bg-danger/20',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60',
+            )}
+            aria-label={`${state} in progress — actions`}
+          >
+            {state}
+            <ChevronDown className="size-3" />
+          </button>
+        </DropdownMenuTrigger>
+      </Hint>
+      <DropdownMenuContent align="start" className="min-w-56">
+        <DropdownMenuLabel>{STATE_LABELS[state] ?? state}</DropdownMenuLabel>
+        {state === 'rebase' && (
+          <>
+            <DropdownMenuItem onClick={continueRebase}>
+              <Redo2 /> Continue rebase
+            </DropdownMenuItem>
+            <DropdownMenuItem destructive onClick={abortRebase}>
+              <Undo2 /> Abort rebase
+            </DropdownMenuItem>
+          </>
+        )}
+        {state === 'merge' && (
+          <DropdownMenuItem destructive onClick={abortMerge}>
+            <Undo2 /> Abort merge
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={clearState}>
+          <Check /> Clear state, keep everything as is
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -302,6 +424,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
         </Button>
       </Hint>
       <RepoSwitcher />
+      <StateActions onRefresh={onRefresh} />
 
       <UndoRedoButtons onRefresh={onRefresh} />
 

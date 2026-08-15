@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
-import { ArrowDownToLine, ArrowUpFromLine, Check, Copy, Filter, GitBranchPlus, GitMerge, ListRestart, RotateCcw, Search, Tag as TagIcon, Undo2, User, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Check, Combine, Copy, Filter, GitBranchPlus, GitMerge, ListOrdered, ListRestart, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
 import type { CommitInfo, RefInfo } from '@angkorgit/core';
 import {
   DropdownMenu,
@@ -39,7 +39,7 @@ interface RefMenuState {
 export function CommitGraph() {
   const repo = useRepo((s) => s.repo);
   const refresh = useRepo((s) => s.refresh);
-  const { rows, commits, maxLane, hasMore, loading, filters, selectedOid, loadMore, reload, setFilters, select } =
+  const { rows, commits, maxLane, hasMore, loading, filters, selectedOid, selectedOids, loadMore, reload, setFilters, select, toggleSelect, rangeSelect } =
     useGraph();
   const openDialog = useUi((s) => s.openDialog);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -147,6 +147,31 @@ export function CommitGraph() {
     setMenu({ x: event.clientX, y: event.clientY, commit });
   }, []);
 
+  const onRowSelect = useCallback(
+    (oid: string, event: React.MouseEvent) => {
+      if (event.shiftKey) rangeSelect(oid);
+      else if (event.metaKey || event.ctrlKey) toggleSelect(oid);
+      else select(oid);
+    },
+    [select, toggleSelect, rangeSelect],
+  );
+
+  const multiSelection = useMemo(() => {
+    if (!menu || selectedOids.length < 2 || !selectedOids.includes(menu.commit.oid)) return null;
+    const indices = selectedOids.map((oid) => commits.findIndex((c) => c.oid === oid));
+    if (indices.some((i) => i < 0)) return null;
+    if (indices.some((i) => commits[i].parents.length > 1)) return null;
+    const min = Math.min(...indices);
+    const max = Math.max(...indices);
+    const baseOid = commits[max].parents[0];
+    if (!baseOid) return null;
+    return {
+      baseOid,
+      count: selectedOids.length,
+      contiguous: max - min === selectedOids.length - 1,
+    };
+  }, [menu, selectedOids, commits]);
+
   const checkoutRef = useCallback(
     (ref: RefInfo) => {
       void act(`Checkout ${ref.shorthand}`, () => ipc.checkout(path, ref.shorthand), {
@@ -228,8 +253,8 @@ export function CommitGraph() {
                     row={row}
                     gutterWidth={gutterWidth}
                     flat={flat}
-                    selected={selectedOid === commit.oid}
-                    onSelect={select}
+                    selected={selectedOid === commit.oid || selectedOids.includes(commit.oid)}
+                    onSelect={onRowSelect}
                     onContextMenu={onContextMenu}
                     onCheckoutRef={checkoutRef}
                     onRefMenu={onRefMenu}
@@ -340,6 +365,36 @@ export function CommitGraph() {
             >
               <Undo2 /> Revert commit
             </DropdownMenuItem>
+            {multiSelection?.contiguous && (
+              <DropdownMenuItem
+                onClick={() =>
+                  openDialog('interactiveRebase', {
+                    baseOid: multiSelection.baseOid,
+                    squashOids: selectedOids,
+                  })
+                }
+              >
+                <Combine /> Squash {multiSelection.count} commits
+              </DropdownMenuItem>
+            )}
+            {multiSelection && (
+              <DropdownMenuItem
+                destructive
+                onClick={() =>
+                  openDialog('interactiveRebase', {
+                    baseOid: multiSelection.baseOid,
+                    dropOids: selectedOids,
+                  })
+                }
+              >
+                <Trash2 /> Drop {multiSelection.count} commits
+              </DropdownMenuItem>
+            )}
+            {!menu.commit.isHead && (
+              <DropdownMenuItem onClick={() => openDialog('interactiveRebase', menu.commit.oid)}>
+                <ListOrdered /> Interactively rebase onto here…
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => void act(`Soft reset to ${menu.commit.shortOid}`, () => ipc.reset(path, menu.commit.oid, 'soft'), { kind: 'reset' })}>
               <RotateCcw /> Reset here (soft)

@@ -10,6 +10,7 @@ import type {
   HistoryQuery,
   HttpRequest,
   HttpResponse,
+  RebaseTodoEntry,
   RecentRepository,
   RemoteInfo,
   RepositoryInfo,
@@ -99,6 +100,10 @@ export const ipc = {
   async status(path: string): Promise<StatusSummary> {
     if (!isTauri()) return demo.demoStatus;
     return invoke('repo_status', { path });
+  },
+  async stateCleanup(path: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('state_cleanup', { path });
   },
   async recentRepositories(): Promise<RecentRepository[]> {
     if (!isTauri()) return demo.demoRecents;
@@ -279,6 +284,26 @@ export const ipc = {
   async rebaseAbort(path: string): Promise<void> {
     if (!isTauri()) return;
     return invoke('rebase_abort', { path });
+  },
+  async rebaseCommits(path: string, baseOid: string): Promise<CommitInfo[]> {
+    if (!isTauri()) {
+      await delay(60);
+      const all = demo.demoHistory({ skip: 0, limit: 200 }).commits;
+      const end = all.findIndex((c) => c.oid === baseOid);
+      return all.slice(0, end === -1 ? 5 : end).filter((c) => c.parents.length <= 1);
+    }
+    return invoke('rebase_commits', { path, baseOid });
+  },
+  async rebaseInteractive(
+    path: string,
+    baseOid: string,
+    todo: RebaseTodoEntry[],
+  ): Promise<string> {
+    if (!isTauri()) {
+      await delay(200);
+      return baseOid;
+    }
+    return invoke('rebase_interactive', { path, baseOid, todo });
   },
   async cherryPick(path: string, oid: string): Promise<OpOutcome> {
     if (!isTauri()) return { status: 'ok', message: 'Cherry-picked (demo)' };

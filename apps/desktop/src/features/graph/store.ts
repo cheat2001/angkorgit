@@ -21,6 +21,7 @@ interface GraphState {
   loading: boolean;
   filters: GraphFilters;
   selectedOid: string | null;
+  selectedOids: string[];
   layout: GraphLayout;
   lastPath: string | null;
 
@@ -28,6 +29,8 @@ interface GraphState {
   loadMore: (path: string) => Promise<void>;
   setFilters: (path: string, filters: Partial<GraphFilters>) => void;
   select: (oid: string | null) => void;
+  toggleSelect: (oid: string) => void;
+  rangeSelect: (oid: string) => void;
 }
 
 let requestSeq = 0;
@@ -40,6 +43,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   loading: false,
   filters: { search: '', author: '', branch: '' },
   selectedOid: null,
+  selectedOids: [],
   layout: new GraphLayout(),
   lastPath: null,
 
@@ -51,6 +55,7 @@ export const useGraph = create<GraphState>((set, get) => ({
         maxLane: 0,
         hasMore: true,
         selectedOid: null,
+        selectedOids: [],
         filters: { search: '', author: '', branch: '' },
         layout: new GraphLayout(),
         lastPath: path,
@@ -119,5 +124,23 @@ export const useGraph = create<GraphState>((set, get) => ({
     void get().reload(path);
   },
 
-  select: (oid) => set({ selectedOid: oid }),
+  select: (oid) => set({ selectedOid: oid, selectedOids: oid ? [oid] : [] }),
+
+  toggleSelect: (oid) =>
+    set((s) => ({
+      selectedOid: oid,
+      selectedOids: s.selectedOids.includes(oid)
+        ? s.selectedOids.filter((o) => o !== oid)
+        : [...s.selectedOids, oid],
+    })),
+
+  rangeSelect: (oid) =>
+    set((s) => {
+      const anchorIdx = s.selectedOid ? s.commits.findIndex((c) => c.oid === s.selectedOid) : -1;
+      const clickedIdx = s.commits.findIndex((c) => c.oid === oid);
+      if (clickedIdx < 0) return s;
+      if (anchorIdx < 0) return { selectedOid: oid, selectedOids: [oid] };
+      const [lo, hi] = anchorIdx <= clickedIdx ? [anchorIdx, clickedIdx] : [clickedIdx, anchorIdx];
+      return { selectedOids: s.commits.slice(lo, hi + 1).map((c) => c.oid) };
+    }),
 }));

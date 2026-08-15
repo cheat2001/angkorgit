@@ -41,6 +41,12 @@ fn state_name(state: RepositoryState) -> &'static str {
     }
 }
 
+pub fn cleanup_state(path: &str) -> AppResult<()> {
+    let repo = open(path)?;
+    repo.cleanup_state()?;
+    Ok(())
+}
+
 pub fn info(path: &str) -> AppResult<RepositoryInfo> {
     let repo = open(path)?;
     let (head_branch, head_oid, is_detached) = match repo.head() {

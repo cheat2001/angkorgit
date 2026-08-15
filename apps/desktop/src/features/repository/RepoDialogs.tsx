@@ -19,7 +19,8 @@ import { useUndo } from '@/features/history/undoStore';
 
 export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
   const repo = useRepo((s) => s.repo);
-  const { dialog, dialogContext, closeDialog } = useUi();
+  const { dialog, dialogContext: rawContext, closeDialog } = useUi();
+  const dialogContext = typeof rawContext === 'string' ? rawContext : null;
   const path = repo?.path ?? '';
 
   const [name, setName] = useState('');

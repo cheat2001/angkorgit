@@ -51,3 +51,36 @@ test('conflict resolver picks lines into a clean output', async ({ page }) => {
   await expect(page.getByText('const palette = useThemePalette();')).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeEnabled();
 });
+
+test('interactive rebase dialog opens from the commit context menu', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('row').nth(3).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /Interactively rebase onto here/ }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Interactive rebase')).toBeVisible();
+  await expect(dialog.getByRole('listitem').first()).toBeVisible();
+  await expect(dialog.getByRole('combobox').first()).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+});
+
+test('multi-select offers squash and pre-fills the rebase plan', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('row').nth(1).click();
+  await page.getByRole('row').nth(2).click({ modifiers: ['ControlOrMeta'] });
+  await page.getByRole('row').nth(2).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Drop 2 commits' })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Squash 2 commits' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('listitem').first()).toBeVisible();
+  await expect(dialog.getByRole('combobox').filter({ hasText: 'squash' })).toHaveCount(1);
+  await expect(dialog.getByPlaceholder('Combined message (optional)')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+});

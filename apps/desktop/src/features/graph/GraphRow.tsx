@@ -256,7 +256,7 @@ interface Props {
   gutterWidth: number;
   flat?: boolean;
   selected: boolean;
-  onSelect: (oid: string) => void;
+  onSelect: (oid: string, event: React.MouseEvent) => void;
   onContextMenu: (event: React.MouseEvent, commit: CommitInfo) => void;
   onCheckoutRef: (ref: RefInfo) => void;
   onRefMenu: (event: React.MouseEvent, ref: RefInfo, commit: CommitInfo) => void;
@@ -292,7 +292,7 @@ export const CommitRow = memo(function CommitRow({
         selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
         commit.isHead && 'font-medium',
       )}
-      onClick={() => onSelect(commit.oid)}
+      onClick={(e) => onSelect(commit.oid, e)}
       onContextMenu={(e) => onContextMenu(e, commit)}
     >
       {!flat && refCell}

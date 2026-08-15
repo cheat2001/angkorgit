@@ -12,7 +12,7 @@ mod watcher;
 pub mod test_api {
     pub use crate::core::branch::{
         can_fast_forward, checkout_branch, cherry_pick, create as branch_create, merge, rebase,
-        reset,
+        rebase_commits, rebase_interactive, reset,
     };
     pub use crate::core::commit::{amend, commit, merge_message, revert};
     pub use crate::core::conflict::{
@@ -23,12 +23,13 @@ pub mod test_api {
     pub use crate::core::misc::{
         stash_create, stash_list, stash_pop, tag_create, tag_delete, tag_list,
     };
-    pub use crate::core::repo::{init, set_config, status};
+    pub use crate::core::repo::{cleanup_state, info as repo_info, init, set_config, status};
     pub use crate::core::stage::{
         discard_all, discard_line, stage_all, stage_file, stage_hunk, stage_line, unstage_all,
         unstage_file, unstage_hunk, unstage_line,
     };
     pub use crate::core::types::HistoryQuery;
+    pub use crate::core::types::RebaseTodoEntry;
 }
 
 pub fn run() {
@@ -51,6 +52,7 @@ pub fn run() {
             commands::repo_info,
             commands::repo_init,
             commands::repo_status,
+            commands::state_cleanup,
             commands::repo_clone,
             commands::recent_repositories,
             commands::recent_remove,
@@ -92,6 +94,8 @@ pub fn run() {
             commands::branch_rebase,
             commands::rebase_continue,
             commands::rebase_abort,
+            commands::rebase_commits,
+            commands::rebase_interactive,
             commands::cherry_pick,
             commands::reset_to,
             commands::remote_list,

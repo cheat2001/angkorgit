@@ -42,6 +42,11 @@ pub async fn repo_status(path: String) -> AppResult<StatusSummary> {
 }
 
 #[tauri::command]
+pub async fn state_cleanup(path: String) -> AppResult<()> {
+    blocking(move || repo::cleanup_state(&path)).await
+}
+
+#[tauri::command]
 pub async fn repo_clone(app: AppHandle, url: String, into: String) -> AppResult<String> {
     let emitter = app.clone();
     let root = blocking(move || {
@@ -344,6 +349,20 @@ pub async fn rebase_continue(path: String) -> AppResult<OpOutcome> {
 #[tauri::command]
 pub async fn rebase_abort(path: String) -> AppResult<()> {
     blocking(move || branch::rebase_abort(&path)).await
+}
+
+#[tauri::command]
+pub async fn rebase_commits(path: String, baseOid: String) -> AppResult<Vec<CommitInfo>> {
+    blocking(move || branch::rebase_commits(&path, &baseOid)).await
+}
+
+#[tauri::command]
+pub async fn rebase_interactive(
+    path: String,
+    baseOid: String,
+    todo: Vec<RebaseTodoEntry>,
+) -> AppResult<String> {
+    blocking(move || branch::rebase_interactive(&path, &baseOid, &todo)).await
 }
 
 #[tauri::command]
