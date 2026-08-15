@@ -175,7 +175,7 @@ core/
 - Operations that can pause on conflicts return `OpOutcome { status: "ok"|"conflicts"|"up_to_date"|"fast_forward", message }` — never an error for conflicts.
 - Command args are **camelCase** matching the TS payloads (`#![allow(non_snake_case)]`).
 - Every new engine function gets an integration test in `tests/git_engine.rs`
-  (30 tests; TempRepo fixture creates real repos in temp dirs; uses `angkorgit_lib::test_api`).
+  (31 tests; TempRepo fixture creates real repos in temp dirs; uses `angkorgit_lib::test_api`).
 - Destructive ops verify outcomes (e.g. discard returns leftover paths → UI explains submodules).
 
 ## 6. Frontend — `apps/desktop/src/`
@@ -489,7 +489,7 @@ update CLAUDE.md or docs/ — never the code.
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (30) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, file history lists only touching commits, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
+| Rust integration (31) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
 | Rust module (23) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (4), `src/core/remote.rs` (13) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) |
 | Unit (51) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement) |
 | E2E (6) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks — all on demo mode |

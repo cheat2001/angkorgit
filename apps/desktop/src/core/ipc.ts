@@ -195,12 +195,17 @@ export const ipc = {
     if (!isTauri()) return demo.demoHistory({ skip: 0, limit: 1 }).commits[0];
     return invoke('history_commit', { path, oid });
   },
-  async fileHistory(path: string, file: string, limit?: number): Promise<HistoryPage> {
+  async fileHistory(
+    path: string,
+    file: string,
+    limit?: number,
+    skip?: number,
+  ): Promise<HistoryPage> {
     if (!isTauri()) {
       await delay(60);
-      return demo.demoHistory({ skip: 0, limit: limit ?? 25 });
+      return demo.demoHistory({ skip: skip ?? 0, limit: limit ?? 25 });
     }
-    return invoke('history_file', { path, file, limit });
+    return invoke('history_file', { path, file, limit, skip });
   },
   async repoFiles(path: string): Promise<string[]> {
     if (!isTauri()) {

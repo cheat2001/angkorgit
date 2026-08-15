@@ -529,14 +529,50 @@ fn file_history_lists_only_touching_commits() {
     repo.write("b.txt", "b3\n");
     commit_all(&repo, "change both");
 
-    let page = core::file_history(repo.path(), "a.txt", 100).unwrap();
+    let page = core::file_history(repo.path(), "a.txt", 100, 0).unwrap();
     let summaries: Vec<_> = page.commits.iter().map(|c| c.summary.as_str()).collect();
     assert_eq!(summaries, vec!["change both", "change a", "add a and b"]);
     assert!(!page.has_more);
 
-    let page = core::file_history(repo.path(), "a.txt", 2).unwrap();
+    let page = core::file_history(repo.path(), "a.txt", 2, 0).unwrap();
     assert_eq!(page.commits.len(), 2);
     assert!(page.has_more);
+}
+
+#[test]
+fn file_history_paginates_with_skip() {
+    let repo = TempRepo::new();
+    for i in 0..5 {
+        repo.write("a.txt", &format!("a{i}\n"));
+        commit_all(&repo, &format!("change a {i}"));
+        repo.write("b.txt", &format!("b{i}\n"));
+        commit_all(&repo, &format!("change b {i}"));
+    }
+
+    let first = core::file_history(repo.path(), "a.txt", 2, 0).unwrap();
+    let second = core::file_history(repo.path(), "a.txt", 2, 2).unwrap();
+    let third = core::file_history(repo.path(), "a.txt", 2, 4).unwrap();
+
+    let all: Vec<_> = first
+        .commits
+        .iter()
+        .chain(&second.commits)
+        .chain(&third.commits)
+        .map(|c| c.summary.as_str())
+        .collect();
+    assert_eq!(
+        all,
+        vec![
+            "change a 4",
+            "change a 3",
+            "change a 2",
+            "change a 1",
+            "change a 0"
+        ]
+    );
+    assert!(first.has_more);
+    assert!(second.has_more);
+    assert!(!third.has_more);
 }
 
 #[test]

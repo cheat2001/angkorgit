@@ -153,7 +153,7 @@ pub fn list(path: &str, query: HistoryQuery) -> AppResult<HistoryPage> {
     })
 }
 
-pub fn file_history(path: &str, file: &str, limit: usize) -> AppResult<HistoryPage> {
+pub fn file_history(path: &str, file: &str, limit: usize, skip: usize) -> AppResult<HistoryPage> {
     let repo = super::repo::open(path)?;
     let mut walk = repo.revwalk()?;
     walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
@@ -173,6 +173,7 @@ pub fn file_history(path: &str, file: &str, limit: usize) -> AppResult<HistoryPa
 
     let mut commits = Vec::new();
     let mut has_more = false;
+    let mut matched = 0usize;
     for oid in walk.flatten() {
         let Ok(commit) = repo.find_commit(oid) else {
             continue;
@@ -187,6 +188,10 @@ pub fn file_history(path: &str, file: &str, limit: usize) -> AppResult<HistoryPa
             (None, None) => false,
         };
         if !changed {
+            continue;
+        }
+        matched += 1;
+        if matched <= skip {
             continue;
         }
         if commits.len() >= limit {

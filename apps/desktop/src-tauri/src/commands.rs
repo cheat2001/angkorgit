@@ -275,8 +275,10 @@ pub async fn history_file(
     path: String,
     file: String,
     limit: Option<usize>,
+    skip: Option<usize>,
 ) -> AppResult<HistoryPage> {
-    blocking(move || history::file_history(&path, &file, limit.unwrap_or(200))).await
+    blocking(move || history::file_history(&path, &file, limit.unwrap_or(200), skip.unwrap_or(0)))
+        .await
 }
 
 #[tauri::command]

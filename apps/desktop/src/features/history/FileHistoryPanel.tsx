@@ -26,6 +26,8 @@ import { useDiffFind } from '@/features/diff/diffSearch';
 import { useDiffSelectAll } from '@/features/diff/diffCopy';
 import type { LineMenuInfo } from '@/features/diff/VirtualDiff';
 
+const HISTORY_PAGE = 500;
+
 export function FileHistoryPanel({ file }: { file: string }) {
   const repo = useRepo((s) => s.repo);
   const {
@@ -41,6 +43,8 @@ export function FileHistoryPanel({ file }: { file: string }) {
   } = useUi();
   const [commits, setCommits] = useState<CommitInfo[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const historySeq = useRef(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(true);
@@ -59,26 +63,48 @@ export function FileHistoryPanel({ file }: { file: string }) {
 
   useEffect(() => {
     if (!path) return;
-    let cancelled = false;
+    const seq = ++historySeq.current;
     setCommits(null);
     setSelected(null);
+    setHasMore(false);
+    setLoadingMore(false);
     void ipc
-      .fileHistory(path, file, 200)
+      .fileHistory(path, file, HISTORY_PAGE)
       .then((page) => {
-        if (cancelled) return;
+        if (seq !== historySeq.current) return;
         setCommits(page.commits);
         setHasMore(page.hasMore);
         setSelected(page.commits[0]?.oid ?? null);
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (seq !== historySeq.current) return;
         toast.error(`File history failed: ${(error as { message?: string }).message ?? error}`);
         setCommits([]);
       });
     return () => {
-      cancelled = true;
+      historySeq.current++;
     };
   }, [path, file]);
+
+  const loadOlder = () => {
+    if (!path || !commits || loadingMore) return;
+    const seq = historySeq.current;
+    setLoadingMore(true);
+    void ipc
+      .fileHistory(path, file, HISTORY_PAGE, commits.length)
+      .then((page) => {
+        if (seq !== historySeq.current) return;
+        setCommits([...commits, ...page.commits]);
+        setHasMore(page.hasMore);
+      })
+      .catch((error) => {
+        if (seq !== historySeq.current) return;
+        toast.error(`File history failed: ${(error as { message?: string }).message ?? error}`);
+      })
+      .finally(() => {
+        if (seq === historySeq.current) setLoadingMore(false);
+      });
+  };
 
   useEffect(() => {
     if (!path || !selected) {
@@ -231,8 +257,10 @@ export function FileHistoryPanel({ file }: { file: string }) {
                 </li>
               ))}
               {hasMore && (
-                <li className="py-3 text-center text-xs text-faint">
-                  Showing the 200 most recent changes.
+                <li className="py-2 text-center">
+                  <Button variant="ghost" size="sm" disabled={loadingMore} onClick={loadOlder}>
+                    {loadingMore ? <Spinner className="size-3.5" /> : 'Show older changes'}
+                  </Button>
                 </li>
               )}
             </ul>

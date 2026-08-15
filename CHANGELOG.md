@@ -11,6 +11,9 @@ All notable changes to AngKorGit are documented here. The format follows
   and back reattaches the same shell with its scrollback and any running
   command intact. A session ends only when its repo tab is closed, the shell
   exits, or the app quits
+- **File history covers the file's whole lifetime** — it loads 500 changes at
+  a time with a "Show older changes" button instead of stopping at the 200
+  most recent
 
 ### Fixed
 - The conflict resolver no longer corrupts files whose content contains lines of
