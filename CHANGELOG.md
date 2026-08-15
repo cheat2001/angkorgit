@@ -6,6 +6,12 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-15
+
+The safety-and-speed release: interactive rebase lands, terminals and history
+gain lifetimes, secrets move to the keychain, and a deep audit fixed every
+bug it found — from a conflict-corrupting parser to app-freezing edge cases.
+
 ### Added
 - **Interactive rebase** — right-click a commit in the graph and choose
   "Interactively rebase onto here…" to reorder, reword, squash, fixup, or drop
