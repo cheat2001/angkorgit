@@ -59,6 +59,20 @@ export async function listen(event: string, handler: (payload: unknown) => void)
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
+const DEMO_AI_KEYS = 'angkorgit-demo-ai-keys';
+
+function demoAiKeys(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(DEMO_AI_KEYS) ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function demoAiKeysSave(keys: Record<string, string>): void {
+  localStorage.setItem(DEMO_AI_KEYS, JSON.stringify(keys));
+}
+
 export const ipc = {
   async openRepository(path: string): Promise<RepositoryInfo> {
     if (!isTauri()) {
@@ -459,6 +473,30 @@ export const ipc = {
   async accountRemove(host: string): Promise<HostingAccount[]> {
     if (!isTauri()) return [];
     return invoke('account_remove', { host });
+  },
+
+  async aiKeyGet(provider: string): Promise<string | null> {
+    if (!isTauri()) return demoAiKeys()[provider] ?? null;
+    return invoke('ai_key_get', { provider });
+  },
+  async aiKeySet(provider: string, key: string): Promise<void> {
+    if (!isTauri()) {
+      const keys = demoAiKeys();
+      if (key.trim()) keys[provider] = key.trim();
+      else delete keys[provider];
+      demoAiKeysSave(keys);
+      return;
+    }
+    return invoke('ai_key_set', { provider, key });
+  },
+  async aiKeyDelete(provider: string): Promise<void> {
+    if (!isTauri()) {
+      const keys = demoAiKeys();
+      delete keys[provider];
+      demoAiKeysSave(keys);
+      return;
+    }
+    return invoke('ai_key_delete', { provider });
   },
 
   async aiCliDetect(): Promise<CliAgentInfo[]> {

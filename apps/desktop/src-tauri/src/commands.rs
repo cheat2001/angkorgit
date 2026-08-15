@@ -619,6 +619,21 @@ pub async fn account_remove(host: String) -> AppResult<Vec<crate::core::accounts
 }
 
 #[tauri::command]
+pub async fn ai_key_get(provider: String) -> AppResult<Option<String>> {
+    blocking(move || crate::core::ai_keys::get(&provider)).await
+}
+
+#[tauri::command]
+pub async fn ai_key_set(provider: String, key: String) -> AppResult<()> {
+    blocking(move || crate::core::ai_keys::set(&provider, &key)).await
+}
+
+#[tauri::command]
+pub async fn ai_key_delete(provider: String) -> AppResult<()> {
+    blocking(move || crate::core::ai_keys::delete(&provider)).await
+}
+
+#[tauri::command]
 pub async fn http_request(
     request: crate::http::HttpRequest,
 ) -> AppResult<crate::http::HttpResponse> {

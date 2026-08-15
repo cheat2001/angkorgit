@@ -14,6 +14,9 @@ All notable changes to AngKorGit are documented here. The format follows
 - **File history covers the file's whole lifetime** — it loads 500 changes at
   a time with a "Show older changes" button instead of stopping at the 200
   most recent
+- **AI API keys are stored in the OS keychain** instead of plaintext local
+  storage, matching how hosting tokens are kept. Existing keys migrate
+  automatically on first launch and are scrubbed from the old storage
 
 ### Fixed
 - The conflict resolver no longer corrupts files whose content contains lines of
@@ -50,6 +53,12 @@ All notable changes to AngKorGit are documented here. The format follows
   diff is no longer re-fetched while scrolling the graph; image diffs are
   capped at 10 MB per side instead of loading unbounded payloads; clone
   progress and AI requests generate less overhead
+- The working copy's file lists are virtualized — a checkout touching
+  thousands of files stays instant — and the conflict resolver virtualizes
+  files over 1,500 lines, so a conflicted lockfile opens and scrolls smoothly
+- Undo and redo of branch operations now verify the branch still points where
+  it did — redoing a branch deletion can no longer discard commits made on a
+  recreated branch
 
 ## [0.4.0] — 2026-08-11
 

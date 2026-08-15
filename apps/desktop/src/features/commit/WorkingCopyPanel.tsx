@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { AlertTriangle, Copy, ExternalLink, FolderOpen, History, Minus, Pencil, Plus, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import type { FileStatus } from '@angkorgit/core';
@@ -116,6 +117,54 @@ const FileRow = memo(function FileRow({
 
 const fileStatusPath = (file: FileStatus) => file.path;
 
+const UNSTAGED_ROW_HEIGHT = 36;
+const STAGED_ROW_HEIGHT = 30;
+const CONFLICT_ROW_HEIGHT = 24;
+
+function VirtualFileList({
+  files,
+  scrollRef,
+  rowHeight,
+  renderRow,
+}: {
+  files: FileStatus[];
+  scrollRef: React.RefObject<HTMLDivElement>;
+  rowHeight: (file: FileStatus) => number;
+  renderRow: (file: FileStatus) => React.ReactNode;
+}) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (el) setScrollMargin((prev) => (prev === el.offsetTop ? prev : el.offsetTop));
+  });
+  const virtualizer = useVirtualizer({
+    count: files.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => rowHeight(files[index]),
+    getItemKey: (index) => files[index].path,
+    overscan: 12,
+    scrollMargin,
+  });
+  const sizeSignature = files.map((file) => rowHeight(file)).join(',');
+  useEffect(() => {
+    virtualizer.measure();
+  }, [virtualizer, sizeSignature]);
+  return (
+    <div ref={listRef} className="relative" style={{ height: virtualizer.getTotalSize() }}>
+      {virtualizer.getVirtualItems().map((item) => (
+        <div
+          key={item.key}
+          className="absolute left-0 w-full"
+          style={{ top: 0, height: item.size, transform: `translateY(${item.start - scrollMargin}px)` }}
+        >
+          {renderRow(files[item.index])}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function WorkingCopyPanel() {
   const repo = useRepo((s) => s.repo);
   const status = useRepo((s) => s.status);
@@ -138,6 +187,7 @@ export function WorkingCopyPanel() {
   const [aiBusy, setAiBusy] = useState(false);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; file: FileStatus; staged: boolean } | null>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
+  const listScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = messageRef.current;
@@ -372,7 +422,7 @@ export function WorkingCopyPanel() {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div ref={listScrollRef} className="relative min-h-0 flex-1 overflow-y-auto p-2">
         <div className="mb-1 flex items-center justify-between px-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted">
             Changes <span className="text-faint">{unstagedFiles.length}</span>
@@ -407,7 +457,12 @@ export function WorkingCopyPanel() {
         {fileTree ? (
           <FileTree items={unstagedFiles} pathOf={fileStatusPath} renderFile={renderUnstaged} />
         ) : (
-          unstagedFiles.map((file) => renderUnstaged(file))
+          <VirtualFileList
+            files={unstagedFiles}
+            scrollRef={listScrollRef}
+            rowHeight={(file) => (conflictedPaths.has(file.path) ? CONFLICT_ROW_HEIGHT : UNSTAGED_ROW_HEIGHT)}
+            renderRow={renderUnstaged}
+          />
         )}
         <div className="mb-1 mt-3 flex items-center justify-between px-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -423,7 +478,12 @@ export function WorkingCopyPanel() {
         {fileTree ? (
           <FileTree items={stagedFiles} pathOf={fileStatusPath} renderFile={renderStaged} />
         ) : (
-          stagedFiles.map((file) => renderStaged(file))
+          <VirtualFileList
+            files={stagedFiles}
+            scrollRef={listScrollRef}
+            rowHeight={() => STAGED_ROW_HEIGHT}
+            renderRow={renderStaged}
+          />
         )}
       </div>
 

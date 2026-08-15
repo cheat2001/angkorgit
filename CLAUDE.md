@@ -158,6 +158,12 @@ core/
 │                       "AngKorGit"), metadata accounts.json (host/username/provider +
 │                       `verified`, serde-default so pre-0.2 files still parse);
 │                       lookup(host) for auth. ONE account per host (see G17)
+├── ai_keys.rs        ← AI provider API keys in the SAME keyring service, account
+│                       namespace "ai:<provider>" (no collision with hostnames);
+│                       empty set = delete, NoEntry reads as None. Frontend persists
+│                       apiKey as '' (settings partialize strips it) and hydrates
+│                       from the keyring async; old plaintext localStorage keys are
+│                       migrated + scrubbed on first rehydrate
 ├── misc.rs           ← stash (list/create/apply/pop/drop), tags, submodules
 ├── diff.rs           ← FileDiff w/ hunks+lines, contextLines param (huge = whole-file view),
 │                       commit_diff (first-parent, rename detection), image diffs (base64),
@@ -206,7 +212,10 @@ features/
 │   │                           GraphRow (per-row SVG lanes), WipRow (uncommitted banner)
 ├── commit/                   ← WorkingCopyPanel + draftStore (PER-REPO commit drafts,
 │                               persisted; amend transient) —
-│                               staged/changes lists, stage/unstage/discard(+all),
+│                               staged/changes lists (VIRTUALIZED flat lists: two
+│                               useVirtualizer instances sharing one scroll container
+│                               via measured scrollMargin; tree mode unvirtualized),
+│                               stage/unstage/discard(+all),
 │                               auto-grow commit box (hidden when clean; amend link),
 │                               50/72 summary counter, AI message button
 ├── diff/                     ← DiffPanel (center view, header toggles, minimap, prev/next
@@ -216,7 +225,10 @@ features/
 ├── conflicts/ConflictResolver← aligned A/B panes, per-LINE checkboxes (whole side via
 │                               pane header), prev/next nav, clean Output pane (A/B
 │                               tags, no markers); hand-editing behind an explicit
-│                               pencil button (manual-edit guard, marker guard)
+│                               pencil button (manual-edit guard, marker guard);
+│                               files over VIRTUAL_THRESHOLD (1500) paired rows render
+│                               virtualized (paired-row flatten keeps A/B aligned,
+│                               scrollToIndex nav), smaller files keep the plain path
 ├── sidebar/Sidebar.tsx       ← branch FOLDER TREE (buildBranchTree), right-click context
 │                               menu (checkout/merge/rebase/pull/push/create-branch-here/
 │                               rename/delete), drag-and-drop merge/rebase, tags/stashes/

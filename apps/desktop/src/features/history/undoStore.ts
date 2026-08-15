@@ -55,6 +55,17 @@ async function treeIsClean(path: string): Promise<boolean> {
   return status.files.length === 0;
 }
 
+async function branchTipMatches(
+  path: string,
+  branch: string,
+  expected: string | null,
+): Promise<boolean> {
+  if (!expected) return true;
+  const branches = await ipc.branches(path);
+  const tip = branches.find((b) => b.name === branch)?.targetOid ?? null;
+  return tip === expected;
+}
+
 async function applyTransition(
   entry: UndoEntry,
   from: Snapshot,
@@ -159,6 +170,14 @@ export const useUndo = create<UndoState>((set, get) => ({
         toast.warning(`Can't undo "${entry.label}" — the repository has changed since`);
         return false;
       }
+      if (entry.kind === 'branchCreate') {
+        const expected = entry.extra.oid || entry.before.headOid;
+        if (!(await branchTipMatches(path, entry.extra.branch, expected))) {
+          pop();
+          toast.warning(`Can't undo "${entry.label}" — the branch has moved since`);
+          return false;
+        }
+      }
       await applyTransition(entry, entry.after, entry.before, 'undo');
       pop();
       set((s) => ({ redoStack: [...s.redoStack, entry] }));
@@ -181,6 +200,13 @@ export const useUndo = create<UndoState>((set, get) => ({
         pop();
         toast.warning(`Can't redo "${entry.label}" — the repository has changed since`);
         return false;
+      }
+      if (entry.kind === 'branchDelete') {
+        if (!(await branchTipMatches(path, entry.extra.branch, entry.extra.oid || null))) {
+          pop();
+          toast.warning(`Can't redo "${entry.label}" — the branch has moved since`);
+          return false;
+        }
       }
       await applyTransition(entry, entry.before, entry.after, 'redo');
       pop();

@@ -8,7 +8,7 @@ import {
   type AiStyleConfig,
   type CommitStyle,
 } from '@angkorgit/core';
-import { isTauri } from '@/core/ipc';
+import { ipc, isTauri } from '@/core/ipc';
 
 export type Theme =
   | 'dark'
@@ -161,6 +161,34 @@ interface SettingsState {
 const clampZoom = (zoom: number): number =>
   Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(zoom * 100) / 100));
 
+async function loadAiKey(provider: AiProviderKind): Promise<void> {
+  const key = await ipc.aiKeyGet(provider);
+  if (!key) return;
+  const s = useSettings.getState();
+  const profile = s.aiProfiles[provider];
+  if (profile?.apiKey) return;
+  const aiProfiles = {
+    ...s.aiProfiles,
+    [provider]: { ...(profile ?? defaultProfile(provider)), apiKey: key },
+  };
+  if (s.ai.provider === provider && !s.ai.apiKey) {
+    useSettings.setState({ ai: { ...s.ai, apiKey: key }, aiProfiles });
+  } else {
+    useSettings.setState({ aiProfiles });
+  }
+}
+
+function stripApiKeys(
+  profiles: Partial<Record<AiProviderKind, AiProfile>>,
+): Partial<Record<AiProviderKind, AiProfile>> {
+  return Object.fromEntries(
+    Object.entries(profiles).map(([provider, profile]) => [
+      provider,
+      { ...profile, apiKey: '' },
+    ]),
+  ) as Partial<Record<AiProviderKind, AiProfile>>;
+}
+
 export const useSettings = create<SettingsState>()(
   persist(
     (set, get) => ({
@@ -207,31 +235,40 @@ export const useSettings = create<SettingsState>()(
           profiles: [...s.profiles, { ...profile, id: crypto.randomUUID() }],
         })),
       removeProfile: (id) => set((s) => ({ profiles: s.profiles.filter((p) => p.id !== id) })),
-      setAi: (config) =>
-        set((s) => {
-          const ai = { ...s.ai, ...config };
-          const { provider, profile } = splitProvider(ai);
-          return { ai, aiProfiles: { ...s.aiProfiles, [provider]: profile } };
-        }),
-      setAiProvider: (provider) =>
-        set((s) => {
-          if (provider === s.ai.provider) return s;
-          const current = splitProvider(s.ai);
-          const next = s.aiProfiles[provider] ?? defaultProfile(provider);
-          return {
-            ai: { provider, ...next },
-            aiProfiles: {
-              ...s.aiProfiles,
-              [current.provider]: current.profile,
-              [provider]: next,
-            },
-          };
-        }),
+      setAi: (config) => {
+        const s = get();
+        const ai = { ...s.ai, ...config };
+        const { provider, profile } = splitProvider(ai);
+        if (config.apiKey !== undefined && config.apiKey !== s.ai.apiKey) {
+          void ipc.aiKeySet(provider, config.apiKey);
+        }
+        set({ ai, aiProfiles: { ...s.aiProfiles, [provider]: profile } });
+      },
+      setAiProvider: (provider) => {
+        const s = get();
+        if (provider === s.ai.provider) return;
+        const current = splitProvider(s.ai);
+        const next = s.aiProfiles[provider] ?? defaultProfile(provider);
+        set({
+          ai: { provider, ...next },
+          aiProfiles: {
+            ...s.aiProfiles,
+            [current.provider]: current.profile,
+            [provider]: next,
+          },
+        });
+        if (!next.apiKey) void loadAiKey(provider);
+      },
       setCommitStyle: (style) =>
         set((s) => ({ aiStyle: { ...s.aiStyle, commit: { ...s.aiStyle.commit, ...style } } })),
     }),
     {
       name: 'angkorgit-settings',
+      partialize: (state) => ({
+        ...state,
+        ai: { ...state.ai, apiKey: '' },
+        aiProfiles: stripApiKeys(state.aiProfiles),
+      }),
       merge: (persisted, current) => {
         const stored = (persisted ?? {}) as Partial<SettingsState>;
         return {
@@ -255,6 +292,20 @@ export const useSettings = create<SettingsState>()(
           const { provider, profile } = splitProvider(state.ai);
           state.aiProfiles = { [provider]: profile };
         }
+        if (!state) return;
+        const plaintext: Array<[AiProviderKind, string]> = [];
+        for (const [provider, profile] of Object.entries(state.aiProfiles ?? {})) {
+          if (profile?.apiKey) plaintext.push([provider as AiProviderKind, profile.apiKey]);
+        }
+        if (state.ai.apiKey && !plaintext.some(([provider]) => provider === state.ai.provider)) {
+          plaintext.push([state.ai.provider, state.ai.apiKey]);
+        }
+        for (const [provider, key] of plaintext) void ipc.aiKeySet(provider, key);
+        const active = state.ai.provider;
+        queueMicrotask(() => {
+          if (plaintext.length > 0) useSettings.setState((s) => ({ zoom: s.zoom }));
+          if (!useSettings.getState().ai.apiKey) void loadAiKey(active);
+        });
       },
     },
   ),

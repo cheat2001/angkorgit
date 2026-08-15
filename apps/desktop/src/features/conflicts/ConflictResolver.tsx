@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { Check, ChevronDown, ChevronUp, Pencil, RotateCcw, Sparkles, X } from 'lucide-react';
@@ -24,6 +25,44 @@ interface Pick {
 }
 
 const EMPTY_SIDE = -1;
+const VIRTUAL_THRESHOLD = 1500;
+const TEXT_ROW_HEIGHT = 20;
+const CONFLICT_ROW_HEIGHT = 24;
+
+type PaneRow =
+  | { kind: 'text'; block: number; text: string }
+  | { kind: 'conflict'; block: number; li: number; first: boolean; last: boolean };
+
+type OutputRow =
+  | { kind: 'text'; text: string }
+  | { kind: 'unresolved' }
+  | { kind: 'pick'; side: Side; text: string };
+
+function buildPaneRows(blocks: Block[] | null): { rows: PaneRow[]; blockStart: Map<number, number> } {
+  const rows: PaneRow[] = [];
+  const blockStart = new Map<number, number>();
+  (blocks ?? []).forEach((b, block) => {
+    blockStart.set(block, rows.length);
+    if (b.kind === 'text') {
+      for (const text of b.lines) rows.push({ kind: 'text', block, text });
+      return;
+    }
+    const count = Math.max(b.current.length || 1, b.incoming.length || 1);
+    for (let li = 0; li < count; li += 1) {
+      rows.push({ kind: 'conflict', block, li, first: li === 0, last: li === count - 1 });
+    }
+  });
+  return { rows, blockStart };
+}
+
+function useOffsetTop(ref: React.RefObject<HTMLDivElement>): number {
+  const [offset, setOffset] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setOffset((prev) => (prev === el.offsetTop ? prev : el.offsetTop));
+  });
+  return offset;
+}
 
 function sideLabel(block: ConflictBlock, side: Side, headBranch: string | null): string {
   const raw = side === 'current' ? block.currentLabel : block.incomingLabel;
@@ -42,6 +81,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const [aiText, setAiText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const blockRefs = useRef(new Map<number, HTMLDivElement>());
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const topListRef = useRef<HTMLDivElement>(null);
+  const outputScrollRef = useRef<HTMLDivElement>(null);
+  const outputListRef = useRef<HTMLDivElement>(null);
 
   const path = repo?.path ?? '';
 
@@ -68,6 +111,54 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     () => (blocks ? blocks.flatMap((b, i) => (b.kind === 'conflict' ? [i] : [])) : []),
     [blocks],
   );
+  const paneModel = useMemo(() => buildPaneRows(blocks), [blocks]);
+  const virtualized = paneModel.rows.length > VIRTUAL_THRESHOLD;
+  const outputRows = useMemo<OutputRow[]>(() => {
+    if (!virtualized || !blocks) return [];
+    const rows: OutputRow[] = [];
+    blocks.forEach((block, index) => {
+      if (block.kind === 'text') {
+        for (const text of block.lines) rows.push({ kind: 'text', text });
+        return;
+      }
+      const blockPicks = picks.get(index) ?? [];
+      if (blockPicks.length === 0) {
+        rows.push({ kind: 'unresolved' });
+        return;
+      }
+      for (const p of blockPicks) {
+        if (p.line === EMPTY_SIDE) continue;
+        rows.push({
+          kind: 'pick',
+          side: p.side,
+          text: (p.side === 'current' ? block.current : block.incoming)[p.line],
+        });
+      }
+    });
+    return rows;
+  }, [virtualized, blocks, picks]);
+
+  const topMargin = useOffsetTop(topListRef);
+  const outputMargin = useOffsetTop(outputListRef);
+
+  const topVirtualizer = useVirtualizer({
+    count: paneModel.rows.length,
+    getScrollElement: () => topScrollRef.current,
+    estimateSize: (index) =>
+      paneModel.rows[index].kind === 'text' ? TEXT_ROW_HEIGHT : CONFLICT_ROW_HEIGHT,
+    overscan: 20,
+    scrollMargin: topMargin,
+    enabled: virtualized,
+  });
+
+  const outputVirtualizer = useVirtualizer({
+    count: outputRows.length,
+    getScrollElement: () => outputScrollRef.current,
+    estimateSize: () => TEXT_ROW_HEIGHT,
+    overscan: 20,
+    scrollMargin: outputMargin,
+    enabled: virtualized,
+  });
   const total = conflictIndices.length;
   const resolvedCount = useMemo(
     () => conflictIndices.filter((i) => (picks.get(i)?.length ?? 0) > 0).length,
@@ -171,7 +262,12 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     if (total === 0) return;
     const next = (activeConflict + direction + total) % total;
     setActiveConflict(next);
-    blockRefs.current.get(conflictIndices[next])?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const blockIndex = conflictIndices[next];
+    if (virtualized) {
+      topVirtualizer.scrollToIndex(paneModel.blockStart.get(blockIndex) ?? 0, { align: 'center' });
+    } else {
+      blockRefs.current.get(blockIndex)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   };
 
   const explain = async (current: string, incoming: string) => {
@@ -251,6 +347,52 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     );
   };
 
+  const renderSideLine = (block: ConflictBlock, index: number, side: Side, li: number) => {
+    const lines = side === 'current' ? block.current : block.incoming;
+    const paneCls = side === 'current' ? 'border-r border-border-subtle bg-info/5' : 'bg-success/5';
+    if (lines.length === 0) {
+      return (
+        <div className={cn('min-w-0', paneCls)}>
+          {li === 0 && (
+            <label className="flex cursor-pointer items-center gap-2 px-3 py-1">
+              <Checkbox
+                checked={isPicked(index, side, EMPTY_SIDE)}
+                onCheckedChange={() => void toggleLine(index, side, EMPTY_SIDE)}
+                aria-label={`Take empty ${side} side (deletes this section)`}
+              />
+              <span className="font-mono text-xs italic leading-5 text-faint">(no lines — deletes this section)</span>
+            </label>
+          )}
+        </div>
+      );
+    }
+    if (li >= lines.length) return <div className={cn('min-w-0', paneCls)} />;
+    return (
+      <div className={cn('min-w-0', paneCls)}>
+        <label
+          className={cn(
+            'flex cursor-pointer items-start gap-2 px-3 py-0.5 transition-colors',
+            isPicked(index, side, li)
+              ? side === 'current'
+                ? 'bg-info/15'
+                : 'bg-success/15'
+              : 'hover:bg-surface-raised/80',
+          )}
+        >
+          <Checkbox
+            className="mt-1"
+            checked={isPicked(index, side, li)}
+            onCheckedChange={() => void toggleLine(index, side, li)}
+            aria-label={`Take line ${li + 1} from ${side}`}
+          />
+          <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
+            {lines[li] || ' '}
+          </pre>
+        </label>
+      </div>
+    );
+  };
+
   return (
     <motion.div
       className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm"
@@ -311,7 +453,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-[3] overflow-y-auto">
+          <div ref={topScrollRef} className="relative min-h-0 flex-[3] overflow-y-auto">
             <div className="sticky top-0 z-10 grid grid-cols-2 border-b border-border-subtle bg-surface">
               <label className="flex cursor-pointer items-center gap-2 border-r border-border-subtle px-3 py-1.5">
                 <Checkbox
@@ -332,46 +474,104 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                 <span className="truncate text-xs font-medium text-success">{bLabel}</span>
               </label>
             </div>
-            {blocks.map((block, index) =>
-              block.kind === 'text' ? (
-                <div key={index} className="grid grid-cols-2">
-                  <pre className="min-w-0 whitespace-pre-wrap break-words border-r border-border-subtle px-3 py-0.5 font-mono text-xs leading-5 text-faint">
-                    {block.lines.join('\n')}
-                  </pre>
-                  <pre className="min-w-0 whitespace-pre-wrap break-words px-3 py-0.5 font-mono text-xs leading-5 text-faint">
-                    {block.lines.join('\n')}
-                  </pre>
-                </div>
-              ) : (
-                <div
-                  key={index}
-                  ref={(el) => {
-                    if (el) blockRefs.current.set(index, el);
-                    else blockRefs.current.delete(index);
-                  }}
-                  className={cn(
-                    'relative border-y border-border transition-shadow',
-                    conflictIndices[activeConflict] === index && 'ring-1 ring-primary/50',
-                  )}
-                >
-                  <div className="grid grid-cols-2">
-                    {renderSideCell(block, index, 'current')}
-                    {renderSideCell(block, index, 'incoming')}
-                  </div>
-                  <Hint label="Explain this conflict with AI">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface shadow-soft"
-                      disabled={aiBusy}
-                      aria-label="Explain this conflict with AI"
-                      onClick={() => void explain(block.current.join('\n'), block.incoming.join('\n'))}
+            {virtualized ? (
+              <div ref={topListRef} className="relative" style={{ height: topVirtualizer.getTotalSize() }}>
+                {topVirtualizer.getVirtualItems().map((item) => {
+                  const row = paneModel.rows[item.index];
+                  const block = blocks[row.block];
+                  const active = row.kind === 'conflict' && conflictIndices[activeConflict] === row.block;
+                  return (
+                    <div
+                      key={item.key}
+                      ref={topVirtualizer.measureElement}
+                      data-index={item.index}
+                      className="absolute left-0 w-full"
+                      style={{ transform: `translateY(${item.start - topMargin}px)` }}
                     >
-                      {aiBusy ? <Spinner className="size-3" /> : <Sparkles className="size-3 text-primary" />}
-                    </Button>
-                  </Hint>
-                </div>
-              ),
+                      {row.kind === 'text' || block.kind !== 'conflict' ? (
+                        <div className="grid grid-cols-2">
+                          <pre className="min-w-0 whitespace-pre-wrap break-words border-r border-border-subtle px-3 font-mono text-xs leading-5 text-faint">
+                            {(row.kind === 'text' && row.text) || ' '}
+                          </pre>
+                          <pre className="min-w-0 whitespace-pre-wrap break-words px-3 font-mono text-xs leading-5 text-faint">
+                            {(row.kind === 'text' && row.text) || ' '}
+                          </pre>
+                        </div>
+                      ) : (
+                        <div
+                          className={cn(
+                            'relative border-x',
+                            active ? 'border-x-primary/50' : 'border-x-transparent',
+                            row.first && cn('border-t', active ? 'border-t-primary/50' : 'border-t-border'),
+                            row.last && cn('border-b', active ? 'border-b-primary/50' : 'border-b-border'),
+                          )}
+                        >
+                          <div className="grid grid-cols-2">
+                            {renderSideLine(block, row.block, 'current', row.li)}
+                            {renderSideLine(block, row.block, 'incoming', row.li)}
+                          </div>
+                          {row.first && (
+                            <Hint label="Explain this conflict with AI">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-surface shadow-soft"
+                                disabled={aiBusy}
+                                aria-label="Explain this conflict with AI"
+                                onClick={() => void explain(block.current.join('\n'), block.incoming.join('\n'))}
+                              >
+                                {aiBusy ? <Spinner className="size-3" /> : <Sparkles className="size-3 text-primary" />}
+                              </Button>
+                            </Hint>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              blocks.map((block, index) =>
+                block.kind === 'text' ? (
+                  <div key={index} className="grid grid-cols-2">
+                    <pre className="min-w-0 whitespace-pre-wrap break-words border-r border-border-subtle px-3 py-0.5 font-mono text-xs leading-5 text-faint">
+                      {block.lines.join('\n')}
+                    </pre>
+                    <pre className="min-w-0 whitespace-pre-wrap break-words px-3 py-0.5 font-mono text-xs leading-5 text-faint">
+                      {block.lines.join('\n')}
+                    </pre>
+                  </div>
+                ) : (
+                  <div
+                    key={index}
+                    ref={(el) => {
+                      if (el) blockRefs.current.set(index, el);
+                      else blockRefs.current.delete(index);
+                    }}
+                    className={cn(
+                      'relative border-y border-border transition-shadow',
+                      conflictIndices[activeConflict] === index && 'ring-1 ring-primary/50',
+                    )}
+                  >
+                    <div className="grid grid-cols-2">
+                      {renderSideCell(block, index, 'current')}
+                      {renderSideCell(block, index, 'incoming')}
+                    </div>
+                    <Hint label="Explain this conflict with AI">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface shadow-soft"
+                        disabled={aiBusy}
+                        aria-label="Explain this conflict with AI"
+                        onClick={() => void explain(block.current.join('\n'), block.incoming.join('\n'))}
+                      >
+                        {aiBusy ? <Spinner className="size-3" /> : <Sparkles className="size-3 text-primary" />}
+                      </Button>
+                    </Hint>
+                  </div>
+                ),
+              )
             )}
             {aiText && (
               <div className="m-4 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs leading-relaxed">
@@ -438,58 +638,109 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                 )}
               />
             ) : (
-              <div className="min-h-0 flex-1 overflow-y-auto py-1">
-                {blocks.map((block, index) => {
-                  if (block.kind === 'text') {
-                    return (
-                      <pre
-                        key={index}
-                        className="whitespace-pre-wrap break-words px-8 py-0.5 font-mono text-xs leading-5 text-muted"
-                      >
-                        {block.lines.join('\n')}
-                      </pre>
-                    );
-                  }
-                  const blockPicks = picks.get(index) ?? [];
-                  if (blockPicks.length === 0) {
-                    return (
-                      <div
-                        key={index}
-                        className="flex items-center gap-2 border-y border-danger/30 bg-danger/10 px-3 py-1 text-xs text-danger"
-                      >
-                        <span className="font-semibold">Unresolved</span>
-                        <span className="text-danger/80">pick lines from A or B above, or edit by hand</span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={index}>
-                      {blockPicks
-                        .filter((p) => p.line !== EMPTY_SIDE)
-                        .map((p, pi) => (
-                          <div
-                            key={pi}
-                            className={cn(
-                              'flex items-start gap-2 px-2',
-                              p.side === 'current' ? 'bg-info/10' : 'bg-success/10',
-                            )}
-                          >
-                            <span
+              <div ref={outputScrollRef} className="relative min-h-0 flex-1 overflow-y-auto py-1">
+                {virtualized ? (
+                  <div
+                    ref={outputListRef}
+                    className="relative"
+                    style={{ height: outputVirtualizer.getTotalSize() }}
+                  >
+                    {outputVirtualizer.getVirtualItems().map((item) => {
+                      const row = outputRows[item.index];
+                      return (
+                        <div
+                          key={item.key}
+                          ref={outputVirtualizer.measureElement}
+                          data-index={item.index}
+                          className="absolute left-0 w-full"
+                          style={{ transform: `translateY(${item.start - outputMargin}px)` }}
+                        >
+                          {row.kind === 'text' ? (
+                            <pre className="whitespace-pre-wrap break-words px-8 font-mono text-xs leading-5 text-muted">
+                              {row.text || ' '}
+                            </pre>
+                          ) : row.kind === 'unresolved' ? (
+                            <div className="flex items-center gap-2 border-y border-danger/30 bg-danger/10 px-3 py-1 text-xs text-danger">
+                              <span className="font-semibold">Unresolved</span>
+                              <span className="text-danger/80">pick lines from A or B above, or edit by hand</span>
+                            </div>
+                          ) : (
+                            <div
                               className={cn(
-                                'w-4 shrink-0 text-center font-mono text-[10px] font-bold leading-5',
-                                p.side === 'current' ? 'text-info' : 'text-success',
+                                'flex items-start gap-2 px-2',
+                                row.side === 'current' ? 'bg-info/10' : 'bg-success/10',
                               )}
                             >
-                              {p.side === 'current' ? 'A' : 'B'}
-                            </span>
-                            <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
-                              {(p.side === 'current' ? block.current : block.incoming)[p.line] || ' '}
-                            </pre>
-                          </div>
-                        ))}
-                    </div>
-                  );
-                })}
+                              <span
+                                className={cn(
+                                  'w-4 shrink-0 text-center font-mono text-[10px] font-bold leading-5',
+                                  row.side === 'current' ? 'text-info' : 'text-success',
+                                )}
+                              >
+                                {row.side === 'current' ? 'A' : 'B'}
+                              </span>
+                              <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
+                                {row.text || ' '}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  blocks.map((block, index) => {
+                    if (block.kind === 'text') {
+                      return (
+                        <pre
+                          key={index}
+                          className="whitespace-pre-wrap break-words px-8 py-0.5 font-mono text-xs leading-5 text-muted"
+                        >
+                          {block.lines.join('\n')}
+                        </pre>
+                      );
+                    }
+                    const blockPicks = picks.get(index) ?? [];
+                    if (blockPicks.length === 0) {
+                      return (
+                        <div
+                          key={index}
+                          className="flex items-center gap-2 border-y border-danger/30 bg-danger/10 px-3 py-1 text-xs text-danger"
+                        >
+                          <span className="font-semibold">Unresolved</span>
+                          <span className="text-danger/80">pick lines from A or B above, or edit by hand</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={index}>
+                        {blockPicks
+                          .filter((p) => p.line !== EMPTY_SIDE)
+                          .map((p, pi) => (
+                            <div
+                              key={pi}
+                              className={cn(
+                                'flex items-start gap-2 px-2',
+                                p.side === 'current' ? 'bg-info/10' : 'bg-success/10',
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  'w-4 shrink-0 text-center font-mono text-[10px] font-bold leading-5',
+                                  p.side === 'current' ? 'text-info' : 'text-success',
+                                )}
+                              >
+                                {p.side === 'current' ? 'A' : 'B'}
+                              </span>
+                              <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
+                                {(p.side === 'current' ? block.current : block.incoming)[p.line] || ' '}
+                              </pre>
+                            </div>
+                          ))}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             )}
           </div>

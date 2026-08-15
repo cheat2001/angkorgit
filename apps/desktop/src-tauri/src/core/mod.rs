@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod ai_keys;
 pub mod branch;
 pub mod commit;
 pub mod conflict;
