@@ -19,7 +19,7 @@ pub struct HttpResponse {
     pub body: String,
 }
 
-fn shared_client() -> AppResult<&'static reqwest::Client> {
+pub(crate) fn shared_client() -> AppResult<&'static reqwest::Client> {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     if let Some(client) = CLIENT.get() {
         return Ok(client);

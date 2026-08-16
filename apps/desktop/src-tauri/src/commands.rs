@@ -627,14 +627,43 @@ pub async fn account_add(
     provider: String,
     token: String,
     verified: bool,
+    email: Option<String>,
 ) -> AppResult<Vec<crate::core::accounts::AccountInfo>> {
-    blocking(move || crate::core::accounts::add(&host, &username, &provider, &token, verified))
-        .await
+    blocking(move || {
+        crate::core::accounts::add(
+            &host,
+            &username,
+            &provider,
+            &token,
+            verified,
+            email.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn account_remove(host: String) -> AppResult<Vec<crate::core::accounts::AccountInfo>> {
-    blocking(move || crate::core::accounts::remove(&host)).await
+pub async fn account_remove(
+    host: String,
+    username: String,
+) -> AppResult<Vec<crate::core::accounts::AccountInfo>> {
+    blocking(move || crate::core::accounts::remove(&host, &username)).await
+}
+
+#[tauri::command]
+pub async fn account_set_default(
+    host: String,
+    username: String,
+) -> AppResult<Vec<crate::core::accounts::AccountInfo>> {
+    blocking(move || crate::core::accounts::set_default(&host, &username)).await
+}
+
+#[tauri::command]
+pub async fn account_check(
+    host: String,
+    username: String,
+) -> AppResult<crate::account_check::AccountCheckResult> {
+    crate::account_check::check(host, username).await
 }
 
 #[tauri::command]

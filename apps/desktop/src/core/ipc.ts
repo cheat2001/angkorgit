@@ -41,6 +41,18 @@ export interface HostingAccount {
   username: string;
   provider: string;
   verified: boolean;
+  email?: string | null;
+  verifiedAt?: number | null;
+  expiresAt?: string | null;
+  isDefault?: boolean;
+}
+
+export type AccountCheckStatus = 'ok' | 'unauthorized' | 'unreachable' | 'unsupported' | 'no_token';
+
+export interface AccountCheckResult {
+  status: AccountCheckStatus;
+  expiresAt: string | null;
+  accounts: HostingAccount[];
 }
 
 export const isTauri = (): boolean =>
@@ -482,7 +494,15 @@ export const ipc = {
   },
   async accountList(): Promise<HostingAccount[]> {
     if (!isTauri())
-      return [{ host: 'github.com', username: 'demo-user', provider: 'github', verified: true }];
+      return [
+        {
+          host: 'github.com',
+          username: 'demo-user',
+          provider: 'github',
+          verified: true,
+          isDefault: true,
+        },
+      ];
     return invoke('account_list');
   },
   async accountAdd(
@@ -491,13 +511,28 @@ export const ipc = {
     provider: string,
     token: string,
     verified: boolean,
+    email?: string | null,
   ): Promise<HostingAccount[]> {
-    if (!isTauri()) return [{ host, username, provider, verified }];
-    return invoke('account_add', { host, username, provider, token, verified });
+    if (!isTauri()) return [{ host, username, provider, verified, email, isDefault: true }];
+    return invoke('account_add', { host, username, provider, token, verified, email: email ?? null });
   },
-  async accountRemove(host: string): Promise<HostingAccount[]> {
+  async accountRemove(host: string, username: string): Promise<HostingAccount[]> {
     if (!isTauri()) return [];
-    return invoke('account_remove', { host });
+    return invoke('account_remove', { host, username });
+  },
+  async accountSetDefault(host: string, username: string): Promise<HostingAccount[]> {
+    if (!isTauri()) return [];
+    return invoke('account_set_default', { host, username });
+  },
+  async accountCheck(host: string, username: string): Promise<AccountCheckResult> {
+    if (!isTauri()) {
+      return {
+        status: 'ok',
+        expiresAt: null,
+        accounts: [{ host, username, provider: 'github', verified: true, isDefault: true }],
+      };
+    }
+    return invoke('account_check', { host, username });
   },
 
   async aiKeyGet(provider: string): Promise<string | null> {

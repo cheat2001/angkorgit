@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { ChevronDown, ChevronUp, Columns2, Copy, FileText, Minus, Plus, Rows3, TextSelect, Trash2, WholeWord, WrapText, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Columns2, Copy, FileText, Minus, Plus, Rows3, TextSelect, Trash2, WholeWord, WrapText, X } from 'lucide-react';
 import type { FileDiff } from '@angkorgit/core';
 import {
   Badge,
@@ -21,6 +21,7 @@ import { confirmDialog } from '@/components/confirm';
 import type { LineMenuInfo } from './VirtualDiff';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
+import { useShortcuts } from '@/shared/useShortcuts';
 import { useUi, type CenterDiffTarget } from '@/features/ui/store';
 import { DiffViewer } from './DiffViewer';
 import { wrapUnavailable } from './diffShared';
@@ -59,6 +60,37 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
 
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
+  const [commitFiles, setCommitFiles] = useState<string[]>([]);
+
+  const workingSiblings = useMemo(
+    () =>
+      isWorkingCopy && status
+        ? status.files
+            .filter((f) => (target.staged ? f.staged : f.unstaged))
+            .map((f) => f.path)
+        : [],
+    [isWorkingCopy, status, target.staged],
+  );
+  const siblings = isWorkingCopy ? workingSiblings : commitFiles;
+  const fileIndex = siblings.indexOf(target.path);
+
+  const goFile = (direction: 1 | -1) => {
+    if (fileIndex < 0) return;
+    const next = siblings[fileIndex + direction];
+    if (!next) return;
+    if (target.oid) {
+      openCenterDiff({ path: next, oid: target.oid });
+    } else {
+      const staged = target.staged ?? false;
+      useUi.getState().selectFile({ path: next, staged });
+      openCenterDiff({ path: next, staged });
+    }
+  };
+
+  useShortcuts([
+    { combo: '[', handler: () => goFile(-1), skipInInput: true },
+    { combo: ']', handler: () => goFile(1), skipInInput: true },
+  ]);
 
   useEffect(() => {
     if (!isWorkingCopy || !status) return;
@@ -98,6 +130,9 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     const load = async (): Promise<FileDiff | null> => {
       if (target.oid) {
         const diffs = await ipc.diffCommit(path, target.oid, context);
+        if (!cancelled && seq === requestSeq.current) {
+          setCommitFiles(diffs.map((d) => d.path));
+        }
         return diffs.find((d) => d.path === target.path) ?? null;
       }
       return ipc.diffFile(path, target.path, target.staged ?? false, context);
@@ -249,6 +284,48 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <span className="text-[10px] text-faint">
               {blocks.length} change{blocks.length === 1 ? '' : 's'}
             </span>
+          </>
+        )}
+        {siblings.length > 1 && fileIndex >= 0 && (
+          <>
+            <Separator orientation="vertical" className="mx-1 h-4" />
+            <Hint
+              label={
+                <span className="flex items-center gap-1">
+                  Previous file <Kbd>[</Kbd>
+                </span>
+              }
+            >
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Previous file"
+                disabled={fileIndex <= 0}
+                onClick={() => goFile(-1)}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+            </Hint>
+            <span className="text-[10px] tabular-nums text-faint">
+              {fileIndex + 1} of {siblings.length}
+            </span>
+            <Hint
+              label={
+                <span className="flex items-center gap-1">
+                  Next file <Kbd>]</Kbd>
+                </span>
+              }
+            >
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Next file"
+                disabled={fileIndex >= siblings.length - 1}
+                onClick={() => goFile(1)}
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </Hint>
           </>
         )}
         {isWorkingCopy && (

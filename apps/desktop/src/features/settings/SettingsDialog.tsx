@@ -49,10 +49,11 @@ import {
   Textarea,
   cn,
 } from '@angkorgit/design-system';
-import { ipc, pickFile } from '@/core/ipc';
+import { ipc, pickFile, type HostingAccount } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
-import { ACCENTS, THEMES, useSettings, ZOOM_MAX, ZOOM_MIN } from './store';
+import { ACCENTS, THEMES, useSettings, ZOOM_MAX, ZOOM_MIN, type IdentityProfile } from './store';
+import { applyProfileToRepo } from './profiles';
 import { AccountsTab } from './AccountsTab';
 import { getAiProvider } from '@/features/ai/client';
 import { modKey } from '@/shared/utils';
@@ -438,12 +439,18 @@ export function SettingsDialog() {
   const [profileLabel, setProfileLabel] = useState('');
   const [profileName, setProfileName] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
+  const [hostAccounts, setHostAccounts] = useState<HostingAccount[]>([]);
 
   useEffect(() => {
     if (!open) return;
     void ipc.configGet(repo?.path ?? null, 'user.name').then((v) => setGitName(v ?? ''));
     void ipc.configGet(repo?.path ?? null, 'user.email').then((v) => setGitEmail(v ?? ''));
   }, [open, repo]);
+
+  useEffect(() => {
+    if (!open) return;
+    void ipc.accountList().then(setHostAccounts);
+  }, [open, section]);
 
   const saveIdentity = async () => {
     try {
@@ -455,18 +462,31 @@ export function SettingsDialog() {
     }
   };
 
-  const applyProfile = async (name: string, email: string, label: string) => {
+  const applyProfile = async (profile: IdentityProfile) => {
     try {
-      await ipc.configSet(repo?.path ?? null, 'user.name', name, !repo);
-      await ipc.configSet(repo?.path ?? null, 'user.email', email, !repo);
-      setGitName(name);
-      setGitEmail(email);
+      if (repo) {
+        await applyProfileToRepo(repo.path, profile);
+      } else {
+        await ipc.configSet(null, 'user.name', profile.name, true);
+        await ipc.configSet(null, 'user.email', profile.email, true);
+      }
+      setGitName(profile.name);
+      setGitEmail(profile.email);
       toast.success(
-        repo ? `Committing to ${repo.name} as "${label}" from now on` : `Global identity set to "${label}"`,
+        repo
+          ? `${repo.name} now uses the "${profile.label}" profile`
+          : `Global identity set to "${profile.label}"`,
       );
     } catch (error) {
       toast.error(`Apply failed: ${(error as { message?: string }).message ?? error}`);
     }
+  };
+
+  const toggleProfileAccount = (profile: IdentityProfile, account: HostingAccount) => {
+    const accounts = { ...(profile.accounts ?? {}) };
+    if (accounts[account.host] === account.username) delete accounts[account.host];
+    else accounts[account.host] = account.username;
+    settings.updateProfile(profile.id, { accounts });
   };
 
   const addProfile = () => {
@@ -707,8 +727,8 @@ export function SettingsDialog() {
                   </SettingCard>
 
                   <SettingCard
-                    title="Identity profiles"
-                    description="Save work and personal identities, then switch per repository — applied to that repo's local config only, so other tools can't override it."
+                    title="Profiles"
+                    description="Save work and personal profiles — identity plus hosting accounts. Each repository is assigned to one profile (repo-local config only, asked once on first commit or push), so commits and pushes always use the right identity and token."
                   >
                     <div className="flex flex-col gap-1.5">
                       {settings.profiles.map((profile) => {
@@ -730,12 +750,35 @@ export function SettingsDialog() {
                               <p className="truncate text-xs text-faint">
                                 {profile.name} · {profile.email}
                               </p>
+                              {hostAccounts.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                  {hostAccounts.map((account) => {
+                                    const linked =
+                                      profile.accounts?.[account.host] === account.username;
+                                    return (
+                                      <button
+                                        key={`${account.host}:${account.username}`}
+                                        type="button"
+                                        className={cn(
+                                          'rounded-md border px-1.5 py-0.5 text-[10px] transition-colors',
+                                          linked
+                                            ? 'border-primary/50 bg-primary/10 text-primary'
+                                            : 'border-border-subtle text-faint hover:border-border hover:text-muted',
+                                        )}
+                                        onClick={() => toggleProfileAccount(profile, account)}
+                                      >
+                                        {account.host} · {account.username}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                             <Button
                               variant="secondary"
                               size="sm"
                               disabled={isActive}
-                              onClick={() => void applyProfile(profile.name, profile.email, profile.label)}
+                              onClick={() => void applyProfile(profile)}
                             >
                               {isActive ? 'Active' : repo ? 'Use for this repo' : 'Use'}
                             </Button>

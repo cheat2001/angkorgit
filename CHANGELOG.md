@@ -6,6 +6,35 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Profiles** — identity profiles grew into full work/personal profiles: each
+  bundles a commit identity (name + email) with the hosting accounts to use
+  per host. A repository is assigned to one profile — asked once on the first
+  commit or push when more than one profile exists, silent when there is only
+  one — and the assignment lives in that repo's local config, so it can never
+  be forgotten or leak to other repositories. The toolbar shows the assigned
+  profile next to the branch name; switch it any time from the repository menu
+- **Multiple accounts per host** — connecting a second account for the same
+  host (work + personal GitHub) no longer deletes the first. Accounts are
+  identified by host and username, each token has its own keychain entry
+  (existing entries migrate automatically), one account per host is marked
+  default, and if the server rejects the chosen account the other account for
+  that host is offered before giving up
+- **Account health checks** — opening Settings → Authentication re-verifies
+  each stored token against its provider. Expired or revoked tokens show a
+  clear warning with a one-click Reconnect that prefills everything except the
+  new token; GitHub and GitLab tokens with a known expiry date show
+  "expires in N days" before they die
+- **Previous/next file navigation in the diff view** — arrows and `[` / `]`
+  step through the files of a commit or the working copy without going back
+  to the file list, with an "n of m" position indicator
+
+### Fixed
+- A failed push or fetch on a host with a connected account now says that the
+  account's token may have expired and points at Settings → Authentication,
+  instead of a generic "credentials refused" message — and the account is
+  marked unverified so Settings reflects reality
+
 ## [0.5.0] — 2026-08-15
 
 The safety-and-speed release: interactive rebase lands, terminals and history

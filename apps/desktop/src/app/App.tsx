@@ -5,6 +5,7 @@ import { Toaster } from 'sonner';
 import { TooltipProvider } from '@angkorgit/design-system';
 import { SplashScreen } from './SplashScreen';
 import { ConfirmHost } from '@/components/confirm';
+import { ProfilePromptHost } from '@/components/profilePrompt';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WelcomePage } from '@/features/repository/WelcomePage';
 import { RepositoryPage } from '@/features/repository/RepositoryPage';
@@ -98,6 +99,7 @@ export function App() {
         </div>
       </MemoryRouter>
       <ConfirmHost />
+      <ProfilePromptHost />
       <Toaster
         position="bottom-left"
         theme={themeBase(theme)}

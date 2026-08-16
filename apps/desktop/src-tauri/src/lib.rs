@@ -1,5 +1,6 @@
 #![allow(non_snake_case)] // command args mirror camelCase IPC payloads
 
+mod account_check;
 mod ai_cli;
 mod commands;
 mod core;
@@ -135,6 +136,8 @@ pub fn run() {
             commands::account_list,
             commands::account_add,
             commands::account_remove,
+            commands::account_set_default,
+            commands::account_check,
             commands::ai_key_get,
             commands::ai_key_set,
             commands::ai_key_delete,

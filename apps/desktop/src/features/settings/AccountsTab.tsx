@@ -1,8 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { CheckCircle2, ExternalLink, Github, Gitlab, Globe, KeyRound, Trash2 } from 'lucide-react';
 import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  Github,
+  Gitlab,
+  Globe,
+  KeyRound,
+  RefreshCw,
+  Star,
+  Trash2,
+} from 'lucide-react';
+import {
+  Badge,
   Button,
+  Hint,
   Input,
   Select,
   SelectContent,
@@ -10,8 +23,10 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
+  cn,
 } from '@angkorgit/design-system';
-import { ipc, openExternal, type HostingAccount } from '@/core/ipc';
+import { ipc, openExternal, type AccountCheckStatus, type HostingAccount } from '@/core/ipc';
+import { timeAgo } from '@/shared/utils';
 
 type ProviderKind = 'github' | 'gitlab' | 'gitlab-self' | 'bitbucket' | 'other';
 
@@ -71,6 +86,21 @@ function providerIcon(provider: string) {
   if (provider === 'github') return <Github className="size-4" />;
   if (provider.startsWith('gitlab')) return <Gitlab className="size-4" />;
   return <Globe className="size-4" />;
+}
+
+function accountKey(account: Pick<HostingAccount, 'host' | 'username'>): string {
+  return `${account.host}:${account.username}`;
+}
+
+export function parseExpiry(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
+  const iso = raw.includes(' UTC') ? `${raw.replace(' ', 'T').replace(' UTC', '')}Z` : raw;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function daysUntil(date: Date): number {
+  return Math.ceil((date.getTime() - Date.now()) / 86_400_000);
 }
 
 async function validateToken(
@@ -139,16 +169,81 @@ async function validateToken(
   }
 }
 
+function AccountStatus({
+  account,
+  check,
+}: {
+  account: HostingAccount;
+  check: AccountCheckStatus | 'checking' | undefined;
+}) {
+  if (check === 'checking') return <Spinner className="size-3.5" />;
+  if (!account.verified) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-danger">
+        <AlertTriangle className="size-3.5" /> Token expired or revoked
+      </span>
+    );
+  }
+  const expiry = parseExpiry(account.expiresAt);
+  if (expiry) {
+    const days = daysUntil(expiry);
+    if (days <= 0) {
+      return (
+        <span className="flex items-center gap-1 text-xs text-danger">
+          <AlertTriangle className="size-3.5" /> Token expired
+        </span>
+      );
+    }
+    return (
+      <span
+        className={cn(
+          'flex items-center gap-1 text-xs',
+          days <= 14 ? 'text-primary' : 'text-success',
+        )}
+      >
+        <CheckCircle2 className="size-3.5" /> expires in {days}d
+      </span>
+    );
+  }
+  return <CheckCircle2 className="size-3.5 text-success" />;
+}
+
 export function AccountsTab() {
   const [accounts, setAccounts] = useState<HostingAccount[]>([]);
+  const [checks, setChecks] = useState<Record<string, AccountCheckStatus | 'checking'>>({});
   const [provider, setProvider] = useState<ProviderKind>('github');
   const [host, setHost] = useState(PROVIDERS.github.defaultHost);
   const [username, setUsername] = useState('');
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const tokenInputRef = useRef<HTMLInputElement>(null);
+
+  const runChecks = async (list: HostingAccount[]) => {
+    for (const account of list) {
+      if (account.provider === 'other') continue;
+      if (account.provider === 'bitbucket' && !account.email) continue;
+      const key = accountKey(account);
+      setChecks((c) => ({ ...c, [key]: 'checking' }));
+      try {
+        const result = await ipc.accountCheck(account.host, account.username);
+        setChecks((c) => ({ ...c, [key]: result.status }));
+        setAccounts(result.accounts);
+      } catch {
+        setChecks((c) => ({ ...c, [key]: 'unreachable' }));
+      }
+    }
+  };
 
   useEffect(() => {
-    void ipc.accountList().then(setAccounts);
+    let cancelled = false;
+    void ipc.accountList().then((list) => {
+      if (cancelled) return;
+      setAccounts(list);
+      void runChecks(list);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const preset = PROVIDERS[provider];
@@ -156,6 +251,17 @@ export function AccountsTab() {
   const changeProvider = (kind: ProviderKind) => {
     setProvider(kind);
     setHost(PROVIDERS[kind].defaultHost);
+  };
+
+  const reconnect = (account: HostingAccount) => {
+    const kind = (
+      Object.keys(PROVIDERS) as ProviderKind[]
+    ).find((k) => k === account.provider) ?? 'other';
+    setProvider(kind);
+    setHost(account.host);
+    setUsername(kind === 'bitbucket' ? (account.email ?? '') : account.username);
+    setToken('');
+    tokenInputRef.current?.focus();
   };
 
   const connect = async () => {
@@ -176,18 +282,22 @@ export function AccountsTab() {
         throw new Error('username is required for this provider');
       }
 
+      const email = provider === 'bitbucket' ? username.trim() : null;
       const updated = await ipc.accountAdd(
         cleanHost,
         finalUsername,
         provider,
         token.trim(),
         isVerified,
+        email,
       );
       setAccounts(updated);
       setToken('');
       setUsername('');
       if (isVerified) toast.success(`Connected ${cleanHost} as ${finalUsername}`);
       else toast.warning(`Saved ${cleanHost} as ${finalUsername} — token not verified`);
+      const added = updated.find((a) => a.host === cleanHost && a.username === finalUsername);
+      if (added) void runChecks([added]);
     } catch (error) {
       toast.error(`Connect failed: ${(error as { message?: string }).message ?? error}`);
     } finally {
@@ -195,14 +305,28 @@ export function AccountsTab() {
     }
   };
 
-  const remove = async (accountHost: string) => {
+  const remove = async (account: HostingAccount) => {
     try {
-      setAccounts(await ipc.accountRemove(accountHost));
-      toast.success(`Removed ${accountHost}`);
+      setAccounts(await ipc.accountRemove(account.host, account.username));
+      toast.success(`Removed ${account.username} on ${account.host}`);
     } catch (error) {
       toast.error(`Remove failed: ${(error as { message?: string }).message ?? error}`);
     }
   };
+
+  const makeDefault = async (account: HostingAccount) => {
+    try {
+      setAccounts(await ipc.accountSetDefault(account.host, account.username));
+      toast.success(`${account.username} is now the default for ${account.host}`);
+    } catch (error) {
+      toast.error(`Could not set default: ${(error as { message?: string }).message ?? error}`);
+    }
+  };
+
+  const hostCounts = accounts.reduce<Record<string, number>>((acc, a) => {
+    acc[a.host] = (acc[a.host] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const tokenPage = preset.tokenUrl(host.trim());
 
@@ -210,33 +334,60 @@ export function AccountsTab() {
     <div className="flex flex-col gap-4">
       {accounts.length > 0 && (
         <div className="flex flex-col gap-1">
-          {accounts.map((account) => (
-            <div
-              key={account.host}
-              className="group flex items-center gap-3 rounded-lg border border-border p-3"
-            >
-              {providerIcon(account.provider)}
-              <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-1.5 text-sm">
-                  {account.host}
-                  {account.verified && <CheckCircle2 className="size-3.5 text-success" />}
-                </p>
-                <p className="text-xs text-faint">
-                  {account.username} · token in system keychain
-                  {account.verified ? '' : ' · not verified'}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Remove ${account.host}`}
-                className="opacity-0 group-hover:opacity-100"
-                onClick={() => void remove(account.host)}
+          {accounts.map((account) => {
+            const key = accountKey(account);
+            const multi = (hostCounts[account.host] ?? 0) > 1;
+            return (
+              <div
+                key={key}
+                className="group flex items-center gap-3 rounded-lg border border-border p-3"
               >
-                <Trash2 className="size-3.5 text-danger" />
-              </Button>
-            </div>
-          ))}
+                {providerIcon(account.provider)}
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1.5 text-sm">
+                    {account.host}
+                    {multi && account.isDefault && <Badge tone="neutral">default</Badge>}
+                    <AccountStatus account={account} check={checks[key]} />
+                  </p>
+                  <p className="text-xs text-faint">
+                    {account.username} · token in system keychain
+                    {account.verified
+                      ? account.verifiedAt
+                        ? ` · checked ${timeAgo(account.verifiedAt)}`
+                        : ''
+                      : ' · not verified'}
+                  </p>
+                </div>
+                {!account.verified && (
+                  <Button variant="secondary" size="sm" onClick={() => reconnect(account)}>
+                    <RefreshCw className="size-3.5" /> Reconnect
+                  </Button>
+                )}
+                {multi && !account.isDefault && (
+                  <Hint label={`Use ${account.username} by default for ${account.host}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Make ${account.username} the default for ${account.host}`}
+                      className="opacity-0 group-hover:opacity-100"
+                      onClick={() => void makeDefault(account)}
+                    >
+                      <Star className="size-3.5" />
+                    </Button>
+                  </Hint>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Remove ${account.username} on ${account.host}`}
+                  className="opacity-0 group-hover:opacity-100"
+                  onClick={() => void remove(account)}
+                >
+                  <Trash2 className="size-3.5 text-danger" />
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -246,6 +397,8 @@ export function AccountsTab() {
         </p>
         <p className="mt-1 text-xs text-faint">
           Used automatically when a remote matches the host — push and pull over HTTPS, no SSH needed.
+          Add several accounts per host and pick a default; repos assigned to a profile use that
+          profile's account.
         </p>
         <div className="mt-3 flex flex-col gap-2">
           <div className="flex gap-2">
@@ -275,6 +428,7 @@ export function AccountsTab() {
           />
           <div className="flex gap-2">
             <Input
+              ref={tokenInputRef}
               type="password"
               placeholder={preset.tokenHint}
               value={token}

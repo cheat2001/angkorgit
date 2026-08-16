@@ -36,6 +36,10 @@ impl AppError {
 
     fn message(&self) -> String {
         match self.http_status() {
+            Some(401) => "HTTP 401 — the host rejected the credentials. If this remote uses a \
+                          connected account, its token may have expired or been revoked — \
+                          reconnect it in Settings → Authentication."
+                .to_string(),
             Some(402) => "HTTP 402 — the host refused the write because the account or workspace \
                           is over its plan limit or has a billing problem. On Bitbucket Cloud a \
                           free workspace over its user limit turns every private repository \
@@ -52,6 +56,7 @@ impl AppError {
     fn code(&self) -> &'static str {
         if let Some(status) = self.http_status() {
             return match status {
+                401 => "auth",
                 402 => "plan_limit",
                 403 => "forbidden",
                 _ => "git",
@@ -132,5 +137,13 @@ mod tests {
         let error = git_error("unexpected http status code: 500");
         assert_eq!(error.code(), "git");
         assert!(error.message().contains("500"));
+    }
+
+    #[test]
+    fn unauthorized_errors_hint_at_token_expiry() {
+        let error = git_error("unexpected http status code: 401");
+        assert_eq!(error.code(), "auth");
+        assert!(error.message().contains("expired"));
+        assert!(error.message().contains("Settings → Authentication"));
     }
 }

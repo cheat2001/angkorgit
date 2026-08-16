@@ -1,6 +1,8 @@
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 
 use git2::{
     build::CheckoutBuilder, AutotagOption, Cred, CredentialType, FetchOptions, PushOptions,
@@ -250,15 +252,55 @@ fn credentials_from_git_cli(url: &str, username: Option<&str>) -> Option<(String
     Some((user?, pass?))
 }
 
+thread_local! {
+    static REPO_ACCOUNT_BINDINGS: RefCell<HashMap<String, String>> =
+        RefCell::new(HashMap::new());
+}
+
+fn parse_account_bindings(raw: &str) -> HashMap<String, String> {
+    raw.split(',')
+        .filter_map(|pair| pair.trim().split_once('='))
+        .map(|(host, user)| (host.trim().to_lowercase(), user.trim().to_string()))
+        .filter(|(host, user)| !host.is_empty() && !user.is_empty())
+        .collect()
+}
+
+fn prime_account_bindings(repo: Option<&Repository>) {
+    let map = repo
+        .and_then(|r| r.config().ok())
+        .and_then(|c| c.get_string("angkorgit.accounts").ok())
+        .map(|raw| parse_account_bindings(&raw))
+        .unwrap_or_default();
+    REPO_ACCOUNT_BINDINGS.with(|slot| *slot.borrow_mut() = map);
+}
+
+fn bound_account(host: &str) -> Option<String> {
+    REPO_ACCOUNT_BINDINGS.with(|slot| slot.borrow().get(host).cloned())
+}
+
+fn refused_account_hint(offered: &Mutex<Option<(String, String)>>) -> String {
+    let Some((host, username)) = offered.lock().ok().and_then(|guard| guard.clone()) else {
+        return String::new();
+    };
+    let _ = super::accounts::mark_unverified(&host, &username);
+    format!(
+        " The connected {host} account '{username}' was refused — its token may have expired \
+         or been revoked. Reconnect it in Settings → Authentication."
+    )
+}
+
 pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
     let mut callbacks = RemoteCallbacks::new();
     let attempts = AtomicUsize::new(0);
+    let offered_account: Mutex<Option<(String, String)>> = Mutex::new(None);
+    let offered_usernames: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
     callbacks.credentials(move |url, username_from_url, allowed| {
         let attempt = attempts.fetch_add(1, Ordering::SeqCst);
         if attempt > 6 {
             return Err(git2::Error::from_str(&format!(
                 "authentication rejected for {url} — the server refused the credentials \
-                 offered by your SSH agent / git credential helper"
+                 offered by your SSH agent / git credential helper.{}",
+                refused_account_hint(&offered_account)
             )));
         }
         let prefs = prefs_snapshot();
@@ -290,10 +332,19 @@ pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
             }
         }
         if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
-            if attempt == 0 {
-                if let Some(host) = super::accounts::host_of_url(url) {
-                    if let Some((user, token)) = super::accounts::lookup(&host) {
+            if let Some(host) = super::accounts::host_of_url(url) {
+                let preferred = bound_account(&host);
+                let candidates = super::accounts::candidates(&host, preferred.as_deref());
+                if let Ok(mut offered) = offered_usernames.lock() {
+                    if let Some((user, token)) = candidates
+                        .into_iter()
+                        .find(|(user, _)| !offered.contains(user))
+                    {
                         if let Ok(cred) = Cred::userpass_plaintext(&user, &token) {
+                            offered.insert(user.clone());
+                            if let Ok(mut guard) = offered_account.lock() {
+                                *guard = Some((host, user));
+                            }
                             return Ok(cred);
                         }
                     }
@@ -320,7 +371,8 @@ pub(crate) fn make_callbacks<'a>() -> RemoteCallbacks<'a> {
         Err(git2::Error::from_str(&format!(
             "no usable authentication for {url} — tried SSH agent, ~/.ssh keys and git \
              credential helpers. Check `git credential fill` works for this remote, or add \
-             your key to the SSH agent (ssh-add)"
+             your key to the SSH agent (ssh-add).{}",
+            refused_account_hint(&offered_account)
         )))
     });
     callbacks
@@ -367,6 +419,7 @@ pub fn remove(path: &str, name: &str) -> AppResult<()> {
 
 pub fn fetch(path: &str, remote_name: &str, tags: bool, prune: bool) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
+    prime_account_bindings(Some(&repo));
     let mut remote = repo.find_remote(remote_name)?;
     let mut opts = FetchOptions::new();
     opts.remote_callbacks(make_callbacks());
@@ -436,6 +489,7 @@ pub fn push(
 
     let refspecs = push_refspecs(&branch_name, force, with_tags);
 
+    prime_account_bindings(Some(&repo));
     let mut remote = repo.find_remote(remote_name)?;
     let mut opts = PushOptions::new();
     opts.remote_callbacks(make_callbacks());
@@ -530,6 +584,7 @@ pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
 
 pub fn push_tag(path: &str, remote_name: &str, tag: &str) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
+    prime_account_bindings(Some(&repo));
     let mut remote = repo.find_remote(remote_name)?;
     let mut opts = PushOptions::new();
     opts.remote_callbacks(make_callbacks());
@@ -544,6 +599,7 @@ pub fn push_tag(path: &str, remote_name: &str, tag: &str) -> AppResult<OpOutcome
 }
 
 pub fn clone(url: &str, into: &str, on_progress: impl Fn(u32) + Send) -> AppResult<String> {
+    prime_account_bindings(None);
     let mut callbacks = make_callbacks();
     let mut last_pct: Option<u32> = None;
     callbacks.transfer_progress(move |stats| {
@@ -584,6 +640,20 @@ mod tests {
 
     fn home() -> PathBuf {
         PathBuf::from("/Users/tester")
+    }
+
+    #[test]
+    fn parses_account_bindings_from_repo_config() {
+        let map = parse_account_bindings("github.com=dara-work, gitlab.com=dara");
+        assert_eq!(map.get("github.com"), Some(&"dara-work".to_string()));
+        assert_eq!(map.get("gitlab.com"), Some(&"dara".to_string()));
+    }
+
+    #[test]
+    fn ignores_malformed_account_bindings() {
+        let map = parse_account_bindings("nonsense,=user,host=, GitHub.com=Dara ");
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get("github.com"), Some(&"Dara".to_string()));
     }
 
     #[test]

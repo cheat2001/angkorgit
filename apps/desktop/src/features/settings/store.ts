@@ -96,6 +96,7 @@ export interface IdentityProfile {
   label: string;
   name: string;
   email: string;
+  accounts?: Record<string, string>;
 }
 
 export const ZOOM_MIN = 0.5;
@@ -152,6 +153,7 @@ interface SettingsState {
   setReduceMotion: (value: boolean) => void;
   setAutoFetchMinutes: (minutes: number) => void;
   addProfile: (profile: Omit<IdentityProfile, 'id'>) => void;
+  updateProfile: (id: string, patch: Partial<Omit<IdentityProfile, 'id'>>) => void;
   removeProfile: (id: string) => void;
   setAi: (config: Partial<AiConfig>) => void;
   setAiProvider: (provider: AiProviderKind) => void;
@@ -233,6 +235,10 @@ export const useSettings = create<SettingsState>()(
       addProfile: (profile) =>
         set((s) => ({
           profiles: [...s.profiles, { ...profile, id: crypto.randomUUID() }],
+        })),
+      updateProfile: (id, patch) =>
+        set((s) => ({
+          profiles: s.profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)),
         })),
       removeProfile: (id) => set((s) => ({ profiles: s.profiles.filter((p) => p.id !== id) })),
       setAi: (config) => {

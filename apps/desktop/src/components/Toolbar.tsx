@@ -46,7 +46,8 @@ import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo } from '@/features/history/undoStore';
-import { useSettings } from '@/features/settings/store';
+import { useSettings, type IdentityProfile } from '@/features/settings/store';
+import { applyProfileToRepo, ensureRepoProfile } from '@/features/settings/profiles';
 import { capCount, modKey } from '@/shared/utils';
 
 function RepoSwitcher() {
@@ -56,6 +57,7 @@ function RepoSwitcher() {
   const busy = useRepo((s) => s.busy);
   const openDialog = useUi((s) => s.openDialog);
   const profiles = useSettings((s) => s.profiles);
+  const profileId = useRepo((s) => s.profileId);
   const [activeEmail, setActiveEmail] = useState('');
 
   useEffect(() => {
@@ -63,19 +65,22 @@ function RepoSwitcher() {
     void ipc.configGet(repo.path, 'user.email').then((email) => setActiveEmail(email ?? ''));
   }, [repo?.path]);
 
-  const commitAs = async (name: string, email: string, label: string) => {
+  const assignProfile = async (profile: IdentityProfile) => {
     if (!repo) return;
     try {
-      await ipc.configSet(repo.path, 'user.name', name, false);
-      await ipc.configSet(repo.path, 'user.email', email, false);
-      setActiveEmail(email);
-      toast.success(`Committing to ${repo.name} as "${label}" from now on`);
+      await applyProfileToRepo(repo.path, profile);
+      setActiveEmail(profile.email);
+      toast.success(`${repo.name} now uses the "${profile.label}" profile`);
     } catch (error) {
-      toast.error(`Could not switch identity: ${(error as { message?: string }).message ?? error}`);
+      toast.error(`Could not switch profile: ${(error as { message?: string }).message ?? error}`);
     }
   };
 
   if (!repo) return null;
+
+  const assignedProfile =
+    profiles.find((p) => p.id === profileId) ??
+    (profileId ? undefined : profiles.find((p) => p.email === activeEmail));
 
   const switchTo = async (path: string) => {
     if (path === repo.path) return;
@@ -106,6 +111,7 @@ function RepoSwitcher() {
             </span>
             <span className="block font-mono text-[10px] text-faint">
               {repo.isDetached ? 'detached HEAD' : repo.headBranch ?? 'no branch'}
+              {assignedProfile ? ` · ${assignedProfile.label}` : ''}
             </span>
           </span>
         </button>
@@ -143,16 +149,13 @@ function RepoSwitcher() {
             <DropdownMenuSeparator />
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
-                <UserRound /> Commit as…
+                <UserRound /> Profile
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {profiles.map((profile) => {
-                  const active = profile.email === activeEmail;
+                  const active = assignedProfile?.id === profile.id;
                   return (
-                    <DropdownMenuItem
-                      key={profile.id}
-                      onClick={() => void commitAs(profile.name, profile.email, profile.label)}
-                    >
+                    <DropdownMenuItem key={profile.id} onClick={() => void assignProfile(profile)}>
                       {active ? <Check className="text-primary" /> : <UserRound />}
                       <span className="min-w-0 flex-1">
                         <span className="block">{profile.label}</span>
@@ -398,6 +401,13 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     }
   };
 
+  const runPush = (label: string, op: () => Promise<{ status: string; message: string } | void>) =>
+    void (async () => {
+      if (busy) return;
+      await ensureRepoProfile(repo.path);
+      await run(label, op);
+    })();
+
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border-subtle bg-surface px-2">
       <Hint label="Back to repositories">
@@ -460,7 +470,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             size="sm"
             className="rounded-r-none"
             disabled={!!busy}
-            onClick={() => void run('Push', () => ipc.push(repo.path, remote, false, false, true))}
+            onClick={() => runPush('Push', () => ipc.push(repo.path, remote, false, false, true))}
           >
             <ArrowUpFromLine />
             Push
@@ -474,10 +484,10 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={() => void run('Push (force)', () => ipc.push(repo.path, remote, true, false, true))} destructive>
+            <DropdownMenuItem onClick={() => runPush('Push (force)', () => ipc.push(repo.path, remote, true, false, true))} destructive>
               Force push
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void run('Push with tags', () => ipc.push(repo.path, remote, false, true, true))}>
+            <DropdownMenuItem onClick={() => runPush('Push with tags', () => ipc.push(repo.path, remote, false, true, true))}>
               Push with tags
             </DropdownMenuItem>
             <DropdownMenuSeparator />

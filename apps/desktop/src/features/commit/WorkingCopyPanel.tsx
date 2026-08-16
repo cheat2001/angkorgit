@@ -25,6 +25,7 @@ import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { useSettings } from '@/features/settings/store';
+import { ensureRepoProfile } from '@/features/settings/profiles';
 import { useUndo } from '@/features/history/undoStore';
 import { useCommitDraft } from './draftStore';
 import { confirmDialog } from '@/components/confirm';
@@ -332,6 +333,7 @@ export function WorkingCopyPanel() {
     if (!message.trim() && !amend) return;
     setCommitting(true);
     try {
+      await ensureRepoProfile(path);
       if (amend) {
         await ipc.amend(path, message.trim() ? message.trim() : null);
         toast.success('Commit amended');

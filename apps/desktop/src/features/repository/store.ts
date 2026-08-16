@@ -22,6 +22,7 @@ interface RepoState {
   conflicts: string[];
   recents: RecentRepository[];
   busy: string | null;
+  profileId: string | null;
 
   loadRecents: () => Promise<void>;
   open: (path: string) => Promise<RepositoryInfo>;
@@ -29,6 +30,7 @@ interface RepoState {
   refresh: () => Promise<void>;
   refreshStatus: () => Promise<void>;
   setBusy: (label: string | null) => void;
+  setProfileId: (profileId: string | null) => void;
 }
 
 let openSeq = 0;
@@ -46,6 +48,7 @@ export const useRepo = create<RepoState>((set, get) => ({
   conflicts: [],
   recents: [],
   busy: null,
+  profileId: null,
 
   loadRecents: async () => {
     const recents = await ipc.recentRepositories();
@@ -56,7 +59,10 @@ export const useRepo = create<RepoState>((set, get) => ({
     const seq = ++openSeq;
     const repo = await ipc.openRepository(path);
     if (seq !== openSeq) return repo;
-    set({ repo });
+    set({ repo, profileId: null });
+    void ipc.configGet(repo.path, 'angkorgit.profile').then((profileId) => {
+      if (seq === openSeq && get().repo?.path === repo.path) set({ profileId });
+    });
     void import('@/features/ui/store').then(({ useUi }) =>
       useUi.getState().addRepoTab(repo.path),
     );
@@ -75,6 +81,7 @@ export const useRepo = create<RepoState>((set, get) => ({
       remotes: [],
       submodules: [],
       conflicts: [],
+      profileId: null,
     }),
 
   refresh: async () => {
@@ -113,4 +120,5 @@ export const useRepo = create<RepoState>((set, get) => ({
   },
 
   setBusy: (busy) => set({ busy }),
+  setProfileId: (profileId) => set({ profileId }),
 }));

@@ -136,6 +136,10 @@ terminal.rs           ← real PTY per session (portable-pty), events term-data-
 watcher.rs            ← notify-debouncer-mini (400ms) → "repo-changed" event;
                         filters .git noise, keeps HEAD/index/refs/packed-refs, skips *.lock
 http.rs               ← AI/HTTP proxy (reqwest, rustls) — keeps CORS + keys out of webview
+account_check.rs      ← re-verifies a stored account token against its provider (GitHub /user
+                        + expiry header, GitLab personal_access_tokens/self w/ /user fallback,
+                        Bitbucket 2.0/user via stored email); only 401 flips verified=false,
+                        network errors never do; writes verifiedAt/expiresAt via update_check
 ai_cli.rs             ← installed AI-CLI transport: detect (which_in over augmented PATH +
                         login-shell fallback, per-agent --version) and run (allowlisted
                         binaries only, stdin prompt, {OUTPUT_FILE} placeholder → temp file,
@@ -162,10 +166,17 @@ core/
 ├── remote.rs         ← credential chain (see below), fetch/pull/push(+branch param)/clone,
 │                       pull_branch (ff-without-checkout for non-HEAD), push_tag,
 │                       credential_approve (git credential approve → OS keychain)
-├── accounts.rs       ← app-managed hosting accounts: tokens in OS keyring (service
-│                       "AngKorGit"), metadata accounts.json (host/username/provider +
-│                       `verified`, serde-default so pre-0.2 files still parse);
-│                       lookup(host) for auth. ONE account per host (see G17)
+├── accounts.rs       ← app-managed hosting accounts, MULTIPLE per host keyed by
+│                       (host, username): tokens in OS keyring (service "AngKorGit",
+│                       entry "acct:<host>:<username>"; legacy bare-host entries
+│                       migrate on first read, only when the owner is unambiguous),
+│                       metadata accounts.json (host/username/provider/verified +
+│                       email/verifiedAt/expiresAt/isDefault, all serde-default so
+│                       older files still parse); exactly one default per host
+│                       (ensure_defaults), candidates(host, preferred) for auth
+│                       ordering, update_check/mark_unverified for health. Pure
+│                       list-manipulation helpers (upsert/ordered_for_host) are
+│                       module-tested without keyring (see G29)
 ├── ai_keys.rs        ← AI provider API keys in the SAME keyring service, account
 │                       namespace "ai:<provider>" (no collision with hostnames);
 │                       empty set = delete, NoEntry reads as None. Frontend persists
@@ -180,10 +191,15 @@ core/
 ```
 
 **Credential chain** (remote.rs `make_callbacks`, in order):
-1. App **account** matched by remote host (accounts::lookup — GitLab tokens never sent to GitHub)
+1. App **accounts** matched by remote host (accounts::candidates — GitLab tokens never sent
+   to GitHub): the repo's profile-bound account first (angkorgit.accounts repo config, read
+   into a thread_local by prime_account_bindings at each fetch/push/push_tag/clone entry —
+   see G29), then the host default, then remaining accounts — one per retry, each offered once
 2. SSH agent → `~/.ssh/id_ed25519`/`id_rsa` key files
 3. `git credential fill` subprocess (real keychain/manager, GIT_TERMINAL_PROMPT=0)
-4. libgit2 credential_helper → default. Retry-guarded (>6 attempts → descriptive error).
+4. libgit2 credential_helper → default. Retry-guarded (>6 attempts → descriptive error);
+   when an offered account was refused the give-up error names it, suggests token expiry,
+   and marks it unverified.
 
 **Engine conventions:**
 - Operations that can pause on conflicts return `OpOutcome { status: "ok"|"conflicts"|"up_to_date"|"fast_forward", message }` — never an error for conflicts.
@@ -204,15 +220,21 @@ core/ipc.ts                   ← THE typed IPC boundary — only place calling 
                                 listen() wrapper for Tauri events
 core/demo.ts                  ← deterministic 400-commit synthetic repo for demo mode
 components/                   ← Toolbar (fetch/pull/push split-button, undo/redo,
-                                RepoSwitcher dropdown + "Commit as…" profiles submenu,
-                                sidebar toggle), CommandPalette (cmdk), Avatar (Gravatar
-                                SHA-256 + initials fallback + failure cache), confirm.tsx
-                                (promise-based confirmDialog + ConfirmHost)
+                                RepoSwitcher dropdown + "Profile" submenu — assigns the
+                                FULL profile via applyProfileToRepo, chip after branch
+                                name shows the assignment; push goes through runPush →
+                                ensureRepoProfile, sidebar toggle), CommandPalette (cmdk),
+                                Avatar (Gravatar SHA-256 + initials fallback + failure
+                                cache), confirm.tsx (promise-based confirmDialog +
+                                ConfirmHost), profilePrompt.tsx (promise-based
+                                pickProfile + ProfilePromptHost — same pattern)
 shared/                       ← useShortcuts (mod-combos, skipInInput), highlight.ts
                                 (hljs lib/core + languageOf), utils (timeAgo, modKey…)
 features/
 ├── repository/               ← store (repo/status/branches/tags/stashes/remotes/submodules/
-│   │                           conflicts/recents, refresh/refreshStatus), WelcomePage,
+│   │                           conflicts/recents/profileId — the repo's assigned profile,
+│   │                           loaded from angkorgit.profile on open, cleared on close,
+│   │                           refresh/refreshStatus), WelcomePage,
 │   │                           RepositoryPage (layout, shortcuts, watcher subscription,
 │   │                           per-repo state reset), CloneDialog, RepoDialogs
 ├── graph/                    ← store (pagination, filters, lastPath guard vs cross-repo
@@ -227,7 +249,10 @@ features/
 │                               auto-grow commit box (hidden when clean; amend link),
 │                               50/72 summary counter, AI message button
 ├── diff/                     ← DiffPanel (center view, header toggles, minimap, prev/next
-│                               change, auto-close when file leaves working copy),
+│                               change, prev/next FILE across the source list — working-
+│                               copy side or commit file set — via `[`/`]` + header
+│                               arrows + "n of m", auto-close when file leaves working
+│                               copy),
 │                               DiffViewer (wrap vs VIRTUALIZED no-wrap), VirtualDiff
 │                               (inline + synced split columns), DiffMinimap, diffShared
 ├── conflicts/ConflictResolver← aligned A/B panes, per-LINE checkboxes (whole side via
@@ -257,13 +282,22 @@ features/
 │                               `reduce-motion` class + MotionConfig, ai config +
 │                               aiProfiles (PER-PROVIDER model/baseUrl/apiKey, see G22),
 │                               aiStyle
-│                               commit style + branch prefix rules, identity
-│                               PROFILES — persisted), SettingsDialog (Appearance/Git/
-│                               AUTHENTICATION/AI/Shortcuts tabs incl. commit-style card
-│                               w/ live branch preview + SshCard), AccountsTab
-│                               (per-provider token connect, verified-on-connect,
-│                               host-matched). Authentication tab = accounts (https://)
-│                               + SSH keys (git@) together — see G20
+│                               commit style + branch prefix rules, PROFILES —
+│                               IdentityProfile {label,name,email,accounts?: host→username}
+│                               — persisted), profiles.ts (applyProfileToRepo writes
+│                               user.name/email + angkorgit.profile + angkorgit.accounts
+│                               to REPO-LOCAL config; ensureRepoProfile: assigned → keep,
+│                               1 profile → silent stamp, ≥2 → pickProfile dialog, cancel
+│                               → proceed unassigned; called before commit and push),
+│                               SettingsDialog (Appearance/Git/AUTHENTICATION/AI/Shortcuts
+│                               tabs incl. commit-style card w/ live branch preview +
+│                               SshCard; profile rows carry account-link toggle chips),
+│                               AccountsTab (per-provider token connect, verified-on-
+│                               connect, host-matched; auto re-check on open via
+│                               account_check, expiry countdown, Reconnect prefill,
+│                               default-per-host star when a host has several accounts).
+│                               Authentication tab = accounts (https://) + SSH keys
+│                               (git@) together — see G20
 ├── ai/client.ts              ← binds settings AI config + Rust HTTP/CLI transports to
 │                               @angkorgit/core providers ('cli' = installed AI CLI:
 │                               Claude Code/Codex/Gemini CLI/OpenCode/Antigravity via ai_cli.rs —
@@ -516,13 +550,38 @@ update CLAUDE.md or docs/ — never the code.
   unresolved blocks from those raw lines — preserving diff3 base labels, CRLF, and
   bare markers byte-for-byte. A close marker without a separator is malformed and
   falls back to plain text. Never rebuild marker lines from labels.
+- **G29 — profiles are REPO-BOUND, never a global mode switch**: a profile
+  (identity + per-host account picks) is assigned to a repo once and stored in
+  that repo's local config (`angkorgit.profile` = id, `angkorgit.accounts` =
+  `host=username,...`) — deliberately NOT GitKraken's global active-profile
+  model (G6), so "forgot to switch profiles" cannot happen. The credential
+  callback has no repo context (G19: `make_callbacks()` takes no params), so
+  each remote op (fetch/push/push_tag; clone clears) calls
+  `prime_account_bindings(&repo)` which parses `angkorgit.accounts` into a
+  **thread_local** — safe because libgit2 invokes the credentials callback on
+  the same spawn_blocking thread as the operation; a process-global here would
+  race concurrent ops on different repos. Related invariants: accounts are
+  keyed (host, username) with keyring entries `acct:<host>:<username>` — the
+  legacy bare-host entry migrates on first read ONLY when a single account owns
+  that host (ambiguous = skip, never guess a token's owner); every host keeps
+  exactly ONE `isDefault` (ensure_defaults runs on every load/save);
+  `ensureRepoProfile` runs before commit and push — assigned repo → no-op,
+  exactly one profile → silent stamp (existing single-profile users never see
+  the dialog), two+ → ask once, cancel → proceed unassigned without blocking
+  the action. The SILENT stamp never clobbers a manual identity: if the repo's
+  effective user.email differs from the global one (a deliberate repo-local
+  override set outside AngKorGit), applyProfileToRepo runs with
+  preserveIdentity and writes only the profile id + account bindings. account_check flips `verified` on 401 ONLY — network errors and
+  odd statuses never mark an account broken (offline must not rot accounts);
+  Bitbucket re-checks need the stored Atlassian `email` (G17) and are skipped
+  without it.
 
 ## 9. Testing map
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
 | Rust integration (36) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
-| Rust module (23) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (4), `src/core/remote.rs` (13) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) |
+| Rust module (33) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored |
 | Unit (51) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement) |
 | E2E (6) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks — all on demo mode |
 
