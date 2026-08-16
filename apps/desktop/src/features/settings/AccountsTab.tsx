@@ -178,6 +178,9 @@ function AccountStatus({
 }) {
   if (check === 'checking') return <Spinner className="size-3.5" />;
   if (!account.verified) {
+    if (!account.verifiedAt) {
+      return <span className="text-xs text-faint">Not verified</span>;
+    }
     return (
       <span className="flex items-center gap-1 text-xs text-danger">
         <AlertTriangle className="size-3.5" /> Token expired or revoked

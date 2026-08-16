@@ -728,7 +728,7 @@ export function SettingsDialog() {
 
                   <SettingCard
                     title="Profiles"
-                    description="Save work and personal profiles — identity plus hosting accounts. Each repository is assigned to one profile (repo-local config only, asked once on first commit or push), so commits and pushes always use the right identity and token."
+                    description="Save work and personal profiles — identity plus hosting accounts. Each repository is assigned to one profile (repo-local config only, asked once on first commit or push), so commits and pushes always use the right identity and token. The chips under a profile are its linked accounts — click to toggle which account each host uses."
                   >
                     <div className="flex flex-col gap-1.5">
                       {settings.profiles.map((profile) => {

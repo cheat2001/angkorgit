@@ -7,3 +7,4 @@ export * from './ai/style';
 export * from './ai/providers';
 export * as aiCapabilities from './ai/capabilities';
 export * from './ai/cliAgents';
+export * from './forge/pullRequestUrl';

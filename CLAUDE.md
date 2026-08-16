@@ -68,6 +68,10 @@ angkorgit/
 │       ├── graph/layout.ts    ← incremental commit-graph lane layout (GraphLayout)
 │       ├── diff/wordDiff.ts   ← LCS word-level diff
 │       ├── conflicts/parse.ts ← conflict-marker parser + serializer (lossless)
+│       ├── forge/pullRequestUrl.ts ← remote URL → pre-filled create-PR page (GitHub
+│       │                        compare, GitLab MR incl. self-hosted + ports + http,
+│       │                        Bitbucket Cloud AND Server /scm/→/projects/ shape;
+│       │                        unknown forge → null). Seed of future packages/forge
 │       └── ai/                ← provider-agnostic AI (types, providers, capabilities,
                                 cliAgents: local AI-CLI adapters — Claude Code/Codex/Gemini/OpenCode/Antigravity(agy),
                                 style: per-capability AiStyleConfig — commit presets
@@ -582,7 +586,7 @@ update CLAUDE.md or docs/ — never the code.
 | --- | --- | --- |
 | Rust integration (36) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
 | Rust module (33) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored |
-| Unit (51) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement) |
+| Unit (62) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null) |
 | E2E (6) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks — all on demo mode |
 
 ## 9.5 Open-source & community files
@@ -643,7 +647,9 @@ plugin can be added), and the Homebrew cask.
    layered over Gravatar.
 3. File-tree view for the working copy (deep C# paths); prev/next-file arrows in DiffPanel.
 4. Blame (file history shipped; annotate view remains). 5. Worktrees.
-7. Forge integrations (PRs/issues) as `packages/forge` mirroring the AI adapter pattern.
+7. Forge integrations (PRs/issues) as `packages/forge` mirroring the AI adapter pattern
+   (the browser-link teaser shipped in 0.6.0 — core `forge/pullRequestUrl.ts` + post-push
+   toast in Toolbar, suppressed on main/master; real API-backed PRs remain the v0.7 flagship).
 8. Plugin host (palette commands, sidebar sections, inspector tabs are list-driven already).
 
 ## 12. Voice & positioning (for docs/website work)

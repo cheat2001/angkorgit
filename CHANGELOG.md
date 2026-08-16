@@ -6,6 +6,14 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-16
+
+The identity release: work and personal finally live side by side — profiles
+bind a commit identity and hosting accounts to each repository so the right
+name and the right token are used automatically, expired tokens announce
+themselves instead of breaking pushes silently, and the diff view learns to
+walk files.
+
 ### Added
 - **Profiles** — identity profiles grew into full work/personal profiles: each
   bundles a commit identity (name + email) with the hosting accounts to use
@@ -28,6 +36,9 @@ All notable changes to AngKorGit are documented here. The format follows
 - **Previous/next file navigation in the diff view** — arrows and `[` / `]`
   step through the files of a commit or the working copy without going back
   to the file list, with an "n of m" position indicator
+- **"Create pull request" after pushing** — a successful push offers a
+  one-click jump to the pre-filled pull/merge request page on GitHub, GitLab
+  (including self-hosted), or Bitbucket
 
 ### Fixed
 - A failed push or fetch on a host with a connected account now says that the
