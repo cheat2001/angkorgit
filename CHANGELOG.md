@@ -36,9 +36,11 @@ walk files.
 - **Previous/next file navigation in the diff view** — arrows and `[` / `]`
   step through the files of a commit or the working copy without going back
   to the file list, with an "n of m" position indicator
-- **"Create pull request" after pushing** — a successful push offers a
-  one-click jump to the pre-filled pull/merge request page on GitHub, GitLab
-  (including self-hosted), or Bitbucket
+- **"Create pull request" in the status bar** — whenever the current branch is
+  a feature branch on a recognized forge, a quiet button in the footer (and a
+  command palette entry) opens the pre-filled pull/merge request page on
+  GitHub, GitLab (including self-hosted), or Bitbucket — there when you want
+  it, silent when you don't
 
 ### Fixed
 - A failed push or fetch on a host with a connected account now says that the

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, GitBranch, Pencil, ZoomIn } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, GitBranch, GitPullRequest, Pencil, ZoomIn } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,16 +8,17 @@ import {
   Hint,
   cn,
 } from '@angkorgit/design-system';
-import { appVersion } from '@/core/ipc';
+import { appVersion, openExternal } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useSettings } from '@/features/settings/store';
-import { capCount } from '@/shared/utils';
+import { capCount, currentPullRequestUrl } from '@/shared/utils';
 
 const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 
 export function StatusBar() {
   const repo = useRepo((s) => s.repo);
   const status = useRepo((s) => s.status);
+  const remotes = useRepo((s) => s.remotes);
   const zoom = useSettings((s) => s.zoom);
   const setZoom = useSettings((s) => s.setZoom);
   const [version, setVersion] = useState('');
@@ -28,6 +29,7 @@ export function StatusBar() {
 
   const changes = status?.files.length ?? 0;
   const branch = repo?.isDetached ? `detached @ ${repo.headOid?.slice(0, 8) ?? '?'}` : repo?.headBranch;
+  const prUrl = currentPullRequestUrl(repo, remotes[0]?.url);
 
   return (
     <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-border-subtle bg-surface px-3 text-[11px] text-muted">
@@ -59,6 +61,18 @@ export function StatusBar() {
         {changes > 0 ? <Pencil className="size-3" /> : <Check className="size-3 text-success" />}
         {changes > 0 ? `${changes} change${changes === 1 ? '' : 's'}` : 'Clean'}
       </span>
+      {prUrl && (
+        <Hint label={`Open a pre-filled pull request page for ${repo?.headBranch}`}>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded px-1 hover:bg-surface-raised hover:text-foreground"
+            onClick={() => void openExternal(prUrl)}
+          >
+            <GitPullRequest className="size-3" />
+            Create pull request
+          </button>
+        </Hint>
+      )}
 
       <span className="flex-1" />
 

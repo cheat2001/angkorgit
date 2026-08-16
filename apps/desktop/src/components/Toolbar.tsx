@@ -41,8 +41,7 @@ import {
   Spinner,
   cn,
 } from '@angkorgit/design-system';
-import { pullRequestUrl } from '@angkorgit/core';
-import { ipc, openExternal, pickDirectory } from '@/core/ipc';
+import { ipc, pickDirectory } from '@/core/ipc';
 import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
@@ -173,8 +172,6 @@ function RepoSwitcher() {
     </DropdownMenu>
   );
 }
-
-const DEFAULT_BRANCHES = new Set(['main', 'master']);
 
 const STATE_LABELS: Record<string, string> = {
   rebase: 'Rebase in progress',
@@ -386,11 +383,8 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   if (!repo) return null;
   const remote = remotes[0]?.name ?? 'origin';
 
-  const run = async (
-    label: string,
-    op: () => Promise<{ status: string; message: string } | void>,
-  ): Promise<boolean> => {
-    if (busy) return false;
+  const run = async (label: string, op: () => Promise<{ status: string; message: string } | void>) => {
+    if (busy) return;
     setBusy(label);
     try {
       const outcome = await op();
@@ -400,10 +394,8 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
         toast.success(`${label} complete`);
       }
       await onRefresh();
-      return true;
     } catch (error) {
       toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
-      return false;
     } finally {
       setBusy(null);
     }
@@ -413,16 +405,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     void (async () => {
       if (busy) return;
       await ensureRepoProfile(repo.path);
-      const pushed = await run(label, op);
-      if (!pushed || repo.isDetached || !repo.headBranch) return;
-      if (DEFAULT_BRANCHES.has(repo.headBranch)) return;
-      const remoteUrl = remotes[0]?.url;
-      const prUrl = remoteUrl ? pullRequestUrl(remoteUrl, repo.headBranch) : null;
-      if (prUrl) {
-        toast(`Open a pull request for ${repo.headBranch}?`, {
-          action: { label: 'Create pull request', onClick: () => void openExternal(prUrl) },
-        });
-      }
+      await run(label, op);
     })();
 
   return (

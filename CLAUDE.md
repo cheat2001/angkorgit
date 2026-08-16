@@ -648,8 +648,11 @@ plugin can be added), and the Homebrew cask.
 3. File-tree view for the working copy (deep C# paths); prev/next-file arrows in DiffPanel.
 4. Blame (file history shipped; annotate view remains). 5. Worktrees.
 7. Forge integrations (PRs/issues) as `packages/forge` mirroring the AI adapter pattern
-   (the browser-link teaser shipped in 0.6.0 — core `forge/pullRequestUrl.ts` + post-push
-   toast in Toolbar, suppressed on main/master; real API-backed PRs remain the v0.7 flagship).
+   (the browser-link teaser shipped in 0.6.0 — core `forge/pullRequestUrl.ts` surfaced as
+   a StatusBar footer button + palette command via `currentPullRequestUrl` in shared/utils,
+   shown only on non-main/master branches with a recognized forge remote; deliberately a
+   persistent affordance, NOT a post-push toast — transient popups nag non-PR users and
+   can't help with a branch pushed yesterday. Real API-backed PRs remain the v0.7 flagship).
 8. Plugin host (palette commands, sidebar sections, inspector tabs are list-driven already).
 
 ## 12. Voice & positioning (for docs/website work)

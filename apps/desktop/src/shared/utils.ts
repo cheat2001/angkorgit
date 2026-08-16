@@ -1,3 +1,5 @@
+import { pullRequestUrl } from '@angkorgit/core';
+
 export function timeAgo(unixSeconds: number): string {
   const diff = Math.max(0, Date.now() / 1000 - unixSeconds);
   if (diff < 60) return 'just now';
@@ -52,4 +54,15 @@ export function dirname(path: string): string {
 
 export function capCount(count: number, max = 99): string {
   return count > max ? `${max}+` : String(count);
+}
+
+const DEFAULT_BRANCHES = new Set(['main', 'master']);
+
+export function currentPullRequestUrl(
+  repo: { headBranch: string | null; isDetached: boolean } | null,
+  remoteUrl: string | undefined,
+): string | null {
+  if (!repo || repo.isDetached || !repo.headBranch || !remoteUrl) return null;
+  if (DEFAULT_BRANCHES.has(repo.headBranch)) return null;
+  return pullRequestUrl(remoteUrl, repo.headBranch);
 }
