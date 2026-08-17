@@ -252,14 +252,20 @@ features/
 │                               stage/unstage/discard(+all),
 │                               auto-grow commit box (hidden when clean; amend link),
 │                               50/72 summary counter, AI message button; during a
-│                               merge an "Abort merge" button sits beside Commit
-│                               (same confirm+mergeAbort as the toolbar state badge,
-│                               clears the prefilled merge draft after refresh)
+│                               merge the commit box stays visible even with a clean
+│                               status and shows "Abort merge" beside Commit — both it
+│                               and the toolbar state badge call the SHARED
+│                               repository/merge.ts abortMergeFlow (confirm →
+│                               mergeAbort → clear merge draft → refresh; refresh
+│                               failures toast separately, never as "Abort failed")
 ├── diff/                     ← DiffPanel (center view, header toggles, minimap, prev/next
 │                               change, prev/next FILE across the source list — working-
 │                               copy side or commit file set — via `[`/`]` + header
 │                               arrows + "n of m", auto-close when file leaves working
-│                               copy),
+│                               copy, prev/next CHANGE via `p`/`n` + header chevrons,
+│                               AUTO-JUMPS to the first change when a new file
+│                               target loads — keyed by path/oid/staged so view or
+│                               whole-file toggles never re-jump),
 │                               DiffViewer (wrap vs VIRTUALIZED no-wrap), VirtualDiff
 │                               (inline + synced split columns), DiffMinimap, diffShared
 ├── conflicts/ConflictResolver← aligned A/B panes, per-LINE checkboxes (whole side via
@@ -275,17 +281,27 @@ features/
 │                               block just resolved (lastTouched state → effect);
 │                               unresolved blocks render as DIMMED PREVIEW rows behind
 │                               a red stripe (unresolvedPreview: base if diff3 else
-│                               side A); PER-BLOCK hand editing in the Output
-│                               (blockEdits map: CLICKING any block — resolved
-│                               prefills picks, unresolved prefills A+B lines — opens
-│                               its inline editor and scrolls the top panes to that
-│                               conflict; NO pencil edit buttons, hover RotateCcw
-│                               discards an edit; the editor is LIVE — write-
-│                               through to blockEdits on change, no Save button, blur/
-│                               Esc closes, disk write only on Mark resolved; opening
-│                               without typing commits nothing; edits count as
-│                               resolved, marker guard, pick-toggle guards
-│                               confirm before replacing an edit) + whole-file editing
+│                               side A), all-EMPTY_SIDE picks and empty edits render a
+│                               "(section deleted)" row (never zero rows — blockRow
+│                               must stay clickable/scroll-targetable); PER-BLOCK hand
+│                               editing in the Output (blockEdits map: mousedown+
+│                               preventDefault on any block — resolved prefills picks,
+│                               unresolved prefills A+B lines — opens its inline
+│                               editor and scrolls the top panes there; preventDefault
+│                               is LOAD-BEARING: the browser's post-mousedown focus
+│                               default would blur+close the just-focused textarea;
+│                               NO pencil edit buttons, hover RotateCcw discards; the
+│                               editor is LIVE — write-through on change, no Save
+│                               button, blur/⌘Enter keeps, Esc REVERTS via
+│                               editSessionRef {block,before,focused} which also
+│                               focuses once per session so virtualizer remounts
+│                               don't scroll-jack; disk write only on Mark resolved;
+│                               edits count as resolved, save re-adds \r per block on
+│                               CRLF files (blockUsesCrlf/editSaveLines — textareas
+│                               normalize CRLF→LF), marker guard is line-anchored
+│                               MARKER_LINE not substring, ONE atomic guardEdits
+│                               confirm replaces manual+block edits so cancel never
+│                               half-applies) + whole-file editing
 │                               behind the header pencil (manual-edit guard, marker
 │                               guard); files over VIRTUAL_THRESHOLD (1500) paired rows
 │                               render virtualized (paired-row flatten keeps A/B

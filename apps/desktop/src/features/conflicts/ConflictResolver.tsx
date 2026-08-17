@@ -35,16 +35,33 @@ type PaneRow =
   | { kind: 'conflict'; block: number; li: number; last: boolean };
 
 type OutputRow =
-  | { kind: 'text'; text: string }
-  | { kind: 'unresolved'; block: number; text: string; first: boolean }
-  | { kind: 'pick'; side: Side; text: string; block: number; first: boolean }
-  | { kind: 'edited'; text: string; block: number; first: boolean }
-  | { kind: 'editor'; block: number };
+  | { kind: 'text'; text: string; key: string }
+  | { kind: 'unresolved'; block: number; text: string; key: string }
+  | { kind: 'pick'; side: Side; text: string; block: number; first: boolean; key: string }
+  | { kind: 'edited'; text: string; block: number; first: boolean; key: string }
+  | { kind: 'deleted'; block: number; side: Side | null; key: string }
+  | { kind: 'editor'; block: number; key: string };
+
+const MARKER_LINE = /^<{7}(?: |\r?$)/m;
 
 function unresolvedPreview(block: ConflictBlock): string[] {
   if (block.base && block.base.length > 0) return block.base;
   if (block.current.length > 0) return block.current;
   return [''];
+}
+
+function stripCr(line: string): string {
+  return line.replace(/\r$/, '');
+}
+
+function blockUsesCrlf(block: ConflictBlock): boolean {
+  return block.markers.open.endsWith('\r');
+}
+
+function editSaveLines(edit: string, crlf: boolean): string[] {
+  if (edit === '') return [];
+  const lines = edit.split('\n').map(stripCr);
+  return crlf ? lines.map((line) => `${line}\r`) : lines;
 }
 
 function buildPaneRows(blocks: Block[] | null): { rows: PaneRow[]; blockStart: Map<number, number> } {
@@ -94,6 +111,9 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const [editingBlock, setEditingBlock] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [lastTouched, setLastTouched] = useState<number | null>(null);
+  const editSessionRef = useRef<{ block: number; before: string | undefined; focused: boolean } | null>(
+    null,
+  );
   const blockRefs = useRef(new Map<number, HTMLDivElement>());
   const outputBlockRefs = useRef(new Map<number, HTMLDivElement>());
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -113,6 +133,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         setPicks(new Map());
         setManualText(null);
         setBlockEdits(new Map());
+        editSessionRef.current = null;
         setEditingBlock(null);
       })
       .catch((error) => {
@@ -136,39 +157,49 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     if (!virtualized || !blocks) return { rows, blockRow };
     blocks.forEach((block, index) => {
       if (block.kind === 'text') {
-        for (const text of block.lines) rows.push({ kind: 'text', text });
+        block.lines.forEach((text, li) => rows.push({ kind: 'text', text, key: `t${index}:${li}` }));
         return;
       }
       blockRow.set(index, rows.length);
       if (editingBlock === index) {
-        rows.push({ kind: 'editor', block: index });
+        rows.push({ kind: 'editor', block: index, key: `ed${index}` });
         return;
       }
       const edit = blockEdits.get(index);
       if (edit !== undefined) {
-        const lines = edit === '' ? [''] : edit.split('\n');
-        lines.forEach((text, li) => rows.push({ kind: 'edited', text, block: index, first: li === 0 }));
+        if (edit === '') {
+          rows.push({ kind: 'deleted', block: index, side: null, key: `d${index}` });
+          return;
+        }
+        edit
+          .split('\n')
+          .forEach((text, li) =>
+            rows.push({ kind: 'edited', text, block: index, first: li === 0, key: `e${index}:${li}` }),
+          );
         return;
       }
       const blockPicks = picks.get(index) ?? [];
       if (blockPicks.length === 0) {
         unresolvedPreview(block).forEach((text, li) =>
-          rows.push({ kind: 'unresolved', block: index, text, first: li === 0 }),
+          rows.push({ kind: 'unresolved', block: index, text, key: `u${index}:${li}` }),
         );
         return;
       }
-      let first = true;
-      for (const p of blockPicks) {
-        if (p.line === EMPTY_SIDE) continue;
+      const kept = blockPicks.filter((p) => p.line !== EMPTY_SIDE);
+      if (kept.length === 0) {
+        rows.push({ kind: 'deleted', block: index, side: blockPicks[0]?.side ?? null, key: `d${index}` });
+        return;
+      }
+      kept.forEach((p, pi) =>
         rows.push({
           kind: 'pick',
           side: p.side,
           text: (p.side === 'current' ? block.current : block.incoming)[p.line],
           block: index,
-          first,
-        });
-        first = false;
-      }
+          first: pi === 0,
+          key: `p${index}:${pi}`,
+        }),
+      );
     });
     return { rows, blockRow };
   }, [virtualized, blocks, picks, blockEdits, editingBlock]);
@@ -190,6 +221,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     count: outputModel.rows.length,
     getScrollElement: () => outputScrollRef.current,
     estimateSize: (index) => (outputModel.rows[index].kind === 'editor' ? 240 : TEXT_ROW_HEIGHT),
+    getItemKey: (index) => outputModel.rows[index].key,
     overscan: 20,
     scrollMargin: outputMargin,
     enabled: virtualized,
@@ -218,15 +250,15 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       const edit = blockEdits.get(i);
       const blockPicks = picks.get(i) ?? [];
       if (edit === undefined && blockPicks.length === 0) return b;
-      manualEdits.set(i, edit !== undefined ? (edit === '' ? [] : edit.split('\n')) : pickedLines(b, blockPicks));
+      manualEdits.set(i, edit !== undefined ? editSaveLines(edit, blockUsesCrlf(b)) : pickedLines(b, blockPicks));
       return { ...b, resolution: 'manual' as const };
     });
     return serializeResolution(resolved, manualEdits);
   };
 
-  const manualHasMarkers = manualText !== null && manualText.includes('<<<<<<<');
+  const manualHasMarkers = manualText !== null && MARKER_LINE.test(manualText);
   const blockEditsHaveMarkers = useMemo(
-    () => [...blockEdits.values()].some((t) => t.includes('<<<<<<<')),
+    () => [...blockEdits.values()].some((t) => MARKER_LINE.test(t)),
     [blockEdits],
   );
   const canSave =
@@ -234,53 +266,39 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       ? !manualHasMarkers
       : blocks !== null && resolvedCount === total && !blockEditsHaveMarkers;
 
-  const guardManual = async (): Promise<boolean> => {
-    if (manualText === null) return true;
+  const guardEdits = async (blockIndex?: number): Promise<boolean> => {
+    const replaceManual = manualText !== null;
+    const replaceBlocks = blockIndex === undefined ? blockEdits.size > 0 : blockEdits.has(blockIndex);
+    if (!replaceManual && !replaceBlocks) return true;
     const ok = await confirmDialog({
-      title: 'Replace manual edits?',
-      description: 'Your hand-written Output will be replaced by the resolution built from the checkboxes.',
+      title: 'Replace hand edits?',
+      description: replaceManual
+        ? 'Your hand-written Output (and any hand-edited conflicts) will be replaced by the resolution built from the checkboxes.'
+        : blockIndex === undefined
+          ? 'Hand-edited conflict results will be replaced by the lines you pick.'
+          : "This conflict's hand-edited result will be replaced by the lines you pick.",
       confirmLabel: 'Replace',
       destructive: true,
     });
-    if (ok) setManualText(null);
-    return ok;
-  };
-
-  const guardBlockEdit = async (index: number): Promise<boolean> => {
-    if (!blockEdits.has(index)) return true;
-    const ok = await confirmDialog({
-      title: 'Replace hand-edited result?',
-      description: 'This conflict was edited by hand. Picking lines will replace that edit.',
-      confirmLabel: 'Replace',
-      destructive: true,
-    });
-    if (ok) {
-      setBlockEdits((prev) => {
-        const next = new Map(prev);
-        next.delete(index);
-        return next;
-      });
+    if (!ok) return false;
+    if (replaceManual) setManualText(null);
+    if (replaceBlocks) {
+      if (blockIndex === undefined) setBlockEdits(new Map());
+      else
+        setBlockEdits((prev) => {
+          const next = new Map(prev);
+          next.delete(blockIndex);
+          return next;
+        });
     }
-    return ok;
-  };
-
-  const guardAllBlockEdits = async (): Promise<boolean> => {
-    if (blockEdits.size === 0) return true;
-    const ok = await confirmDialog({
-      title: 'Replace hand-edited results?',
-      description: 'Some conflicts were edited by hand. Those edits will be replaced.',
-      confirmLabel: 'Replace',
-      destructive: true,
-    });
-    if (ok) setBlockEdits(new Map());
-    return ok;
+    return true;
   };
 
   const isPicked = (index: number, side: Side, line: number) =>
     (picks.get(index) ?? []).some((p) => p.side === side && p.line === line);
 
   const toggleLine = async (index: number, side: Side, line: number) => {
-    if (!(await guardManual()) || !(await guardBlockEdit(index))) return;
+    if (!(await guardEdits(index))) return;
     setPicks((prev) => {
       const next = new Map(prev);
       const blockPicks = [...(next.get(index) ?? [])];
@@ -308,7 +326,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     total > 0 && conflictIndices.every((i) => sideFullyPicked(i, side));
 
   const toggleBlockSide = async (index: number, side: Side) => {
-    if (!blocks || !(await guardManual()) || !(await guardBlockEdit(index))) return;
+    if (!blocks || !(await guardEdits(index))) return;
     const block = blocks[index] as ConflictBlock;
     const lines = side === 'current' ? block.current : block.incoming;
     const takeAll = !sideFullyPicked(index, side);
@@ -328,7 +346,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   };
 
   const togglePaneSide = async (side: Side) => {
-    if (!blocks || !(await guardManual()) || !(await guardAllBlockEdits())) return;
+    if (!blocks || !(await guardEdits())) return;
     const takeAll = !allOfSidePicked(side);
     setPicks((prev) => {
       const next = new Map(prev);
@@ -348,8 +366,9 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   };
 
   const reset = async () => {
-    if (!(await guardManual()) || !(await guardAllBlockEdits())) return;
+    if (!(await guardEdits())) return;
     setPicks(new Map());
+    editSessionRef.current = null;
     setEditingBlock(null);
   };
 
@@ -362,13 +381,29 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       edit !== undefined
         ? edit
         : blockPicks.length > 0
-          ? pickedLines(block, blockPicks).join('\n')
-          : [...block.current, ...block.incoming].join('\n');
+          ? pickedLines(block, blockPicks).map(stripCr).join('\n')
+          : [...block.current, ...block.incoming].map(stripCr).join('\n');
+    editSessionRef.current = { block: index, before: edit, focused: false };
     setEditDraft(initial);
     setEditingBlock(index);
     const at = conflictIndices.indexOf(index);
     if (at >= 0) setActiveConflict(at);
     scrollTopToBlock(index);
+  };
+
+  const closeEditor = (revert: boolean) => {
+    const session = editSessionRef.current;
+    if (!session) return;
+    if (revert) {
+      setBlockEdits((prev) => {
+        const next = new Map(prev);
+        if (session.before === undefined) next.delete(session.block);
+        else next.set(session.block, session.before);
+        return next;
+      });
+    }
+    editSessionRef.current = null;
+    setEditingBlock(null);
   };
 
   const revertEdit = async (index: number) => {
@@ -473,6 +508,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
           size="icon-sm"
           className="h-5 w-5 border border-border bg-surface shadow-soft"
           aria-label="Discard the hand edit for this conflict"
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             void revertEdit(index);
@@ -484,24 +520,68 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     </span>
   );
 
+  const renderDeletedRow = (index: number, side: Side | null) => (
+    <div
+      className={cn(
+        'group relative flex cursor-text items-start gap-2 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40',
+        side === 'current' ? 'bg-info/10' : side === 'incoming' ? 'bg-success/10' : 'bg-primary/10',
+      )}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        startEdit(index);
+      }}
+    >
+      {side === null ? (
+        <span className="flex w-4 shrink-0 items-center justify-center leading-5">
+          <Pencil className="size-3 text-primary" />
+        </span>
+      ) : (
+        <span
+          className={cn(
+            'w-4 shrink-0 text-center font-mono text-[10px] font-bold leading-5',
+            side === 'current' ? 'text-info' : 'text-success',
+          )}
+        >
+          {side === 'current' ? 'A' : 'B'}
+        </span>
+      )}
+      <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs italic leading-5 text-faint">
+        (section deleted)
+      </pre>
+      {side === null && renderRevertAction(index)}
+    </div>
+  );
+
   const renderBlockEditor = (index: number) => (
     <div className="border-y border-primary/40 bg-primary/5">
       <textarea
+        ref={(el) => {
+          const session = editSessionRef.current;
+          if (el && session && session.block === index && !session.focused) {
+            session.focused = true;
+            el.focus();
+          }
+        }}
         value={editDraft}
         onChange={(e) => {
           setEditDraft(e.target.value);
           setBlockEdits((prev) => new Map(prev).set(index, e.target.value));
         }}
-        onBlur={() => setEditingBlock(null)}
+        onBlur={() => {
+          if (editSessionRef.current?.block === index) closeEditor(false);
+        }}
         onKeyDown={(e) => {
-          if (e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key === 'Enter')) {
+          if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
-            setEditingBlock(null);
+            closeEditor(true);
+          } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeEditor(false);
           }
         }}
         spellCheck={false}
-        autoFocus
         rows={Math.min(Math.max(editDraft.split('\n').length + 1, 2), 16)}
         aria-label="Hand-edited result for this conflict"
         className={cn(
@@ -516,7 +596,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     <div
       className="flex cursor-text items-start gap-2 border-l-2 border-danger bg-danger/5 px-2 transition-colors hover:bg-danger/10"
       title="Unresolved conflict — click to edit the result, or pick lines above"
-      onClick={() => startEdit(index)}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        startEdit(index);
+      }}
     >
       <span className="w-3.5 shrink-0" />
       <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs italic leading-5 text-faint">
@@ -533,7 +616,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       )}
     >
       <Checkbox
-        checked={sideFullyPicked(index, side)}
+        checked={!blockEdits.has(index) && sideFullyPicked(index, side)}
         onCheckedChange={() => void toggleBlockSide(index, side)}
         aria-label={
           side === 'current'
@@ -833,15 +916,17 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                     {aiBusy ? 'Explaining conflict…' : 'AI explanation'}
                   </span>
                   {!aiBusy && (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="ml-auto h-5 w-5"
-                      aria-label="Dismiss AI explanation"
-                      onClick={() => setAiText(null)}
-                    >
-                      <X className="size-3" />
-                    </Button>
+                    <Hint label="Dismiss">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="ml-auto h-5 w-5"
+                        aria-label="Dismiss AI explanation"
+                        onClick={() => setAiText(null)}
+                      >
+                        <X className="size-3" />
+                      </Button>
+                    </Hint>
                   )}
                 </div>
                 {aiBusy ? (
@@ -979,10 +1064,15 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             renderBlockEditor(row.block)
                           ) : row.kind === 'unresolved' ? (
                             renderUnresolvedLine(row.block, row.text)
+                          ) : row.kind === 'deleted' ? (
+                            renderDeletedRow(row.block, row.side)
                           ) : row.kind === 'edited' ? (
                             <div
                               className="group relative flex cursor-text items-start gap-2 bg-primary/10 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
-                              onClick={() => startEdit(row.block)}
+                              onMouseDown={(e) => {
+        e.preventDefault();
+        startEdit(row.block);
+      }}
                             >
                               <span className="flex w-4 shrink-0 items-center justify-center leading-5">
                                 <Pencil className="size-3 text-primary" />
@@ -998,7 +1088,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                                 'flex cursor-text items-start gap-2 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40',
                                 row.side === 'current' ? 'bg-info/10' : 'bg-success/10',
                               )}
-                              onClick={() => startEdit(row.block)}
+                              onMouseDown={(e) => {
+        e.preventDefault();
+        startEdit(row.block);
+      }}
                             >
                               <span
                                 className={cn(
@@ -1038,15 +1131,24 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                     }
                     const edit = blockEdits.get(index);
                     if (edit !== undefined) {
-                      const lines = edit === '' ? [''] : edit.split('\n');
+                      if (edit === '') {
+                        return (
+                          <div key={index} ref={registerOutputBlock(index)}>
+                            {renderDeletedRow(index, null)}
+                          </div>
+                        );
+                      }
                       return (
                         <div
                           key={index}
                           ref={registerOutputBlock(index)}
                           className="group relative cursor-text transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
-                          onClick={() => startEdit(index)}
+                          onMouseDown={(e) => {
+        e.preventDefault();
+        startEdit(index);
+      }}
                         >
-                          {lines.map((line, li) => (
+                          {edit.split('\n').map((line, li) => (
                             <div key={li} className="flex items-start gap-2 bg-primary/10 px-2">
                               <span className="flex w-4 shrink-0 items-center justify-center leading-5">
                                 <Pencil className="size-3 text-primary" />
@@ -1070,12 +1172,22 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                         </div>
                       );
                     }
+                    if (blockPicks.every((p) => p.line === EMPTY_SIDE)) {
+                      return (
+                        <div key={index} ref={registerOutputBlock(index)}>
+                          {renderDeletedRow(index, blockPicks[0]?.side ?? null)}
+                        </div>
+                      );
+                    }
                     return (
                       <div
                         key={index}
                         ref={registerOutputBlock(index)}
                         className="cursor-text transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
-                        onClick={() => startEdit(index)}
+                        onMouseDown={(e) => {
+        e.preventDefault();
+        startEdit(index);
+      }}
                       >
                         {blockPicks
                           .filter((p) => p.line !== EMPTY_SIDE)

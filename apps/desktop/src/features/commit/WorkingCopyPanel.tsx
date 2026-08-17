@@ -27,6 +27,7 @@ import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { useSettings } from '@/features/settings/store';
 import { ensureRepoProfile } from '@/features/settings/profiles';
 import { useUndo } from '@/features/history/undoStore';
+import { abortMergeFlow } from '@/features/repository/merge';
 import { useCommitDraft } from './draftStore';
 import { confirmDialog } from '@/components/confirm';
 import { FileTree, treeIndent as sharedTreeIndent } from '@/components/FileTree';
@@ -358,25 +359,6 @@ export function WorkingCopyPanel() {
     }
   };
 
-  const abortMerge = async () => {
-    const ok = await confirmDialog({
-      title: 'Abort merge?',
-      description: 'This resets the working copy to the state before the merge started.',
-      confirmLabel: 'Abort merge',
-      destructive: true,
-    });
-    if (!ok) return;
-    try {
-      await ipc.mergeAbort(path);
-      toast.success('Merge aborted');
-      await useRepo.getState().refresh();
-      useCommitDraft.getState().setDraft(path, '');
-      await reloadGraph(path);
-    } catch (error) {
-      toast.error(`Abort failed: ${(error as { message?: string }).message ?? error}`);
-    }
-  };
-
   const conflictedPaths = new Set(conflicts);
 
   const treeIndent = (depth?: number) =>
@@ -578,7 +560,7 @@ export function WorkingCopyPanel() {
         </DropdownMenu>
       )}
 
-      {files.length === 0 && !amend ? (
+      {files.length === 0 && !amend && repo?.state !== 'merge' ? (
         <div className="shrink-0 border-t border-border-subtle px-3 py-2">
           <Button variant="ghost" size="sm" className="text-muted" onClick={() => setAmend(true)}>
             <Undo2 className="size-3" /> Amend last commit…
@@ -641,7 +623,7 @@ export function WorkingCopyPanel() {
                     variant="outline"
                     size="sm"
                     className="text-danger hover:text-danger"
-                    onClick={() => void abortMerge()}
+                    onClick={() => void abortMergeFlow(path)}
                   >
                     Abort merge
                   </Button>
@@ -649,7 +631,11 @@ export function WorkingCopyPanel() {
               )}
               <Button
                 size="sm"
-                disabled={committing || (!message.trim() && !amend) || (stagedFiles.length === 0 && !amend)}
+                disabled={
+                  committing ||
+                  (!message.trim() && !amend) ||
+                  (stagedFiles.length === 0 && !amend && repo?.state !== 'merge')
+                }
                 onClick={() => void commit()}
               >
                 {committing && <Spinner className="text-primary-foreground" />}

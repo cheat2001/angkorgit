@@ -44,6 +44,7 @@ import {
 import { ipc, pickDirectory } from '@/core/ipc';
 import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
+import { abortMergeFlow } from '@/features/repository/merge';
 import { useUi } from '@/features/ui/store';
 import { useUndo } from '@/features/history/undoStore';
 import { useSettings, type IdentityProfile } from '@/features/settings/store';
@@ -219,23 +220,7 @@ function StateActions({ onRefresh }: { onRefresh: () => Promise<void> }) {
       finish();
     })();
 
-  const abortMerge = () =>
-    void (async () => {
-      const ok = await confirmDialog({
-        title: 'Abort merge?',
-        description: 'This resets the working copy to the state before the merge started.',
-        confirmLabel: 'Abort merge',
-        destructive: true,
-      });
-      if (!ok) return;
-      try {
-        await ipc.mergeAbort(path);
-        toast.success('Merge aborted');
-      } catch (error) {
-        toast.error(`Abort failed: ${(error as { message?: string }).message ?? error}`);
-      }
-      finish();
-    })();
+  const abortMerge = () => void abortMergeFlow(path);
 
   const clearState = () =>
     void (async () => {

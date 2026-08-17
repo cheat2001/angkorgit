@@ -84,15 +84,18 @@ test('conflict result can be hand-edited per block', async ({ page }) => {
   await expect(editor).toBeVisible();
   await editor.fill('const palette = mergedThemePalette();');
   await expect(page.getByText('1/1 resolved')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await page.getByText('Output', { exact: true }).click();
   await expect(editor).toBeHidden();
   await expect(page.getByText('const palette = mergedThemePalette();')).toBeVisible();
   await expect(page.getByText('1 edited by hand')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeEnabled();
   await page.getByText('const palette = mergedThemePalette();').click();
   await expect(editor).toBeVisible();
+  await editor.fill('scrapped');
   await page.keyboard.press('Escape');
   await expect(editor).toBeHidden();
+  await expect(page.getByText('const palette = mergedThemePalette();')).toBeVisible();
+  await expect(page.getByText('scrapped')).toBeHidden();
   await expect(page.getByText('1/1 resolved')).toBeVisible();
 });
 

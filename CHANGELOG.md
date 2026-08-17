@@ -7,38 +7,41 @@ All notable changes to AngKorGit are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- **Per-conflict hand editing** — every conflict in the resolver's Output pane
-  can now be edited by hand, not just picked from A or B: an "Edit by hand"
-  button on each unresolved conflict (pre-filled with both sides so the code
-  can be aligned/merged) and a hover pencil on each resolved block (pre-filled
-  with the picked lines). Edits show a pencil marker per line, count toward
-  the resolved total, and can be discarded back to the checkbox picks; the
-  whole-file editor behind the header pencil still works as before.
-
+- **Per-conflict hand editing** — click any conflict's result in the Output
+  pane (resolved or not) and it turns into an inline editor: unresolved
+  conflicts prefill both sides so the code can be aligned/merged, resolved
+  blocks prefill the picked lines. Edits apply live as you type, Esc cancels
+  the typing, clicking away keeps it, and nothing touches the disk until
+  "Mark resolved". Edited lines carry a pencil marker, count toward the
+  resolved total, and a hover undo button discards an edit back to the
+  checkbox picks; the whole-file editor behind the header pencil still works
+  as before.
 - **Per-conflict "Take all A" / "Take all B"** — each conflict block carries
   its own take-a-whole-side checkboxes, so one click resolves that conflict
   without ticking line by line (the pane-header checkboxes still take a side
   for every conflict at once).
+- **Abort merge next to the commit button** — during a merge the commit box
+  shows an "Abort merge" button beside Commit (with the merge message already
+  prefilled), and it stays visible even when the status is otherwise clean;
+  the toolbar state badge menu still works and both paths now clear the
+  prefilled merge message.
+- **Diffs open at the first change** — clicking a file in the working copy or
+  a commit now scrolls the diff straight to its first changed lines instead
+  of the top of the file, and `N` / `P` step to the next / previous change
+  from the keyboard (joining `[` / `]` for previous / next file, all now
+  listed in the Shortcuts reference).
 
 ### Changed
-- **Click anywhere in a conflict's result to edit it** — resolved or not,
-  every conflict block in the Output opens its inline editor on click
-  (unresolved blocks prefill both sides so the code can be merged by hand);
-  edits apply live as you type, Esc or clicking away closes the editor, and
-  nothing is written to disk until "Mark resolved". The pencil edit buttons
-  are gone — clicking is the way in; the hover undo button still discards a
-  hand edit, and clicking a block also scrolls the A/B panes to it.
 - **Conflict navigation moved to the Output divider** — a centered
   "Conflict n of m" pill with prev/next arrows floats between the panes and
-  the Output, GitKraken-style, instead of living in the window header.
+  the Output, GitKraken-style, instead of living in the window header; the
+  resolver also auto-jumps to the first conflict on open and the arrows show
+  even for a single conflict.
 - **Quieter unresolved markers** — unresolved conflicts in the Output show
   the conflict's own content dimmed behind a red stripe (base version when
   the file has diff3 markers, side A otherwise) instead of a wordy red
-  banner; clicking the stripe still jumps to the conflict.
-- **Abort merge next to the commit button** — during a merge the commit box
-  shows an "Abort merge" button beside Commit (with the merge message already
-  prefilled), so bailing out no longer requires finding the state badge menu
-  in the toolbar (which still works).
+  banner; a section resolved as a deletion shows a "(section deleted)" row
+  instead of disappearing.
 
 ### Fixed
 - **AI conflict explanations were invisible** — the ✨ button's answer used to
@@ -46,15 +49,18 @@ All notable changes to AngKorGit are documented here. The format follows
   appeared to do nothing. The explanation now opens in a floating panel over
   the panes, with an immediate "Explaining conflict…" state while the AI
   works and a dismiss button.
-- **Conflict resolver Output pane now follows the work** — picking lines for a
-  conflict (or saving a hand edit) auto-scrolls the Output pane to that
-  conflict's result, and the prev/next conflict navigation keeps both panes in
-  sync instead of only scrolling the top pane.
-- **Conflicts are findable in huge files** — the resolver auto-jumps to the
-  first conflict on open, the prev/next arrows and counter show even for a
-  single conflict (they were hidden unless a file had two or more), and
-  clicking an "Unresolved" banner in the Output jumps the panes to that
-  conflict.
+- **Conflict resolver Output pane now follows the work** — picking lines or
+  editing a conflict auto-scrolls the Output pane to that conflict's result,
+  and the prev/next navigation keeps both panes in sync.
+- **Hand edits preserve CRLF line endings** — editing a conflict in a
+  Windows-authored (CRLF) file no longer rewrites that block with LF-only
+  lines.
+- **Hand-edit safety** — Esc now reverts the editor's typing instead of
+  silently keeping it (a stray keystroke can no longer mark a conflict
+  resolved with both sides duplicated), an emptied edit now previews and
+  saves consistently as a deleted section, cancelling a "replace hand edits?"
+  dialog no longer half-applies the replacement, and files that legitimately
+  contain `<<<<<<<` mid-line no longer block "Mark resolved".
 
 ## [0.6.0] — 2026-08-16
 

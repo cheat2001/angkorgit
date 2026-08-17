@@ -90,6 +90,8 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   useShortcuts([
     { combo: '[', handler: () => goFile(-1), skipInInput: true },
     { combo: ']', handler: () => goFile(1), skipInInput: true },
+    { combo: 'p', handler: () => jumpChange(-1), skipInInput: true },
+    { combo: 'n', handler: () => jumpChange(1), skipInInput: true },
   ]);
 
   useEffect(() => {
@@ -106,6 +108,22 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     () => (diff && !diff.isBinary && !diff.isImage ? changeBlocks(diff, diffView) : []),
     [diff, diffView],
   );
+
+  const autoJumpKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!diff) return;
+    const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}`;
+    if (autoJumpKey.current === key) return;
+    autoJumpKey.current = key;
+    const id = requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (!el || el.scrollHeight === 0) return;
+      if (blocks.length > 0) scrollToFraction(el, blocks[0].fraction);
+      else el.scrollTo({ top: 0 });
+    });
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diff, blocks]);
 
   const jumpChange = (direction: 1 | -1) => {
     const el = scrollRef.current;
@@ -271,12 +289,24 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         {blocks.length > 0 && (
           <>
             <Separator orientation="vertical" className="mx-1 h-4" />
-            <Hint label="Previous change">
+            <Hint
+              label={
+                <span className="flex items-center gap-1">
+                  Previous change <Kbd>P</Kbd>
+                </span>
+              }
+            >
               <Button variant="ghost" size="icon-sm" aria-label="Previous change" onClick={() => jumpChange(-1)}>
                 <ChevronUp className="size-4" />
               </Button>
             </Hint>
-            <Hint label="Next change">
+            <Hint
+              label={
+                <span className="flex items-center gap-1">
+                  Next change <Kbd>N</Kbd>
+                </span>
+              }
+            >
               <Button variant="ghost" size="icon-sm" aria-label="Next change" onClick={() => jumpChange(1)}>
                 <ChevronDown className="size-4" />
               </Button>
