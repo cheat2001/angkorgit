@@ -1,20 +1,20 @@
 # Roadmap
 
-Updated for v0.4.0 (August 2026). [CHANGELOG.md](../CHANGELOG.md) is the
+Updated for v0.6.1 (August 2026). [CHANGELOG.md](../CHANGELOG.md) is the
 authoritative record of what shipped in each release; this file tracks
 direction.
 
-## Shipped (0.1.0 → 0.4.0)
+## Shipped (0.1.0 → 0.6.1)
 
 - [x] Repository: open, clone (with progress), recents, search, repository tabs (drag to reorder)
 - [x] Commit: stage files, hunks, and individual lines; unstage, commit, amend; per-repo commit drafts
 - [x] History: virtualized animated graph, search, author/branch filters, refs/tags/HEAD/merges, file history
-- [x] Branch: create, delete, rename, checkout (incl. remote), merge, rebase (+continue/abort), cherry-pick, reset (soft/mixed/hard) — explicit merges always record a merge commit
+- [x] Branch: create, delete, rename, checkout (incl. remote), merge, rebase (+continue/abort), interactive rebase (reorder/reword/squash/fixup/drop), cherry-pick, reset (soft/mixed/hard) — explicit merges always record a merge commit; abort merge from the commit box
 - [x] Remote: fetch, pull, push, force push, push/fetch tags, background auto fetch
-- [x] Conflicts: visual resolver — aligned A/B panes, per-line checkbox picks, a clean Output pane, guarded hand-editing
+- [x] Conflicts: visual resolver — aligned A/B panes, per-line and per-side picks, a clean Output pane with direct click-to-edit results, GitKraken-style conflict navigation, AI explanations
 - [x] Stash: create, apply, pop, drop · Tags: create (annotated/lightweight), delete, checkout · Submodules: list & update
 - [x] Built-in PTY terminal at repo root; built-in file editor
-- [x] Diff: inline & side-by-side, syntax highlight, word diff, image diff, find in diff (⌘F), minimap
+- [x] Diff: inline & side-by-side, syntax highlight, word diff, image diff, find in diff (⌘F), minimap, previous/next change and file navigation (N/P, [/]), opens at the first change
 - [x] Settings: sixteen themes (Angkor Dusk default) with accents & zoom, identity profiles (repo-local), SSH key management & generation, hosting accounts with verified tokens, AI providers & commit style, keyboard reference
 - [x] AI: provider-agnostic (OpenAI, Anthropic, Gemini, Ollama, LM Studio) plus installed AI CLIs (Claude Code, Codex, Gemini CLI, OpenCode) — commit messages, diff/conflict explanations, PR descriptions, staged-change review
 - [x] Undo/redo for recent operations; drag-and-drop merge/rebase
@@ -22,10 +22,10 @@ direction.
 
 ## Next
 
-- [ ] Interactive rebase (reorder/squash/reword) UI
+- [ ] Forge integrations: API-backed pull requests and issues (the v0.7 flagship — the pre-filled create-PR link shipped in 0.6.0)
 - [ ] Blame view
 - [ ] GPG/SSH commit signing
-- [ ] File-tree view for the working copy; previous/next-file navigation in diffs
+- [ ] Worktrees
 - [ ] Provider avatars via connected accounts, layered over Gravatar
 
 ## Later — Connected (architecture in place, see Architecture.md)
