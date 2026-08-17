@@ -667,6 +667,29 @@ plugin can be added), and the Homebrew cask.
   is no longer used — the GitHub Pages site is built at root base for the custom domain.
 - **Release** (`release.yml`): push tag `v*` → tauri-action builds macOS (universal),
   Windows, Linux; attaches to draft GitHub release.
+- **Version-alignment checklist (MANDATORY on every release/bump)** — the version
+  lives in more places than the manifests; a release is not done until ALL of
+  these say the new version. Verify with
+  `grep -rn "<OLD_VERSION>" --exclude-dir={node_modules,target,test-results} .`
+  (only CHANGELOG history and genuinely historical notes may match):
+  1. `package.json` (root) + `apps/desktop/package.json`
+  2. `apps/desktop/src-tauri/tauri.conf.json` + `Cargo.toml` + `Cargo.lock`
+     (the `name = "angkorgit"` entry)
+  3. `.github/ISSUE_TEMPLATE/bug_report.yml` version placeholder
+  4. `CHANGELOG.md` — roll `[Unreleased]` into the new version WITH a themed
+     summary paragraph, and extend the compare links at the bottom (they have
+     been forgotten before — 0.5.0/0.6.0 were missing until 0.6.1)
+  5. `README.md` — the three pinned install commands (macOS dmg, Windows exe,
+     Linux AppImage)
+  6. `apps/website/src/lib/site.ts` — `FALLBACK_VERSION`
+  7. `docs/Distribution.md` — Homebrew cask example
+  8. `docs/Roadmap.md` — "Updated for vX" header + "Shipped" range, and move
+     newly shipped items out of "Next"
+  9. `CLAUDE.md` itself — test counts in §9 and the §6/§5 subsystem map for any
+     feature that shipped
+  After publishing: confirm the updater offered the release (installed app
+  version flips), and that angkorgit.app shows the new version (manually
+  dispatch the Website workflow if the release-triggered deploy served stale).
 - **Release notes follow a fixed house template** (see any published release, e.g.
   v0.3.0 — the owner rejects ad-hoc formats): (1) themed opening line ("The X
   release. …") + the standing updater sentence "Already on AngKorGit? **Your app
