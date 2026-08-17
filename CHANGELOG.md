@@ -6,6 +6,14 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-08-17
+
+The resolving release: the conflict resolver becomes a direct-manipulation
+editor — click any result to edit it in place, take whole sides per conflict,
+navigate with a GitKraken-style pill that keeps both panes in sync — merges
+can be aborted right where you commit, and diffs open on the first change
+instead of the top of the file.
+
 ### Added
 - **Per-conflict hand editing** — click any conflict's result in the Output
   pane (resolved or not) and it turns into an inline editor: unresolved
@@ -527,7 +535,10 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/cheat2001/angkorgit/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/cheat2001/angkorgit/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/cheat2001/angkorgit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/cheat2001/angkorgit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/cheat2001/angkorgit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/cheat2001/angkorgit/compare/v0.1.3...v0.2.0

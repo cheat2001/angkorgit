@@ -1,6 +1,6 @@
 [package]
 name = "angkorgit"
-version = "0.6.0"
+version = "0.6.1"
 description = "AngKorGit — a modern, fast, beautiful Git client"
 authors = ["AngKorGit Contributors"]
 license = "MIT"
