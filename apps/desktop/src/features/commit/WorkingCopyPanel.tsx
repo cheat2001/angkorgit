@@ -358,6 +358,25 @@ export function WorkingCopyPanel() {
     }
   };
 
+  const abortMerge = async () => {
+    const ok = await confirmDialog({
+      title: 'Abort merge?',
+      description: 'This resets the working copy to the state before the merge started.',
+      confirmLabel: 'Abort merge',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await ipc.mergeAbort(path);
+      toast.success('Merge aborted');
+      await useRepo.getState().refresh();
+      useCommitDraft.getState().setDraft(path, '');
+      await reloadGraph(path);
+    } catch (error) {
+      toast.error(`Abort failed: ${(error as { message?: string }).message ?? error}`);
+    }
+  };
+
   const conflictedPaths = new Set(conflicts);
 
   const treeIndent = (depth?: number) =>
@@ -615,15 +634,28 @@ export function WorkingCopyPanel() {
               <Checkbox checked={amend} onCheckedChange={(v) => setAmend(v === true)} />
               <Undo2 className="size-3" /> Amend
             </label>
-            <Button
-              className="ml-auto"
-              size="sm"
-              disabled={committing || (!message.trim() && !amend) || (stagedFiles.length === 0 && !amend)}
-              onClick={() => void commit()}
-            >
-              {committing && <Spinner className="text-primary-foreground" />}
-              {amend ? 'Amend commit' : `Commit${stagedFiles.length > 0 ? ` ${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'}` : ''}`}
-            </Button>
+            <span className="ml-auto flex items-center gap-2">
+              {repo?.state === 'merge' && (
+                <Hint label="Reset the working copy to the state before the merge started">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-danger hover:text-danger"
+                    onClick={() => void abortMerge()}
+                  >
+                    Abort merge
+                  </Button>
+                </Hint>
+              )}
+              <Button
+                size="sm"
+                disabled={committing || (!message.trim() && !amend) || (stagedFiles.length === 0 && !amend)}
+                onClick={() => void commit()}
+              >
+                {committing && <Spinner className="text-primary-foreground" />}
+                {amend ? 'Amend commit' : `Commit${stagedFiles.length > 0 ? ` ${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'}` : ''}`}
+              </Button>
+            </span>
           </div>
         </div>
       )}

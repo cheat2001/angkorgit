@@ -31,12 +31,21 @@ const CONFLICT_ROW_HEIGHT = 24;
 
 type PaneRow =
   | { kind: 'text'; block: number; text: string }
-  | { kind: 'conflict'; block: number; li: number; first: boolean; last: boolean };
+  | { kind: 'header'; block: number }
+  | { kind: 'conflict'; block: number; li: number; last: boolean };
 
 type OutputRow =
   | { kind: 'text'; text: string }
-  | { kind: 'unresolved' }
-  | { kind: 'pick'; side: Side; text: string };
+  | { kind: 'unresolved'; block: number; text: string; first: boolean }
+  | { kind: 'pick'; side: Side; text: string; block: number; first: boolean }
+  | { kind: 'edited'; text: string; block: number; first: boolean }
+  | { kind: 'editor'; block: number };
+
+function unresolvedPreview(block: ConflictBlock): string[] {
+  if (block.base && block.base.length > 0) return block.base;
+  if (block.current.length > 0) return block.current;
+  return [''];
+}
 
 function buildPaneRows(blocks: Block[] | null): { rows: PaneRow[]; blockStart: Map<number, number> } {
   const rows: PaneRow[] = [];
@@ -47,9 +56,10 @@ function buildPaneRows(blocks: Block[] | null): { rows: PaneRow[]; blockStart: M
       for (const text of b.lines) rows.push({ kind: 'text', block, text });
       return;
     }
+    rows.push({ kind: 'header', block });
     const count = Math.max(b.current.length || 1, b.incoming.length || 1);
     for (let li = 0; li < count; li += 1) {
-      rows.push({ kind: 'conflict', block, li, first: li === 0, last: li === count - 1 });
+      rows.push({ kind: 'conflict', block, li, last: li === count - 1 });
     }
   });
   return { rows, blockStart };
@@ -80,7 +90,12 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const [saving, setSaving] = useState(false);
   const [aiText, setAiText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const [blockEdits, setBlockEdits] = useState<Map<number, string>>(new Map());
+  const [editingBlock, setEditingBlock] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [lastTouched, setLastTouched] = useState<number | null>(null);
   const blockRefs = useRef(new Map<number, HTMLDivElement>());
+  const outputBlockRefs = useRef(new Map<number, HTMLDivElement>());
   const topScrollRef = useRef<HTMLDivElement>(null);
   const topListRef = useRef<HTMLDivElement>(null);
   const outputScrollRef = useRef<HTMLDivElement>(null);
@@ -97,6 +112,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         setBlocks(parseConflicts(cf.content));
         setPicks(new Map());
         setManualText(null);
+        setBlockEdits(new Map());
+        setEditingBlock(null);
       })
       .catch((error) => {
         toast.error(`Could not read ${file}: ${(error as { message?: string }).message ?? error}`);
@@ -113,30 +130,48 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   );
   const paneModel = useMemo(() => buildPaneRows(blocks), [blocks]);
   const virtualized = paneModel.rows.length > VIRTUAL_THRESHOLD;
-  const outputRows = useMemo<OutputRow[]>(() => {
-    if (!virtualized || !blocks) return [];
+  const outputModel = useMemo<{ rows: OutputRow[]; blockRow: Map<number, number> }>(() => {
     const rows: OutputRow[] = [];
+    const blockRow = new Map<number, number>();
+    if (!virtualized || !blocks) return { rows, blockRow };
     blocks.forEach((block, index) => {
       if (block.kind === 'text') {
         for (const text of block.lines) rows.push({ kind: 'text', text });
         return;
       }
-      const blockPicks = picks.get(index) ?? [];
-      if (blockPicks.length === 0) {
-        rows.push({ kind: 'unresolved' });
+      blockRow.set(index, rows.length);
+      if (editingBlock === index) {
+        rows.push({ kind: 'editor', block: index });
         return;
       }
+      const edit = blockEdits.get(index);
+      if (edit !== undefined) {
+        const lines = edit === '' ? [''] : edit.split('\n');
+        lines.forEach((text, li) => rows.push({ kind: 'edited', text, block: index, first: li === 0 }));
+        return;
+      }
+      const blockPicks = picks.get(index) ?? [];
+      if (blockPicks.length === 0) {
+        unresolvedPreview(block).forEach((text, li) =>
+          rows.push({ kind: 'unresolved', block: index, text, first: li === 0 }),
+        );
+        return;
+      }
+      let first = true;
       for (const p of blockPicks) {
         if (p.line === EMPTY_SIDE) continue;
         rows.push({
           kind: 'pick',
           side: p.side,
           text: (p.side === 'current' ? block.current : block.incoming)[p.line],
+          block: index,
+          first,
         });
+        first = false;
       }
     });
-    return rows;
-  }, [virtualized, blocks, picks]);
+    return { rows, blockRow };
+  }, [virtualized, blocks, picks, blockEdits, editingBlock]);
 
   const topMargin = useOffsetTop(topListRef);
   const outputMargin = useOffsetTop(outputListRef);
@@ -152,17 +187,17 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   });
 
   const outputVirtualizer = useVirtualizer({
-    count: outputRows.length,
+    count: outputModel.rows.length,
     getScrollElement: () => outputScrollRef.current,
-    estimateSize: () => TEXT_ROW_HEIGHT,
+    estimateSize: (index) => (outputModel.rows[index].kind === 'editor' ? 240 : TEXT_ROW_HEIGHT),
     overscan: 20,
     scrollMargin: outputMargin,
     enabled: virtualized,
   });
   const total = conflictIndices.length;
   const resolvedCount = useMemo(
-    () => conflictIndices.filter((i) => (picks.get(i)?.length ?? 0) > 0).length,
-    [conflictIndices, picks],
+    () => conflictIndices.filter((i) => (picks.get(i)?.length ?? 0) > 0 || blockEdits.has(i)).length,
+    [conflictIndices, picks, blockEdits],
   );
 
   const firstConflict = blocks?.find((b): b is ConflictBlock => b.kind === 'conflict');
@@ -180,16 +215,24 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     const manualEdits = new Map<number, string[]>();
     const resolved = blocks.map((b, i) => {
       if (b.kind !== 'conflict') return b;
+      const edit = blockEdits.get(i);
       const blockPicks = picks.get(i) ?? [];
-      if (blockPicks.length === 0) return b;
-      manualEdits.set(i, pickedLines(b, blockPicks));
+      if (edit === undefined && blockPicks.length === 0) return b;
+      manualEdits.set(i, edit !== undefined ? (edit === '' ? [] : edit.split('\n')) : pickedLines(b, blockPicks));
       return { ...b, resolution: 'manual' as const };
     });
     return serializeResolution(resolved, manualEdits);
   };
 
   const manualHasMarkers = manualText !== null && manualText.includes('<<<<<<<');
-  const canSave = manualText !== null ? !manualHasMarkers : blocks !== null && resolvedCount === total;
+  const blockEditsHaveMarkers = useMemo(
+    () => [...blockEdits.values()].some((t) => t.includes('<<<<<<<')),
+    [blockEdits],
+  );
+  const canSave =
+    manualText !== null
+      ? !manualHasMarkers
+      : blocks !== null && resolvedCount === total && !blockEditsHaveMarkers;
 
   const guardManual = async (): Promise<boolean> => {
     if (manualText === null) return true;
@@ -203,11 +246,41 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     return ok;
   };
 
+  const guardBlockEdit = async (index: number): Promise<boolean> => {
+    if (!blockEdits.has(index)) return true;
+    const ok = await confirmDialog({
+      title: 'Replace hand-edited result?',
+      description: 'This conflict was edited by hand. Picking lines will replace that edit.',
+      confirmLabel: 'Replace',
+      destructive: true,
+    });
+    if (ok) {
+      setBlockEdits((prev) => {
+        const next = new Map(prev);
+        next.delete(index);
+        return next;
+      });
+    }
+    return ok;
+  };
+
+  const guardAllBlockEdits = async (): Promise<boolean> => {
+    if (blockEdits.size === 0) return true;
+    const ok = await confirmDialog({
+      title: 'Replace hand-edited results?',
+      description: 'Some conflicts were edited by hand. Those edits will be replaced.',
+      confirmLabel: 'Replace',
+      destructive: true,
+    });
+    if (ok) setBlockEdits(new Map());
+    return ok;
+  };
+
   const isPicked = (index: number, side: Side, line: number) =>
     (picks.get(index) ?? []).some((p) => p.side === side && p.line === line);
 
   const toggleLine = async (index: number, side: Side, line: number) => {
-    if (!(await guardManual())) return;
+    if (!(await guardManual()) || !(await guardBlockEdit(index))) return;
     setPicks((prev) => {
       const next = new Map(prev);
       const blockPicks = [...(next.get(index) ?? [])];
@@ -217,6 +290,9 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       next.set(index, blockPicks);
       return next;
     });
+    const at = conflictIndices.indexOf(index);
+    if (at >= 0) setActiveConflict(at);
+    setLastTouched(index);
   };
 
   const sideFullyPicked = (index: number, side: Side): boolean => {
@@ -231,8 +307,28 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const allOfSidePicked = (side: Side): boolean =>
     total > 0 && conflictIndices.every((i) => sideFullyPicked(i, side));
 
+  const toggleBlockSide = async (index: number, side: Side) => {
+    if (!blocks || !(await guardManual()) || !(await guardBlockEdit(index))) return;
+    const block = blocks[index] as ConflictBlock;
+    const lines = side === 'current' ? block.current : block.incoming;
+    const takeAll = !sideFullyPicked(index, side);
+    setPicks((prev) => {
+      const next = new Map(prev);
+      const blockPicks = [...(next.get(index) ?? [])].filter((p) => p.side !== side);
+      if (takeAll) {
+        if (lines.length === 0) blockPicks.push({ side, line: EMPTY_SIDE });
+        else lines.forEach((_, li) => blockPicks.push({ side, line: li }));
+      }
+      next.set(index, blockPicks);
+      return next;
+    });
+    const at = conflictIndices.indexOf(index);
+    if (at >= 0) setActiveConflict(at);
+    setLastTouched(index);
+  };
+
   const togglePaneSide = async (side: Side) => {
-    if (!blocks || !(await guardManual())) return;
+    if (!blocks || !(await guardManual()) || !(await guardAllBlockEdits())) return;
     const takeAll = !allOfSidePicked(side);
     setPicks((prev) => {
       const next = new Map(prev);
@@ -252,22 +348,91 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   };
 
   const reset = async () => {
-    if (manualText !== null) {
-      if (!(await guardManual())) return;
-    }
+    if (!(await guardManual()) || !(await guardAllBlockEdits())) return;
     setPicks(new Map());
+    setEditingBlock(null);
   };
+
+  const startEdit = (index: number) => {
+    if (!blocks) return;
+    const block = blocks[index] as ConflictBlock;
+    const edit = blockEdits.get(index);
+    const blockPicks = picks.get(index) ?? [];
+    const initial =
+      edit !== undefined
+        ? edit
+        : blockPicks.length > 0
+          ? pickedLines(block, blockPicks).join('\n')
+          : [...block.current, ...block.incoming].join('\n');
+    setEditDraft(initial);
+    setEditingBlock(index);
+    const at = conflictIndices.indexOf(index);
+    if (at >= 0) setActiveConflict(at);
+    scrollTopToBlock(index);
+  };
+
+  const revertEdit = async (index: number) => {
+    const ok = await confirmDialog({
+      title: 'Discard hand-edited result?',
+      description: 'This conflict goes back to the lines picked from A and B, or to unresolved.',
+      confirmLabel: 'Discard',
+      destructive: true,
+    });
+    if (!ok) return;
+    setBlockEdits((prev) => {
+      const next = new Map(prev);
+      next.delete(index);
+      return next;
+    });
+  };
+
+  const registerOutputBlock = (index: number) => (el: HTMLDivElement | null) => {
+    if (el) outputBlockRefs.current.set(index, el);
+    else outputBlockRefs.current.delete(index);
+  };
+
+  const scrollOutputToBlock = (block: number) => {
+    if (manualText !== null) return;
+    if (virtualized) {
+      const row = outputModel.blockRow.get(block);
+      if (row !== undefined) outputVirtualizer.scrollToIndex(row, { align: 'center' });
+    } else {
+      outputBlockRefs.current.get(block)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  const scrollTopToBlock = (blockIndex: number) => {
+    if (virtualized) {
+      topVirtualizer.scrollToIndex(paneModel.blockStart.get(blockIndex) ?? 0, { align: 'center' });
+    } else {
+      blockRefs.current.get(blockIndex)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  useEffect(() => {
+    if (lastTouched === null) return;
+    scrollOutputToBlock(lastTouched);
+    setLastTouched(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastTouched]);
+
+  useEffect(() => {
+    if (!blocks || conflictIndices.length === 0) return;
+    const id = requestAnimationFrame(() => {
+      scrollTopToBlock(conflictIndices[0]);
+      scrollOutputToBlock(conflictIndices[0]);
+    });
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks]);
 
   const jump = (direction: 1 | -1) => {
     if (total === 0) return;
     const next = (activeConflict + direction + total) % total;
     setActiveConflict(next);
     const blockIndex = conflictIndices[next];
-    if (virtualized) {
-      topVirtualizer.scrollToIndex(paneModel.blockStart.get(blockIndex) ?? 0, { align: 'center' });
-    } else {
-      blockRefs.current.get(blockIndex)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    scrollTopToBlock(blockIndex);
+    scrollOutputToBlock(blockIndex);
   };
 
   const explain = async (current: string, incoming: string) => {
@@ -299,6 +464,93 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       setSaving(false);
     }
   };
+
+  const renderRevertAction = (index: number) => (
+    <span className="absolute right-2 top-0.5 z-10 flex items-center opacity-0 transition-opacity group-hover:opacity-100">
+      <Hint label="Discard the hand edit and rebuild from the checkboxes">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="h-5 w-5 border border-border bg-surface shadow-soft"
+          aria-label="Discard the hand edit for this conflict"
+          onClick={(e) => {
+            e.stopPropagation();
+            void revertEdit(index);
+          }}
+        >
+          <RotateCcw className="size-3" />
+        </Button>
+      </Hint>
+    </span>
+  );
+
+  const renderBlockEditor = (index: number) => (
+    <div className="border-y border-primary/40 bg-primary/5">
+      <textarea
+        value={editDraft}
+        onChange={(e) => {
+          setEditDraft(e.target.value);
+          setBlockEdits((prev) => new Map(prev).set(index, e.target.value));
+        }}
+        onBlur={() => setEditingBlock(null)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key === 'Enter')) {
+            e.preventDefault();
+            e.stopPropagation();
+            setEditingBlock(null);
+          }
+        }}
+        spellCheck={false}
+        autoFocus
+        rows={Math.min(Math.max(editDraft.split('\n').length + 1, 2), 16)}
+        aria-label="Hand-edited result for this conflict"
+        className={cn(
+          'w-full resize-none bg-transparent px-3 py-1 font-mono text-xs leading-5 text-foreground',
+          'focus:outline-none',
+        )}
+      />
+    </div>
+  );
+
+  const renderUnresolvedLine = (index: number, text: string) => (
+    <div
+      className="flex cursor-text items-start gap-2 border-l-2 border-danger bg-danger/5 px-2 transition-colors hover:bg-danger/10"
+      title="Unresolved conflict — click to edit the result, or pick lines above"
+      onClick={() => startEdit(index)}
+    >
+      <span className="w-3.5 shrink-0" />
+      <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs italic leading-5 text-faint">
+        {text || ' '}
+      </pre>
+    </div>
+  );
+
+  const renderBlockSideAll = (index: number, side: Side) => (
+    <label
+      className={cn(
+        'flex cursor-pointer items-center gap-2 px-3 py-0.5',
+        side === 'current' && 'border-r border-border-subtle',
+      )}
+    >
+      <Checkbox
+        checked={sideFullyPicked(index, side)}
+        onCheckedChange={() => void toggleBlockSide(index, side)}
+        aria-label={
+          side === 'current'
+            ? 'Take all lines from A for this conflict'
+            : 'Take all lines from B for this conflict'
+        }
+      />
+      <span
+        className={cn(
+          'text-[10px] font-medium',
+          side === 'current' ? 'text-info' : 'text-success',
+        )}
+      >
+        {side === 'current' ? 'Take all A' : 'Take all B'}
+      </span>
+    </label>
+  );
 
   const renderSideCell = (block: ConflictBlock, index: number, side: Side) => {
     const lines = side === 'current' ? block.current : block.incoming;
@@ -407,27 +659,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         <Badge tone={resolvedCount === total ? 'success' : 'primary'}>
           {resolvedCount}/{total} resolved
         </Badge>
-        {total > 1 && (
-          <span className="flex items-center gap-0.5">
-            <Hint label="Previous conflict">
-              <Button variant="ghost" size="icon-sm" aria-label="Previous conflict" onClick={() => jump(-1)}>
-                <ChevronUp className="size-4" />
-              </Button>
-            </Hint>
-            <Hint label="Next conflict">
-              <Button variant="ghost" size="icon-sm" aria-label="Next conflict" onClick={() => jump(1)}>
-                <ChevronDown className="size-4" />
-              </Button>
-            </Hint>
-            <span className="text-[10px] text-faint">
-              {activeConflict + 1}/{total}
-            </span>
-          </span>
-        )}
         <div className="ml-auto flex items-center gap-2">
           <Hint
             label={
-              manualHasMarkers
+              manualHasMarkers || (manualText === null && blockEditsHaveMarkers)
                 ? 'Remove the remaining <<<<<<< markers from the Output first'
                 : !canSave
                   ? 'Pick lines for every conflict (or edit the Output by hand) first'
@@ -453,7 +688,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div ref={topScrollRef} className="relative min-h-0 flex-[3] overflow-y-auto">
+          <div className="relative min-h-0 flex-[3]">
+            <div ref={topScrollRef} className="relative h-full overflow-y-auto">
             <div className="sticky top-0 z-10 grid grid-cols-2 border-b border-border-subtle bg-surface">
               <label className="flex cursor-pointer items-center gap-2 border-r border-border-subtle px-3 py-1.5">
                 <Checkbox
@@ -479,7 +715,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                 {topVirtualizer.getVirtualItems().map((item) => {
                   const row = paneModel.rows[item.index];
                   const block = blocks[row.block];
-                  const active = row.kind === 'conflict' && conflictIndices[activeConflict] === row.block;
+                  const active = row.kind !== 'text' && conflictIndices[activeConflict] === row.block;
                   return (
                     <div
                       key={item.key}
@@ -497,12 +733,37 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             {(row.kind === 'text' && row.text) || ' '}
                           </pre>
                         </div>
+                      ) : row.kind === 'header' ? (
+                        <div
+                          className={cn(
+                            'relative border-x border-t',
+                            active
+                              ? 'border-x-primary/50 border-t-primary/50'
+                              : 'border-x-transparent border-t-border',
+                          )}
+                        >
+                          <div className="grid grid-cols-2 bg-surface-raised/60">
+                            {renderBlockSideAll(row.block, 'current')}
+                            {renderBlockSideAll(row.block, 'incoming')}
+                          </div>
+                          <Hint label="Explain this conflict with AI">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-surface shadow-soft"
+                              disabled={aiBusy}
+                              aria-label="Explain this conflict with AI"
+                              onClick={() => void explain(block.current.join('\n'), block.incoming.join('\n'))}
+                            >
+                              {aiBusy ? <Spinner className="size-3" /> : <Sparkles className="size-3 text-primary" />}
+                            </Button>
+                          </Hint>
+                        </div>
                       ) : (
                         <div
                           className={cn(
                             'relative border-x',
                             active ? 'border-x-primary/50' : 'border-x-transparent',
-                            row.first && cn('border-t', active ? 'border-t-primary/50' : 'border-t-border'),
                             row.last && cn('border-b', active ? 'border-b-primary/50' : 'border-b-border'),
                           )}
                         >
@@ -510,20 +771,6 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             {renderSideLine(block, row.block, 'current', row.li)}
                             {renderSideLine(block, row.block, 'incoming', row.li)}
                           </div>
-                          {row.first && (
-                            <Hint label="Explain this conflict with AI">
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-surface shadow-soft"
-                                disabled={aiBusy}
-                                aria-label="Explain this conflict with AI"
-                                onClick={() => void explain(block.current.join('\n'), block.incoming.join('\n'))}
-                              >
-                                {aiBusy ? <Spinner className="size-3" /> : <Sparkles className="size-3 text-primary" />}
-                              </Button>
-                            </Hint>
-                          )}
                         </div>
                       )}
                     </div>
@@ -553,6 +800,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                       conflictIndices[activeConflict] === index && 'ring-1 ring-primary/50',
                     )}
                   >
+                    <div className="grid grid-cols-2 border-b border-border-subtle bg-surface-raised/60">
+                      {renderBlockSideAll(index, 'current')}
+                      {renderBlockSideAll(index, 'incoming')}
+                    </div>
                     <div className="grid grid-cols-2">
                       {renderSideCell(block, index, 'current')}
                       {renderSideCell(block, index, 'incoming')}
@@ -573,14 +824,69 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                 ),
               )
             )}
-            {aiText && (
-              <div className="m-4 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs leading-relaxed">
-                <pre className="min-w-0 whitespace-pre-wrap break-words font-sans">{aiText}</pre>
+            </div>
+            {(aiBusy || aiText) && (
+              <div className="absolute bottom-3 right-3 z-20 flex max-h-[45%] w-[min(480px,90%)] flex-col overflow-hidden rounded-md border border-primary/30 bg-surface-overlay shadow-soft">
+                <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
+                  <Sparkles className="size-3.5 text-primary" />
+                  <span className="text-xs font-semibold">
+                    {aiBusy ? 'Explaining conflict…' : 'AI explanation'}
+                  </span>
+                  {!aiBusy && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="ml-auto h-5 w-5"
+                      aria-label="Dismiss AI explanation"
+                      onClick={() => setAiText(null)}
+                    >
+                      <X className="size-3" />
+                    </Button>
+                  )}
+                </div>
+                {aiBusy ? (
+                  <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted">
+                    <Spinner className="size-3.5" /> Reading both sides of the conflict…
+                  </div>
+                ) : (
+                  <pre className="min-w-0 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2 font-sans text-xs leading-relaxed">
+                    {aiText}
+                  </pre>
+                )}
               </div>
             )}
           </div>
 
-          <div className="flex min-h-0 flex-[2] flex-col border-t border-border">
+          <div className="relative flex min-h-0 flex-[2] flex-col border-t border-border">
+            {total > 0 && (
+              <span className="absolute -top-3.5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 shadow-soft">
+                <Hint label="Previous conflict">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-5 w-5"
+                    aria-label="Previous conflict"
+                    onClick={() => jump(-1)}
+                  >
+                    <ChevronUp className="size-3.5" />
+                  </Button>
+                </Hint>
+                <span className="whitespace-nowrap text-[10px] font-medium text-muted">
+                  Conflict {activeConflict + 1} of {total}
+                </span>
+                <Hint label="Next conflict">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-5 w-5"
+                    aria-label="Next conflict"
+                    onClick={() => jump(1)}
+                  >
+                    <ChevronDown className="size-3.5" />
+                  </Button>
+                </Hint>
+              </span>
+            )}
             <div className="flex items-center gap-2 border-b border-border-subtle bg-surface px-3 py-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Output</span>
               {manualText !== null ? (
@@ -591,11 +897,18 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                   {manualHasMarkers && <Badge tone="danger">markers remain</Badge>}
                 </>
               ) : (
-                <span className="text-[10px] text-faint">
-                  {resolvedCount === total
-                    ? 'Ready to mark resolved'
-                    : 'Pick lines from A and B — they appear here in the order you pick them'}
-                </span>
+                <>
+                  <span className="text-[10px] text-faint">
+                    {resolvedCount === total
+                      ? 'Ready to mark resolved — click any result to edit it'
+                      : 'Pick lines from A and B — click any result to edit it by hand'}
+                  </span>
+                  {blockEdits.size > 0 && (
+                    <Badge tone="primary">
+                      <Pencil className="size-2.5" /> {blockEdits.size} edited by hand
+                    </Badge>
+                  )}
+                </>
               )}
               <span className="ml-auto flex items-center gap-1">
                 {manualText === null ? (
@@ -604,7 +917,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                       variant="ghost"
                       size="icon-sm"
                       aria-label="Edit output by hand"
-                      onClick={() => setManualText(buildResult())}
+                      onClick={() => {
+                        setEditingBlock(null);
+                        setManualText(buildResult());
+                      }}
                     >
                       <Pencil className="size-3.5" />
                     </Button>
@@ -646,7 +962,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                     style={{ height: outputVirtualizer.getTotalSize() }}
                   >
                     {outputVirtualizer.getVirtualItems().map((item) => {
-                      const row = outputRows[item.index];
+                      const row = outputModel.rows[item.index];
                       return (
                         <div
                           key={item.key}
@@ -659,17 +975,30 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             <pre className="whitespace-pre-wrap break-words px-8 font-mono text-xs leading-5 text-muted">
                               {row.text || ' '}
                             </pre>
+                          ) : row.kind === 'editor' ? (
+                            renderBlockEditor(row.block)
                           ) : row.kind === 'unresolved' ? (
-                            <div className="flex items-center gap-2 border-y border-danger/30 bg-danger/10 px-3 py-1 text-xs text-danger">
-                              <span className="font-semibold">Unresolved</span>
-                              <span className="text-danger/80">pick lines from A or B above, or edit by hand</span>
+                            renderUnresolvedLine(row.block, row.text)
+                          ) : row.kind === 'edited' ? (
+                            <div
+                              className="group relative flex cursor-text items-start gap-2 bg-primary/10 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
+                              onClick={() => startEdit(row.block)}
+                            >
+                              <span className="flex w-4 shrink-0 items-center justify-center leading-5">
+                                <Pencil className="size-3 text-primary" />
+                              </span>
+                              <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
+                                {row.text || ' '}
+                              </pre>
+                              {row.first && renderRevertAction(row.block)}
                             </div>
                           ) : (
                             <div
                               className={cn(
-                                'flex items-start gap-2 px-2',
+                                'flex cursor-text items-start gap-2 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40',
                                 row.side === 'current' ? 'bg-info/10' : 'bg-success/10',
                               )}
+                              onClick={() => startEdit(row.block)}
                             >
                               <span
                                 className={cn(
@@ -700,20 +1029,54 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                         </pre>
                       );
                     }
-                    const blockPicks = picks.get(index) ?? [];
-                    if (blockPicks.length === 0) {
+                    if (editingBlock === index) {
+                      return (
+                        <div key={index} ref={registerOutputBlock(index)}>
+                          {renderBlockEditor(index)}
+                        </div>
+                      );
+                    }
+                    const edit = blockEdits.get(index);
+                    if (edit !== undefined) {
+                      const lines = edit === '' ? [''] : edit.split('\n');
                       return (
                         <div
                           key={index}
-                          className="flex items-center gap-2 border-y border-danger/30 bg-danger/10 px-3 py-1 text-xs text-danger"
+                          ref={registerOutputBlock(index)}
+                          className="group relative cursor-text transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
+                          onClick={() => startEdit(index)}
                         >
-                          <span className="font-semibold">Unresolved</span>
-                          <span className="text-danger/80">pick lines from A or B above, or edit by hand</span>
+                          {lines.map((line, li) => (
+                            <div key={li} className="flex items-start gap-2 bg-primary/10 px-2">
+                              <span className="flex w-4 shrink-0 items-center justify-center leading-5">
+                                <Pencil className="size-3 text-primary" />
+                              </span>
+                              <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
+                                {line || ' '}
+                              </pre>
+                            </div>
+                          ))}
+                          {renderRevertAction(index)}
+                        </div>
+                      );
+                    }
+                    const blockPicks = picks.get(index) ?? [];
+                    if (blockPicks.length === 0) {
+                      return (
+                        <div key={index} ref={registerOutputBlock(index)}>
+                          {unresolvedPreview(block).map((text, li) => (
+                            <div key={li}>{renderUnresolvedLine(index, text)}</div>
+                          ))}
                         </div>
                       );
                     }
                     return (
-                      <div key={index}>
+                      <div
+                        key={index}
+                        ref={registerOutputBlock(index)}
+                        className="cursor-text transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
+                        onClick={() => startEdit(index)}
+                      >
                         {blockPicks
                           .filter((p) => p.line !== EMPTY_SIDE)
                           .map((p, pi) => (

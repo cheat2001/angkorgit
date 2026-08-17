@@ -251,7 +251,10 @@ features/
 │                               via measured scrollMargin; tree mode unvirtualized),
 │                               stage/unstage/discard(+all),
 │                               auto-grow commit box (hidden when clean; amend link),
-│                               50/72 summary counter, AI message button
+│                               50/72 summary counter, AI message button; during a
+│                               merge an "Abort merge" button sits beside Commit
+│                               (same confirm+mergeAbort as the toolbar state badge,
+│                               clears the prefilled merge draft after refresh)
 ├── diff/                     ← DiffPanel (center view, header toggles, minimap, prev/next
 │                               change, prev/next FILE across the source list — working-
 │                               copy side or commit file set — via `[`/`]` + header
@@ -260,12 +263,34 @@ features/
 │                               DiffViewer (wrap vs VIRTUALIZED no-wrap), VirtualDiff
 │                               (inline + synced split columns), DiffMinimap, diffShared
 ├── conflicts/ConflictResolver← aligned A/B panes, per-LINE checkboxes (whole side via
-│                               pane header), prev/next nav, clean Output pane (A/B
-│                               tags, no markers); hand-editing behind an explicit
-│                               pencil button (manual-edit guard, marker guard);
-│                               files over VIRTUAL_THRESHOLD (1500) paired rows render
-│                               virtualized (paired-row flatten keeps A/B aligned,
-│                               scrollToIndex nav), smaller files keep the plain path
+│                               pane header, per-CONFLICT via each block's take-all
+│                               header row — PaneRow kind 'header' in virtualized mode,
+│                               carries the AI explain button; the explanation opens
+│                               in a floating bottom-right overlay with a busy state,
+│                               never inline at the pane bottom), prev/next nav as a
+│                               floating "Conflict n of m" pill on the Output divider
+│                               (scrolls BOTH panes, visible from 1 conflict up),
+│                               auto-jump to the first conflict on open, clean Output
+│                               pane (A/B tags, no markers) that auto-scrolls to the
+│                               block just resolved (lastTouched state → effect);
+│                               unresolved blocks render as DIMMED PREVIEW rows behind
+│                               a red stripe (unresolvedPreview: base if diff3 else
+│                               side A); PER-BLOCK hand editing in the Output
+│                               (blockEdits map: CLICKING any block — resolved
+│                               prefills picks, unresolved prefills A+B lines — opens
+│                               its inline editor and scrolls the top panes to that
+│                               conflict; NO pencil edit buttons, hover RotateCcw
+│                               discards an edit; the editor is LIVE — write-
+│                               through to blockEdits on change, no Save button, blur/
+│                               Esc closes, disk write only on Mark resolved; opening
+│                               without typing commits nothing; edits count as
+│                               resolved, marker guard, pick-toggle guards
+│                               confirm before replacing an edit) + whole-file editing
+│                               behind the header pencil (manual-edit guard, marker
+│                               guard); files over VIRTUAL_THRESHOLD (1500) paired rows
+│                               render virtualized (paired-row flatten keeps A/B
+│                               aligned, scrollToIndex nav, editor row measured),
+│                               smaller files keep the plain path
 ├── sidebar/Sidebar.tsx       ← branch FOLDER TREE (buildBranchTree), right-click context
 │                               menu (checkout/merge/rebase/pull/push/create-branch-here/
 │                               rename/delete), drag-and-drop merge/rebase, tags/stashes/
@@ -587,7 +612,7 @@ update CLAUDE.md or docs/ — never the code.
 | Rust integration (36) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
 | Rust module (33) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored |
 | Unit (62) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null) |
-| E2E (6) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks — all on demo mode |
+| E2E (10) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash — all on demo mode |
 
 ## 9.5 Open-source & community files
 

@@ -6,6 +6,56 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Per-conflict hand editing** — every conflict in the resolver's Output pane
+  can now be edited by hand, not just picked from A or B: an "Edit by hand"
+  button on each unresolved conflict (pre-filled with both sides so the code
+  can be aligned/merged) and a hover pencil on each resolved block (pre-filled
+  with the picked lines). Edits show a pencil marker per line, count toward
+  the resolved total, and can be discarded back to the checkbox picks; the
+  whole-file editor behind the header pencil still works as before.
+
+- **Per-conflict "Take all A" / "Take all B"** — each conflict block carries
+  its own take-a-whole-side checkboxes, so one click resolves that conflict
+  without ticking line by line (the pane-header checkboxes still take a side
+  for every conflict at once).
+
+### Changed
+- **Click anywhere in a conflict's result to edit it** — resolved or not,
+  every conflict block in the Output opens its inline editor on click
+  (unresolved blocks prefill both sides so the code can be merged by hand);
+  edits apply live as you type, Esc or clicking away closes the editor, and
+  nothing is written to disk until "Mark resolved". The pencil edit buttons
+  are gone — clicking is the way in; the hover undo button still discards a
+  hand edit, and clicking a block also scrolls the A/B panes to it.
+- **Conflict navigation moved to the Output divider** — a centered
+  "Conflict n of m" pill with prev/next arrows floats between the panes and
+  the Output, GitKraken-style, instead of living in the window header.
+- **Quieter unresolved markers** — unresolved conflicts in the Output show
+  the conflict's own content dimmed behind a red stripe (base version when
+  the file has diff3 markers, side A otherwise) instead of a wordy red
+  banner; clicking the stripe still jumps to the conflict.
+- **Abort merge next to the commit button** — during a merge the commit box
+  shows an "Abort merge" button beside Commit (with the merge message already
+  prefilled), so bailing out no longer requires finding the state badge menu
+  in the toolbar (which still works).
+
+### Fixed
+- **AI conflict explanations were invisible** — the ✨ button's answer used to
+  render below the entire file at the bottom of the A/B panes, so clicking
+  appeared to do nothing. The explanation now opens in a floating panel over
+  the panes, with an immediate "Explaining conflict…" state while the AI
+  works and a dismiss button.
+- **Conflict resolver Output pane now follows the work** — picking lines for a
+  conflict (or saving a hand edit) auto-scrolls the Output pane to that
+  conflict's result, and the prev/next conflict navigation keeps both panes in
+  sync instead of only scrolling the top pane.
+- **Conflicts are findable in huge files** — the resolver auto-jumps to the
+  first conflict on open, the prev/next arrows and counter show even for a
+  single conflict (they were hidden unless a file had two or more), and
+  clicking an "Unresolved" banner in the Output jumps the panes to that
+  conflict.
+
 ## [0.6.0] — 2026-08-16
 
 The identity release: work and personal finally live side by side — profiles

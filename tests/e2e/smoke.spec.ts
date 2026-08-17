@@ -44,12 +44,56 @@ test('conflict resolver picks lines into a clean output', async ({ page }) => {
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
   await page.getByText('src/features/graph/drawGraph.ts').click();
   await expect(page.getByText('0/1 resolved')).toBeVisible();
-  await expect(page.getByText('Unresolved', { exact: true })).toBeVisible();
+  await expect(page.getByTitle(/Unresolved conflict/).first()).toBeVisible();
   await expect(page.getByText('<<<<<<<')).toHaveCount(0);
   await page.getByLabel('Take all lines from side A').click();
   await expect(page.getByText('1/1 resolved')).toBeVisible();
   await expect(page.getByText('const palette = useThemePalette();')).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeEnabled();
+});
+
+test('single conflict shows jump nav and per-conflict take-all', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByText('src/features/graph/drawGraph.ts').click();
+  await expect(page.getByText('0/1 resolved')).toBeVisible();
+  await expect(page.getByLabel('Next conflict')).toBeVisible();
+  await expect(page.getByText('Conflict 1 of 1')).toBeVisible();
+  await page.getByLabel('Take all lines from B for this conflict').click();
+  await expect(page.getByText('1/1 resolved')).toBeVisible();
+  await page.getByLabel('Take all lines from B for this conflict').click();
+  await expect(page.getByText('0/1 resolved')).toBeVisible();
+  await page.getByTitle(/Unresolved conflict/).first().click();
+  const editor = page.getByLabel('Hand-edited result for this conflict');
+  await expect(editor).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeHidden();
+  await expect(page.getByText('0/1 resolved')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeDisabled();
+});
+
+test('conflict result can be hand-edited per block', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByText('src/features/graph/drawGraph.ts').click();
+  await expect(page.getByText('0/1 resolved')).toBeVisible();
+  await page.getByTitle(/Unresolved conflict/).first().click();
+  const editor = page.getByLabel('Hand-edited result for this conflict');
+  await expect(editor).toBeVisible();
+  await editor.fill('const palette = mergedThemePalette();');
+  await expect(page.getByText('1/1 resolved')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeHidden();
+  await expect(page.getByText('const palette = mergedThemePalette();')).toBeVisible();
+  await expect(page.getByText('1 edited by hand')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeEnabled();
+  await page.getByText('const palette = mergedThemePalette();').click();
+  await expect(editor).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeHidden();
+  await expect(page.getByText('1/1 resolved')).toBeVisible();
 });
 
 test('interactive rebase dialog opens from the commit context menu', async ({ page }) => {
