@@ -6,6 +6,21 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Diffs open directly at the first change, no scroll animation** — clicking
+  a file used to animate the scroll from the top of the diff down to the
+  first change; the diff now simply appears already positioned there,
+  GitKraken-style. The prev/next-change buttons (`N`/`P`) keep their smooth
+  glide, since there the motion shows where you jumped.
+
+### Fixed
+- **Commit file lists keep the filename visible** — long paths in a commit's
+  file list used to truncate from the right, cutting off exactly the part
+  that matters (`Monika/Main/dbo/Stored Procedures/Colo…`). The directory now
+  truncates instead, dimmed GitKraken-style, so the filename always shows in
+  full (`Monika/Main/dbo/Stored…/Coloris_RiskControl_ApplyPlayerStatus.sql`),
+  matching how the working-copy list already renders paths.
+
 ## [0.6.1] — 2026-08-17
 
 The resolving release: the conflict resolver becomes a direct-manipulation

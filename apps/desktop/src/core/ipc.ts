@@ -419,7 +419,7 @@ export const ipc = {
   },
 
   async diffFile(path: string, file: string, staged: boolean, contextLines?: number): Promise<FileDiff> {
-    if (!isTauri()) return { ...demo.demoFileDiff, path: file };
+    if (!isTauri()) return demo.demoFileDiffFor(file);
     return invoke('diff_file', { path, file, staged, contextLines: contextLines ?? null });
   },
   async diffCommit(path: string, oid: string, contextLines?: number): Promise<FileDiff[]> {

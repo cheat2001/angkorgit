@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Columns2, Copy, FileText, Minus, Plus, Rows3, TextSelect, Trash2, WholeWord, WrapText, X } from 'lucide-react';
@@ -110,20 +110,24 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   );
 
   const autoJumpKey = useRef<string | null>(null);
-  useEffect(() => {
-    if (!diff) return;
+  useLayoutEffect(() => {
+    if (!diff || loading) return;
     const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}`;
     if (autoJumpKey.current === key) return;
+    const el = scrollRef.current;
+    if (!el) return;
     autoJumpKey.current = key;
-    const id = requestAnimationFrame(() => {
-      const el = scrollRef.current;
-      if (!el || el.scrollHeight === 0) return;
-      if (blocks.length > 0) scrollToFraction(el, blocks[0].fraction);
+    const apply = () => {
+      if (blocks.length > 0) scrollToFraction(el, blocks[0].fraction, 'auto');
       else el.scrollTo({ top: 0 });
+    };
+    apply();
+    const applied = el.scrollTop;
+    requestAnimationFrame(() => {
+      if (autoJumpKey.current === key && applied > 0 && el.scrollTop === 0) apply();
     });
-    return () => cancelAnimationFrame(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [diff, blocks]);
+  }, [diff, loading, blocks]);
 
   const jumpChange = (direction: 1 | -1) => {
     const el = scrollRef.current;

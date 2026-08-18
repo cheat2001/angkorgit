@@ -9,7 +9,7 @@ import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { Avatar } from '@/components/Avatar';
 import { FileTree, treeIndent } from '@/components/FileTree';
-import { basename, formatDate } from '@/shared/utils';
+import { basename, dirname, formatDate } from '@/shared/utils';
 
 const diffPath = (diff: FileDiff) => diff.path;
 
@@ -83,8 +83,11 @@ export function CommitDetails({
         }
       >
         <FileText className={cn('size-3.5 shrink-0', statusMeta[diff.status]?.className ?? 'text-muted')} />
-        <span className="min-w-0 flex-1 truncate font-mono">
-          {fileTree ? basename(diff.path) : diff.path}
+        <span className="flex min-w-0 flex-1 items-center font-mono">
+          {!fileTree && dirname(diff.path) && (
+            <span className="min-w-0 truncate text-faint">{dirname(diff.path)}/</span>
+          )}
+          <span className="max-w-full shrink-0 truncate">{basename(diff.path)}</span>
         </span>
         <span className="shrink-0 text-success">+{diff.additions}</span>
         <span className="shrink-0 text-danger">−{diff.deletions}</span>

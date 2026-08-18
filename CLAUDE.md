@@ -595,6 +595,26 @@ update CLAUDE.md or docs/ — never the code.
   unresolved blocks from those raw lines — preserving diff3 base labels, CRLF, and
   bare markers byte-for-byte. A close marker without a separator is malformed and
   falls back to plain text. Never rebuild marker lines from labels.
+- **G30 — the diff auto-jump must be pre-paint AND virtualizer-reset-proof**:
+  the "open at first change" jump looked fine in code twice and was broken both
+  times in the running app; the failure chain (found by frame-tracing scrollTop
+  via Playwright, not by reading code): (1) `setDiff` (.then) and
+  `setLoading(false)` (.finally) resolve in DIFFERENT microtasks → separate
+  commits, so an effect gated only on `diff` fires while the scroller still
+  shows the loading spinner (scrollHeight = clientHeight, jump silently
+  no-ops) — gate on `!loading` too; (2) the jump must be a `useLayoutEffect` +
+  instant `behavior: 'auto'`, or the user watches the top of the file paint
+  first and then travel (the original useEffect+rAF+smooth version); (3)
+  tanstack `useVirtualizer._willUpdate` calls `_scrollToOffset(cached ?? 0)`
+  whenever its scroll element (re)attaches — under StrictMode double-effects
+  in dev this re-attach runs right after the parent's jump and silently
+  resets scrollTop to 0, so the jump re-asserts once on the next
+  animation frame (no-op in production builds). Regression e2e:
+  `clicking a file opens the diff already at its first change` — it traces
+  scrollTop every frame from before the click and fails on ANY intermediate
+  value, so it catches both smooth-scroll regressions and lost jumps; the
+  demo repo's `src/data/palette-seed.sql` (change ~480 rows deep) exists for
+  this test.
 - **G29 — profiles are REPO-BOUND, never a global mode switch**: a profile
   (identity + per-host account picks) is assigned to a repo once and stored in
   that repo's local config (`angkorgit.profile` = id, `angkorgit.accounts` =
@@ -628,7 +648,7 @@ update CLAUDE.md or docs/ — never the code.
 | Rust integration (36) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
 | Rust module (33) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored |
 | Unit (62) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null) |
-| E2E (10) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash — all on demo mode |
+| E2E (11) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop) — all on demo mode |
 
 ## 9.5 Open-source & community files
 

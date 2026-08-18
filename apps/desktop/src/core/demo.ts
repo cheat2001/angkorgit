@@ -110,6 +110,7 @@ export const demoStatus: StatusSummary = {
   files: [
     { path: 'src/features/graph/CommitGraph.tsx', origPath: null, staged: 'modified', unstaged: null },
     { path: 'src/core/ipc.ts', origPath: null, staged: null, unstaged: 'modified' },
+    { path: 'src/data/palette-seed.sql', origPath: null, staged: null, unstaged: 'modified' },
     { path: 'docs/Architecture.md', origPath: null, staged: null, unstaged: 'untracked' },
     { path: 'src/old-layout.tsx', origPath: null, staged: 'deleted', unstaged: null },
   ],
@@ -206,6 +207,80 @@ export const demoFileDiff: FileDiff = {
     },
   ],
 };
+
+function largeDiffRows(): FileDiff['hunks'][number]['lines'] {
+  const rows: FileDiff['hunks'][number]['lines'] = [];
+  let oldNo = 1;
+  let newNo = 1;
+  const hex = (n: number) => `#${((n * 48271) % 0xffffff).toString(16).padStart(6, '0')}`;
+  const context = (n: number) =>
+    rows.push({
+      kind: 'context',
+      oldLineNo: oldNo++,
+      newLineNo: newNo++,
+      content: `INSERT INTO palette (id, hex) VALUES (${n}, '${hex(n)}');`,
+    });
+  for (let n = 1; n <= 480; n += 1) context(n);
+  rows.push({
+    kind: 'deletion',
+    oldLineNo: oldNo++,
+    newLineNo: null,
+    content: `INSERT INTO palette (id, hex) VALUES (481, '${hex(481)}');`,
+  });
+  rows.push({
+    kind: 'deletion',
+    oldLineNo: oldNo++,
+    newLineNo: null,
+    content: `INSERT INTO palette (id, hex) VALUES (482, '${hex(482)}');`,
+  });
+  rows.push({
+    kind: 'addition',
+    oldLineNo: null,
+    newLineNo: newNo++,
+    content: `INSERT INTO palette (id, hex, label) VALUES (481, '${hex(481)}', 'temple gold');`,
+  });
+  rows.push({
+    kind: 'addition',
+    oldLineNo: null,
+    newLineNo: newNo++,
+    content: `INSERT INTO palette (id, hex, label) VALUES (482, '${hex(482)}', 'angkor dusk');`,
+  });
+  rows.push({
+    kind: 'addition',
+    oldLineNo: null,
+    newLineNo: newNo++,
+    content: `INSERT INTO palette (id, hex, label) VALUES (483, '${hex(483)}', 'lotus pink');`,
+  });
+  for (let n = 483; n <= 520; n += 1) context(n);
+  return rows;
+}
+
+export const demoLargeFileDiff: FileDiff = {
+  path: 'src/data/palette-seed.sql',
+  oldPath: null,
+  status: 'modified',
+  isBinary: false,
+  isImage: false,
+  oldImage: null,
+  newImage: null,
+  additions: 3,
+  deletions: 2,
+  hunks: [
+    {
+      header: '@@ -1,520 +1,521 @@',
+      oldStart: 1,
+      oldLines: 520,
+      newStart: 1,
+      newLines: 521,
+      lines: largeDiffRows(),
+    },
+  ],
+};
+
+export function demoFileDiffFor(path: string): FileDiff {
+  if (path === demoLargeFileDiff.path) return demoLargeFileDiff;
+  return { ...demoFileDiff, path };
+}
 
 export function demoCommitDiff(): FileDiff[] {
   return [demoFileDiff];

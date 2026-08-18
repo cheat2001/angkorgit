@@ -131,3 +131,26 @@ test('multi-select offers squash and pre-fills the rebase plan', async ({ page }
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
 });
+
+test('clicking a file opens the diff already at its first change, with no scroll animation', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const trace = page.evaluate(async () => {
+    const samples: number[] = [];
+    const started = performance.now();
+    while (performance.now() - started < 1_000) {
+      const el = document.querySelector('section[aria-label^="Diff for"] div.overflow-y-auto');
+      if (el) samples.push(el.scrollTop);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return samples;
+  });
+  await page.getByText('palette-seed.sql').first().click();
+  await expect(page.getByText('temple gold').first()).toBeVisible();
+  const samples = await trace;
+  const settled = samples[samples.length - 1];
+  expect(settled).toBeGreaterThan(1_000);
+  const climbing = samples.filter((top) => top > 0 && top < settled * 0.9);
+  expect(climbing).toHaveLength(0);
+});

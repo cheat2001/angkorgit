@@ -59,10 +59,14 @@ export function changeBlocks(diff: FileDiff, view: DiffViewMode): ChangeBlock[] 
   return blocks;
 }
 
-export function scrollToFraction(el: HTMLElement, fraction: number): void {
+export function scrollToFraction(
+  el: HTMLElement,
+  fraction: number,
+  behavior: ScrollBehavior = 'smooth',
+): void {
   el.scrollTo({
     top: Math.max(0, fraction * el.scrollHeight - el.clientHeight * 0.35),
-    behavior: 'smooth',
+    behavior,
   });
 }
 
