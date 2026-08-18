@@ -107,7 +107,10 @@ from the terminal (pinned to the current release — bump the version number
 when a newer release lands):
 
 ```bash
-# macOS (downloads, removes the Gatekeeper quarantine flag, opens the dmg)
+# macOS — Homebrew (recommended)
+brew install --cask cheat2001/tap/angkorgit --no-quarantine
+
+# macOS — direct download (downloads, removes the Gatekeeper quarantine flag, opens the dmg)
 curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.6.2/AngKorGit_0.6.2_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
 
 # Windows (PowerShell)

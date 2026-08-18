@@ -707,6 +707,9 @@ plugin can be added), and the Homebrew cask.
      newly shipped items out of "Next"
   9. `CLAUDE.md` itself — test counts in §9 and the §6/§5 subsystem map for any
      feature that shipped
+  10. `cheat2001/homebrew-tap` repo — `Casks/angkorgit.rb` `version` + `sha256`
+     (`shasum -a 256` of the new universal dmg, AFTER the release artifacts are
+     published; see docs/Distribution.md §4)
   After publishing: confirm the updater offered the release (installed app
   version flips), and that angkorgit.app shows the new version (manually
   dispatch the Website workflow if the release-triggered deploy served stale).

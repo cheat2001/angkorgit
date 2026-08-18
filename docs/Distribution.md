@@ -75,25 +75,27 @@ Already wired in the codebase:
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — set to an **empty value** (required:
   without the env var Tauri tries an interactive prompt and headless builds fail).
 
-## 4. Homebrew cask **[not yet published]**
+## 4. Homebrew cask **[live — own tap]**
 
-Create `cheat2001/homebrew-tap` with `Casks/angkorgit.rb`:
+Published at `cheat2001/homebrew-tap` (`Casks/angkorgit.rb`). Install:
 
-```ruby
-cask "angkorgit" do
-  version "0.6.2"
-  sha256 "<shasum -a 256 of the dmg>"
-  url "https://github.com/cheat2001/angkorgit/releases/download/v#{version}/AngKorGit_#{version}_universal.dmg"
-  name "AngKorGit"
-  desc "Fast, beautiful, lightweight Git client"
-  homepage "https://github.com/cheat2001/angkorgit"
-  app "AngKorGit.app"
-end
+```sh
+brew install --cask cheat2001/tap/angkorgit --no-quarantine
 ```
 
-Users then install with `brew install --cask cheat2001/tap/angkorgit`.
-Once the project has traction (75+ stars, 30+ forks), submit to homebrew-cask
-proper for `brew install --cask angkorgit`.
+(`--no-quarantine` because the app is unsigned; without it macOS quarantines
+the download and users must `xattr -cr /Applications/AngKorGit.app` — the
+cask's caveats explain this.)
+
+**On every release** the cask must be bumped: update `version` and `sha256`
+(`shasum -a 256` of the new universal dmg) in
+`cheat2001/homebrew-tap/Casks/angkorgit.rb`. The cask sets `auto_updates true`
+(the app self-updates), so tap users who installed once still get new versions
+in-app; the bump matters for fresh installs. Add this to the release checklist.
+
+Once the project has traction (75+ stars, 30+ forks) AND the app is
+signed/notarized, submit to homebrew-cask proper for
+`brew install --cask angkorgit`.
 
 ## 5. Website (live)
 
