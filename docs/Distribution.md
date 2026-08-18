@@ -81,12 +81,13 @@ Published at `cheat2001/homebrew-tap` (`Casks/angkorgit.rb`). Install:
 
 ```sh
 brew install --cask cheat2001/tap/angkorgit
-xattr -cr /Applications/AngKorGit.app
 ```
 
-(The `xattr` clears the Gatekeeper quarantine flag — needed because the app is
-unsigned. Recent Homebrew removed the old `--no-quarantine` option, so the
-two-step form is the correct one; the cask's caveats print the xattr command.)
+One command only: the cask runs `xattr -cr` on the installed app in a
+`postflight` block, clearing the Gatekeeper quarantine automatically (needed
+because the app is unsigned; recent Homebrew removed `--no-quarantine`).
+Own-tap casks may do this — homebrew/cask proper would reject it, so when the
+cask eventually moves there, signing/notarization must replace the postflight.
 
 **On every release** the cask must be bumped: update `version` and `sha256`
 (`shasum -a 256` of the new universal dmg) in
