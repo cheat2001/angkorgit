@@ -81,7 +81,7 @@ Create `cheat2001/homebrew-tap` with `Casks/angkorgit.rb`:
 
 ```ruby
 cask "angkorgit" do
-  version "0.6.1"
+  version "0.6.2"
   sha256 "<shasum -a 256 of the dmg>"
   url "https://github.com/cheat2001/angkorgit/releases/download/v#{version}/AngKorGit_#{version}_universal.dmg"
   name "AngKorGit"

@@ -1,10 +1,10 @@
 # Roadmap
 
-Updated for v0.6.1 (August 2026). [CHANGELOG.md](../CHANGELOG.md) is the
+Updated for v0.6.2 (August 2026). [CHANGELOG.md](../CHANGELOG.md) is the
 authoritative record of what shipped in each release; this file tracks
 direction.
 
-## Shipped (0.1.0 → 0.6.1)
+## Shipped (0.1.0 → 0.6.2)
 
 - [x] Repository: open, clone (with progress), recents, search, repository tabs (drag to reorder)
 - [x] Commit: stage files, hunks, and individual lines; unstage, commit, amend; per-repo commit drafts
@@ -14,7 +14,7 @@ direction.
 - [x] Conflicts: visual resolver — aligned A/B panes, per-line and per-side picks, a clean Output pane with direct click-to-edit results, GitKraken-style conflict navigation, AI explanations
 - [x] Stash: create, apply, pop, drop · Tags: create (annotated/lightweight), delete, checkout · Submodules: list & update
 - [x] Built-in PTY terminal at repo root; built-in file editor
-- [x] Diff: inline & side-by-side, syntax highlight, word diff, image diff, find in diff (⌘F), minimap, previous/next change and file navigation (N/P, [/]), opens at the first change
+- [x] Diff: inline & side-by-side, syntax highlight, word diff, image diff, find in diff (⌘F), minimap, previous/next change and file navigation (N/P, [/]), opens directly at the first change (no scroll animation)
 - [x] Settings: sixteen themes (Angkor Dusk default) with accents & zoom, identity profiles (repo-local), SSH key management & generation, hosting accounts with verified tokens, AI providers & commit style, keyboard reference
 - [x] AI: provider-agnostic (OpenAI, Anthropic, Gemini, Ollama, LM Studio) plus installed AI CLIs (Claude Code, Codex, Gemini CLI, OpenCode) — commit messages, diff/conflict explanations, PR descriptions, staged-change review
 - [x] Undo/redo for recent operations; drag-and-drop merge/rebase
