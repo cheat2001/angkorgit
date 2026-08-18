@@ -116,7 +116,18 @@ const platforms: Platform[] = [
     <div class="mt-10 rounded-lg border border-border-subtle bg-surface p-6">
       <h3 class="text-base font-semibold">Quick install from the terminal</h3>
       <p class="mt-2 text-sm leading-relaxed text-muted">
-        A few short commands per OS — downloads the latest release, bypasses the gatekeeper warning,
+        On a Mac with <a href="https://brew.sh" target="_blank" rel="noreferrer" class="text-primary hover:underline">Homebrew</a>,
+        one command installs AngKorGit and clears the Gatekeeper quarantine automatically:
+      </p>
+      <div class="mt-4">
+        <TerminalBlock
+          label="macOS — Homebrew (recommended)"
+          lines={['brew install --cask cheat2001/tap/angkorgit']}
+          copy={'brew install --cask cheat2001/tap/angkorgit'}
+        />
+      </div>
+      <p class="mt-6 text-sm leading-relaxed text-muted">
+        Or a few short commands per OS — downloads the latest release, bypasses the gatekeeper warning,
         and launches. Copy runs them in order.
       </p>
       <div class="mt-4 grid gap-4 lg:grid-cols-3">
