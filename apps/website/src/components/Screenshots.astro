@@ -70,33 +70,6 @@ const grid = shots.filter((shot) => !shot.featured);
     </div>
 
     <div class="mt-14 grid gap-8">
-      <figure class="group screenshot-figure" data-reveal>
-        <div class="block w-full overflow-hidden rounded-lg border border-border-subtle bg-surface-raised shadow-soft transition-all duration-200 hover:border-border">
-          <span class="flex items-center gap-1.5 border-b border-border-subtle px-4 py-2.5">
-            <span class="h-2 w-2 rounded-full bg-danger/70" aria-hidden="true"></span>
-            <span class="h-2 w-2 rounded-full bg-amber-400/70" aria-hidden="true"></span>
-            <span class="h-2 w-2 rounded-full bg-success/70" aria-hidden="true"></span>
-            <span class="ml-3 hidden font-mono text-xs text-faint sm:inline">main — AngKorGit</span>
-          </span>
-          <video
-            src={base + 'demo.mp4'}
-            poster={base + 'demo-poster.png'}
-            width="1280"
-            height="800"
-            autoplay
-            loop
-            muted
-            playsinline
-            preload="metadata"
-            class="h-auto w-full"
-            aria-label="AngKorGit in action — browsing the commit graph, opening a diff directly at its first change, and resolving a merge conflict"
-          ></video>
-        </div>
-        <figcaption class="mt-3 text-sm text-muted">
-          AngKorGit in motion — the graph, diffs that open on the change, and the conflict resolver.
-        </figcaption>
-      </figure>
-
       {
         featured.map((shot, i) => (
           <figure

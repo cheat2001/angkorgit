@@ -86,24 +86,32 @@ import { SITE } from '../lib/site';
         <span class="ml-3 hidden font-mono text-xs text-faint sm:inline">main — AngKorGit</span>
       </div>
       <div class="relative">
-        <img
-          src={import.meta.env.BASE_URL + 'screenshots/graph.webp'}
-          alt="AngKorGit commit graph in the Angkor Dusk theme with branches and working copy"
-          width="1800"
-          height="1130"
-          fetchpriority="high"
-          decoding="async"
+        <video
+          src={import.meta.env.BASE_URL + 'demo.mp4'}
+          poster={import.meta.env.BASE_URL + 'demo-poster.png'}
+          width="1280"
+          height="800"
+          autoplay
+          loop
+          muted
+          playsinline
+          preload="auto"
           class="hidden h-auto w-full rounded-b-lg dark:block"
-        />
-        <img
-          src={import.meta.env.BASE_URL + 'screenshots/graph-light.webp'}
-          alt="AngKorGit commit graph in the Angkor Dusk theme with branches and working copy"
-          width="1800"
-          height="1130"
-          fetchpriority="high"
-          decoding="async"
+          aria-label="AngKorGit in action — browsing the commit graph, opening a diff directly at its first change, and resolving a merge conflict"
+        ></video>
+        <video
+          src={import.meta.env.BASE_URL + 'demo-light.mp4'}
+          poster={import.meta.env.BASE_URL + 'demo-light-poster.png'}
+          width="1280"
+          height="800"
+          autoplay
+          loop
+          muted
+          playsinline
+          preload="auto"
           class="block h-auto w-full rounded-b-lg dark:hidden"
-        />
+          aria-label="AngKorGit in action — browsing the commit graph, opening a diff directly at its first change, and resolving a merge conflict"
+        ></video>
       </div>
     </div>
   </div>
