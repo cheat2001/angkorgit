@@ -20,6 +20,10 @@
 ---
 
 <p align="center">
+  <img src="docs/assets/demo.gif" alt="AngKorGit in action — opening a repository, browsing the commit graph, jumping straight to a diff's first change, and resolving a merge conflict" width="920" />
+</p>
+
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/graph.png" />
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/graph-light.png" />
