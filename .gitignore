@@ -19,3 +19,5 @@ apps/website/.astro/
 .env
 .env.*
 !*.env.example
+
+.claude/settings.local.json
