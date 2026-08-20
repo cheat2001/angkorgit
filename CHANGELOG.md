@@ -6,6 +6,13 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-08-20
+
+The quiet release, for Windows. Fetching, pulling and pushing no longer flash
+a terminal window across your screen and pull the keyboard out from under
+whatever you were typing in — the small helper processes the app runs now stay
+properly invisible.
+
 ### Fixed
 - **Windows: no more console window flashing during remote operations** — on
   Windows, fetching, pulling, pushing or letting auto-fetch run would flash a
@@ -566,7 +573,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/cheat2001/angkorgit/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/cheat2001/angkorgit/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/cheat2001/angkorgit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/cheat2001/angkorgit/compare/v0.5.0...v0.6.0
