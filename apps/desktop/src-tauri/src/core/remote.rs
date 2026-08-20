@@ -171,7 +171,7 @@ pub fn ssh_key_generate(base: &str, comment: &str) -> AppResult<GeneratedKey> {
         std::fs::create_dir_all(parent)?;
     }
 
-    let output = std::process::Command::new("ssh-keygen")
+    let output = crate::proc::hidden("ssh-keygen")
         .args(["-t", "ed25519", "-N", "", "-C", comment, "-f"])
         .arg(&private)
         .output()
@@ -191,9 +191,9 @@ pub fn ssh_key_generate(base: &str, comment: &str) -> AppResult<GeneratedKey> {
 
 pub fn credential_approve(host: &str, username: &str, password: &str) -> AppResult<()> {
     use std::io::Write;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
-    let mut child = Command::new("git")
+    let mut child = crate::proc::hidden("git")
         .args(["credential", "approve"])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -217,7 +217,7 @@ pub fn credential_approve(host: &str, username: &str, password: &str) -> AppResu
 
 fn credentials_from_git_cli(url: &str, username: Option<&str>) -> Option<(String, String)> {
     use std::io::Write;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     let mut input = format!("url={url}\n");
     if let Some(user) = username {
@@ -225,7 +225,7 @@ fn credentials_from_git_cli(url: &str, username: Option<&str>) -> Option<(String
     }
     input.push('\n');
 
-    let mut child = Command::new("git")
+    let mut child = crate::proc::hidden("git")
         .args(["credential", "fill"])
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::piped())

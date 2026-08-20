@@ -140,6 +140,9 @@ terminal.rs           ← real PTY per session (portable-pty), events term-data-
 watcher.rs            ← notify-debouncer-mini (400ms) → "repo-changed" event;
                         filters .git noise, keeps HEAD/index/refs/packed-refs, skips *.lock
 http.rs               ← AI/HTTP proxy (reqwest, rustls) — keeps CORS + keys out of webview
+proc.rs               ← EVERY child process starts here: proc::hidden(program) adds
+                        CREATE_NO_WINDOW on Windows (see G31). A module test scans src/
+                        and fails on any bare Command::new outside proc.rs
 account_check.rs      ← re-verifies a stored account token against its provider (GitHub /user
                         + expiry header, GitLab personal_access_tokens/self w/ /user fallback,
                         Bitbucket 2.0/user via stored email); only 401 flips verified=false,
@@ -641,12 +644,34 @@ update CLAUDE.md or docs/ — never the code.
   Bitbucket re-checks need the stored Atlassian `email` (G17) and are skipped
   without it.
 
+- **G31 — on Windows every `Command` needs `CREATE_NO_WINDOW`**: AngKorGit is a
+  GUI-subsystem process with no console, so spawning a console-subsystem child
+  (`git.exe`, `ssh-keygen`, an AI CLI) makes Windows allocate one — and on
+  Win11 22H2+ that opens the *default terminal application*, i.e. a real
+  Windows Terminal/PowerShell window that flashes on screen and **steals
+  keyboard focus** (issue #1). The reported "PowerShell window every ~20
+  seconds" was a feedback loop, not a timer: auto-fetch's `window.focus`
+  handler (RepositoryPage, 30s throttle) fetches → the credential chain falls
+  through accounts/SSH to `credentials_from_git_cli`'s `git credential fill`
+  → the console flash steals focus → the user clicks back into the app →
+  focus event → another fetch ~30s later. So a flashing child process is
+  self-sustaining; fixing the flash fixes the frequency. All spawns therefore
+  go through `proc::hidden()`. Notes: `git2`'s own `Cred::credential_helper`
+  already sets the flag (verified in git2-0.20.4 `src/cred.rs`), so step 4 of
+  the credential chain was never the culprit; `portable_pty`'s ConPTY child is
+  also fine. The guard is a source-scan module test in `proc.rs`
+  (`every_spawn_goes_through_hidden`) because the real symptom is invisible on
+  macOS/Linux CI — it was verified to fail by temporarily adding a bare
+  `Command::new` elsewhere. Cross-compiling to check the `cfg(windows)` arm
+  isn't possible locally (no Windows target/SDK); CI's windows clippy job is
+  the gate.
+
 ## 9. Testing map
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
 | Rust integration (36) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
-| Rust module (33) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored |
+| Rust module (34) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/proc.rs` (1) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · proc: no bare `Command::new` anywhere outside proc.rs (G31) |
 | Unit (62) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null) |
 | E2E (11) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop) — all on demo mode |
 

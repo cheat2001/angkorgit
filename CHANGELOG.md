@@ -6,6 +6,15 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Windows: no more console window flashing during remote operations** — on
+  Windows, fetching, pulling, pushing or letting auto-fetch run would flash a
+  PowerShell/terminal window on screen for a moment and steal keyboard focus
+  from whatever you were typing in. Every helper process the app runs (the
+  `git credential` handshake, `ssh-keygen`, the AI CLI probes, open/reveal in
+  file manager) is now launched with `CREATE_NO_WINDOW`, so it stays invisible
+  (#1).
+
 ## [0.6.2] — 2026-08-18
 
 The right-there release: clicking a file now drops you directly on its first

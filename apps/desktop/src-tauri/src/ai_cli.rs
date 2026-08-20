@@ -199,7 +199,7 @@ fn shell_lookup(missing: &[&str]) -> Vec<(String, PathBuf)> {
         .map(|name| format!("command -v {name} || true"))
         .collect::<Vec<_>>()
         .join("; ");
-    let mut command = Command::new(shell);
+    let mut command = crate::proc::hidden(shell);
     command.args(["-lc", &script]);
     let Ok(captured) = capture(command, "", VERSION_TIMEOUT) else {
         return Vec::new();
@@ -220,7 +220,7 @@ fn shell_lookup(missing: &[&str]) -> Vec<(String, PathBuf)> {
 }
 
 fn agent_version(path: &Path) -> String {
-    let mut command = Command::new(path);
+    let mut command = crate::proc::hidden(path);
     command
         .arg("--version")
         .current_dir(std::env::temp_dir())
@@ -311,7 +311,7 @@ pub fn run(request: CliRunRequest) -> AppResult<CliRunResult> {
         .collect();
 
     let program_dir = Path::new(&request.program).parent().map(Path::to_path_buf);
-    let mut command = Command::new(&request.program);
+    let mut command = crate::proc::hidden(&request.program);
     command
         .args(&args)
         .current_dir(std::env::temp_dir())

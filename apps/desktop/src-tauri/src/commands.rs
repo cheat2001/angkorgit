@@ -169,17 +169,17 @@ pub async fn open_path(path: String) -> AppResult<()> {
         let status = {
             #[cfg(target_os = "macos")]
             {
-                std::process::Command::new("open").arg(&path).status()
+                crate::proc::hidden("open").arg(&path).status()
             }
             #[cfg(target_os = "windows")]
             {
-                std::process::Command::new("cmd")
+                crate::proc::hidden("cmd")
                     .args(["/C", "start", "", &path])
                     .status()
             }
             #[cfg(all(unix, not(target_os = "macos")))]
             {
-                std::process::Command::new("xdg-open").arg(&path).status()
+                crate::proc::hidden("xdg-open").arg(&path).status()
             }
         }?;
         if !status.success() {
@@ -196,13 +196,11 @@ pub async fn reveal_path(path: String) -> AppResult<()> {
         let status = {
             #[cfg(target_os = "macos")]
             {
-                std::process::Command::new("open")
-                    .args(["-R", &path])
-                    .status()
+                crate::proc::hidden("open").args(["-R", &path]).status()
             }
             #[cfg(target_os = "windows")]
             {
-                std::process::Command::new("explorer")
+                crate::proc::hidden("explorer")
                     .arg(format!("/select,{path}"))
                     .status()
             }
@@ -212,7 +210,7 @@ pub async fn reveal_path(path: String) -> AppResult<()> {
                     .parent()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| path.clone());
-                std::process::Command::new("xdg-open").arg(parent).status()
+                crate::proc::hidden("xdg-open").arg(parent).status()
             }
         }?;
         let _ = status;

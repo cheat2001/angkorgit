@@ -6,6 +6,7 @@ mod commands;
 mod core;
 mod error;
 mod http;
+mod proc;
 mod state;
 mod terminal;
 mod watcher;
