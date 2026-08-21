@@ -45,7 +45,7 @@ import { ipc, pickDirectory } from '@/core/ipc';
 import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
 import { abortMergeFlow } from '@/features/repository/merge';
-import { useUi } from '@/features/ui/store';
+import { sidebarVisible, useUi } from '@/features/ui/store';
 import { useUndo } from '@/features/history/undoStore';
 import { useSettings, type IdentityProfile } from '@/features/settings/store';
 import { applyProfileToRepo, ensureRepoProfile } from '@/features/settings/profiles';
@@ -359,7 +359,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const setBusy = useRepo((s) => s.setBusy);
   const toggleTerminal = useUi((s) => s.toggleTerminal);
   const toggleSidebar = useUi((s) => s.toggleSidebar);
-  const sidebarOpen = useUi((s) => s.sidebarOpen);
+  const sidebarOpen = useUi(sidebarVisible);
   const openDialog = useUi((s) => s.openDialog);
   const setPaletteOpen = useUi((s) => s.setPaletteOpen);
   const navigate = useNavigate();

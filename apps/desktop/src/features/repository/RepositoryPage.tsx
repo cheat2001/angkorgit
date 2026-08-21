@@ -4,7 +4,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { motion } from 'framer-motion';
 import { useRepo } from './store';
 import { useGraph } from '@/features/graph/store';
-import { useUi } from '@/features/ui/store';
+import { sidebarVisible, useUi } from '@/features/ui/store';
 import { RepoTabs } from '@/components/RepoTabs';
 import { StatusBar } from '@/components/StatusBar';
 import { Toolbar } from '@/components/Toolbar';
@@ -33,7 +33,7 @@ export function RepositoryPage() {
   const navigate = useNavigate();
   const toggleTerminal = useUi((s) => s.toggleTerminal);
   const toggleSidebar = useUi((s) => s.toggleSidebar);
-  const sidebarOpen = useUi((s) => s.sidebarOpen);
+  const sidebarOpen = useUi(sidebarVisible);
   const setPaletteOpen = useUi((s) => s.setPaletteOpen);
   const terminalOpen = useUi((s) => s.terminalOpen);
   const conflictFile = useUi((s) => s.conflictFile);

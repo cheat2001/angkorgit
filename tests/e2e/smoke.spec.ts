@@ -246,3 +246,38 @@ test('hovering a working copy file reveals its full path', async ({ page }) => {
   await page.getByText('WorkingCopyFileListItemContainerFactory.tsx').first().hover();
   await expect(page.getByRole('tooltip').filter({ hasText: longPath })).toBeVisible();
 });
+
+test('opening a diff hides the sidebar and toggling it back returns to the graph', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const sidebar = page.getByRole('complementary', { name: 'Branches and refs' });
+  const diff = page.locator('section[aria-label^="Diff for"]');
+  const toggle = page.getByRole('button', { name: /sidebar$/ });
+
+  await expect(sidebar).toBeVisible();
+  await page.getByText('palette-seed.sql').first().click();
+  await expect(diff).toBeVisible();
+  await expect(sidebar).toBeHidden();
+
+  const stored = await page.evaluate(() => {
+    const raw = localStorage.getItem('angkorgit-ui');
+    return raw ? JSON.parse(raw).state.sidebarOpen : null;
+  });
+  expect(stored).toBe(true);
+
+  await toggle.click();
+  await expect(sidebar).toBeVisible();
+  await expect(diff).toBeHidden();
+
+  await toggle.click();
+  await expect(sidebar).toBeHidden();
+  await page.getByText('palette-seed.sql').first().click();
+  await expect(diff).toBeVisible();
+  await toggle.click();
+  await expect(sidebar).toBeVisible();
+  await expect(diff).toBeHidden();
+});

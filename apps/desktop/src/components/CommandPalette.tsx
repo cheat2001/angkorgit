@@ -25,7 +25,7 @@ import {
 import { Kbd } from '@angkorgit/design-system';
 import { ipc, openExternal } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
-import { useUi } from '@/features/ui/store';
+import { sidebarVisible, useUi } from '@/features/ui/store';
 import { themeBase, useSettings } from '@/features/settings/store';
 import { useUndo } from '@/features/history/undoStore';
 import { currentPullRequestUrl, modKey } from '@/shared/utils';
@@ -40,7 +40,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
   const setPaletteOpen = useUi((s) => s.setPaletteOpen);
   const toggleTerminal = useUi((s) => s.toggleTerminal);
   const toggleSidebar = useUi((s) => s.toggleSidebar);
-  const sidebarOpen = useUi((s) => s.sidebarOpen);
+  const sidebarOpen = useUi(sidebarVisible);
   const openDialog = useUi((s) => s.openDialog);
   const theme = useSettings((s) => s.theme);
   const setTheme = useSettings((s) => s.setTheme);

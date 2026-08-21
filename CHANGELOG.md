@@ -9,9 +9,9 @@ All notable changes to AngKorGit are documented here. The format follows
 ## [0.6.4] — 2026-08-21
 
 The tidy-up release. Long file paths stop escaping their popups and start
-reading properly, hovering any file shows you where it actually lives, and the
-branch list finally forms a straight column instead of nudging the checked-out
-branch sideways.
+reading properly, hovering any file shows you where it actually lives, opening a
+diff gives it the full window, and the branch list finally forms a straight column
+instead of nudging the checked-out branch sideways.
 
 ### Added
 - **Hover a file to see its full path** — working-copy rows had no tooltip at
@@ -21,6 +21,10 @@ branch sideways.
   it never covers the file you are about to click.
 
 ### Changed
+- **Opening a diff gets out of its own way** — the branch sidebar now folds away
+  when you open a diff, giving the file the full width, and toggling the sidebar
+  back on always closes the diff and returns you to the graph, whether the diff
+  hid the sidebar or you had already hidden it yourself.
 - **Confirmations show the path in its own panel** — the file path used to be
   quoted inside the sentence (and inside the "Delete …?" heading), which turned
   a deep path into a three-line title broken mid-word. Titles are short again

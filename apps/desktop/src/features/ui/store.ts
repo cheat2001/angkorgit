@@ -29,6 +29,7 @@ export type DialogContext = string | InteractiveRebasePreset | null;
 
 interface UiState {
   sidebarOpen: boolean;
+  sidebarHiddenForDiff: boolean;
   terminalOpen: boolean;
   paletteOpen: boolean;
   dialog: DialogKind;
@@ -68,10 +69,13 @@ interface UiState {
   setFileTree: (on: boolean) => void;
 }
 
+export const sidebarVisible = (s: UiState) => s.sidebarOpen && !s.sidebarHiddenForDiff;
+
 export const useUi = create<UiState>()(
   persist(
     (set) => ({
       sidebarOpen: true,
+  sidebarHiddenForDiff: false,
   terminalOpen: false,
   paletteOpen: false,
   dialog: null,
@@ -88,7 +92,12 @@ export const useUi = create<UiState>()(
   repoTabs: [],
   fileTree: false,
 
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  toggleSidebar: () =>
+    set((s) =>
+      s.centerDiff
+        ? { centerDiff: null, sidebarHiddenForDiff: false, sidebarOpen: true }
+        : { sidebarOpen: !s.sidebarOpen },
+    ),
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   openDialog: (dialog, context = null) => set({ dialog, dialogContext: context }),
@@ -98,11 +107,12 @@ export const useUi = create<UiState>()(
   setFullFileDiff: (fullFileDiff) => set({ fullFileDiff }),
   setWrapLines: (wrapLines) => set({ wrapLines }),
   selectFile: (selectedFile) => set({ selectedFile }),
-  openCenterDiff: (centerDiff) => set({ centerDiff }),
-  closeCenterDiff: () => set({ centerDiff: null }),
+  openCenterDiff: (centerDiff) => set({ centerDiff, sidebarHiddenForDiff: true }),
+  closeCenterDiff: () => set({ centerDiff: null, sidebarHiddenForDiff: false }),
   openEditor: (centerEditor) => set({ centerEditor }),
   closeEditor: () => set({ centerEditor: null }),
-  openFileHistory: (centerFileHistory) => set({ centerFileHistory, centerDiff: null }),
+  openFileHistory: (centerFileHistory) =>
+    set({ centerFileHistory, centerDiff: null, sidebarHiddenForDiff: false }),
   closeFileHistory: () => set({ centerFileHistory: null }),
   openConflict: (conflictFile) => set({ conflictFile }),
   addRepoTab: (path) =>

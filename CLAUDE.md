@@ -360,7 +360,15 @@ features/
 │                               summarize, review. Settings AI tab: detected-CLI
 │                               picker (scan/select/rescan, optional model override)
 └── ui/store.ts               ← layout state (sidebar/terminal/palette/dialogs/centerDiff/
-                                diff view prefs) — view prefs PERSISTED via partialize
+                                diff view prefs) — view prefs PERSISTED via partialize;
+                                openCenterDiff folds the sidebar away via the TRANSIENT
+                                sidebarHiddenForDiff (persisted sidebarOpen stays the user's
+                                preference, so quitting mid-diff cannot poison it),
+                                closeCenterDiff clears it, and toggleSidebar with a diff open
+                                ALWAYS closes the diff and shows the sidebar (unconditional
+                                by owner request — an earlier version skipped this when the
+                                user had hidden the sidebar themselves and that read as
+                                broken); consumers use the derived `sidebarVisible` selector
 ```
 
 ### 6.1 Demo mode (why the UI is testable without Rust)
@@ -706,7 +714,7 @@ update CLAUDE.md or docs/ — never the code.
 | Rust integration (36) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
 | Rust module (34) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/proc.rs` (1) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · proc: no bare `Command::new` anywhere outside proc.rs (G31) |
 | Unit (62) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null) |
-| E2E (14) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop), long path stays inside the discard confirm dialog, sidebar branch names align with and without the HEAD tick (measured left offsets), hovering a working-copy file reveals its full path — all on demo mode |
+| E2E (15) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop), long path stays inside the discard confirm dialog, sidebar branch names align with and without the HEAD tick (measured left offsets), hovering a working-copy file reveals its full path, opening a diff folds the sidebar away and the toggle brings back the graph — all on demo mode |
 
 ## 9.5 Open-source & community files
 

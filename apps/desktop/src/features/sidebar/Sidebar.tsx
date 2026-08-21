@@ -446,7 +446,7 @@ export function Sidebar() {
     });
 
   return (
-    <aside className="flex h-full flex-col bg-surface">
+    <aside className="flex h-full flex-col bg-surface" aria-label="Branches and refs">
       <div className="p-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
