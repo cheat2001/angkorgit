@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Check,
+  ChevronDown,
   Copy,
   FolderOpen,
   Github,
@@ -229,21 +230,36 @@ function ModelField() {
   const ai = useSettings((s) => s.ai);
   const setAi = useSettings((s) => s.setAi);
   const [models, setModels] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const preset = AI_PROVIDER_PRESETS[ai.provider];
 
   useEffect(() => {
     setModels([]);
+    setOpen(false);
   }, [ai.provider]);
 
   const load = async () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    if (models.length > 0) {
+      setOpen(true);
+      return;
+    }
+    const { ai: current } = useSettings.getState();
+    if (preset.needsApiKey && !current.apiKey) {
+      toast.info('Enter your API key first — the model list is specific to your account');
+      return;
+    }
     setLoading(true);
     try {
-      const { ai: current } = useSettings.getState();
       const found = await listAiModels({ ...current, baseUrl: current.baseUrl || undefined }, (request) =>
         ipc.httpRequest(request),
       );
       setModels(found);
+      setOpen(found.length > 0);
       if (found.length === 0) toast.info('The provider returned no models');
     } catch (error) {
       toast.error(`Could not load models: ${(error as { message?: string }).message ?? error}`);
@@ -252,28 +268,46 @@ function ModelField() {
     }
   };
 
+  const refresh = async () => {
+    setModels([]);
+    setOpen(false);
+    await load();
+  };
+
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted">Model</span>
-        <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
-          {loading ? <Spinner /> : <RefreshCw className="size-3.5" />}
-          Load models
-        </Button>
+        <div className="flex items-center gap-1">
+          {models.length > 0 && !open && (
+            <Hint label="Fetch the list again">
+              <Button variant="ghost" size="icon-sm" aria-label="Refresh model list" onClick={() => void refresh()} disabled={loading}>
+                <RefreshCw className="size-3.5" />
+              </Button>
+            </Hint>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
+            {loading ? <Spinner /> : <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />}
+            {open ? 'Hide models' : models.length > 0 ? 'Show models' : 'Load models'}
+          </Button>
+        </div>
       </div>
       <Input
         value={ai.model}
         onChange={(e) => setAi({ model: e.target.value })}
         placeholder={preset.defaultModel}
       />
-      {models.length > 0 && (
+      {open && (
         <div className="max-h-44 overflow-y-auto rounded-md border border-border-subtle">
           {models.map((model) => {
             const isActive = ai.model === model;
             return (
               <button
                 key={model}
-                onClick={() => setAi({ model })}
+                onClick={() => {
+                  setAi({ model });
+                  setOpen(false);
+                }}
                 className={cn(
                   'flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors',
                   isActive ? 'bg-primary/10 text-foreground' : 'hover:bg-surface-raised',
