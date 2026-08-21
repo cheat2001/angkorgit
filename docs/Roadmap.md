@@ -1,10 +1,10 @@
 # Roadmap
 
-Updated for v0.6.3 (August 2026). [CHANGELOG.md](../CHANGELOG.md) is the
+Updated for v0.6.4 (August 2026). [CHANGELOG.md](../CHANGELOG.md) is the
 authoritative record of what shipped in each release; this file tracks
 direction.
 
-## Shipped (0.1.0 → 0.6.3)
+## Shipped (0.1.0 → 0.6.4)
 
 - [x] Repository: open, clone (with progress), recents, search, repository tabs (drag to reorder)
 - [x] Commit: stage files, hunks, and individual lines; unstage, commit, amend; per-repo commit drafts

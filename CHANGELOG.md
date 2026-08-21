@@ -6,6 +6,13 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.4] — 2026-08-21
+
+The tidy-up release. Long file paths stop escaping their popups and start
+reading properly, hovering any file shows you where it actually lives, and the
+branch list finally forms a straight column instead of nudging the checked-out
+branch sideways.
+
 ### Added
 - **Hover a file to see its full path** — working-copy rows had no tooltip at
   all, so a path that truncated gave you no way to read the rest of it; commit
@@ -599,7 +606,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.3...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.4...HEAD
+[0.6.4]: https://github.com/cheat2001/angkorgit/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/cheat2001/angkorgit/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/cheat2001/angkorgit/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/cheat2001/angkorgit/compare/v0.6.0...v0.6.1
