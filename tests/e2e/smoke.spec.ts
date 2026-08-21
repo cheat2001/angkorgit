@@ -154,3 +154,95 @@ test('clicking a file opens the diff already at its first change, with no scroll
   const climbing = samples.filter((top) => top > 0 && top < settled * 0.9);
   expect(climbing).toHaveLength(0);
 });
+
+test('long paths stay inside confirmation dialogs', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const longPath =
+    'src/features/repository/components/working-copy/deeply/nested/WorkingCopyFileListItemContainerFactory.tsx';
+
+  const measure = () =>
+    page.getByRole('dialog').evaluate((box) => {
+      const outer = box.getBoundingClientRect();
+      return [...box.querySelectorAll('h2, p')].map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          text: (el.textContent ?? '').slice(0, 40),
+          clipped: el.scrollWidth - el.clientWidth,
+          spillsRight: Math.round(rect.right - outer.right),
+        };
+      });
+    });
+
+  const expectContained = async () => {
+    const parts = await measure();
+    expect(parts.length).toBeGreaterThan(0);
+    for (const part of parts) {
+      expect(part.clipped, `clipped: ${part.text}`).toBeLessThanOrEqual(1);
+      expect(part.spillsRight, `spills: ${part.text}`).toBeLessThanOrEqual(0);
+    }
+  };
+
+  const discard = page.getByRole('button', { name: `Discard ${longPath}` });
+  await discard.scrollIntoViewIfNeeded();
+  await discard.click({ force: true });
+  await expect(page.getByRole('dialog').getByText('Discard changes?')).toBeVisible();
+  await expect(page.getByRole('dialog').getByText(longPath)).toBeVisible();
+  await expectContained();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+
+  await page
+    .getByText('WorkingCopyFileListItemContainerFactory.tsx')
+    .first()
+    .click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /Delete file/ }).click();
+  await expect(page.getByRole('dialog').getByText('Delete file?')).toBeVisible();
+  await expect(page.getByRole('dialog').getByText(longPath)).toBeVisible();
+  await expectContained();
+});
+
+test('branch names line up whether or not the branch is checked out', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.locator('aside button[title="feature"]').click();
+
+  const layout = await page.evaluate(() => {
+    const leftOf = (el: Element | null) =>
+      el ? Math.round((el as HTMLElement).getBoundingClientRect().left) : -1;
+    const branch = (name: string) => {
+      const row = [...document.querySelectorAll('aside div[title*="drag onto another branch"]')].find(
+        (el) => (el.getAttribute('title') ?? '').startsWith(`${name} —`),
+      );
+      return {
+        left: leftOf(row?.querySelector('button span.truncate') ?? null),
+        tick: !!row?.querySelector('svg.lucide-check'),
+      };
+    };
+    return {
+      head: branch('main'),
+      plain: branch('develop'),
+      nested: branch('feature/diff-viewer'),
+      folder: leftOf(document.querySelector('aside button[title="feature"] span.truncate')),
+    };
+  });
+
+  expect(layout.head.tick).toBe(true);
+  expect(layout.plain.tick).toBe(false);
+  expect(layout.head.left).toBe(layout.plain.left);
+  expect(layout.folder).toBe(layout.plain.left);
+  expect(layout.nested.left).toBe(layout.plain.left + 14);
+});
+
+test('hovering a working copy file reveals its full path', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const longPath =
+    'src/features/repository/components/working-copy/deeply/nested/WorkingCopyFileListItemContainerFactory.tsx';
+  await page.getByText('WorkingCopyFileListItemContainerFactory.tsx').first().hover();
+  await expect(page.getByRole('tooltip').filter({ hasText: longPath })).toBeVisible();
+});

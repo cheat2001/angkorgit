@@ -233,7 +233,9 @@ components/                   ← Toolbar (fetch/pull/push split-button, undo/re
                                 ensureRepoProfile, sidebar toggle), CommandPalette (cmdk),
                                 Avatar (Gravatar SHA-256 + initials fallback + failure
                                 cache), confirm.tsx (promise-based confirmDialog +
-                                ConfirmHost), profilePrompt.tsx (promise-based
+                                ConfirmHost — ConfirmOptions.path renders the file path in a
+                                monospace panel breaking at `/` via <wbr>, dirs dimmed, NOT inside
+                                the title or the prose), profilePrompt.tsx (promise-based
                                 pickProfile + ProfilePromptHost — same pattern)
 shared/                       ← useShortcuts (mod-combos, skipInInput), highlight.ts
                                 (hljs lib/core + languageOf), utils (timeAgo, modKey…)
@@ -310,7 +312,10 @@ features/
 │                               render virtualized (paired-row flatten keeps A/B
 │                               aligned, scrollToIndex nav, editor row measured),
 │                               smaller files keep the plain path
-├── sidebar/Sidebar.tsx       ← branch FOLDER TREE (buildBranchTree), right-click context
+├── sidebar/Sidebar.tsx       ← branch FOLDER TREE (buildBranchTree), HeadMark reserves a
+│                               fixed tick gutter so names align with each other AND with
+│                               folder labels at the same depth (remote rows carry the empty
+│                               slot for the same reason), right-click context
 │                               menu (checkout/merge/rebase/pull/push/create-branch-here/
 │                               rename/delete), drag-and-drop merge/rebase, tags/stashes/
 │                               remotes/submodules sections
@@ -390,6 +395,13 @@ update CLAUDE.md or docs/ — never the code.
   the centering translate** — use `animate-dialog-in` (see gotcha G7).
 - Graph lane colors: `--graph-0…9`. Diff backgrounds: `bg-diff-add/15`, `bg-diff-del/15`.
 - Every icon button gets a `Hint` tooltip; destructive menu items use `destructive` prop.
+  Exception: an icon button INSIDE a row that already carries a `Hint` loses its own —
+  Radix opens both roots at once (verified: two tooltips over the working-copy discard
+  button), so the row tooltip wins and the button keeps only its `aria-label`.
+- **User-controlled strings (paths, branch names, URLs) need a wrap or truncate
+  strategy** wherever they render: dialog copy wraps via the primitives (G32),
+  menu labels truncate (`max-w-64 truncate`), toasts inherit sonner's
+  `overflow-wrap: anywhere`.
 - Sentence case for all UI text.
 
 ## 8. Hard-won gotchas (do not re-learn these)
@@ -666,6 +678,27 @@ update CLAUDE.md or docs/ — never the code.
   isn't possible locally (no Windows target/SDK); CI's windows clippy job is
   the gate.
 
+- **G32 — `break-words` is NOT enough inside a flex container; use
+  `overflow-wrap: anywhere`**: a file path has no spaces, so it is one
+  unbreakable word and bleeds straight out of a fixed-width dialog (issue #2,
+  the "Discard changes?" popup). The subtlety that cost a second round: CSS
+  `overflow-wrap: break-word` breaks a long word visually but **does not
+  reduce the element's min-content width**, while `anywhere` does. Dialog
+  descriptions are plain blocks, so `break-words` fixed them — but
+  `DialogTitle` in `confirm.tsx` is `flex items-center gap-2` (it holds the
+  warning icon), and its bare text node becomes an anonymous flex item whose
+  `min-width: auto` resolves to min-content, so `break-words` left
+  `Delete "<long path>"?` overflowing by 225px. Both primitives therefore use
+  `[overflow-wrap:anywhere]`. Sonner already sets that property on the toast
+  container and it inherits, so toasts were never affected. Dropdown menus
+  clip instead (`overflow-hidden`) and their path labels already truncate
+  (`max-w-64 truncate`), so they widen rather than bleed. Regression e2e:
+  `long paths stay inside confirmation dialogs` — it measures every `h2`/`p`
+  in the dialog for both `scrollWidth - clientWidth` and spill past the
+  dialog's right edge, covering the title and the description, and it was
+  verified to fail with either primitive's class removed. The demo repo
+  carries a deeply nested untracked file for it.
+
 ## 9. Testing map
 
 | Suite | Location | Coverage |
@@ -673,7 +706,7 @@ update CLAUDE.md or docs/ — never the code.
 | Rust integration (36) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
 | Rust module (34) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/proc.rs` (1) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · proc: no bare `Command::new` anywhere outside proc.rs (G31) |
 | Unit (62) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null) |
-| E2E (11) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop) — all on demo mode |
+| E2E (14) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop), long path stays inside the discard confirm dialog, sidebar branch names align with and without the HEAD tick (measured left offsets), hovering a working-copy file reveals its full path — all on demo mode |
 
 ## 9.5 Open-source & community files
 

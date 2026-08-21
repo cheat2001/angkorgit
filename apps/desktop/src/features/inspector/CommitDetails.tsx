@@ -70,29 +70,29 @@ export function CommitDetails({
   const renderDiffRow = (diff: FileDiff, depth?: number) => {
     const active = centerDiff?.path === diff.path && centerDiff.oid === commit.oid;
     return (
-      <button
-        key={diff.path}
-        className={cn(
-          'mb-1 flex w-full items-center gap-2 rounded-md border border-border-subtle px-2 py-1.5 text-left text-xs transition-colors',
-          active ? 'border-primary/50 bg-primary/10' : 'bg-surface-raised/60 hover:bg-surface-raised',
-        )}
-        style={fileTree && depth !== undefined ? { paddingLeft: treeIndent(depth) } : undefined}
-        title={diff.path}
-        onClick={() =>
-          active ? closeCenterDiff() : openCenterDiff({ path: diff.path, oid: commit.oid })
-        }
-      >
-        <FileText className={cn('size-3.5 shrink-0', statusMeta[diff.status]?.className ?? 'text-muted')} />
-        <span className="flex min-w-0 flex-1 items-center font-mono">
-          {!fileTree && dirname(diff.path) && (
-            <span className="min-w-0 truncate text-faint">{dirname(diff.path)}/</span>
+      <Hint key={diff.path} label={diff.path} side="left" className="max-w-[34rem] font-mono">
+        <button
+          className={cn(
+            'mb-1 flex w-full items-center gap-2 rounded-md border border-border-subtle px-2 py-1.5 text-left text-xs transition-colors',
+            active ? 'border-primary/50 bg-primary/10' : 'bg-surface-raised/60 hover:bg-surface-raised',
           )}
-          <span className="max-w-full shrink-0 truncate">{basename(diff.path)}</span>
-        </span>
-        <span className="shrink-0 text-success">+{diff.additions}</span>
-        <span className="shrink-0 text-danger">−{diff.deletions}</span>
-        <ChevronRight className="size-3.5 shrink-0 text-faint" />
-      </button>
+          style={fileTree && depth !== undefined ? { paddingLeft: treeIndent(depth) } : undefined}
+          onClick={() =>
+            active ? closeCenterDiff() : openCenterDiff({ path: diff.path, oid: commit.oid })
+          }
+        >
+          <FileText className={cn('size-3.5 shrink-0', statusMeta[diff.status]?.className ?? 'text-muted')} />
+          <span className="flex min-w-0 flex-1 items-center font-mono">
+            {!fileTree && dirname(diff.path) && (
+              <span className="min-w-0 truncate text-faint">{dirname(diff.path)}/</span>
+            )}
+            <span className="max-w-full shrink-0 truncate">{basename(diff.path)}</span>
+          </span>
+          <span className="shrink-0 text-success">+{diff.additions}</span>
+          <span className="shrink-0 text-danger">−{diff.deletions}</span>
+          <ChevronRight className="size-3.5 shrink-0 text-faint" />
+        </button>
+      </Hint>
     );
   };
 

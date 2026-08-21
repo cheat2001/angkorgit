@@ -6,6 +6,32 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Hover a file to see its full path** — working-copy rows had no tooltip at
+  all, so a path that truncated gave you no way to read the rest of it; commit
+  file rows only had the plain system tooltip. Both now show the app's own
+  tooltip with the complete path, placed beside the row rather than over it, so
+  it never covers the file you are about to click.
+
+### Changed
+- **Confirmations show the path in its own panel** — the file path used to be
+  quoted inside the sentence (and inside the "Delete …?" heading), which turned
+  a deep path into a three-line title broken mid-word. Titles are short again
+  and the path sits in a monospace panel below, wrapping at directory
+  boundaries with the folders dimmed and the filename bright.
+- **Branch names line up in the sidebar** — the checkmark on the checked-out
+  branch used to sit inline and shove that one name to the right, so a branch
+  folder read as a ragged list. The tick now lives in its own fixed slot at the
+  left, which also lines every branch name up with the folder name above it.
+
+### Fixed
+- **Long file paths no longer bleed out of confirmation dialogs** — discarding
+  a change to a deeply nested file showed the path running straight past the
+  edge of the "Discard changes?" popup, because a path has no spaces to wrap
+  at. Both the title and the body of every dialog now wrap anywhere in a long
+  word, so the whole path stays inside the box — this also covered the
+  "Delete <path>?" confirmation, which had the same fault (#2).
+
 ## [0.6.3] — 2026-08-20
 
 The quiet release, for Windows. Fetching, pulling and pushing no longer flash

@@ -61,7 +61,8 @@ export function EditorPanel({ file }: { file: string }) {
     }
     void confirmDialog({
       title: 'Discard unsaved changes?',
-      description: `"${file}" has unsaved edits. Close without saving?`,
+      description: 'This file has unsaved edits. Close without saving?',
+      path: file,
       confirmLabel: 'Close without saving',
       destructive: true,
     }).then((ok) => {

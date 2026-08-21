@@ -75,30 +75,30 @@ const FileRow = memo(function FileRow({
   const kind = staged ? file.staged : file.unstaged;
   const conflicted = file.unstaged === 'conflicted';
   return (
-    <div
-      className={cn(
-        'group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
-        selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
-      )}
-      style={indent !== undefined ? { paddingLeft: indent } : undefined}
-      onClick={() => onClick(file, staged)}
-      onContextMenu={onContextMenu ? (e) => onContextMenu(e, file, staged) : undefined}
-    >
-      <Checkbox
-        checked={staged}
-        aria-label={staged ? `Unstage ${file.path}` : `Stage ${file.path}`}
-        onCheckedChange={() => onPrimary(file, staged)}
-        onClick={(e) => e.stopPropagation()}
-      />
-      {statusBadge(conflicted && !staged ? 'conflicted' : kind)}
-      <span className="min-w-0 flex-1 truncate">
-        <span className="text-foreground">{basename(file.path)}</span>
-        {!treeMode && dirname(file.path) && (
-          <span className="ml-1.5 text-faint">{dirname(file.path)}</span>
+    <Hint label={file.path} side="left" className="max-w-[34rem] font-mono">
+      <div
+        className={cn(
+          'group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
+          selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
         )}
-      </span>
-      {!staged && onDiscard && (
-        <Hint label="Discard changes">
+        style={indent !== undefined ? { paddingLeft: indent } : undefined}
+        onClick={() => onClick(file, staged)}
+        onContextMenu={onContextMenu ? (e) => onContextMenu(e, file, staged) : undefined}
+      >
+        <Checkbox
+          checked={staged}
+          aria-label={staged ? `Unstage ${file.path}` : `Stage ${file.path}`}
+          onCheckedChange={() => onPrimary(file, staged)}
+          onClick={(e) => e.stopPropagation()}
+        />
+        {statusBadge(conflicted && !staged ? 'conflicted' : kind)}
+        <span className="min-w-0 flex-1 truncate">
+          <span className="text-foreground">{basename(file.path)}</span>
+          {!treeMode && dirname(file.path) && (
+            <span className="ml-1.5 text-faint">{dirname(file.path)}</span>
+          )}
+        </span>
+        {!staged && onDiscard && (
           <Button
             variant="ghost"
             size="icon-sm"
@@ -111,9 +111,9 @@ const FileRow = memo(function FileRow({
           >
             <Trash2 className="size-3 text-danger" />
           </Button>
-        </Hint>
-      )}
-    </div>
+        )}
+      </div>
+    </Hint>
   );
 });
 
@@ -296,7 +296,11 @@ export function WorkingCopyPanel() {
     (file: FileStatus) => {
       void confirmDialog({
         title: 'Discard changes?',
-        description: `All changes in "${file.path}" will be reverted${file.unstaged === 'untracked' ? ' and the file deleted' : ''}. This cannot be undone.`,
+        description:
+          file.unstaged === 'untracked'
+            ? 'This file is new — discarding reverts it and deletes the file. This cannot be undone.'
+            : 'All changes in this file will be reverted. This cannot be undone.',
+        path: file.path,
         confirmLabel: 'Discard',
         destructive: true,
       }).then((ok) => {
@@ -542,11 +546,12 @@ export function WorkingCopyPanel() {
               onClick={() => {
                 const file = fileMenu.file;
                 void confirmDialog({
-                  title: `Delete "${file.path}"?`,
+                  title: 'Delete file?',
                   description:
                     file.unstaged === 'untracked'
                       ? 'The file is untracked — deleting it cannot be undone.'
                       : 'The file will be removed from your working tree. It can be restored with Discard (the deletion shows as a change).',
+                  path: file.path,
                   confirmLabel: 'Delete',
                   destructive: true,
                 }).then((ok) => {

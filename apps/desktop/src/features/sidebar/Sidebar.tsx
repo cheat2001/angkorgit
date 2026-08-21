@@ -109,6 +109,14 @@ function ancestorFolders(branchName: string): string[] {
   return paths;
 }
 
+function HeadMark({ active }: { active: boolean }) {
+  return (
+    <span className="flex size-3.5 shrink-0 items-center justify-center">
+      {active && <Check className="size-3.5" />}
+    </span>
+  );
+}
+
 const outcomeOk = (result: unknown) => {
   const status = (result as { status?: string } | undefined)?.status;
   return status === undefined || status === 'ok' || status === 'fast_forward';
@@ -336,7 +344,7 @@ export function Sidebar() {
         onClick={() => setFilters(path, { branch: filters.branch === branch.name ? '' : branch.name })}
         title={`${branch.name} — click to filter graph, double-click to checkout`}
       >
-        {branch.isHead && <Check className="size-3.5 shrink-0" />}
+        <HeadMark active={branch.isHead} />
         <span className="truncate">{label}</span>
         {branch.ahead > 0 && <Badge tone="primary">↑{capCount(branch.ahead)}</Badge>}
         {branch.behind > 0 && <Badge tone="info">↓{capCount(branch.behind)}</Badge>}
@@ -382,11 +390,12 @@ export function Sidebar() {
       title={`${branch.name} — drag onto a local branch to merge or rebase`}
     >
       <button
-        className="min-w-0 flex-1 truncate text-left"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
         onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
         title={`${branch.name} — double-click to checkout`}
       >
-        {label}
+        <HeadMark active={false} />
+        <span className="truncate">{label}</span>
       </button>
       <Button
         variant="ghost"

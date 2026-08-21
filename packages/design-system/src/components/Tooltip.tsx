@@ -15,7 +15,7 @@ export const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        'z-50 max-w-xs rounded-md border border-border bg-surface-overlay px-2.5 py-1.5 text-xs text-foreground shadow-soft animate-fade-in',
+        'z-50 max-w-xs rounded-md border border-border bg-surface-overlay px-2.5 py-1.5 text-xs text-foreground shadow-soft animate-fade-in [overflow-wrap:anywhere]',
         className,
       )}
       {...props}
@@ -28,15 +28,19 @@ export function Hint({
   label,
   children,
   side,
+  className,
 }: {
   label: React.ReactNode;
   children: React.ReactNode;
   side?: 'top' | 'bottom' | 'left' | 'right';
+  className?: string;
 }) {
   return (
     <Tooltip delayDuration={400}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side}>{label}</TooltipContent>
+      <TooltipContent side={side} className={className}>
+        {label}
+      </TooltipContent>
     </Tooltip>
   );
 }

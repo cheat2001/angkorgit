@@ -13,6 +13,7 @@ import {
 export interface ConfirmOptions {
   title: string;
   description: string;
+  path?: string;
   confirmLabel?: string;
   destructive?: boolean;
 }
@@ -40,6 +41,21 @@ export function confirmDialog(options: ConfirmOptions): Promise<boolean> {
   return useConfirmStore.getState().ask(options);
 }
 
+function PathBlock({ path }: { path: string }) {
+  const segments = path.split('/');
+  const name = segments.pop() ?? path;
+  return (
+    <p className="mt-1 max-h-32 overflow-y-auto rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 font-mono text-xs leading-relaxed [overflow-wrap:anywhere]">
+      {segments.map((segment, index) => (
+        <span key={index} className="text-muted">
+          {segment}/<wbr />
+        </span>
+      ))}
+      <span className="text-foreground">{name}</span>
+    </p>
+  );
+}
+
 export function ConfirmHost() {
   const { request, settle } = useConfirmStore();
   return (
@@ -51,6 +67,7 @@ export function ConfirmHost() {
             {request?.title}
           </DialogTitle>
           <DialogDescription>{request?.description}</DialogDescription>
+          {request?.path && <PathBlock path={request.path} />}
         </DialogHeader>
         <DialogFooter>
           <Button variant="ghost" onClick={() => settle(false)}>

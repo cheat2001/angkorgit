@@ -112,6 +112,12 @@ export const demoStatus: StatusSummary = {
     { path: 'src/core/ipc.ts', origPath: null, staged: null, unstaged: 'modified' },
     { path: 'src/data/palette-seed.sql', origPath: null, staged: null, unstaged: 'modified' },
     { path: 'docs/Architecture.md', origPath: null, staged: null, unstaged: 'untracked' },
+    {
+      path: 'src/features/repository/components/working-copy/deeply/nested/WorkingCopyFileListItemContainerFactory.tsx',
+      origPath: null,
+      staged: null,
+      unstaged: 'untracked',
+    },
     { path: 'src/old-layout.tsx', origPath: null, staged: 'deleted', unstaged: null },
   ],
   branch: 'main',
@@ -121,6 +127,7 @@ export const demoStatus: StatusSummary = {
 
 export const demoBranches: BranchInfo[] = [
   { name: 'main', isHead: true, isRemote: false, upstream: 'origin/main', ahead: 2, behind: 0, targetOid: ALL_COMMITS[0].oid },
+  { name: 'develop', isHead: false, isRemote: false, upstream: null, ahead: 0, behind: 0, targetOid: ALL_COMMITS[20].oid },
   { name: 'feature/diff-viewer', isHead: false, isRemote: false, upstream: null, ahead: 0, behind: 0, targetOid: ALL_COMMITS[7].oid },
   { name: 'fix/stash-race', isHead: false, isRemote: false, upstream: null, ahead: 0, behind: 0, targetOid: ALL_COMMITS[12].oid },
   { name: 'origin/main', isHead: false, isRemote: true, upstream: null, ahead: 0, behind: 0, targetOid: ALL_COMMITS[2].oid },
