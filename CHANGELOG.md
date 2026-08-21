@@ -6,6 +6,14 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Pick AI models from a list** — the AI settings no longer make you type
+  model names from memory: a "Load models" button fetches what your API key
+  (and custom base URL) can actually access — OpenAI-compatible endpoints
+  including Groq, Ollama and LM Studio, plus Anthropic and Gemini — and shows
+  them as a click-to-select list. The field stays editable, so custom and
+  self-hosted model names keep working.
+
 ## [0.6.4] — 2026-08-21
 
 The tidy-up release. Long file paths stop escaping their popups and start

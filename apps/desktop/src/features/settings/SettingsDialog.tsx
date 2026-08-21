@@ -24,6 +24,7 @@ import {
 import {
   AI_PROVIDER_PRESETS,
   COMMIT_STYLE_PRESETS,
+  listAiModels,
   resolveCommitPrefix,
   type AiProviderKind,
   type CliAgentInfo,
@@ -221,6 +222,74 @@ function SshCard() {
         </label>
       </div>
     </SettingCard>
+  );
+}
+
+function ModelField() {
+  const ai = useSettings((s) => s.ai);
+  const setAi = useSettings((s) => s.setAi);
+  const [models, setModels] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const preset = AI_PROVIDER_PRESETS[ai.provider];
+
+  useEffect(() => {
+    setModels([]);
+  }, [ai.provider]);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { ai: current } = useSettings.getState();
+      const found = await listAiModels({ ...current, baseUrl: current.baseUrl || undefined }, (request) =>
+        ipc.httpRequest(request),
+      );
+      setModels(found);
+      if (found.length === 0) toast.info('The provider returned no models');
+    } catch (error) {
+      toast.error(`Could not load models: ${(error as { message?: string }).message ?? error}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted">Model</span>
+        <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
+          {loading ? <Spinner /> : <RefreshCw className="size-3.5" />}
+          Load models
+        </Button>
+      </div>
+      <Input
+        value={ai.model}
+        onChange={(e) => setAi({ model: e.target.value })}
+        placeholder={preset.defaultModel}
+      />
+      {models.length > 0 && (
+        <div className="max-h-44 overflow-y-auto rounded-md border border-border-subtle">
+          {models.map((model) => {
+            const isActive = ai.model === model;
+            return (
+              <button
+                key={model}
+                onClick={() => setAi({ model })}
+                className={cn(
+                  'flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors',
+                  isActive ? 'bg-primary/10 text-foreground' : 'hover:bg-surface-raised',
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">{model}</span>
+                {isActive && <Check className="size-3.5 shrink-0 text-primary" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-xs text-faint">
+        Load models lists what your key and base URL can access — or type any model name yourself.
+      </p>
+    </div>
   );
 }
 
@@ -882,13 +951,6 @@ export function SettingsDialog() {
                         </>
                       ) : (
                         <>
-                          <Field label="Model">
-                            <Input
-                              value={settings.ai.model}
-                              onChange={(e) => settings.setAi({ model: e.target.value })}
-                              placeholder={preset.defaultModel}
-                            />
-                          </Field>
                           {preset.needsApiKey && (
                             <Field label="API key">
                               <Input
@@ -906,6 +968,7 @@ export function SettingsDialog() {
                               placeholder={preset.defaultBaseUrl}
                             />
                           </Field>
+                          <ModelField />
                         </>
                       )}
                       <div className="flex justify-end">

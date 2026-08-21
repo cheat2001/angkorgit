@@ -5,6 +5,7 @@ export * from './conflicts/parse';
 export * from './ai/types';
 export * from './ai/style';
 export * from './ai/providers';
+export * from './ai/models';
 export * as aiCapabilities from './ai/capabilities';
 export * from './ai/cliAgents';
 export * from './forge/pullRequestUrl';
