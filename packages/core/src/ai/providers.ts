@@ -58,7 +58,7 @@ function openAiCompatible(
         label,
       )) as { choices?: Array<{ message?: { content?: string } }> };
       const text = data.choices?.[0]?.message?.content;
-      if (typeof text !== 'string') throw new AiError(`${label} returned no content`, label);
+      if (typeof text !== 'string' || !text.trim()) throw new AiError(`${label} returned no content`, label);
       return { text, model: config.model, provider: id };
     },
     async ping() {
@@ -189,7 +189,7 @@ function ollamaProvider(http: HttpClient, config: AiConfig): AiProvider {
         'Ollama',
       )) as { message?: { content?: string } };
       const text = data.message?.content;
-      if (typeof text !== 'string') throw new AiError('Ollama returned no content', 'ollama');
+      if (typeof text !== 'string' || !text.trim()) throw new AiError('Ollama returned no content', 'ollama');
       return { text, model: config.model, provider: 'ollama' };
     },
     async ping() {

@@ -4,6 +4,8 @@ export * from './diff/wordDiff';
 export * from './conflicts/parse';
 export * from './ai/types';
 export * from './ai/style';
+export * from './ai/textSegments';
+export * from './ai/reviewSignature';
 export * from './ai/providers';
 export * from './ai/models';
 export * as aiCapabilities from './ai/capabilities';

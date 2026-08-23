@@ -72,7 +72,10 @@ impl AppError {
                 git2::ErrorCode::Unmerged | git2::ErrorCode::MergeConflict => "conflict",
                 _ => "git",
             },
-            AppError::Io(_) => "io",
+            AppError::Io(e) => match e.kind() {
+                std::io::ErrorKind::NotFound => "not_found",
+                _ => "io",
+            },
             AppError::Other(_) => "other",
             AppError::NoRepository => "no_repository",
             AppError::Conflict(_) => "conflict",
@@ -137,6 +140,17 @@ mod tests {
         let error = git_error("unexpected http status code: 500");
         assert_eq!(error.code(), "git");
         assert!(error.message().contains("500"));
+    }
+
+    #[test]
+    fn missing_files_map_to_not_found_and_other_io_errors_stay_io() {
+        let missing = AppError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "no file"));
+        assert_eq!(missing.code(), "not_found");
+        let denied = AppError::Io(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "denied",
+        ));
+        assert_eq!(denied.code(), "io");
     }
 
     #[test]

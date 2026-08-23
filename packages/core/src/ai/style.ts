@@ -11,8 +11,13 @@ export interface CommitStyle {
   prefixRules: CommitPrefixRule[];
 }
 
+export interface ReviewStyle {
+  instructions: string;
+}
+
 export interface AiStyleConfig {
   commit: CommitStyle;
+  review: ReviewStyle;
 }
 
 export const DEFAULT_COMMIT_STYLE: CommitStyle = {
@@ -21,9 +26,16 @@ export const DEFAULT_COMMIT_STYLE: CommitStyle = {
   prefixRules: [],
 };
 
+export const DEFAULT_REVIEW_STYLE: ReviewStyle = {
+  instructions: '',
+};
+
 export const DEFAULT_AI_STYLE: AiStyleConfig = {
   commit: DEFAULT_COMMIT_STYLE,
+  review: DEFAULT_REVIEW_STYLE,
 };
+
+export const PROJECT_REVIEW_FILE = '.angkorgit/review.md';
 
 export const COMMIT_STYLE_PRESETS: Record<CommitStylePreset, { label: string; description: string }> = {
   conventional: {

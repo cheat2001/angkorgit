@@ -94,3 +94,13 @@ body {
 .reduce-motion {
   scroll-behavior: auto !important;
 }
+
+.reduce-motion .logo-draw-loop g {
+  animation: none !important;
+  stroke-dashoffset: 0 !important;
+}
+
+.reduce-motion .logo-draw-loop circle {
+  animation: none !important;
+  opacity: 1 !important;
+}

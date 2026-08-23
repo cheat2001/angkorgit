@@ -6,6 +6,31 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **AI review before you commit** — a Review button next to Commit asks your
+  configured AI to look over the staged diff and lists concrete issues (bugs,
+  edge cases, missing tests) ordered by severity, in a dismissible panel above
+  the commit box. Long reviews open in a full-size reading view with one
+  click, and bold or code formatting in the AI's answer renders properly
+  instead of showing raw markers. While the AI works, the panel shows the
+  AngKorGit mark drawing itself alongside rotating status notes, with a stop
+  button if you change your mind. Works with every provider the commit
+  message generator supports, including local CLI agents and Ollama. The
+  review never blocks anything: it is advice, the commit stays yours.
+- **Your conventions, the AI's checklist** — tell the reviewer what your team
+  cares about in Settings → AI (naming rules, framework do's and don'ts, how
+  strict to be) and it applies everywhere. For per-project rules, commit an
+  `.angkorgit/review.md` to the repository: its content is picked up
+  automatically for that repository and shared with everyone on the team,
+  and project rules win over your global ones when they disagree.
+
+### Fixed
+- **Silent empty AI responses** — when an OpenAI-compatible or Ollama
+  provider answered with empty content (some reasoning models leave the
+  content field blank), AI features quietly produced nothing: no commit
+  message appeared and the review panel showed up empty. Empty responses
+  now surface as a proper error instead.
+
 ## [0.6.5] — 2026-08-23
 
 The signing release. Commits made in AngKorGit finally carry your signature:

@@ -7,6 +7,7 @@ import {
   type AiProviderKind,
   type AiStyleConfig,
   type CommitStyle,
+  type ReviewStyle,
 } from '@angkorgit/core';
 import { ipc, isTauri } from '@/core/ipc';
 
@@ -158,6 +159,7 @@ interface SettingsState {
   setAi: (config: Partial<AiConfig>) => void;
   setAiProvider: (provider: AiProviderKind) => void;
   setCommitStyle: (style: Partial<CommitStyle>) => void;
+  setReviewStyle: (style: Partial<ReviewStyle>) => void;
 }
 
 const clampZoom = (zoom: number): number =>
@@ -267,6 +269,8 @@ export const useSettings = create<SettingsState>()(
       },
       setCommitStyle: (style) =>
         set((s) => ({ aiStyle: { ...s.aiStyle, commit: { ...s.aiStyle.commit, ...style } } })),
+      setReviewStyle: (style) =>
+        set((s) => ({ aiStyle: { ...s.aiStyle, review: { ...s.aiStyle.review, ...style } } })),
     }),
     {
       name: 'angkorgit-settings',
@@ -285,6 +289,7 @@ export const useSettings = create<SettingsState>()(
             ...current.aiStyle,
             ...(stored.aiStyle ?? {}),
             commit: { ...current.aiStyle.commit, ...(stored.aiStyle?.commit ?? {}) },
+            review: { ...current.aiStyle.review, ...(stored.aiStyle?.review ?? {}) },
           },
         };
       },

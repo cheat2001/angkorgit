@@ -25,6 +25,7 @@ import {
 import {
   AI_PROVIDER_PRESETS,
   COMMIT_STYLE_PRESETS,
+  PROJECT_REVIEW_FILE,
   listAiModels,
   resolveCommitPrefix,
   type AiProviderKind,
@@ -512,6 +513,34 @@ function CommitStyleCard() {
             </p>
           )}
         </div>
+      </div>
+    </SettingCard>
+  );
+}
+
+function ReviewStyleCard() {
+  const review = useSettings((s) => s.aiStyle.review);
+  const setReviewStyle = useSettings((s) => s.setReviewStyle);
+
+  return (
+    <SettingCard
+      title="AI review conventions"
+      description="What the AI reviewer pays attention to when it reviews staged changes. Applies to every repository."
+    >
+      <div className="flex flex-col gap-2">
+        <Textarea
+          value={review.instructions}
+          onChange={(e) => setReviewStyle({ instructions: e.target.value })}
+          placeholder={
+            'e.g. Flag any raw SQL outside the repository layer. We use React hooks only, no class components. Be strict about missing error handling and missing tests.'
+          }
+          rows={4}
+        />
+        <p className="text-xs text-faint">
+          Per-project rules: commit a <span className="font-mono">{PROJECT_REVIEW_FILE}</span> file to a
+          repository and its content is added to these conventions for that repository — the whole team
+          gets the same review rules. Project rules win when they conflict.
+        </p>
       </div>
     </SettingCard>
   );
@@ -1014,6 +1043,7 @@ export function SettingsDialog() {
                     </div>
                   </SettingCard>
                   <CommitStyleCard />
+                  <ReviewStyleCard />
                 </div>
               )}
 
