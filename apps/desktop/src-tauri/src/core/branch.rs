@@ -194,7 +194,8 @@ pub fn merge(path: &str, branch: &str, no_ff: bool) -> AppResult<OpOutcome> {
     let into = head_ref.shorthand().unwrap_or("HEAD").to_string();
     let head_commit = head_ref.peel_to_commit()?;
     let their_commit = reference.peel_to_commit()?;
-    repo.commit(
+    super::sign::create_commit(
+        &repo,
         Some("HEAD"),
         &sig,
         &sig,

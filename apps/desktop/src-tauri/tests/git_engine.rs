@@ -1011,3 +1011,174 @@ fn can_fast_forward_only_when_target_is_strictly_behind() {
     assert!(!core::can_fast_forward(repo.path(), "master", "feature").unwrap());
     assert!(!core::can_fast_forward(repo.path(), "feature", "feature").unwrap());
 }
+
+struct SigningKey {
+    dir: PathBuf,
+    key: PathBuf,
+}
+
+impl SigningKey {
+    fn generate() -> Self {
+        let dir = std::env::temp_dir().join(format!(
+            "angkorgit-signkey-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let key = dir.join("signing_key");
+        let status = Command::new("ssh-keygen")
+            .args(["-t", "ed25519", "-N", "", "-q", "-f", key.to_str().unwrap()])
+            .status()
+            .expect("ssh-keygen available");
+        assert!(status.success());
+        Self { dir, key }
+    }
+
+    fn enable_for(&self, repo: &TempRepo) {
+        core::set_config(Some(repo.path()), "commit.gpgsign", "true", false).unwrap();
+        core::set_config(Some(repo.path()), "gpg.format", "ssh", false).unwrap();
+        core::set_config(
+            Some(repo.path()),
+            "user.signingkey",
+            self.key.to_str().unwrap(),
+            false,
+        )
+        .unwrap();
+    }
+}
+
+impl Drop for SigningKey {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+fn commit_header(repo: &TempRepo, rev: &str) -> String {
+    let output = Command::new("git")
+        .args(["cat-file", "commit", rev])
+        .current_dir(&repo.dir)
+        .output()
+        .expect("git CLI available");
+    assert!(output.status.success());
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+#[test]
+fn commit_signs_with_ssh_key_when_config_enables_it() {
+    let repo = TempRepo::new();
+    let signing = SigningKey::generate();
+    signing.enable_for(&repo);
+
+    repo.write("a.txt", "signed\n");
+    commit_all(&repo, "feat: signed commit");
+
+    let header = commit_header(&repo, "HEAD");
+    assert!(header.contains("gpgsig"));
+    assert!(header.contains("SSH SIGNATURE"));
+
+    let pubkey = std::fs::read_to_string(signing.key.with_extension("pub")).unwrap();
+    let signers = signing.dir.join("allowed_signers");
+    std::fs::write(&signers, format!("test@angkorgit.dev {pubkey}")).unwrap();
+    let verify = Command::new("git")
+        .args([
+            "-c",
+            &format!("gpg.ssh.allowedSignersFile={}", signers.display()),
+            "verify-commit",
+            "HEAD",
+        ])
+        .current_dir(&repo.dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .output()
+        .expect("git CLI available");
+    assert!(
+        verify.status.success(),
+        "git verify-commit failed: {}",
+        String::from_utf8_lossy(&verify.stderr)
+    );
+}
+
+#[test]
+fn commits_stay_unsigned_without_signing_config() {
+    let repo = TempRepo::new();
+    core::set_config(Some(repo.path()), "commit.gpgsign", "false", false).unwrap();
+    repo.write("a.txt", "plain\n");
+    commit_all(&repo, "plain commit");
+    assert!(!commit_header(&repo, "HEAD").contains("gpgsig"));
+}
+
+#[test]
+fn amend_re_signs_the_commit() {
+    let repo = TempRepo::new();
+    let signing = SigningKey::generate();
+    signing.enable_for(&repo);
+
+    repo.write("a.txt", "one\n");
+    commit_all(&repo, "feat: original");
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+    core::amend(repo.path(), Some("feat: amended")).unwrap();
+
+    let header = commit_header(&repo, "HEAD");
+    assert!(header.contains("SSH SIGNATURE"));
+    assert!(header.contains("feat: amended"));
+    assert_eq!(repo.read("a.txt"), "two\n");
+}
+
+#[test]
+fn merge_commit_is_signed_when_signing_enabled() {
+    let repo = TempRepo::new();
+    let signing = SigningKey::generate();
+    signing.enable_for(&repo);
+
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, true).unwrap();
+    repo.write("b.txt", "feature\n");
+    commit_all(&repo, "feature work");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("c.txt", "master\n");
+    commit_all(&repo, "master work");
+
+    let outcome = core::merge(repo.path(), "feature", false).unwrap();
+    assert_eq!(outcome.status, "ok");
+
+    let header = commit_header(&repo, "HEAD");
+    assert!(header.contains("SSH SIGNATURE"));
+    assert!(header.contains("Merge branch 'feature'"));
+}
+
+#[test]
+fn signing_failure_blocks_the_commit_and_leaves_the_repo_untouched() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let first = commit_all(&repo, "first");
+
+    core::set_config(Some(repo.path()), "commit.gpgsign", "true", false).unwrap();
+    core::set_config(Some(repo.path()), "gpg.format", "ssh", false).unwrap();
+    core::set_config(
+        Some(repo.path()),
+        "user.signingkey",
+        "/nonexistent/signing_key",
+        false,
+    )
+    .unwrap();
+
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+    let err = core::commit(repo.path(), "second").unwrap_err();
+    assert!(err.to_string().contains("user.signingKey"));
+
+    let head = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&repo.dir)
+        .output()
+        .expect("git CLI available");
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), first);
+    let status = core::status(repo.path()).unwrap();
+    assert_eq!(status.files.len(), 1);
+    assert_eq!(status.files[0].staged.as_deref(), Some("modified"));
+}

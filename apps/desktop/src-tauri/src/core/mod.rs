@@ -8,5 +8,6 @@ pub mod history;
 pub mod misc;
 pub mod remote;
 pub mod repo;
+pub mod sign;
 pub mod stage;
 pub mod types;

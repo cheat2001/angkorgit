@@ -7,6 +7,14 @@ All notable changes to AngKorGit are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Commit signing** — commits, amends and merge commits made in AngKorGit now
+  honor your existing git signing setup with no configuration inside the app:
+  if `commit.gpgSign` is on, the engine signs with your SSH key
+  (`gpg.format=ssh`, via `ssh-keygen -Y sign`) or GPG key (via `gpg`), reading
+  `user.signingKey`, `gpg.program` and `gpg.ssh.program` exactly like git does.
+  Signing failures block the commit with an error that names the actual cause
+  (missing key, passphrase needs ssh-agent, gpg needs a graphical pinentry)
+  instead of hanging or silently committing unsigned.
 - **Pick AI models from a list** — the AI settings no longer make you type
   model names from memory: a "Load models" button fetches what your API key
   (and custom base URL) can actually access — OpenAI-compatible endpoints

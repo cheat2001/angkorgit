@@ -160,6 +160,19 @@ core/
 │                       (single_line_patch fwd/reverse; discard is PAIR-aware — reverting a
 │                       modified line restores the original), discard_file/all → report leftovers
 ├── commit.rs         ← commit (merge-aware parents), amend, revert (mainline 1 for merges)
+├── sign.rs           ← config-driven commit signing, zero in-app setup: reads
+│                       commit.gpgSign/gpg.format/user.signingKey/gpg.program/
+│                       gpg.ssh.program from git config (ssh → `ssh-keygen -Y sign
+│                       -n git`, openpgp → `gpg -bsau`, x509 refused; literal
+│                       "ssh-…"/"key::" signingKeys written to a temp .pub, ~
+│                       expanded); create_commit is the signed-or-plain commit
+│                       chokepoint (commit_create_buffer → external signer →
+│                       commit_signed → manual HEAD update) used by commit, amend
+│                       and merge — rebase/cherry-pick/revert stay unsigned on
+│                       purpose (mirrors rebase.gpgSign default; see G33); 60s
+│                       kill-on-timeout via ai_cli::capture, failures BLOCK the
+│                       commit with errors naming the cause (ssh-agent for
+│                       passphrases, graphical pinentry for gpg)
 ├── branch.rs         ← list(+ahead/behind), create/delete/rename, checkout (remote→local),
 │                       merge (ff/normal/conflicts; msg "Merge branch 'x' into y"),
 │                       rebase(+continue/abort), cherry-pick, reset soft/mixed/hard,
@@ -708,12 +721,30 @@ update CLAUDE.md or docs/ — never the code.
   verified to fail with either primitive's class removed. The demo repo
   carries a deeply nested untracked file for it.
 
+- **G33 — libgit2 never signs, and empty-string git config must read as unset**:
+  git2's `repo.commit()` ignores `commit.gpgSign` completely (it also never reads
+  `gpg.format`/`user.signingKey`), so every signable commit goes through
+  `sign::create_commit`. Traps found building it: (1) `commit_signed` does NOT
+  move any ref — the caller updates HEAD itself, resolving the symbolic target
+  first (force-update the branch; unborn HEAD → create the ref; detached →
+  `set_head_detached`). Never `repo.reference("HEAD", …)` — that overwrites HEAD
+  with a direct ref and detaches the user. (2) Real global gitconfigs carry
+  empty-string values (`gpg.format =`, `gpg.ssh.program =`); git CLI itself
+  fatals on the empty `gpg.format` during `verify-commit` (integration tests
+  isolate with `GIT_CONFIG_GLOBAL=/dev/null`), so `signing_config` filters empty
+  strings to defaults instead of erroring. (3) Amend keeps the unsigned path
+  byte-identical (`commit.amend`, original committer preserved) and only
+  hand-builds the commit when signing is on — the signed amend passes the
+  ORIGINAL author and committer to match. (4) A signing failure returns an error
+  BEFORE anything moves — index and HEAD stay untouched, matching git CLI's
+  block-the-commit behavior; never fall back to committing unsigned.
+
 ## 9. Testing map
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (36) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop |
-| Rust module (34) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/proc.rs` (1) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · proc: no bare `Command::new` anywhere outside proc.rs (G31) |
+| Rust integration (41) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop, commit signing (SSH sign verified via `git verify-commit`, unsigned without config, amend re-signs, merge commit signed, failure blocks the commit and leaves HEAD/index untouched) |
+| Rust module (41) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (5), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/core/sign.rs` (7), `src/proc.rs` (1) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · signing config: off by default, ssh setup read from git config, empty-string values read as unset, ssh-without-key and x509 are clear errors, openpgp falls back to the committer identity, literal-key detection, ~ expansion · proc: no bare `Command::new` anywhere outside proc.rs (G31) |
 | Unit (72) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null), aiModels (per-provider list endpoints/headers incl. Groq-style base URLs, generateContent filtering for Gemini, dedupe/sort, invalid-JSON + HTTP-status errors, cli → empty without a request) |
 | E2E (15) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop), long path stays inside the discard confirm dialog, sidebar branch names align with and without the HEAD tick (measured left offsets), hovering a working-copy file reveals its full path, opening a diff folds the sidebar away and the toggle brings back the graph — all on demo mode |
 

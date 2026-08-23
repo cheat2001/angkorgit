@@ -47,18 +47,18 @@ pub struct CliRunResult {
     pub output: Option<String>,
 }
 
-struct Captured {
-    status: i32,
-    stdout: String,
-    stderr: String,
+pub(crate) struct Captured {
+    pub(crate) status: i32,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
 }
 
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     std::env::var_os(var).map(PathBuf::from)
 }
 
-fn search_path(extra: Option<&Path>) -> std::ffi::OsString {
+pub(crate) fn search_path(extra: Option<&Path>) -> std::ffi::OsString {
     let mut dirs: Vec<PathBuf> = Vec::new();
     let push = |dirs: &mut Vec<PathBuf>, p: PathBuf| {
         if !p.as_os_str().is_empty() && !dirs.contains(&p) {
@@ -118,7 +118,7 @@ fn is_supported(program: &str) -> bool {
     AGENTS.iter().any(|(_, _, bin)| *bin == stem)
 }
 
-fn capture(mut command: Command, stdin: &str, timeout: Duration) -> AppResult<Captured> {
+pub(crate) fn capture(mut command: Command, stdin: &str, timeout: Duration) -> AppResult<Captured> {
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

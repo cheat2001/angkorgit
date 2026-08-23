@@ -41,7 +41,15 @@ pub fn commit(path: &str, message: &str) -> AppResult<String> {
             }
         }
         let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
-        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)?
+        super::sign::create_commit(
+            &repo,
+            Some("HEAD"),
+            &sig,
+            &sig,
+            message,
+            &tree,
+            &parent_refs,
+        )?
     };
 
     if is_merge {
@@ -115,6 +123,25 @@ pub fn amend(path: &str, message: Option<&str>) -> AppResult<String> {
     let mut index = repo.index()?;
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
-    let oid = commit.amend(Some("HEAD"), None, None, None, message, Some(&tree))?;
+    if super::sign::signing_config(&repo)?.is_none() {
+        let oid = commit.amend(Some("HEAD"), None, None, None, message, Some(&tree))?;
+        return Ok(oid.to_string());
+    }
+    let message = message
+        .map(str::to_string)
+        .unwrap_or_else(|| String::from_utf8_lossy(commit.message_bytes()).into_owned());
+    let author = commit.author();
+    let committer = commit.committer();
+    let parents: Vec<git2::Commit> = commit.parents().collect();
+    let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+    let oid = super::sign::create_commit(
+        &repo,
+        Some("HEAD"),
+        &author,
+        &committer,
+        &message,
+        &tree,
+        &parent_refs,
+    )?;
     Ok(oid.to_string())
 }
