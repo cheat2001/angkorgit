@@ -241,7 +241,10 @@ core/ipc.ts                   ← THE typed IPC boundary — only place calling 
                                 listen() wrapper for Tauri events
 core/demo.ts                  ← deterministic 400-commit synthetic repo for demo mode
 components/                   ← Toolbar (fetch/pull/push split-button, undo/redo,
-                                RepoSwitcher dropdown + "Profile" submenu — assigns the
+                                RepoSwitcher dropdown (recents list scrolls inside a
+                                viewport-capped menu — max-h min(70vh, radix available
+                                height), open/clone/profile actions stay pinned below)
+                                + "Profile" submenu — assigns the
                                 FULL profile via applyProfileToRepo, chip after branch
                                 name shows the assignment; push goes through runPush →
                                 ensureRepoProfile, sidebar toggle), CommandPalette (cmdk),

@@ -117,20 +117,25 @@ function RepoSwitcher() {
           </span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-72">
+      <DropdownMenuContent
+        align="start"
+        className="flex max-h-[min(70vh,var(--radix-dropdown-menu-content-available-height))] min-w-72 flex-col"
+      >
         <DropdownMenuLabel>Repositories</DropdownMenuLabel>
-        {recents.map((recent) => {
-          const isCurrent = recent.path === repo.path;
-          return (
-            <DropdownMenuItem key={recent.path} onClick={() => void switchTo(recent.path)}>
-              {isCurrent ? <Check className="text-primary" /> : <FolderGit2 />}
-              <span className="min-w-0 flex-1">
-                <span className={cn('block truncate', isCurrent && 'text-primary')}>{recent.name}</span>
-                <span className="block truncate font-mono text-[10px] text-faint">{recent.path}</span>
-              </span>
-            </DropdownMenuItem>
-          );
-        })}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {recents.map((recent) => {
+            const isCurrent = recent.path === repo.path;
+            return (
+              <DropdownMenuItem key={recent.path} onClick={() => void switchTo(recent.path)}>
+                {isCurrent ? <Check className="text-primary" /> : <FolderGit2 />}
+                <span className="min-w-0 flex-1">
+                  <span className={cn('block truncate', isCurrent && 'text-primary')}>{recent.name}</span>
+                  <span className="block truncate font-mono text-[10px] text-faint">{recent.path}</span>
+                </span>
+              </DropdownMenuItem>
+            );
+          })}
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() =>

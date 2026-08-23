@@ -15,6 +15,12 @@ All notable changes to AngKorGit are documented here. The format follows
   Signing failures block the commit with an error that names the actual cause
   (missing key, passphrase needs ssh-agent, gpg needs a graphical pinentry)
   instead of hanging or silently committing unsigned.
+
+### Fixed
+- **Repository switcher with many repos** — the dropdown grew past the bottom
+  of the window with no way to scroll, hiding repositories and the "Open
+  repository…" action. The repository list now scrolls inside the menu while
+  the open/clone/profile actions stay pinned and always reachable.
 - **Pick AI models from a list** — the AI settings no longer make you type
   model names from memory: a "Load models" button fetches what your API key
   (and custom base URL) can actually access — OpenAI-compatible endpoints
