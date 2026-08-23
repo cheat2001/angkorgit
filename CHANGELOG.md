@@ -6,6 +6,14 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.5] — 2026-08-23
+
+The signing release. Commits made in AngKorGit finally carry your signature:
+if your git config says sign, the app signs — SSH or GPG, the same key and the
+same rules as your terminal, with nothing to set up in the app. Alongside it,
+the AI settings grew a real model picker and the repository switcher learned
+to scroll.
+
 ### Added
 - **Commit signing** — commits, amends and merge commits made in AngKorGit now
   honor your existing git signing setup with no configuration inside the app:
@@ -632,7 +640,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.4...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.5...HEAD
+[0.6.5]: https://github.com/cheat2001/angkorgit/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/cheat2001/angkorgit/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/cheat2001/angkorgit/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/cheat2001/angkorgit/compare/v0.6.1...v0.6.2

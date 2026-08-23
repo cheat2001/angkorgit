@@ -27,7 +27,7 @@ body:
     id: version
     attributes:
       label: AngKorGit version
-      placeholder: '0.6.4 (Settings rail shows it)'
+      placeholder: '0.6.5 (Settings rail shows it)'
     validations:
       required: true
   - type: dropdown

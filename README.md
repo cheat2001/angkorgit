@@ -115,13 +115,13 @@ when a newer release lands):
 brew install --cask cheat2001/tap/angkorgit
 
 # macOS — direct download (downloads, removes the Gatekeeper quarantine flag, opens the dmg)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.6.4/AngKorGit_0.6.4_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.6.5/AngKorGit_0.6.5_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
 
 # Windows (PowerShell)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.6.4/AngKorGit_0.6.4_x64-setup.exe -o "$env:TEMP\AngKorGit-setup.exe"; Start-Process "$env:TEMP\AngKorGit-setup.exe"
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.6.5/AngKorGit_0.6.5_x64-setup.exe -o "$env:TEMP\AngKorGit-setup.exe"; Start-Process "$env:TEMP\AngKorGit-setup.exe"
 
 # Linux (AppImage)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.6.4/AngKorGit_0.6.4_amd64.AppImage -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.6.5/AngKorGit_0.6.5_amd64.AppImage -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage
 ```
 
 AngKorGit is free, open-source software and is **not signed with a paid
