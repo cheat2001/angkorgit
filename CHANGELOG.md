@@ -14,7 +14,12 @@ All notable changes to AngKorGit are documented here. The format follows
   click, and bold or code formatting in the AI's answer renders properly
   instead of showing raw markers. While the AI works, the panel shows the
   AngKorGit mark drawing itself alongside rotating status notes, with a stop
-  button if you change your mind. Works with every provider the commit
+  button if you change your mind. Reviews and commit explanations keep
+  working in the background: click around the graph while one runs and the
+  result is waiting when you come back. Explanations open in the same
+  full-size reading view as reviews, and every AI action shows the AngKorGit
+  mark while it thinks — and every one of them can be stopped mid-flight if
+  it takes too long. Works with every provider the commit
   message generator supports, including local CLI agents and Ollama. The
   review never blocks anything: it is advice, the commit stays yours.
 - **Your conventions, the AI's checklist** — tell the reviewer what your team

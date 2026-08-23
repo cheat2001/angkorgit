@@ -10,11 +10,12 @@ import {
   type Block,
   type ConflictBlock,
 } from '@angkorgit/core';
-import { Badge, Button, Checkbox, Hint, Spinner, cn } from '@angkorgit/design-system';
+import { Badge, Button, Checkbox, Hint, Logo, Spinner, cn } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
+import { AiText } from '@/features/ai/AiText';
 import { confirmDialog } from '@/components/confirm';
 
 type Side = 'current' | 'incoming';
@@ -107,6 +108,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const [saving, setSaving] = useState(false);
   const [aiText, setAiText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const aiRunRef = useRef(0);
   const [blockEdits, setBlockEdits] = useState<Map<number, string>>(new Map());
   const [editingBlock, setEditingBlock] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -475,14 +477,24 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       toast.info('Configure an AI provider in Settings first');
       return;
     }
+    const run = ++aiRunRef.current;
+    const stillRunning = () => aiRunRef.current === run;
     setAiBusy(true);
     try {
-      setAiText(await aiCapabilities.explainConflict(getAiProvider(), file, current, incoming));
+      const text = await aiCapabilities.explainConflict(getAiProvider(), file, current, incoming);
+      if (stillRunning()) setAiText(text);
     } catch (error) {
-      toast.error(`AI request failed: ${(error as { message?: string }).message ?? error}`);
+      if (stillRunning()) {
+        toast.error(`AI request failed: ${(error as { message?: string } | null)?.message ?? String(error)}`);
+      }
     } finally {
-      setAiBusy(false);
+      if (stillRunning()) setAiBusy(false);
     }
+  };
+
+  const stopExplain = () => {
+    aiRunRef.current += 1;
+    setAiBusy(false);
   };
 
   const save = async () => {
@@ -838,7 +850,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                               aria-label="Explain this conflict with AI"
                               onClick={() => void explain(block.current.join('\n'), block.incoming.join('\n'))}
                             >
-                              {aiBusy ? <Spinner className="size-3" /> : <Sparkles className="size-3 text-primary" />}
+                              {aiBusy ? <Logo size={14} animated="loop" className="logo-draw-loop" /> : <Sparkles className="size-3 text-primary" />}
                             </Button>
                           </Hint>
                         </div>
@@ -900,7 +912,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                         aria-label="Explain this conflict with AI"
                         onClick={() => void explain(block.current.join('\n'), block.incoming.join('\n'))}
                       >
-                        {aiBusy ? <Spinner className="size-3" /> : <Sparkles className="size-3 text-primary" />}
+                        {aiBusy ? <Logo size={14} animated="loop" className="logo-draw-loop" /> : <Sparkles className="size-3 text-primary" />}
                       </Button>
                     </Hint>
                   </div>
@@ -915,28 +927,27 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                   <span className="text-xs font-semibold">
                     {aiBusy ? 'Explaining conflict…' : 'AI explanation'}
                   </span>
-                  {!aiBusy && (
-                    <Hint label="Dismiss">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="ml-auto h-5 w-5"
-                        aria-label="Dismiss AI explanation"
-                        onClick={() => setAiText(null)}
-                      >
-                        <X className="size-3" />
-                      </Button>
-                    </Hint>
-                  )}
+                  <Hint label={aiBusy ? 'Stop explaining' : 'Dismiss'}>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="ml-auto h-5 w-5"
+                      aria-label={aiBusy ? 'Stop the AI explanation' : 'Dismiss AI explanation'}
+                      onClick={() => (aiBusy ? stopExplain() : setAiText(null))}
+                    >
+                      <X className="size-3" />
+                    </Button>
+                  </Hint>
                 </div>
                 {aiBusy ? (
                   <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted">
-                    <Spinner className="size-3.5" /> Reading both sides of the conflict…
+                    <Logo size={16} animated="loop" className="logo-draw-loop shrink-0" /> Reading
+                    both sides of the conflict…
                   </div>
                 ) : (
-                  <pre className="min-w-0 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2 font-sans text-xs leading-relaxed">
-                    {aiText}
-                  </pre>
+                  <div className="overflow-y-auto px-3 py-2 text-xs leading-relaxed">
+                    <AiText text={aiText ?? ''} />
+                  </div>
                 )}
               </div>
             )}

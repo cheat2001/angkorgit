@@ -302,15 +302,26 @@ features/
 │                               logo-draw-loop class renders it static under
 │                               reduce-motion) + rotating status phrases (6s cycle)
 │                               and a Stop button
-│                               (reviewRunRef run token: discards the in-flight
+│                               (run token in workStore: discards the in-flight
 │                               result, frees the UI — the provider request itself
-│                               is not aborted);
+│                               is not aborted); review state + busy + run tokens
+│                               live in features/ai/workStore.ts keyed per repo
+│                               path, NOT component state — the panel unmounts when
+│                               a commit is selected (Inspector swap), so reviews
+│                               keep running in the background and reappear (result
+│                               or loading state) when the user returns;
 │                               .angkorgit/review.md read errors other than
 │                               not_found warn and continue without project rules
 │                               (error.rs maps io NotFound → code "not_found");
-│                               review and message generation are mutually exclusive
-│                               and review is disabled while committing, but commit
-│                               never waits on a review); during a
+│                               every AI action is stoppable while it runs — the
+│                               review panel X, the message sparkle button (hint
+│                               flips to "Stop generating", local aiRunRef token),
+│                               commit-explain ("Stop explaining", explainRuns token
+│                               in workStore) and the conflict overlay X — stopping
+│                               discards the in-flight result, never aborts the
+│                               provider request; review is disabled while
+│                               committing, but commit never waits on a review);
+│                               during a
 │                               merge the commit box stays visible even with a clean
 │                               status and shows "Abort merge" beside Commit — both it
 │                               and the toolbar state badge call the SHARED
@@ -378,6 +389,11 @@ features/
 │                               branchCreate/Delete/Rename; validation guards (repo moved,
 │                               dirty tree for hard kinds)
 ├── inspector/                ← Inspector (working copy ⟷ commit details), CommitDetails
+│                               (Explain with AI: result cached in ai/workStore keyed
+│                               repo+oid — survives selection changes and finishes in
+│                               the background if the user navigates away; panel has a
+│                               full-view AiResultDialog behind a Maximize2 button and
+│                               renders through AiText)
 ├── terminal/TerminalPanel    ← xterm.js ↔ PTY events; sessions are PER-REPO and
 │                               persistent: a module-level Map keyed by repo path holds
 │                               each xterm + its DOM container, unmount only detaches
@@ -489,9 +505,12 @@ update CLAUDE.md or docs/ — never the code.
   leaked across repos) and the AI explanations (stuck to the previous commit/conflict):
   any state that is conceptually per-<something> must not outlive that something —
   commit drafts + amend live in `features/commit/draftStore.ts` keyed by repo.path
-  (drafts persisted, amend transient single-active); CommitDetails is keyed by
-  commit.oid and ConflictResolver by file so aiText and in-flight requests die with
-  the selection.
+  (drafts persisted, amend transient single-active); ConflictResolver is keyed by
+  file so its aiText dies with the selection. AI review and commit-explain results
+  moved the other way BY DESIGN (owner request): they live in
+  `features/ai/workStore.ts` keyed by repo path / repo+oid, so navigating away does
+  NOT kill them — the keying is what prevents cross-contamination, not the
+  component lifetime.
 - **G10 — discard cannot touch submodules** from the parent repo; engine returns leftover
   paths and the UI names submodules explicitly.
 - **G11 — wrap mode in diffs is NOT virtualized** (variable heights); the default no-wrap

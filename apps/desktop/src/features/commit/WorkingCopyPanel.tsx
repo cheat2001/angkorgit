@@ -8,10 +8,6 @@ import {
   Badge,
   Button,
   Checkbox,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -30,6 +26,8 @@ import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { AiText } from '@/features/ai/AiText';
+import { AiResultDialog } from '@/features/ai/AiResultDialog';
+import { useAiWork } from '@/features/ai/workStore';
 import { useSettings } from '@/features/settings/store';
 import { ensureRepoProfile } from '@/features/settings/profiles';
 import { useUndo } from '@/features/history/undoStore';
@@ -202,16 +200,9 @@ export function WorkingCopyPanel() {
   const setAmend = (value: boolean) => useCommitDraft.getState().setAmend(path, value);
   const [committing, setCommitting] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
-  const [review, setReview] = useState<{
-    repoPath: string;
-    stagedSignature: string;
-    patchHash: string;
-    text: string;
-  } | null>(null);
-  const [reviewBusyFor, setReviewBusyFor] = useState<string | null>(null);
+  const aiRunRef = useRef(0);
   const [reviewExpanded, setReviewExpanded] = useState(false);
   const [waitIndex, setWaitIndex] = useState(0);
-  const reviewRunRef = useRef(0);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; file: FileStatus; staged: boolean } | null>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
@@ -240,13 +231,13 @@ export function WorkingCopyPanel() {
   const stagedFiles = files.filter((f) => f.staged);
   const unstagedFiles = files.filter((f) => f.unstaged);
   const stagedSignature = buildStagedReviewSignature(files);
-  const reviewBusy = reviewBusyFor === path;
-  const reviewCurrent =
-    review !== null && review.repoPath === path && review.stagedSignature === stagedSignature;
+  const review = useAiWork((s) => (path ? (s.reviews[path] ?? null) : null));
+  const reviewBusy = useAiWork((s) => (path ? !!s.reviewBusy[path] : false));
+  const reviewCurrent = review !== null && review.stagedSignature === stagedSignature;
 
   useEffect(() => {
-    if (review && review.repoPath === path && review.stagedSignature !== stagedSignature) {
-      setReview(null);
+    if (path && review && review.stagedSignature !== stagedSignature) {
+      useAiWork.getState().setReview(path, null);
     }
   }, [review, path, stagedSignature]);
 
@@ -268,7 +259,7 @@ export function WorkingCopyPanel() {
       .stagedPatch(path)
       .then((patch) => {
         if (cancelled || useRepo.getState().repo?.path !== path) return;
-        if (hashText(patch) !== review.patchHash) setReview(null);
+        if (hashText(patch) !== review.patchHash) useAiWork.getState().setReview(path, null);
       })
       .catch(() => undefined);
     return () => {
@@ -372,6 +363,11 @@ export function WorkingCopyPanel() {
   );
 
   const generateMessage = async () => {
+    if (aiBusy) {
+      aiRunRef.current += 1;
+      setAiBusy(false);
+      return;
+    }
     if (!aiConfigured()) {
       toast.info('Configure an AI provider in Settings first');
       return;
@@ -380,18 +376,24 @@ export function WorkingCopyPanel() {
       toast.info('Stage some changes first');
       return;
     }
+    const run = ++aiRunRef.current;
+    const stillRunning = () => aiRunRef.current === run;
     setAiBusy(true);
     try {
       const patch = await ipc.stagedPatch(path);
+      if (!stillRunning()) return;
       const generated = await aiCapabilities.generateCommitMessage(getAiProvider(), patch, {
         style: useSettings.getState().aiStyle.commit,
         branch: status?.branch ?? null,
       });
+      if (!stillRunning()) return;
       setMessage(generated);
     } catch (error) {
-      toast.error(`AI request failed: ${(error as { message?: string }).message ?? error}`);
+      if (stillRunning()) {
+        toast.error(`AI request failed: ${(error as { message?: string } | null)?.message ?? String(error)}`);
+      }
     } finally {
-      setAiBusy(false);
+      if (stillRunning()) setAiBusy(false);
     }
   };
 
@@ -406,9 +408,8 @@ export function WorkingCopyPanel() {
     }
     const target = path;
     const signature = stagedSignature;
-    const run = ++reviewRunRef.current;
-    const stillRunning = () => reviewRunRef.current === run;
-    setReviewBusyFor(target);
+    const run = useAiWork.getState().startReview(target);
+    const stillRunning = () => useAiWork.getState().isReviewRun(target, run);
     try {
       const patch = await ipc.stagedPatch(target);
       if (!stillRunning()) return;
@@ -437,19 +438,20 @@ export function WorkingCopyPanel() {
         toast.info('The staged changes changed during the review — run it again');
         return;
       }
-      setReview({ repoPath: target, stagedSignature: signature, patchHash: hashText(patch), text });
+      useAiWork
+        .getState()
+        .setReview(target, { stagedSignature: signature, patchHash: hashText(patch), text });
     } catch (error) {
       if (stillRunning()) {
         toast.error(`AI request failed: ${(error as { message?: string } | null)?.message ?? String(error)}`);
       }
     } finally {
-      if (stillRunning()) setReviewBusyFor(null);
+      useAiWork.getState().endReview(target, run);
     }
   };
 
   const stopReview = () => {
-    reviewRunRef.current += 1;
-    setReviewBusyFor(null);
+    if (path) useAiWork.getState().stopReview(path);
   };
 
   const commit = async () => {
@@ -472,7 +474,7 @@ export function WorkingCopyPanel() {
       }
       setMessage('');
       setAmend(false);
-      setReview(null);
+      useAiWork.getState().setReview(path, null);
       await refreshStatus();
       await reloadGraph(path);
     } catch (error) {
@@ -739,7 +741,7 @@ export function WorkingCopyPanel() {
                       variant="ghost"
                       size="icon-sm"
                       aria-label="Dismiss AI review"
-                      onClick={() => setReview(null)}
+                      onClick={() => useAiWork.getState().setReview(path, null)}
                     >
                       <X className="size-3" />
                     </Button>
@@ -766,16 +768,20 @@ export function WorkingCopyPanel() {
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void commit();
               }}
             />
-            <Hint label="Generate message with AI">
+            <Hint label={aiBusy ? 'Stop generating' : 'Generate message with AI'}>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Generate commit message with AI"
+                aria-label={aiBusy ? 'Stop generating the commit message' : 'Generate commit message with AI'}
                 className="absolute right-1.5 top-1.5"
-                disabled={aiBusy || reviewBusy}
+                disabled={reviewBusy}
                 onClick={() => void generateMessage()}
               >
-                {aiBusy ? <Spinner className="size-3.5" /> : <Sparkles className="size-3.5 text-primary" />}
+                {aiBusy ? (
+                  <Logo size={14} animated="loop" className="logo-draw-loop" />
+                ) : (
+                  <Sparkles className="size-3.5 text-primary" />
+                )}
               </Button>
             </Hint>
             {(() => {
@@ -807,7 +813,11 @@ export function WorkingCopyPanel() {
                   disabled={reviewBusy || committing || aiBusy}
                   onClick={() => void reviewStaged()}
                 >
-                  {reviewBusy ? <Spinner className="size-3" /> : <SearchCheck className="size-3 text-primary" />}
+                  {reviewBusy ? (
+                    <Logo size={14} animated="loop" className="logo-draw-loop" />
+                  ) : (
+                    <SearchCheck className="size-3 text-primary" />
+                  )}
                   Review
                 </Button>
               </Hint>
@@ -840,38 +850,13 @@ export function WorkingCopyPanel() {
         </div>
       )}
 
-      <Dialog open={reviewExpanded && !!review && reviewCurrent} onOpenChange={(open) => !open && setReviewExpanded(false)}>
-        <DialogContent
-          aria-describedby={undefined}
-          className="flex max-h-[85vh] w-[min(56rem,90vw)] max-w-none flex-col"
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <SearchCheck className="size-4 text-primary" /> AI review
-            </DialogTitle>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-            <AiText text={review?.text ?? ''} className="text-sm leading-relaxed text-foreground/90" />
-          </div>
-          <div className="mt-4 flex shrink-0 items-center justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                navigator.clipboard
-                  .writeText(review?.text ?? '')
-                  .then(() => toast.success('Review copied'))
-                  .catch(() => toast.error('Could not copy the review'));
-              }}
-            >
-              <Copy className="size-3" /> Copy
-            </Button>
-            <Button size="sm" onClick={() => setReviewExpanded(false)}>
-              Done
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AiResultDialog
+        open={reviewExpanded && !!review && reviewCurrent}
+        onOpenChange={(open) => !open && setReviewExpanded(false)}
+        title="AI review"
+        icon={<SearchCheck className="size-4 text-primary" />}
+        text={review?.text ?? ''}
+      />
     </div>
   );
 }

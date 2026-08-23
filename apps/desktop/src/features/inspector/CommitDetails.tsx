@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ChevronRight, Copy, FileText, Sparkles, X } from 'lucide-react';
+import { ChevronRight, Copy, FileText, Maximize2, Sparkles, X } from 'lucide-react';
 import type { CommitInfo, FileDiff } from '@angkorgit/core';
 import { aiCapabilities } from '@angkorgit/core';
-import { Badge, Button, Hint, Spinner, cn } from '@angkorgit/design-system';
+import { Badge, Button, Hint, Logo, cn } from '@angkorgit/design-system';
 import { useGraph } from '@/features/graph/store';
+import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
+import { AiText } from '@/features/ai/AiText';
+import { AiResultDialog } from '@/features/ai/AiResultDialog';
+import { explainKeyFor, useAiWork } from '@/features/ai/workStore';
 import { Avatar } from '@/components/Avatar';
 import { FileTree, treeIndent } from '@/components/FileTree';
 import { basename, dirname, formatDate } from '@/shared/utils';
@@ -64,8 +68,11 @@ export function CommitDetails({
   const closeCenterDiff = useUi((s) => s.closeCenterDiff);
   const centerDiff = useUi((s) => s.centerDiff);
   const fileTree = useUi((s) => s.fileTree);
-  const [aiText, setAiText] = useState<string | null>(null);
-  const [aiBusy, setAiBusy] = useState(false);
+  const repoPath = useRepo((s) => s.repo?.path ?? '');
+  const explainKey = explainKeyFor(repoPath, commit.oid);
+  const aiText = useAiWork((s) => s.explains[explainKey] ?? null);
+  const aiBusy = useAiWork((s) => !!s.explainBusy[explainKey]);
+  const [aiExpanded, setAiExpanded] = useState(false);
 
   const renderDiffRow = (diff: FileDiff, depth?: number) => {
     const active = centerDiff?.path === diff.path && centerDiff.oid === commit.oid;
@@ -102,18 +109,26 @@ export function CommitDetails({
   };
 
   const explain = async () => {
+    const key = explainKey;
+    if (aiBusy) {
+      useAiWork.getState().stopExplain(key);
+      return;
+    }
     if (!aiConfigured()) {
       toast.info('Configure an AI provider in Settings first');
       return;
     }
-    setAiBusy(true);
+    const run = useAiWork.getState().startExplain(key);
+    const stillRunning = () => useAiWork.getState().isExplainRun(key, run);
     try {
       const text = await aiCapabilities.explainDiff(getAiProvider(), diffToText(diffs));
-      setAiText(text);
+      if (stillRunning()) useAiWork.getState().setExplain(key, text);
     } catch (error) {
-      toast.error(`AI request failed: ${(error as { message?: string }).message ?? error}`);
+      if (stillRunning()) {
+        toast.error(`AI request failed: ${(error as { message?: string } | null)?.message ?? String(error)}`);
+      }
     } finally {
-      setAiBusy(false);
+      useAiWork.getState().endExplain(key, run);
     }
   };
 
@@ -163,16 +178,49 @@ export function CommitDetails({
           ))}
         </div>
         <div className="mt-3">
-          <Button variant="secondary" size="sm" onClick={() => void explain()} disabled={aiBusy || loading}>
-            {aiBusy ? <Spinner /> : <Sparkles className="text-primary" />}
-            Explain with AI
+          <Button variant="secondary" size="sm" onClick={() => void explain()} disabled={loading}>
+            {aiBusy ? (
+              <>
+                <Logo size={14} animated="loop" className="logo-draw-loop" />
+                Stop explaining
+              </>
+            ) : (
+              <>
+                <Sparkles className="text-primary" />
+                Explain with AI
+              </>
+            )}
           </Button>
         </div>
         {aiText && (
-          <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs leading-relaxed">
-            <pre className="min-w-0 whitespace-pre-wrap break-words font-sans">{aiText}</pre>
+          <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 text-xs leading-relaxed">
+            <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
+              <span className="flex items-center gap-1.5 font-medium text-primary">
+                <Sparkles className="size-3.5" /> AI explanation
+              </span>
+              <Hint label="Open explanation in full view">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Open AI explanation in full view"
+                  onClick={() => setAiExpanded(true)}
+                >
+                  <Maximize2 className="size-3" />
+                </Button>
+              </Hint>
+            </div>
+            <div className="px-3 pb-2.5 pt-1">
+              <AiText text={aiText} />
+            </div>
           </div>
         )}
+        <AiResultDialog
+          open={aiExpanded && !!aiText}
+          onOpenChange={(open) => !open && setAiExpanded(false)}
+          title="AI explanation"
+          icon={<Sparkles className="size-4 text-primary" />}
+          text={aiText ?? ''}
+        />
       </div>
 
       <div className="p-2">
