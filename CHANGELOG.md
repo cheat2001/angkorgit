@@ -6,6 +6,15 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.6] — 2026-08-23
+
+The review release. AngKorGit now gives your staged changes a second pair of
+eyes: one click asks your AI for a real code review, shaped by your team's
+conventions, running in the background while you keep working, and stoppable
+the moment you change your mind. AI answers everywhere got the same care: a
+full-size reading view, proper formatting, and the AngKorGit mark drawing
+itself while you wait.
+
 ### Added
 - **AI review before you commit** — a Review button next to Commit asks your
   configured AI to look over the staged diff and lists concrete issues (bugs,
@@ -670,7 +679,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.5...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.6...HEAD
+[0.6.6]: https://github.com/cheat2001/angkorgit/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/cheat2001/angkorgit/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/cheat2001/angkorgit/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/cheat2001/angkorgit/compare/v0.6.2...v0.6.3
