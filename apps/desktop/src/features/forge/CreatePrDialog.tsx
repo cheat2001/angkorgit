@@ -26,7 +26,7 @@ import {
   Spinner,
   Textarea,
 } from '@angkorgit/design-system';
-import { aiCapabilities, type ForgeUser } from '@angkorgit/core';
+import { aiCapabilities, forgeNoun, type ForgeUser } from '@angkorgit/core';
 import { ipc, openExternal } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
@@ -38,6 +38,13 @@ function titleFromBranch(branch: string): string {
   const words = leaf.replace(/[-_]+/g, ' ').trim();
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : branch;
 }
+
+interface DialogMeta {
+  defaultBranch: string | null;
+  users: ForgeUser[] | null;
+}
+
+const dialogMetaCache = new Map<string, DialogMeta>();
 
 export function CreatePrDialog() {
   const repo = useRepo((s) => s.repo);
@@ -55,10 +62,13 @@ export function CreatePrDialog() {
   const [candidates, setCandidates] = useState<ForgeUser[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [reviewers, setReviewers] = useState<string[]>([]);
+  const [defaultBranchName, setDefaultBranchName] = useState<string | null>(null);
+  const [accountUsername, setAccountUsername] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const aiRun = useRef(0);
+  const baseTouched = useRef(false);
 
   const path = repo?.path ?? '';
   const source = repo?.headBranch ?? '';
@@ -66,7 +76,7 @@ export function CreatePrDialog() {
     () => (remote && path ? forgeProviderFor(path, remote) : null),
     [remote, path],
   );
-  const noun = provider?.kind === 'gitlab' ? 'merge request' : 'pull request';
+  const noun = forgeNoun(provider?.kind);
 
   const remotePrefix = `${remoteName ?? 'origin'}/`;
   const baseOptions = useMemo(() => {
@@ -90,33 +100,70 @@ export function CreatePrDialog() {
     setSubmitting(false);
     setGenerating(false);
     aiRun.current += 1;
-    setBase(
-      baseOptions.includes('main') ? 'main' : baseOptions.includes('master') ? 'master' : baseOptions[0] ?? '',
-    );
+    baseTouched.current = false;
+    setBase('');
     setReviewers([]);
-    setCandidates([]);
-    setCandidatesLoading(true);
+
+    const key = remote ? `${path}|${remote.webUrl}` : '';
+    const cached = key ? dialogMetaCache.get(key) : undefined;
+    setDefaultBranchName(cached?.defaultBranch ?? null);
+    setCandidates(cached?.users ?? []);
+    setCandidatesLoading(!cached?.users);
+
     let cancelled = false;
-    void provider
-      ?.defaultBranch()
-      .then((name) => {
-        if (!cancelled && baseOptions.includes(name)) setBase(name);
+    void ipc
+      .accountList()
+      .then((accounts) => {
+        const match = accounts.find(
+          (account) => remote && account.host.toLowerCase().split(':')[0] === remote.host.toLowerCase().split(':')[0],
+        );
+        if (!cancelled) setAccountUsername(match?.username ?? null);
       })
       .catch(() => {});
-    void provider
-      ?.listReviewerCandidates()
-      .then((users) => {
-        if (!cancelled) setCandidates(users);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setCandidatesLoading(false);
-      });
+    if (!provider || !key) return;
+    const meta: DialogMeta = cached ? { ...cached } : { defaultBranch: null, users: null };
+    if (meta.defaultBranch === null) {
+      void provider
+        .defaultBranch()
+        .then((name) => {
+          meta.defaultBranch = name;
+          dialogMetaCache.set(key, { ...meta });
+          if (!cancelled) setDefaultBranchName(name);
+        })
+        .catch(() => {});
+    }
+    if (meta.users === null) {
+      void provider
+        .listReviewerCandidates()
+        .then((users) => {
+          meta.users = users;
+          dialogMetaCache.set(key, { ...meta });
+          if (!cancelled) setCandidates(users);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setCandidatesLoading(false);
+        });
+    }
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    if (!open || baseTouched.current || baseOptions.length === 0) return;
+    const preferred =
+      defaultBranchName && baseOptions.includes(defaultBranchName)
+        ? defaultBranchName
+        : baseOptions.includes('main')
+          ? 'main'
+          : baseOptions.includes('master')
+            ? 'master'
+            : baseOptions[0];
+    if (preferred !== base) setBase(preferred);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, baseOptions, defaultBranchName]);
 
   const generate = async () => {
     if (generating) {
@@ -156,8 +203,16 @@ export function CreatePrDialog() {
     }
   };
 
+  const visibleCandidates = useMemo(
+    () =>
+      accountUsername
+        ? candidates.filter((user) => user.username.toLowerCase() !== accountUsername.toLowerCase())
+        : candidates,
+    [candidates, accountUsername],
+  );
+
   const submit = async () => {
-    if (!provider || !title.trim() || !base || !source || submitting) return;
+    if (!provider || !title.trim() || !base || !source || notPushed || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -200,7 +255,13 @@ export function CreatePrDialog() {
               <span className="truncate">{source}</span>
             </Badge>
             <ArrowRight className="size-3.5 shrink-0 text-faint" />
-            <Select value={base} onValueChange={setBase}>
+            <Select
+              value={base}
+              onValueChange={(value) => {
+                baseTouched.current = true;
+                setBase(value);
+              }}
+            >
               <SelectTrigger className="h-8 flex-1">
                 <SelectValue placeholder="Target branch" />
               </SelectTrigger>
@@ -269,12 +330,12 @@ export function CreatePrDialog() {
                     Loading members…
                   </div>
                 )}
-                {!candidatesLoading && candidates.length === 0 && (
+                {!candidatesLoading && visibleCandidates.length === 0 && (
                   <div className="px-2 py-1.5 text-xs text-faint">
                     No members found — reviewers can still be added on {provider.label}.
                   </div>
                 )}
-                {candidates.map((user) => (
+                {visibleCandidates.map((user) => (
                   <DropdownMenuCheckboxItem
                     key={user.id}
                     checked={reviewers.includes(user.id)}
@@ -285,6 +346,9 @@ export function CreatePrDialog() {
                       )
                     }
                   >
+                    {user.avatarUrl && (
+                      <img src={user.avatarUrl} alt="" className="mr-1.5 size-4 shrink-0 rounded-full" />
+                    )}
                     <span className="min-w-0 flex-1 truncate">{user.name}</span>
                     {user.username && user.username !== user.name && (
                       <span className="ml-2 shrink-0 text-xs text-faint">@{user.username}</span>

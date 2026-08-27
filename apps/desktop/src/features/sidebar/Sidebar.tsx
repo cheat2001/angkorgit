@@ -56,8 +56,9 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { forgeProviderFor, useForge } from '@/features/forge/store';
+import { useForge } from '@/features/forge/store';
 import { useSettings } from '@/features/settings/store';
+import { forgeNoun, pullRequestCheckoutSpec } from '@angkorgit/core';
 import type { BranchInfo, PullRequestInfo, RemoteInfo, SubmoduleInfo } from '@angkorgit/core';
 import { capCount } from '@/shared/utils';
 
@@ -257,6 +258,7 @@ export function Sidebar() {
     }
   };
 
+  const forgeRepoPath = useForge((s) => s.repoPath);
   const forgeRemote = useForge((s) => s.remote);
   const forgeRemoteName = useForge((s) => s.remoteName);
   const forgeAccount = useForge((s) => s.hasAccount);
@@ -268,10 +270,11 @@ export function Sidebar() {
   const showPullRequests = useSettings((s) => s.showPullRequests);
 
   const checkoutPullRequest = (pr: PullRequestInfo) => {
-    const provider = repo && forgeRemote ? forgeProviderFor(repo.path, forgeRemote) : null;
-    const spec = provider?.checkoutSpec(pr);
+    const spec = forgeRemote ? pullRequestCheckoutSpec(forgeRemote.kind, pr) : null;
     if (!spec) {
-      toast.error('Bitbucket fork pull requests cannot be checked out yet — open it in the browser instead.');
+      toast.error(
+        `This ${forgeNoun(forgeRemote?.kind)} cannot be checked out from AngKorGit — open it in the browser instead.`,
+      );
       return;
     }
     void act(
@@ -516,10 +519,10 @@ export function Sidebar() {
             : renderTree(localTree, 0, 'local')}
         </Section>
 
-        {forgeRemote && showPullRequests && (
+        {forgeRemote && showPullRequests && forgeRepoPath === repo.path && (
           <Section
             icon={<GitPullRequest className="size-3.5" />}
-            title={forgeRemote.kind === 'gitlab' ? 'Merge requests' : 'Pull requests'}
+            title={forgeNoun(forgeRemote.kind, { plural: true, capitalize: true })}
             count={filteredPrs.length}
             action={
               <span className="flex items-center">
@@ -544,10 +547,11 @@ export function Sidebar() {
           >
             {!forgeAccount && forgeLoadedAt !== null && (
               <button
-                className="w-full rounded-md px-2 py-1 pl-7 text-left text-xs text-muted hover:bg-surface-raised"
+                className="w-full rounded-md px-2 py-1 pl-7 text-left text-xs text-muted [overflow-wrap:anywhere] hover:bg-surface-raised"
                 onClick={() => openDialog('settings')}
               >
-                Connect a {forgeRemote.host} account in Settings → Authentication to see pull requests.
+                Connect a {forgeRemote.host} account in Settings → Authentication to see{' '}
+                {forgeNoun(forgeRemote.kind, { plural: true })}.
               </button>
             )}
             {forgeAccount && forgeError && (
@@ -562,7 +566,7 @@ export function Sidebar() {
             )}
             {forgeAccount && !forgeError && filteredPrs.length === 0 && !forgeLoading && (
               <div className="px-2 py-1 pl-7 text-xs text-faint">
-                No open {forgeRemote.kind === 'gitlab' ? 'merge requests' : 'pull requests'}
+                No open {forgeNoun(forgeRemote.kind, { plural: true })}
               </div>
             )}
             {forgeLoading && filteredPrs.length === 0 && (

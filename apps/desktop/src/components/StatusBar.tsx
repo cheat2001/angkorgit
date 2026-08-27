@@ -14,6 +14,7 @@ import { useRepo } from '@/features/repository/store';
 import { useSettings } from '@/features/settings/store';
 import { useUi } from '@/features/ui/store';
 import { capCount, currentPullRequestUrl } from '@/shared/utils';
+import { forgeNoun, pickForgeRemote } from '@angkorgit/core';
 
 const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 
@@ -29,15 +30,18 @@ export function StatusBar() {
     void appVersion().then(setVersion);
   }, []);
 
+  const branches = useRepo((s) => s.branches);
   const changes = status?.files.length ?? 0;
   const branch = repo?.isDetached ? `detached @ ${repo.headOid?.slice(0, 8) ?? '?'}` : repo?.headBranch;
+  const headUpstream = branches.find((b) => !b.isRemote && b.isHead)?.upstream ?? null;
+  const prUrl = currentPullRequestUrl(repo, pickForgeRemote(remotes, headUpstream)?.url);
+  const forgeRepoPath = useForge((s) => s.repoPath);
   const forgeRemote = useForge((s) => s.remote);
-  const forgeRemoteUrl = useForge((s) => s.remoteUrl);
-  const prUrl = currentPullRequestUrl(repo, forgeRemoteUrl ?? remotes[0]?.url);
   const forgeAccount = useForge((s) => s.hasAccount);
   const openDialog = useUi((s) => s.openDialog);
-  const createInApp = !!forgeRemote && forgeAccount;
-  const prNoun = forgeRemote?.kind === 'gitlab' ? 'merge request' : 'pull request';
+  const forgeCurrent = forgeRepoPath !== null && forgeRepoPath === repo?.path;
+  const createInApp = forgeCurrent && !!forgeRemote && forgeAccount;
+  const prNoun = forgeNoun(forgeCurrent ? forgeRemote?.kind : null);
 
   return (
     <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-border-subtle bg-surface px-3 text-[11px] text-muted">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { motion } from 'framer-motion';
@@ -114,16 +114,32 @@ export function RepositoryPage() {
     };
   }, [repoPath, reload, navigate]);
 
-  const forgeKey = useRepo((s) => {
-    if (s.remotes.length === 0) return '';
-    const upstream = s.branches.find((b) => !b.isRemote && b.isHead)?.upstream ?? '';
-    return `${s.remotes.map((r) => `${r.name}=${r.url}`).join(',')}|${upstream}`;
-  });
+  const repoRemotes = useRepo((s) => s.remotes);
+  const repoBranches = useRepo((s) => s.branches);
+  const forgeKey = useMemo(() => {
+    if (repoRemotes.length === 0) return '';
+    const upstream = repoBranches.find((b) => !b.isRemote && b.isHead)?.upstream ?? '';
+    return `${repoRemotes.map((r) => `${r.name}=${r.url}`).join(',')}|${upstream}`;
+  }, [repoRemotes, repoBranches]);
   const showPullRequests = useSettings((s) => s.showPullRequests);
   useEffect(() => {
     if (repoPath && forgeKey && showPullRequests) void useForge.getState().load();
     else useForge.getState().reset();
   }, [repoPath, forgeKey, showPullRequests]);
+
+  const settingsOpen = useUi((s) => s.dialog === 'settings');
+  const settingsWasOpen = useRef(false);
+  useEffect(() => {
+    if (settingsOpen) {
+      settingsWasOpen.current = true;
+      return;
+    }
+    if (!settingsWasOpen.current) return;
+    settingsWasOpen.current = false;
+    if (repoPath && forgeKey && showPullRequests && !useForge.getState().hasAccount) {
+      void useForge.getState().load(true);
+    }
+  }, [settingsOpen, repoPath, forgeKey, showPullRequests]);
 
   const autoFetchMinutes = useSettings((s) => s.autoFetchMinutes);
   useEffect(() => {

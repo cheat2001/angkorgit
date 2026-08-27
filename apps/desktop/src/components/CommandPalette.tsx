@@ -29,6 +29,7 @@ import { sidebarVisible, useUi } from '@/features/ui/store';
 import { themeBase, useSettings } from '@/features/settings/store';
 import { useUndo } from '@/features/history/undoStore';
 import { useForge } from '@/features/forge/store';
+import { forgeNoun, pickForgeRemote } from '@angkorgit/core';
 import { currentPullRequestUrl, modKey } from '@/shared/utils';
 
 export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }) {
@@ -47,6 +48,9 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
   const setTheme = useSettings((s) => s.setTheme);
   const zoomIn = useSettings((s) => s.zoomIn);
   const zoomOut = useSettings((s) => s.zoomOut);
+  const forgeRepoPath = useForge((s) => s.repoPath);
+  const forgeKind = useForge((s) => s.remote?.kind ?? null);
+  const forgeAccount = useForge((s) => s.hasAccount);
 
   const path = repo?.path ?? '';
   const remote = remotes[0]?.name ?? 'origin';
@@ -144,13 +148,14 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
           <PaletteItem icon={<ArrowDownToLine />} label="Pull" onSelect={() => run('Pull', () => ipc.pull(path, remote))} />
           <PaletteItem icon={<ArrowUpFromLine />} label="Push" onSelect={() => run('Push', () => ipc.push(path, remote, false, false, true))} />
           {(() => {
-            const forge = useForge.getState();
-            const prUrl = currentPullRequestUrl(repo, forge.remoteUrl ?? remotes[0]?.url);
-            const inApp = !!forge.remote && forge.hasAccount;
+            const headUpstream = branches.find((b) => !b.isRemote && b.isHead)?.upstream ?? null;
+            const prUrl = currentPullRequestUrl(repo, pickForgeRemote(remotes, headUpstream)?.url);
+            const forgeCurrent = forgeRepoPath !== null && forgeRepoPath === repo?.path;
+            const inApp = forgeCurrent && forgeKind !== null && forgeAccount;
             return prUrl ? (
               <PaletteItem
                 icon={<GitPullRequest />}
-                label={forge.remote?.kind === 'gitlab' ? 'Create merge request' : 'Create pull request'}
+                label={`Create ${forgeNoun(forgeCurrent ? forgeKind : null)}`}
                 onSelect={() => {
                   close();
                   if (inApp) openDialog('createPullRequest');

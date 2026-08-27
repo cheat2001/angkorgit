@@ -39,9 +39,20 @@ interface ForgeState {
   reset: () => void;
 }
 
-let requestSeq = 0;
 const cache = new Map<string, ForgeSnapshot>();
 const inFlight = new Set<string>();
+const keySeq = new Map<string, number>();
+
+const emptySnapshot = (remoteName: string, remoteUrl: string, remote: ForgeRemote | null): ForgeSnapshot => ({
+  remoteName,
+  remoteUrl,
+  remote,
+  hasAccount: false,
+  prs: [],
+  error: null,
+  errorDetail: null,
+  loadedAt: null,
+});
 
 function hostMatches(a: string, b: string): boolean {
   const strip = (host: string) => host.toLowerCase().split(':')[0];
@@ -99,29 +110,30 @@ export const useForge = create<ForgeState>((set, get) => ({
     const provider = remote ? forgeProviderFor(path, remote) : null;
 
     if (!remote || !provider) {
-      const snapshot: ForgeSnapshot = {
-        remoteName: origin.name,
-        remoteUrl: origin.url,
-        remote: null,
-        hasAccount: false,
-        prs: [],
-        error: null,
-        errorDetail: null,
-        loadedAt: null,
-      };
+      const snapshot = emptySnapshot(origin.name, origin.url, null);
       cache.set(key, snapshot);
       set({ repoPath: path, loading: false, ...snapshot });
       return;
     }
 
     const cached = cache.get(key);
-    if (cached && (get().repoPath !== path || get().remoteUrl !== origin.url)) {
-      set({ repoPath: path, loading: false, ...cached });
+    const pointingElsewhere = get().repoPath !== path || get().remoteUrl !== origin.url;
+    if (pointingElsewhere) {
+      set({
+        repoPath: path,
+        loading: inFlight.has(key) && !cached,
+        ...(cached ?? emptySnapshot(origin.name, origin.url, remote)),
+      });
     }
-    const fresh = cached?.loadedAt != null && Date.now() - cached.loadedAt < FRESH_MS;
+    const fresh =
+      cached != null &&
+      cached.loadedAt !== null &&
+      cached.hasAccount &&
+      Date.now() - cached.loadedAt < FRESH_MS;
     if (!force && (fresh || inFlight.has(key))) return;
 
-    const token = ++requestSeq;
+    const token = (keySeq.get(key) ?? 0) + 1;
+    keySeq.set(key, token);
     inFlight.add(key);
     set({
       repoPath: path,
@@ -129,48 +141,42 @@ export const useForge = create<ForgeState>((set, get) => ({
       remoteUrl: origin.url,
       remote,
       loading: true,
-      ...(cached
-        ? {}
-        : { prs: [], hasAccount: false, error: null, errorDetail: null, loadedAt: null }),
+      ...(cached ? {} : { prs: [], hasAccount: false, error: null, errorDetail: null, loadedAt: null }),
     });
 
-    const stillCurrent = () => token === requestSeq && useRepo.getState().repo?.path === path;
+    const stillCurrent = () =>
+      keySeq.get(key) === token &&
+      useRepo.getState().repo?.path === path &&
+      get().repoPath === path &&
+      get().remoteUrl === origin.url;
     const base = { remoteName: origin.name, remoteUrl: origin.url, remote };
     try {
-      const accounts = await ipc.accountList();
+      const [accounts, outcome] = await Promise.all([
+        ipc.accountList(),
+        provider.listOpenPullRequests().then(
+          (prs) => ({ prs, raw: null as string | null }),
+          (error) => ({
+            prs: null,
+            raw: (error as { message?: string }).message ?? String(error),
+          }),
+        ),
+      ]);
       const hasAccount = accounts.some((account) => hostMatches(account.host, remote.host));
       let snapshot: ForgeSnapshot;
       if (!hasAccount) {
+        snapshot = { ...base, hasAccount: false, prs: [], error: null, errorDetail: null, loadedAt: Date.now() };
+      } else if (outcome.prs) {
+        snapshot = { ...base, hasAccount: true, prs: outcome.prs, error: null, errorDetail: null, loadedAt: Date.now() };
+      } else {
+        const raw = outcome.raw ?? 'request failed';
         snapshot = {
           ...base,
-          hasAccount: false,
-          prs: [],
-          error: null,
-          errorDetail: null,
+          hasAccount: true,
+          prs: cached?.prs ?? [],
+          error: friendlyForgeError(raw, remote.host),
+          errorDetail: raw,
           loadedAt: Date.now(),
         };
-      } else {
-        try {
-          const prs = await provider.listOpenPullRequests();
-          snapshot = {
-            ...base,
-            hasAccount: true,
-            prs,
-            error: null,
-            errorDetail: null,
-            loadedAt: Date.now(),
-          };
-        } catch (error) {
-          const raw = (error as { message?: string }).message ?? String(error);
-          snapshot = {
-            ...base,
-            hasAccount: true,
-            prs: cached?.prs ?? [],
-            error: friendlyForgeError(raw, remote.host),
-            errorDetail: raw,
-            loadedAt: Date.now(),
-          };
-        }
       }
       cache.set(key, snapshot);
       if (stillCurrent()) set({ loading: false, ...snapshot });

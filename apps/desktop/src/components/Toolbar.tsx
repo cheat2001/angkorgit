@@ -396,6 +396,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       if (busy) return;
       await ensureRepoProfile(repo.path);
       await run(label, op);
+      void import('@/features/forge/store').then(({ useForge }) => useForge.getState().load(true));
     })();
 
   return (
