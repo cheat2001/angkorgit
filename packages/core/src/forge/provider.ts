@@ -2,6 +2,7 @@ import type { HttpClient } from '../ai/types';
 import type { ForgeRemote } from './remote';
 import type {
   CreatePullRequestInput,
+  ForgeUser,
   PullRequestCheckoutSpec,
   PullRequestInfo,
 } from './types';
@@ -14,6 +15,7 @@ export interface ForgeProvider {
   readonly label: string;
   listOpenPullRequests(): Promise<PullRequestInfo[]>;
   defaultBranch(): Promise<string>;
+  listReviewerCandidates(): Promise<ForgeUser[]>;
   createPullRequest(input: CreatePullRequestInput): Promise<PullRequestInfo>;
   checkoutSpec(pr: PullRequestInfo): PullRequestCheckoutSpec | null;
 }

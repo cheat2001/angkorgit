@@ -16,12 +16,20 @@ export interface PullRequestInfo {
   updatedAt: number;
 }
 
+export interface ForgeUser {
+  id: string;
+  username: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 export interface CreatePullRequestInput {
   title: string;
   body: string;
   sourceBranch: string;
   targetBranch: string;
   draft: boolean;
+  reviewerIds?: string[];
 }
 
 export interface PullRequestCheckoutSpec {

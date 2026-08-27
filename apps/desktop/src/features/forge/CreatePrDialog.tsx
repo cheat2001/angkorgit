@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowRight, GitPullRequest, Sparkles, Square } from 'lucide-react';
+import { ArrowRight, GitPullRequest, Sparkles, Square, Users } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -11,6 +11,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
   Hint,
   Input,
   Logo,
@@ -22,7 +26,7 @@ import {
   Spinner,
   Textarea,
 } from '@angkorgit/design-system';
-import { aiCapabilities } from '@angkorgit/core';
+import { aiCapabilities, type ForgeUser } from '@angkorgit/core';
 import { ipc, openExternal } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
@@ -48,6 +52,9 @@ export function CreatePrDialog() {
   const [body, setBody] = useState('');
   const [base, setBase] = useState('');
   const [draft, setDraft] = useState(false);
+  const [candidates, setCandidates] = useState<ForgeUser[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [reviewers, setReviewers] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -86,6 +93,9 @@ export function CreatePrDialog() {
     setBase(
       baseOptions.includes('main') ? 'main' : baseOptions.includes('master') ? 'master' : baseOptions[0] ?? '',
     );
+    setReviewers([]);
+    setCandidates([]);
+    setCandidatesLoading(true);
     let cancelled = false;
     void provider
       ?.defaultBranch()
@@ -93,6 +103,15 @@ export function CreatePrDialog() {
         if (!cancelled && baseOptions.includes(name)) setBase(name);
       })
       .catch(() => {});
+    void provider
+      ?.listReviewerCandidates()
+      .then((users) => {
+        if (!cancelled) setCandidates(users);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setCandidatesLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -148,6 +167,7 @@ export function CreatePrDialog() {
         sourceBranch: source,
         targetBranch: base,
         draft,
+        reviewerIds: reviewers,
       });
       closeDialog();
       toast.success(`${provider.label} ${noun} #${pr.number} created`, {
@@ -198,12 +218,18 @@ export function CreatePrDialog() {
             placeholder="Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submit();
+            }}
           />
           <div className="relative">
             <Textarea
               placeholder="Description (optional)"
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit();
+              }}
               className="min-h-32 pr-9 font-mono text-xs"
             />
             {aiConfigured() && (
@@ -226,10 +252,65 @@ export function CreatePrDialog() {
               </span>
             )}
           </div>
+          <div className="flex min-w-0 items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="sm" className="shrink-0">
+                  <Users className="size-3.5" />
+                  {reviewers.length > 0
+                    ? `${reviewers.length} reviewer${reviewers.length === 1 ? '' : 's'}`
+                    : 'Add reviewers'}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-64 w-72 overflow-y-auto">
+                {candidatesLoading && (
+                  <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-faint">
+                    <Logo size={14} animated="loop" className="logo-draw-loop shrink-0" />
+                    Loading members…
+                  </div>
+                )}
+                {!candidatesLoading && candidates.length === 0 && (
+                  <div className="px-2 py-1.5 text-xs text-faint">
+                    No members found — reviewers can still be added on {provider.label}.
+                  </div>
+                )}
+                {candidates.map((user) => (
+                  <DropdownMenuCheckboxItem
+                    key={user.id}
+                    checked={reviewers.includes(user.id)}
+                    onSelect={(e) => e.preventDefault()}
+                    onCheckedChange={(checked) =>
+                      setReviewers((prev) =>
+                        checked === true ? [...prev, user.id] : prev.filter((id) => id !== user.id),
+                      )
+                    }
+                  >
+                    <span className="min-w-0 flex-1 truncate">{user.name}</span>
+                    {user.username && user.username !== user.name && (
+                      <span className="ml-2 shrink-0 text-xs text-faint">@{user.username}</span>
+                    )}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted">
+              {reviewers.length > 0
+                ? candidates
+                    .filter((user) => reviewers.includes(user.id))
+                    .map((user) => user.name)
+                    .join(', ')
+                : 'Optional'}
+            </span>
+          </div>
           <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
             <Checkbox checked={draft} onCheckedChange={(v) => setDraft(v === true)} />
             Create as draft
           </label>
+          {baseOptions.length === 0 && (
+            <p className="text-xs text-info">
+              No remote branches found — fetch first so the target branch list can fill in.
+            </p>
+          )}
           {notPushed && (
             <p className="text-xs text-info">
               This branch has not been pushed yet — push it first so {provider.label} can see it.

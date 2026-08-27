@@ -12,6 +12,17 @@ import { useRepo } from '@/features/repository/store';
 
 const FRESH_MS = 60_000;
 
+interface ForgeSnapshot {
+  remoteName: string;
+  remoteUrl: string;
+  remote: ForgeRemote | null;
+  hasAccount: boolean;
+  prs: PullRequestInfo[];
+  error: string | null;
+  errorDetail: string | null;
+  loadedAt: number | null;
+}
+
 interface ForgeState {
   repoPath: string | null;
   remoteName: string | null;
@@ -21,6 +32,7 @@ interface ForgeState {
   prs: PullRequestInfo[];
   loading: boolean;
   error: string | null;
+  errorDetail: string | null;
   loadedAt: number | null;
 
   load: (force?: boolean) => Promise<void>;
@@ -28,10 +40,19 @@ interface ForgeState {
 }
 
 let requestSeq = 0;
+const cache = new Map<string, ForgeSnapshot>();
+const inFlight = new Set<string>();
 
 function hostMatches(a: string, b: string): boolean {
   const strip = (host: string) => host.toLowerCase().split(':')[0];
   return strip(a) === strip(b);
+}
+
+function friendlyForgeError(raw: string, host: string): string {
+  if (/error sending request|^request failed:|failed to read response/i.test(raw)) {
+    return `Could not reach ${host} — check your network or VPN, then retry.`;
+  }
+  return raw;
 }
 
 export function forgeProviderFor(repoPath: string, remote: ForgeRemote): ForgeProvider | null {
@@ -47,6 +68,7 @@ export const useForge = create<ForgeState>((set, get) => ({
   prs: [],
   loading: false,
   error: null,
+  errorDetail: null,
   loadedAt: null,
 
   reset: () =>
@@ -59,6 +81,7 @@ export const useForge = create<ForgeState>((set, get) => ({
       prs: [],
       loading: false,
       error: null,
+      errorDetail: null,
       loadedAt: null,
     }),
 
@@ -71,59 +94,98 @@ export const useForge = create<ForgeState>((set, get) => ({
       return;
     }
     const path = repo.path;
+    const key = `${path}|${origin.url}`;
     const remote = parseForgeRemote(origin.url);
     const provider = remote ? forgeProviderFor(path, remote) : null;
+
     if (!remote || !provider) {
-      set({
-        repoPath: path,
+      const snapshot: ForgeSnapshot = {
         remoteName: origin.name,
         remoteUrl: origin.url,
         remote: null,
         hasAccount: false,
         prs: [],
-        loading: false,
         error: null,
+        errorDetail: null,
         loadedAt: null,
-      });
+      };
+      cache.set(key, snapshot);
+      set({ repoPath: path, loading: false, ...snapshot });
       return;
     }
 
-    const state = get();
-    const sameTarget = state.repoPath === path && state.remoteUrl === origin.url;
-    const fresh = sameTarget && state.loadedAt !== null && Date.now() - state.loadedAt < FRESH_MS;
-    if (!force && (fresh || (sameTarget && state.loading))) return;
+    const cached = cache.get(key);
+    if (cached && (get().repoPath !== path || get().remoteUrl !== origin.url)) {
+      set({ repoPath: path, loading: false, ...cached });
+    }
+    const fresh = cached?.loadedAt != null && Date.now() - cached.loadedAt < FRESH_MS;
+    if (!force && (fresh || inFlight.has(key))) return;
 
     const token = ++requestSeq;
+    inFlight.add(key);
     set({
       repoPath: path,
       remoteName: origin.name,
       remoteUrl: origin.url,
       remote,
       loading: true,
-      error: null,
-      ...(sameTarget ? {} : { prs: [], hasAccount: false, loadedAt: null }),
+      ...(cached
+        ? {}
+        : { prs: [], hasAccount: false, error: null, errorDetail: null, loadedAt: null }),
     });
 
     const stillCurrent = () => token === requestSeq && useRepo.getState().repo?.path === path;
+    const base = { remoteName: origin.name, remoteUrl: origin.url, remote };
     try {
       const accounts = await ipc.accountList();
-      if (!stillCurrent()) return;
       const hasAccount = accounts.some((account) => hostMatches(account.host, remote.host));
+      let snapshot: ForgeSnapshot;
       if (!hasAccount) {
-        set({ hasAccount: false, prs: [], loading: false, loadedAt: Date.now() });
-        return;
+        snapshot = {
+          ...base,
+          hasAccount: false,
+          prs: [],
+          error: null,
+          errorDetail: null,
+          loadedAt: Date.now(),
+        };
+      } else {
+        try {
+          const prs = await provider.listOpenPullRequests();
+          snapshot = {
+            ...base,
+            hasAccount: true,
+            prs,
+            error: null,
+            errorDetail: null,
+            loadedAt: Date.now(),
+          };
+        } catch (error) {
+          const raw = (error as { message?: string }).message ?? String(error);
+          snapshot = {
+            ...base,
+            hasAccount: true,
+            prs: cached?.prs ?? [],
+            error: friendlyForgeError(raw, remote.host),
+            errorDetail: raw,
+            loadedAt: Date.now(),
+          };
+        }
       }
-      const prs = await provider.listOpenPullRequests();
-      if (!stillCurrent()) return;
-      set({ hasAccount: true, prs, loading: false, error: null, loadedAt: Date.now() });
+      cache.set(key, snapshot);
+      if (stillCurrent()) set({ loading: false, ...snapshot });
     } catch (error) {
-      if (!stillCurrent()) return;
-      set({
-        hasAccount: true,
-        loading: false,
-        error: (error as { message?: string }).message ?? String(error),
-        loadedAt: Date.now(),
-      });
+      const raw = (error as { message?: string }).message ?? String(error);
+      if (stillCurrent()) {
+        set({
+          loading: false,
+          error: friendlyForgeError(raw, remote.host),
+          errorDetail: raw,
+          loadedAt: Date.now(),
+        });
+      }
+    } finally {
+      inFlight.delete(key);
     }
   },
 }));

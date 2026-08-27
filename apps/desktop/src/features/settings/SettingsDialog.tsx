@@ -836,6 +836,16 @@ export function SettingsDialog() {
                   </SettingCard>
 
                   <SettingCard
+                    title="Pull requests"
+                    description="Show the pull requests section in the sidebar and fetch the remote's open pull requests through your connected account. Turn off if you don't use pull requests."
+                  >
+                    <Switch
+                      checked={settings.showPullRequests}
+                      onCheckedChange={settings.setShowPullRequests}
+                    />
+                  </SettingCard>
+
+                  <SettingCard
                     title="Committer identity"
                     description={
                       repo

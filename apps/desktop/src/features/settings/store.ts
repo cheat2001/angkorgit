@@ -138,6 +138,7 @@ interface SettingsState {
   useCredentialHelper: boolean;
   reduceMotion: boolean;
   autoFetchMinutes: number;
+  showPullRequests: boolean;
   profiles: IdentityProfile[];
   ai: AiConfig;
   aiProfiles: Partial<Record<AiProviderKind, AiProfile>>;
@@ -153,6 +154,7 @@ interface SettingsState {
   setUseCredentialHelper: (value: boolean) => void;
   setReduceMotion: (value: boolean) => void;
   setAutoFetchMinutes: (minutes: number) => void;
+  setShowPullRequests: (value: boolean) => void;
   addProfile: (profile: Omit<IdentityProfile, 'id'>) => void;
   updateProfile: (id: string, patch: Partial<Omit<IdentityProfile, 'id'>>) => void;
   removeProfile: (id: string) => void;
@@ -203,6 +205,7 @@ export const useSettings = create<SettingsState>()(
       sshUseAgent: true,
       useCredentialHelper: true,
       autoFetchMinutes: 1,
+      showPullRequests: true,
       reduceMotion:
         typeof window !== 'undefined' &&
         window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -230,6 +233,7 @@ export const useSettings = create<SettingsState>()(
       setSshUseAgent: (sshUseAgent) => set({ sshUseAgent }),
       setUseCredentialHelper: (useCredentialHelper) => set({ useCredentialHelper }),
       setAutoFetchMinutes: (autoFetchMinutes) => set({ autoFetchMinutes }),
+      setShowPullRequests: (showPullRequests) => set({ showPullRequests }),
       setReduceMotion: (reduceMotion) => {
         applyReduceMotion(reduceMotion);
         set({ reduceMotion });

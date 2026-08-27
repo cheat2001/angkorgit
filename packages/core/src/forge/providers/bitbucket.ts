@@ -4,6 +4,7 @@ import type { ForgeProvider } from '../provider';
 import {
   ForgeError,
   type CreatePullRequestInput,
+  type ForgeUser,
   type PullRequestCheckoutSpec,
   type PullRequestInfo,
 } from '../types';
@@ -94,7 +95,7 @@ export function bitbucketForgeProvider(remote: ForgeRemote, http: HttpClient): F
     async listOpenPullRequests(): Promise<PullRequestInfo[]> {
       const data = (await request(
         'GET',
-        `/repositories/${repoPath}/pullrequests?state=OPEN&pagelen=50`,
+        `/repositories/${repoPath}/pullrequests?state=OPEN&sort=-updated_on&pagelen=50`,
       )) as { values?: BitbucketPull[] };
       if (!Array.isArray(data.values)) {
         throw new ForgeError('Bitbucket returned an unexpected response', 'bitbucket');
@@ -107,6 +108,26 @@ export function bitbucketForgeProvider(remote: ForgeRemote, http: HttpClient): F
       };
       return data.mainbranch?.name ?? 'main';
     },
+    async listReviewerCandidates(): Promise<ForgeUser[]> {
+      const workspace = remote.owner;
+      const data = (await request(
+        'GET',
+        `/workspaces/${workspace}/members?pagelen=100`,
+      )) as {
+        values?: Array<{
+          user?: { uuid?: string; nickname?: string; display_name?: string; links?: { avatar?: { href?: string } } };
+        }>;
+      };
+      if (!Array.isArray(data.values)) return [];
+      return data.values
+        .filter((member) => member.user?.uuid)
+        .map((member) => ({
+          id: member.user?.uuid as string,
+          username: member.user?.nickname ?? member.user?.display_name ?? '',
+          name: member.user?.display_name ?? member.user?.nickname ?? '',
+          avatarUrl: member.user?.links?.avatar?.href ?? null,
+        }));
+    },
     async createPullRequest(input: CreatePullRequestInput): Promise<PullRequestInfo> {
       const data = (await request('POST', `/repositories/${repoPath}/pullrequests`, {
         title: input.title,
@@ -114,6 +135,9 @@ export function bitbucketForgeProvider(remote: ForgeRemote, http: HttpClient): F
         source: { branch: { name: input.sourceBranch } },
         destination: { branch: { name: input.targetBranch } },
         ...(input.draft ? { draft: true } : {}),
+        ...(input.reviewerIds?.length
+          ? { reviewers: input.reviewerIds.map((uuid) => ({ uuid })) }
+          : {}),
       })) as BitbucketPull;
       return mapPull(data);
     },

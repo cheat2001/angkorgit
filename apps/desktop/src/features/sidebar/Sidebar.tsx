@@ -57,6 +57,7 @@ import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import { forgeProviderFor, useForge } from '@/features/forge/store';
+import { useSettings } from '@/features/settings/store';
 import type { BranchInfo, PullRequestInfo, RemoteInfo, SubmoduleInfo } from '@angkorgit/core';
 import { capCount } from '@/shared/utils';
 
@@ -262,7 +263,9 @@ export function Sidebar() {
   const forgePrs = useForge((s) => s.prs);
   const forgeLoading = useForge((s) => s.loading);
   const forgeError = useForge((s) => s.error);
+  const forgeErrorDetail = useForge((s) => s.errorDetail);
   const forgeLoadedAt = useForge((s) => s.loadedAt);
+  const showPullRequests = useSettings((s) => s.showPullRequests);
 
   const checkoutPullRequest = (pr: PullRequestInfo) => {
     const provider = repo && forgeRemote ? forgeProviderFor(repo.path, forgeRemote) : null;
@@ -513,7 +516,7 @@ export function Sidebar() {
             : renderTree(localTree, 0, 'local')}
         </Section>
 
-        {forgeRemote && (
+        {forgeRemote && showPullRequests && (
           <Section
             icon={<GitPullRequest className="size-3.5" />}
             title={forgeRemote.kind === 'gitlab' ? 'Merge requests' : 'Pull requests'}
@@ -549,11 +552,12 @@ export function Sidebar() {
             )}
             {forgeAccount && forgeError && (
               <button
-                className="w-full rounded-md px-2 py-1 pl-7 text-left text-xs text-danger [overflow-wrap:anywhere] hover:bg-surface-raised"
-                title="Click to retry"
+                className="w-full rounded-md px-2 py-1 pl-7 text-left text-xs text-muted [overflow-wrap:anywhere] hover:bg-surface-raised"
+                title={forgeErrorDetail ?? forgeError}
                 onClick={() => void useForge.getState().load(true)}
               >
                 {forgeError}
+                <span className="mt-0.5 block text-primary">Click to retry</span>
               </button>
             )}
             {forgeAccount && !forgeError && filteredPrs.length === 0 && !forgeLoading && (
@@ -571,8 +575,8 @@ export function Sidebar() {
               <div
                 key={pr.number}
                 className="group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised"
-                title={`#${pr.number} ${pr.title} — ${pr.author} wants to merge ${pr.sourceBranch} into ${pr.targetBranch}. Double-click to open in the browser.`}
-                onDoubleClick={() => void openExternal(pr.url)}
+                title={`#${pr.number} ${pr.title} — ${pr.author} wants to merge ${pr.sourceBranch} into ${pr.targetBranch}. Double-click to check out.`}
+                onDoubleClick={() => checkoutPullRequest(pr)}
               >
                 <span className="min-w-0 flex-1 truncate">
                   <span className="text-faint">#{pr.number}</span> {pr.title}

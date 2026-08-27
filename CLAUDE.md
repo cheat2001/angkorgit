@@ -73,7 +73,11 @@ angkorgit/
 │       │                        owner/repo; gitlab subgroups, bitbucket /scm/ server
 │       │                        shape), types.ts (PullRequestInfo, CreatePullRequestInput,
 │       │                        PullRequestCheckoutSpec, ForgeError), provider.ts
-│       │                        (ForgeProvider: list/defaultBranch/create/checkoutSpec;
+│       │                        (ForgeProvider: list/defaultBranch/listReviewerCandidates/
+│                        create (reviewerIds: gitlab embeds reviewer_ids, bitbucket
+│                        embeds reviewers uuids, github does a follow-up
+│                        requested_reviewers POST and returns the PR even if that
+│                        follow-up fails)/checkoutSpec;
 │       │                        createForgeProvider — github + gitlab + bitbucket CLOUD
 │       │                        only, bitbucket server → null), providers/{github,gitlab,
 │       │                        bitbucket}.ts (REST adapters over the injected HttpClient;
@@ -265,7 +269,12 @@ core/ipc.ts                   ← THE typed IPC boundary — only place calling 
                                 demo-mode fallback (browser) per command; openExternal;
                                 listen() wrapper for Tauri events
 core/demo.ts                  ← deterministic 400-commit synthetic repo for demo mode
-components/                   ← Toolbar (fetch/pull/push split-button, undo/redo,
+components/                   ← RepoTabs (tab strip is overflow-x-auto with the
+                                scrollbar HIDDEN via .scrollbar-none — a visible 8px
+                                scrollbar inside the fixed h-9 bar covered the tabs;
+                                wheel deltaY scrolls horizontally, active tab
+                                scrollIntoView on switch),
+                                Toolbar (fetch/pull/push split-button, undo/redo,
                                 RepoSwitcher dropdown (recents list scrolls inside a
                                 viewport-capped menu — max-h min(70vh, radix available
                                 height), open/clone/profile actions stay pinned below)
@@ -399,7 +408,13 @@ features/
 │                               render virtualized (paired-row flatten keeps A/B
 │                               aligned, scrollToIndex nav, editor row measured),
 │                               smaller files keep the plain path
-├── forge/                    ← store.ts (per-repo forge state: PICKED remote — core
+├── forge/                    ← store.ts (per-repo forge state with a SESSION CACHE:
+│                               snapshots keyed `${repoPath}|${remoteUrl}` in a module
+│                               Map — switching repo tabs restores the cached PR list
+│                               instantly (no loading flash) and revalidates in the
+│                               background when older than 60s; a fetch error keeps the
+│                               stale list visible under the error row; inFlight set
+│                               dedupes concurrent loads; PICKED remote — core
 │                               pickForgeRemote: the HEAD branch's upstream remote first,
 │                               then 'origin', then the first; NEVER remotes[0] blindly —
 │                               a two-remote repo (github + bitbucket) once routed PR
@@ -409,14 +424,25 @@ features/
 │                               forgeProviderFor binds a core provider to
 │                               ipc.forgeRequest so the Rust side attaches the token;
 │                               loaded by a RepositoryPage effect keyed on repo path +
-│                               remotes fingerprint + HEAD upstream; StatusBar/palette
-│                               browser-link fallback uses the same picked remoteUrl),
+│                               remotes fingerprint + HEAD upstream AND gated on the
+│                               settings.showPullRequests toggle (off → reset, section
+│                               hidden, create button falls back to the browser page);
+│                               transport failures store BOTH a friendly error ("Could
+│                               not reach <host>…", matched on ^request failed:/error
+│                               sending request — never on provider errors, whose
+│                               "GitLab request failed (409)" must stay verbatim) and
+│                               errorDetail (raw, shown in the row tooltip);
+│                               StatusBar/palette browser-link fallback uses the same
+│                               picked remoteUrl),
 │                               CreatePrDialog.tsx (ui dialog kind
 │                               'createPullRequest': source = HEAD, base Select from the
 │                               remote's branches pre-picked via provider.defaultBranch,
 │                               title prefilled from the branch name, description textarea
 │                               with a stoppable AI generate button — commits from
-│                               rebaseCommits(base) with history fallback —, draft
+│                               rebaseCommits(base) with history fallback —, reviewer
+│                               multi-select (DropdownMenuCheckboxItem w/ onSelect
+│                               preventDefault so the menu stays open; candidates from
+│                               provider.listReviewerCandidates on dialog open), draft
 │                               checkbox, disabled + hint while the branch has no
 │                               upstream; success toast carries an Open action)
 ├── sidebar/Sidebar.tsx       ← PULL REQUESTS section (shown when the first remote parses
@@ -852,7 +878,7 @@ update CLAUDE.md or docs/ — never the code.
 | --- | --- | --- |
 | Rust integration (44) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop, commit signing (SSH sign verified via `git verify-commit`, unsigned without config, amend re-signs, merge commit signed, failure blocks the commit and leaves HEAD/index untouched), PR checkout (fork-style refs/pull fetch creates + updates the local branch and re-runs cleanly, diverged local branch refused with HEAD untouched, same-repo tracking checkout sets the upstream) |
 | Rust module (48) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (6), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/core/sign.rs` (7), `src/forge.rs` (6), `src/proc.rs` (1) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim, io NotFound → not_found while other io errors stay io · forge proxy: api-subdomain host allowlist (dot-anchored), per-provider auth headers, bitbucket email requirement, unknown provider rejected · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · signing config: off by default, ssh setup read from git config, empty-string values read as unset, ssh-without-key and x509 are clear errors, openpgp falls back to the committer identity, literal-key detection, ~ expansion · proc: no bare `Command::new` anywhere outside proc.rs (G31) |
-| Unit (122) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), aiProviders (empty/whitespace/missing content rejected for openai-compatible + ollama, HTTP status+body surfaced, real content passes), aiCapabilities (review conventions: absent by default, general-only, general+project order with precedence note, whitespace = absent, clipping), aiTextSegments (token parse: adjacent tokens, unclosed/inner-asterisk/multi-line markers stay literal, ** inside backticks is code), reviewSignature (staged-only, order-insensitive, unstaged-edit + set changes alter it, newline filenames don't collide, hashText determinism), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null), aiModels (per-provider list endpoints/headers incl. Groq-style base URLs, generateContent filtering for Gemini, dedupe/sort, invalid-JSON + HTTP-status errors, cli → empty without a request), forge (parseForgeRemote for all three forges + rejects, provider creation gating, github/gitlab/bitbucket adapters: request URLs, field mapping incl. fork + draft detection, create payloads, error-message surfacing incl. github field-level validation entries without a message, checkoutSpec shapes incl. bitbucket fork → null, pickForgeRemote upstream-first ordering) |
+| Unit (128) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), aiProviders (empty/whitespace/missing content rejected for openai-compatible + ollama, HTTP status+body surfaced, real content passes), aiCapabilities (review conventions: absent by default, general-only, general+project order with precedence note, whitespace = absent, clipping), aiTextSegments (token parse: adjacent tokens, unclosed/inner-asterisk/multi-line markers stay literal, ** inside backticks is code), reviewSignature (staged-only, order-insensitive, unstaged-edit + set changes alter it, newline filenames don't collide, hashText determinism), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null), aiModels (per-provider list endpoints/headers incl. Groq-style base URLs, generateContent filtering for Gemini, dedupe/sort, invalid-JSON + HTTP-status errors, cli → empty without a request), forge (parseForgeRemote for all three forges + rejects, provider creation gating, github/gitlab/bitbucket adapters: request URLs, field mapping incl. fork + draft detection, create payloads, error-message surfacing incl. github field-level validation entries without a message, checkoutSpec shapes incl. bitbucket fork → null, pickForgeRemote upstream-first ordering, gitlab self-hosted https→http transport fallback — never for gitlab.com or api-level errors, reviewer candidates per forge + reviewer ids embedded/requested on create incl. github follow-up failure tolerance) |
 | E2E (16) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop), long path stays inside the discard confirm dialog, sidebar branch names align with and without the HEAD tick (measured left offsets), hovering a working-copy file reveals its full path, opening a diff folds the sidebar away and the toggle brings back the graph, sidebar lists the demo pull requests and the create dialog opens — all on demo mode |
 
 ## 9.5 Open-source & community files
@@ -939,13 +965,19 @@ plugin can be added), and the Homebrew cask.
    layered over Gravatar.
 3. File-tree view for the working copy (deep C# paths); prev/next-file arrows in DiffPanel.
 4. Blame (file history shipped; annotate view remains). 5. Worktrees.
-7. Forge integrations, remaining scope (PR list/checkout/create shipped unreleased after
-   0.6.6 in `packages/core/src/forge` — NOT a separate `packages/forge` package, it mirrors
-   where the ai/ adapters live): issue viewer, PR detail view (commits, CI status, review
-   state), review comments inline in diffs, Bitbucket Server + Azure DevOps adapters,
-   refreshing the PR list after push. The browser-link fallback stays for hosts without a
-   connected account (deliberately a persistent StatusBar affordance, NOT a post-push
-   toast — transient popups nag non-PR users and can't help with a branch pushed yesterday).
+7. Forge integrations, remaining scope (PR list/checkout/create + reviewer selection
+   shipped unreleased after 0.6.6 in `packages/core/src/forge` — NOT a separate
+   `packages/forge` package, it mirrors where the ai/ adapters live): possible later
+   items are an issue viewer, a read-only PR detail view (commits, CI status, review
+   state), Bitbucket Server + Azure DevOps adapters, refreshing the PR list after push.
+   **In-app REVIEW (comment threads, approve/request-changes, merge) is deliberately
+   PARKED — owner decision 2026-08-27**: reviewing belongs to the forge's web UI (CI
+   logs, suggestions, resolved threads); a partial in-app review would violate the
+   "25 features done well" ethos and the roadmap non-goal about duplicating forge web
+   UIs. Do not re-propose unprompted; "Open in browser" is the review path. The
+   browser-link fallback stays for hosts without a connected account (deliberately a
+   persistent StatusBar affordance, NOT a post-push toast — transient popups nag
+   non-PR users and can't help with a branch pushed yesterday).
 8. Plugin host (palette commands, sidebar sections, inspector tabs are list-driven already).
 
 ## 12. Voice & positioning (for docs/website work)

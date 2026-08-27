@@ -22,6 +22,12 @@ All notable changes to AngKorGit are documented here. The format follows
   Without a connected account the button keeps opening the pre-filled
   browser page as before.
 
+### Fixed
+- With many repository tabs open, the tab bar's horizontal scrollbar covered
+  the bottom half of the tabs. The scrollbar is hidden now (the strip still
+  scrolls), the mouse wheel scrolls the tabs, and the active tab scrolls
+  itself into view.
+
 ### Changed
 - Forge API calls run through the Rust engine, which attaches the connected
   account's token from the OS keychain — tokens never reach the webview, and
@@ -33,6 +39,27 @@ All notable changes to AngKorGit are documented here. The format follows
   Failed" on a branch that only exists on another remote explains itself.
 - Every forge loading state shows the AngKorGit mark drawing itself, matching
   the AI panels.
+- A pull request list that cannot be fetched shows one short line ("Could not
+  reach <host>, check your network or VPN") with click-to-retry, instead of
+  dumping the raw request error into the sidebar; the full detail stays in the
+  row's tooltip. Self-hosted GitLab instances served over plain http work now:
+  when https fails at the transport level the API calls retry over http, the
+  same way account verification already does.
+- New Settings → Git toggle "Pull requests": turn it off to hide the sidebar
+  section and stop fetching pull requests entirely, for people who don't use
+  them. The create button then falls back to the pre-filled browser page.
+- Request reviewers while creating: the create dialog lists the repository's
+  members (GitHub collaborators, GitLab project members, Bitbucket workspace
+  members) in a multi-select, and the chosen people are asked for review as
+  part of creation.
+- Switching repository tabs no longer flashes a loading state in the pull
+  requests section: each repository's list is cached for the session, shows
+  instantly on return, and refreshes quietly in the background when stale.
+- Create dialog polish: Enter on the title (or ⌘Enter in the description)
+  creates the pull request, an empty target branch list explains that a fetch
+  is needed instead of silently disabling the button, and double-clicking a
+  pull request in the sidebar checks it out — the same gesture branches use.
+  Bitbucket lists are now ordered by most recently updated like the others.
 
 The review release. AngKorGit now gives your staged changes a second pair of
 eyes: one click asks your AI for a real code review, shaped by your team's

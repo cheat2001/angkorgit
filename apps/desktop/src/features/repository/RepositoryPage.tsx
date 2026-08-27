@@ -119,10 +119,11 @@ export function RepositoryPage() {
     const upstream = s.branches.find((b) => !b.isRemote && b.isHead)?.upstream ?? '';
     return `${s.remotes.map((r) => `${r.name}=${r.url}`).join(',')}|${upstream}`;
   });
+  const showPullRequests = useSettings((s) => s.showPullRequests);
   useEffect(() => {
-    if (repoPath && forgeKey) void useForge.getState().load();
+    if (repoPath && forgeKey && showPullRequests) void useForge.getState().load();
     else useForge.getState().reset();
-  }, [repoPath, forgeKey]);
+  }, [repoPath, forgeKey, showPullRequests]);
 
   const autoFetchMinutes = useSettings((s) => s.autoFetchMinutes);
   useEffect(() => {

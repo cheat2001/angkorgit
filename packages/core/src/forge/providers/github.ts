@@ -4,6 +4,7 @@ import type { ForgeProvider } from '../provider';
 import {
   ForgeError,
   type CreatePullRequestInput,
+  type ForgeUser,
   type PullRequestCheckoutSpec,
   type PullRequestInfo,
 } from '../types';
@@ -135,6 +136,21 @@ export function githubForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
       const data = (await request('GET', `/repos/${repoPath}`)) as { default_branch?: string };
       return data.default_branch ?? 'main';
     },
+    async listReviewerCandidates(): Promise<ForgeUser[]> {
+      const data = (await request(
+        'GET',
+        `/repos/${repoPath}/collaborators?per_page=100`,
+      )) as Array<{ login?: string; name?: string | null; avatar_url?: string }>;
+      if (!Array.isArray(data)) return [];
+      return data
+        .filter((user) => user.login)
+        .map((user) => ({
+          id: user.login as string,
+          username: user.login as string,
+          name: user.name ?? (user.login as string),
+          avatarUrl: user.avatar_url ?? null,
+        }));
+    },
     async createPullRequest(input: CreatePullRequestInput): Promise<PullRequestInfo> {
       const data = (await request('POST', `/repos/${repoPath}/pulls`, {
         title: input.title,
@@ -143,7 +159,17 @@ export function githubForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
         body: input.body,
         draft: input.draft,
       })) as GithubPull;
-      return mapPull(data);
+      const pr = mapPull(data);
+      if (input.reviewerIds?.length) {
+        try {
+          await request('POST', `/repos/${repoPath}/pulls/${pr.number}/requested_reviewers`, {
+            reviewers: input.reviewerIds,
+          });
+        } catch {
+          return pr;
+        }
+      }
+      return pr;
     },
     checkoutSpec(pr: PullRequestInfo): PullRequestCheckoutSpec {
       if (pr.isFromFork || !pr.sourceBranch) {

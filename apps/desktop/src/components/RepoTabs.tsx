@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Plus, X } from 'lucide-react';
 import { Button, Hint, cn } from '@angkorgit/design-system';
@@ -12,6 +12,16 @@ export function RepoTabs() {
   const tabs = useUi((s) => s.repoTabs);
   const [draggingTab, setDraggingTab] = useState<string | null>(null);
   const [dropTab, setDropTab] = useState<string | null>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  const activePath = repo?.path ?? null;
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip || !activePath) return;
+    strip
+      .querySelector(`[data-tab-path="${CSS.escape(activePath)}"]`)
+      ?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  }, [activePath, tabs]);
 
   const activate = (path: string) => {
     if (path === repo?.path) return;
@@ -54,7 +64,15 @@ export function RepoTabs() {
 
   return (
     <div className="flex h-9 shrink-0 items-end gap-0.5 border-b border-border-subtle bg-surface px-2">
-      <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto">
+      <div
+        ref={stripRef}
+        className="scrollbar-none flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto"
+        onWheel={(e) => {
+          if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+            e.currentTarget.scrollLeft += e.deltaY;
+          }
+        }}
+      >
         {tabs.map((path) => {
           const active = path === repo?.path;
           return (
@@ -62,6 +80,7 @@ export function RepoTabs() {
               key={path}
               role="tab"
               aria-selected={active}
+              data-tab-path={path}
               title={path}
               draggable
               onDragStart={(e) => {

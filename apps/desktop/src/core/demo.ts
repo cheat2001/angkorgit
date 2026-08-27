@@ -344,6 +344,16 @@ export function demoForgeResponse(request: HttpRequest): HttpResponse {
       ),
     };
   }
+  if (url.includes('/collaborators')) {
+    return {
+      status: 200,
+      body: JSON.stringify([
+        { login: 'sokha', name: 'Sokha Chan', avatar_url: null },
+        { login: 'dara', name: 'Dara Kim', avatar_url: null },
+        { login: 'maly', name: 'Maly Sok', avatar_url: null },
+      ]),
+    };
+  }
   if (url.includes('/pulls')) {
     return {
       status: 200,

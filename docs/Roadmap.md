@@ -30,10 +30,9 @@ direction.
 
 ## Later — Connected (architecture in place, see Architecture.md)
 
-- [ ] GitHub / GitLab / Azure DevOps / Bitbucket adapters (`packages/forge`)
-- [ ] Pull request list + creation
+- [ ] Azure DevOps and Bitbucket Server adapters (GitHub, GitLab and Bitbucket Cloud are in)
+- [ ] Read-only pull request detail view (commits, CI status, review state)
 - [ ] Issue viewer
-- [ ] Code review comments inline in diffs
 
 ## Later — Power
 
@@ -42,11 +41,4 @@ direction.
 - [ ] Multi-repo workspaces
 - [ ] Performance: commit-graph file support for instant cold opens
 
-## Known limitations
-
-- **One account per host.** `accounts::add` keys by host, so adding a second account
-  for the same host replaces the first — work and personal on one host cannot coexist.
-- **Access tokens are not checked for expiry.** Atlassian API tokens and GitLab PATs
-  expire; AngKorGit stores no expiry and gives no warning before a token stops working.
-
-Non-goals: enterprise admin tooling, built-in CI dashboards, anything that duplicates a forge's web UI without daily value.
+Non-goals: enterprise admin tooling, built-in CI dashboards, in-app code review (commenting, approving and merging live on the forge's web UI, one click away), anything else that duplicates a forge's web UI without daily value.

@@ -354,7 +354,7 @@ describe('bitbucketForgeProvider', () => {
     }));
     const prs = await bitbucketForgeProvider(bitbucketRemote(), http).listOpenPullRequests();
     expect(calls[0].url).toBe(
-      'https://api.bitbucket.org/2.0/repositories/team/repo/pullrequests?state=OPEN&pagelen=50',
+      'https://api.bitbucket.org/2.0/repositories/team/repo/pullrequests?state=OPEN&sort=-updated_on&pagelen=50',
     );
     expect(prs[0]).toMatchObject({
       number: 3,
@@ -459,5 +459,180 @@ describe('github validation errors', () => {
     ).rejects.toMatchObject({
       message: expect.stringContaining('the source branch does not exist on this remote'),
     });
+  });
+});
+
+describe('gitlab self-hosted scheme fallback', () => {
+  it('retries over http when the https transport fails on a self-hosted instance', async () => {
+    const calls: HttpRequest[] = [];
+    const http = async (request: HttpRequest): Promise<HttpResponse> => {
+      calls.push(request);
+      if (request.url.startsWith('https://')) {
+        throw new Error('request failed: error sending request for url');
+      }
+      return { status: 200, body: '[]' };
+    };
+    const remote = parseForgeRemote('git@gitlab-01.remotes.local:products/wl/monika.git');
+    if (!remote) throw new Error('expected a parsed remote');
+    const prs = await gitlabForgeProvider(remote, http).listOpenPullRequests();
+    expect(prs).toEqual([]);
+    expect(calls[0].url.startsWith('https://gitlab-01.remotes.local/api/v4/')).toBe(true);
+    expect(calls[1].url.startsWith('http://gitlab-01.remotes.local/api/v4/')).toBe(true);
+  });
+
+  it('never falls back to http for gitlab.com or on api-level errors', async () => {
+    const attempted: string[] = [];
+    const failing = async (request: HttpRequest): Promise<HttpResponse> => {
+      attempted.push(request.url);
+      throw new Error('request failed: error sending request for url');
+    };
+    const cloud = parseForgeRemote('git@gitlab.com:group/project.git');
+    if (!cloud) throw new Error('expected a parsed remote');
+    await expect(gitlabForgeProvider(cloud, failing).listOpenPullRequests()).rejects.toThrow();
+    expect(attempted).toHaveLength(1);
+
+    const apiError = async (): Promise<HttpResponse> => ({
+      status: 401,
+      body: JSON.stringify({ message: '401 Unauthorized' }),
+    });
+    const selfHosted = parseForgeRemote('git@gitlab.example.com:group/project.git');
+    if (!selfHosted) throw new Error('expected a parsed remote');
+    await expect(
+      gitlabForgeProvider(selfHosted, apiError).listOpenPullRequests(),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+describe('reviewer candidates and requests', () => {
+  it('github lists collaborators and requests reviewers after creating', async () => {
+    const { http, calls } = fakeHttp((request) => {
+      if (request.url.includes('/collaborators')) {
+        return {
+          status: 200,
+          body: JSON.stringify([
+            { login: 'dara', name: 'Dara Kim', avatar_url: 'https://a/dara' },
+            { login: 'maly' },
+          ]),
+        };
+      }
+      if (request.url.endsWith('/requested_reviewers')) {
+        return { status: 201, body: JSON.stringify(samplePull()) };
+      }
+      return { status: 201, body: JSON.stringify(samplePull({ number: 30 })) };
+    });
+    const provider = githubForgeProvider(githubRemote(), http);
+    const users = await provider.listReviewerCandidates();
+    expect(users).toEqual([
+      { id: 'dara', username: 'dara', name: 'Dara Kim', avatarUrl: 'https://a/dara' },
+      { id: 'maly', username: 'maly', name: 'maly', avatarUrl: null },
+    ]);
+    const pr = await provider.createPullRequest({
+      title: 't',
+      body: '',
+      sourceBranch: 'feature/x',
+      targetBranch: 'main',
+      draft: false,
+      reviewerIds: ['dara'],
+    });
+    expect(pr.number).toBe(30);
+    const reviewerCall = calls.find((c) => c.url.endsWith('/pulls/30/requested_reviewers'));
+    expect(reviewerCall?.method).toBe('POST');
+    expect(JSON.parse(reviewerCall?.body ?? '{}')).toEqual({ reviewers: ['dara'] });
+  });
+
+  it('github still returns the created pr when the reviewer request fails', async () => {
+    const { http } = fakeHttp((request) => {
+      if (request.url.endsWith('/requested_reviewers')) {
+        return { status: 422, body: JSON.stringify({ message: 'Reviews may not be requested' }) };
+      }
+      return { status: 201, body: JSON.stringify(samplePull({ number: 31 })) };
+    });
+    const pr = await githubForgeProvider(githubRemote(), http).createPullRequest({
+      title: 't',
+      body: '',
+      sourceBranch: 'feature/x',
+      targetBranch: 'main',
+      draft: false,
+      reviewerIds: ['dara'],
+    });
+    expect(pr.number).toBe(31);
+  });
+
+  it('gitlab lists project members and embeds reviewer_ids on create', async () => {
+    const remote = parseForgeRemote('git@gitlab.example.com:group/project.git');
+    if (!remote) throw new Error('expected a parsed remote');
+    const { http, calls } = fakeHttp((request) => {
+      if (request.url.includes('/members/all')) {
+        return {
+          status: 200,
+          body: JSON.stringify([
+            { id: 5, username: 'maly', name: 'Maly Sok', avatar_url: 'https://a/maly', state: 'active' },
+            { id: 6, username: 'gone', name: 'Blocked', state: 'blocked' },
+          ]),
+        };
+      }
+      return {
+        status: 201,
+        body: JSON.stringify({ iid: 9, title: 't', state: 'opened' }),
+      };
+    });
+    const provider = gitlabForgeProvider(remote, http);
+    const users = await provider.listReviewerCandidates();
+    expect(users).toEqual([
+      { id: '5', username: 'maly', name: 'Maly Sok', avatarUrl: 'https://a/maly' },
+    ]);
+    await provider.createPullRequest({
+      title: 't',
+      body: '',
+      sourceBranch: 'f',
+      targetBranch: 'main',
+      draft: false,
+      reviewerIds: ['5'],
+    });
+    const createCall = calls.find((c) => c.method === 'POST');
+    expect(JSON.parse(createCall?.body ?? '{}').reviewer_ids).toEqual([5]);
+  });
+
+  it('bitbucket lists workspace members and embeds reviewer uuids on create', async () => {
+    const remote = parseForgeRemote('git@bitbucket.org:team/repo.git');
+    if (!remote) throw new Error('expected a parsed remote');
+    const { http, calls } = fakeHttp((request) => {
+      if (request.url.includes('/workspaces/team/members')) {
+        return {
+          status: 200,
+          body: JSON.stringify({
+            values: [
+              {
+                user: {
+                  uuid: '{u-1}',
+                  nickname: 'sokha',
+                  display_name: 'Sokha Chan',
+                  links: { avatar: { href: 'https://a/s' } },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        status: 201,
+        body: JSON.stringify({ id: 4, title: 't', state: 'OPEN' }),
+      };
+    });
+    const provider = bitbucketForgeProvider(remote, http);
+    const users = await provider.listReviewerCandidates();
+    expect(users).toEqual([
+      { id: '{u-1}', username: 'sokha', name: 'Sokha Chan', avatarUrl: 'https://a/s' },
+    ]);
+    await provider.createPullRequest({
+      title: 't',
+      body: '',
+      sourceBranch: 'f',
+      targetBranch: 'main',
+      draft: false,
+      reviewerIds: ['{u-1}'],
+    });
+    const createCall = calls.find((c) => c.method === 'POST');
+    expect(JSON.parse(createCall?.body ?? '{}').reviewers).toEqual([{ uuid: '{u-1}' }]);
   });
 });

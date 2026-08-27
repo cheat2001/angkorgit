@@ -4,6 +4,7 @@ import type { ForgeProvider } from '../provider';
 import {
   ForgeError,
   type CreatePullRequestInput,
+  type ForgeUser,
   type PullRequestCheckoutSpec,
   type PullRequestInfo,
 } from '../types';
@@ -41,12 +42,21 @@ function gitlabMessage(body: string): string | null {
 }
 
 export function gitlabForgeProvider(remote: ForgeRemote, http: HttpClient): ForgeProvider {
-  const apiBase = `${remote.scheme}://${remote.host}/api/v4`;
   const projectId = encodeURIComponent(`${remote.owner}/${remote.repo}`);
+  const bases = [`${remote.scheme}://${remote.host}/api/v4`];
+  if (remote.scheme === 'https' && remote.host.split(':')[0] !== 'gitlab.com') {
+    bases.push(`http://${remote.host}/api/v4`);
+  }
+  let baseIndex = 0;
 
-  const request = async (method: 'GET' | 'POST', path: string, payload?: unknown): Promise<unknown> => {
+  const requestAt = async (
+    base: string,
+    method: 'GET' | 'POST',
+    path: string,
+    payload?: unknown,
+  ): Promise<unknown> => {
     const res = await http({
-      url: `${apiBase}${path}`,
+      url: `${base}${path}`,
       method,
       headers: payload === undefined ? {} : { 'content-type': 'application/json' },
       body: payload === undefined ? undefined : JSON.stringify(payload),
@@ -63,6 +73,17 @@ export function gitlabForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
       return JSON.parse(res.body);
     } catch {
       throw new ForgeError('GitLab returned invalid JSON', 'gitlab');
+    }
+  };
+
+  const request = async (method: 'GET' | 'POST', path: string, payload?: unknown): Promise<unknown> => {
+    try {
+      return await requestAt(bases[baseIndex], method, path, payload);
+    } catch (error) {
+      if (error instanceof ForgeError || baseIndex + 1 >= bases.length) throw error;
+      const result = await requestAt(bases[baseIndex + 1], method, path, payload);
+      baseIndex += 1;
+      return result;
     }
   };
 
@@ -100,13 +121,32 @@ export function gitlabForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
       const data = (await request('GET', `/projects/${projectId}`)) as { default_branch?: string };
       return data.default_branch ?? 'main';
     },
+    async listReviewerCandidates(): Promise<ForgeUser[]> {
+      const data = (await request(
+        'GET',
+        `/projects/${projectId}/members/all?per_page=100`,
+      )) as Array<{ id?: number; username?: string; name?: string; avatar_url?: string; state?: string }>;
+      if (!Array.isArray(data)) return [];
+      return data
+        .filter((user) => user.id !== undefined && user.username && user.state !== 'blocked')
+        .map((user) => ({
+          id: String(user.id),
+          username: user.username as string,
+          name: user.name ?? (user.username as string),
+          avatarUrl: user.avatar_url ?? null,
+        }));
+    },
     async createPullRequest(input: CreatePullRequestInput): Promise<PullRequestInfo> {
       const title = input.draft && !/^draft:/i.test(input.title) ? `Draft: ${input.title}` : input.title;
+      const reviewerIds = (input.reviewerIds ?? [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id));
       const data = (await request('POST', `/projects/${projectId}/merge_requests`, {
         title,
         description: input.body,
         source_branch: input.sourceBranch,
         target_branch: input.targetBranch,
+        ...(reviewerIds.length ? { reviewer_ids: reviewerIds } : {}),
       })) as GitlabMergeRequest;
       return mapMergeRequest(data);
     },
