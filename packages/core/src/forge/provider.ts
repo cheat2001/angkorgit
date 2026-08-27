@@ -27,8 +27,8 @@ export function createForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
     case 'gitlab':
       return gitlabForgeProvider(remote, http);
     case 'bitbucket':
-      return remote.host.split(':')[0] === 'bitbucket.org'
-        ? bitbucketForgeProvider(remote, http)
-        : null;
+      return bitbucketForgeProvider(remote, http);
+    case 'bitbucket-server':
+      return null;
   }
 }

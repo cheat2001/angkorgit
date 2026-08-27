@@ -30,7 +30,7 @@ export function pickForgeRemote(
   return remotes.find((remote) => remote.name === 'origin') ?? remotes[0];
 }
 
-export type ForgeKind = 'github' | 'gitlab' | 'bitbucket';
+export type ForgeKind = 'github' | 'gitlab' | 'bitbucket' | 'bitbucket-server';
 
 export interface ForgeRemote {
   kind: ForgeKind;
@@ -59,7 +59,12 @@ export function parseForgeRemote(url: string): ForgeRemote | null {
   }
   if (hostname.includes('bitbucket')) {
     if (segments[0] !== 'scm' || segments.length < 3) return null;
-    return { kind: 'bitbucket', owner: segments[1], repo: segments.slice(2).join('/'), ...base };
+    return {
+      kind: 'bitbucket-server',
+      owner: segments[1],
+      repo: segments.slice(2).join('/'),
+      ...base,
+    };
   }
   if (hostname.includes('gitlab')) {
     if (segments.length < 2) return null;

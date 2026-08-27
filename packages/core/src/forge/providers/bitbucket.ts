@@ -1,6 +1,7 @@
 import type { HttpClient } from '../../ai/types';
 import type { ForgeRemote } from '../remote';
 import type { ForgeProvider } from '../provider';
+import { createForgeJsonRequest, pullRequestCheckoutSpec, toUnix } from '../shared';
 import {
   ForgeError,
   type CreatePullRequestInput,
@@ -28,11 +29,6 @@ interface BitbucketPull {
   links?: { html?: { href?: string } };
 }
 
-function toUnix(iso: string | undefined): number {
-  const ms = iso ? Date.parse(iso) : NaN;
-  return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
-}
-
 function bitbucketMessage(body: string): string | null {
   try {
     const parsed = JSON.parse(body) as { error?: { message?: string; detail?: string } };
@@ -48,27 +44,9 @@ export function bitbucketForgeProvider(remote: ForgeRemote, http: HttpClient): F
   const apiBase = 'https://api.bitbucket.org/2.0';
   const repoPath = `${remote.owner}/${remote.repo}`;
 
-  const request = async (method: 'GET' | 'POST', path: string, payload?: unknown): Promise<unknown> => {
-    const res = await http({
-      url: `${apiBase}${path}`,
-      method,
-      headers: payload === undefined ? {} : { 'content-type': 'application/json' },
-      body: payload === undefined ? undefined : JSON.stringify(payload),
-    });
-    if (res.status < 200 || res.status >= 300) {
-      const detail = bitbucketMessage(res.body);
-      throw new ForgeError(
-        `Bitbucket request failed (${res.status})${detail ? `: ${detail}` : ''}`,
-        'bitbucket',
-        res.status,
-      );
-    }
-    try {
-      return JSON.parse(res.body);
-    } catch {
-      throw new ForgeError('Bitbucket returned invalid JSON', 'bitbucket');
-    }
-  };
+  const requestJson = createForgeJsonRequest(http, 'bitbucket', 'Bitbucket', bitbucketMessage);
+  const request = (method: 'GET' | 'POST', path: string, payload?: unknown): Promise<unknown> =>
+    requestJson(`${apiBase}${path}`, method, payload);
 
   const mapPull = (pull: BitbucketPull): PullRequestInfo => {
     const sourceRepo = pull.source?.repository?.full_name ?? null;
@@ -142,8 +120,7 @@ export function bitbucketForgeProvider(remote: ForgeRemote, http: HttpClient): F
       return mapPull(data);
     },
     checkoutSpec(pr: PullRequestInfo): PullRequestCheckoutSpec | null {
-      if (pr.isFromFork || !pr.sourceBranch) return null;
-      return { sourceRef: `refs/heads/${pr.sourceBranch}`, localBranch: pr.sourceBranch, track: true };
+      return pullRequestCheckoutSpec('bitbucket', pr);
     },
   };
 }

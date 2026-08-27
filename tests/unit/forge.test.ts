@@ -74,7 +74,7 @@ describe('parseForgeRemote', () => {
     expect(cloud?.kind).toBe('bitbucket');
     expect(cloud?.owner).toBe('team');
     const server = parseForgeRemote('https://bitbucket.corp.dev/scm/PROJ/repo.git');
-    expect(server?.kind).toBe('bitbucket');
+    expect(server?.kind).toBe('bitbucket-server');
     expect(server?.owner).toBe('PROJ');
     expect(server?.repo).toBe('repo');
   });
@@ -634,5 +634,46 @@ describe('reviewer candidates and requests', () => {
     });
     const createCall = calls.find((c) => c.method === 'POST');
     expect(JSON.parse(createCall?.body ?? '{}').reviewers).toEqual([{ uuid: '{u-1}' }]);
+  });
+});
+
+describe('gitlab scheme fallback safety', () => {
+  it('never retries a POST over http', async () => {
+    const attempted: string[] = [];
+    const http = async (request: HttpRequest): Promise<HttpResponse> => {
+      attempted.push(request.url);
+      throw new Error('request failed: error sending request for url');
+    };
+    const remote = parseForgeRemote('git@gitlab-post.corp.dev:g/p.git');
+    if (!remote) throw new Error('expected a parsed remote');
+    await expect(
+      gitlabForgeProvider(remote, http).createPullRequest({
+        title: 't',
+        body: '',
+        sourceBranch: 'f',
+        targetBranch: 'main',
+        draft: false,
+      }),
+    ).rejects.toThrow();
+    expect(attempted).toHaveLength(1);
+    expect(attempted[0].startsWith('https://')).toBe(true);
+  });
+
+  it('keeps a valid base when concurrent requests fall back together', async () => {
+    const urls: string[] = [];
+    const http = async (request: HttpRequest): Promise<HttpResponse> => {
+      urls.push(request.url);
+      if (request.url.startsWith('https://')) {
+        throw new Error('request failed: error sending request for url');
+      }
+      return { status: 200, body: request.url.includes('/merge_requests') ? '[]' : '{}' };
+    };
+    const remote = parseForgeRemote('git@gitlab-race.corp.dev:g/p.git');
+    if (!remote) throw new Error('expected a parsed remote');
+    const provider = gitlabForgeProvider(remote, http);
+    await Promise.all([provider.listOpenPullRequests(), provider.defaultBranch()]);
+    await provider.listOpenPullRequests();
+    expect(urls.every((url) => !url.includes('undefined'))).toBe(true);
+    expect(urls[urls.length - 1].startsWith('http://gitlab-race.corp.dev/api/v4/')).toBe(true);
   });
 });

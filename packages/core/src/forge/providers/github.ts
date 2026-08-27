@@ -1,6 +1,7 @@
 import type { HttpClient } from '../../ai/types';
 import type { ForgeRemote } from '../remote';
 import type { ForgeProvider } from '../provider';
+import { createForgeJsonRequest, pullRequestCheckoutSpec, toUnix } from '../shared';
 import {
   ForgeError,
   type CreatePullRequestInput,
@@ -39,11 +40,6 @@ export function githubApiBase(host: string): string {
   return hostname === 'github.com' ? 'https://api.github.com' : `https://${host}/api/v3`;
 }
 
-function toUnix(iso: string | undefined): number {
-  const ms = iso ? Date.parse(iso) : NaN;
-  return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
-}
-
 interface GithubErrorEntry {
   message?: string;
   resource?: string;
@@ -80,27 +76,9 @@ export function githubForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
   const apiBase = githubApiBase(remote.host);
   const repoPath = `${remote.owner}/${remote.repo}`;
 
-  const request = async (method: 'GET' | 'POST', path: string, payload?: unknown): Promise<unknown> => {
-    const res = await http({
-      url: `${apiBase}${path}`,
-      method,
-      headers: payload === undefined ? {} : { 'content-type': 'application/json' },
-      body: payload === undefined ? undefined : JSON.stringify(payload),
-    });
-    if (res.status < 200 || res.status >= 300) {
-      const detail = githubMessage(res.body);
-      throw new ForgeError(
-        `GitHub request failed (${res.status})${detail ? `: ${detail}` : ''}`,
-        'github',
-        res.status,
-      );
-    }
-    try {
-      return JSON.parse(res.body);
-    } catch {
-      throw new ForgeError('GitHub returned invalid JSON', 'github');
-    }
-  };
+  const requestJson = createForgeJsonRequest(http, 'github', 'GitHub', githubMessage);
+  const request = (method: 'GET' | 'POST', path: string, payload?: unknown): Promise<unknown> =>
+    requestJson(`${apiBase}${path}`, method, payload);
 
   const mapPull = (pull: GithubPull): PullRequestInfo => {
     const headRepo = pull.head?.repo?.full_name ?? null;
@@ -171,11 +149,8 @@ export function githubForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
       }
       return pr;
     },
-    checkoutSpec(pr: PullRequestInfo): PullRequestCheckoutSpec {
-      if (pr.isFromFork || !pr.sourceBranch) {
-        return { sourceRef: `refs/pull/${pr.number}/head`, localBranch: `pr/${pr.number}`, track: false };
-      }
-      return { sourceRef: `refs/heads/${pr.sourceBranch}`, localBranch: pr.sourceBranch, track: true };
+    checkoutSpec(pr: PullRequestInfo): PullRequestCheckoutSpec | null {
+      return pullRequestCheckoutSpec('github', pr);
     },
   };
 }

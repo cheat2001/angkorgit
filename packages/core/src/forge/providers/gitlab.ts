@@ -1,6 +1,7 @@
 import type { HttpClient } from '../../ai/types';
 import type { ForgeRemote } from '../remote';
 import type { ForgeProvider } from '../provider';
+import { createForgeJsonRequest, pullRequestCheckoutSpec, toUnix } from '../shared';
 import {
   ForgeError,
   type CreatePullRequestInput,
@@ -26,11 +27,6 @@ interface GitlabMergeRequest {
   target_project_id?: number;
 }
 
-function toUnix(iso: string | undefined): number {
-  const ms = iso ? Date.parse(iso) : NaN;
-  return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
-}
-
 function gitlabMessage(body: string): string | null {
   try {
     const parsed = JSON.parse(body) as { message?: string | string[]; error?: string };
@@ -51,40 +47,15 @@ export function gitlabForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
   }
   const baseIndex = () => Math.min(workingBaseByHost.get(remote.host) ?? 0, bases.length - 1);
 
-  const requestAt = async (
-    base: string,
-    method: 'GET' | 'POST',
-    path: string,
-    payload?: unknown,
-  ): Promise<unknown> => {
-    const res = await http({
-      url: `${base}${path}`,
-      method,
-      headers: payload === undefined ? {} : { 'content-type': 'application/json' },
-      body: payload === undefined ? undefined : JSON.stringify(payload),
-    });
-    if (res.status < 200 || res.status >= 300) {
-      const detail = gitlabMessage(res.body);
-      throw new ForgeError(
-        `GitLab request failed (${res.status})${detail ? `: ${detail}` : ''}`,
-        'gitlab',
-        res.status,
-      );
-    }
-    try {
-      return JSON.parse(res.body);
-    } catch {
-      throw new ForgeError('GitLab returned invalid JSON', 'gitlab');
-    }
-  };
+  const requestJson = createForgeJsonRequest(http, 'gitlab', 'GitLab', gitlabMessage);
 
   const request = async (method: 'GET' | 'POST', path: string, payload?: unknown): Promise<unknown> => {
     const index = baseIndex();
     try {
-      return await requestAt(bases[index], method, path, payload);
+      return await requestJson(`${bases[index]}${path}`, method, payload);
     } catch (error) {
-      if (error instanceof ForgeError || index + 1 >= bases.length) throw error;
-      const result = await requestAt(bases[index + 1], method, path, payload);
+      if (error instanceof ForgeError || method !== 'GET' || index + 1 >= bases.length) throw error;
+      const result = await requestJson(`${bases[index + 1]}${path}`, method, payload);
       workingBaseByHost.set(remote.host, index + 1);
       return result;
     }
@@ -153,15 +124,8 @@ export function gitlabForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
       })) as GitlabMergeRequest;
       return mapMergeRequest(data);
     },
-    checkoutSpec(pr: PullRequestInfo): PullRequestCheckoutSpec {
-      if (pr.isFromFork || !pr.sourceBranch) {
-        return {
-          sourceRef: `refs/merge-requests/${pr.number}/head`,
-          localBranch: `mr/${pr.number}`,
-          track: false,
-        };
-      }
-      return { sourceRef: `refs/heads/${pr.sourceBranch}`, localBranch: pr.sourceBranch, track: true };
+    checkoutSpec(pr: PullRequestInfo): PullRequestCheckoutSpec | null {
+      return pullRequestCheckoutSpec('gitlab', pr);
     },
   };
 }
