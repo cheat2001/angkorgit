@@ -41,13 +41,15 @@ function gitlabMessage(body: string): string | null {
   }
 }
 
+const workingBaseByHost = new Map<string, number>();
+
 export function gitlabForgeProvider(remote: ForgeRemote, http: HttpClient): ForgeProvider {
   const projectId = encodeURIComponent(`${remote.owner}/${remote.repo}`);
   const bases = [`${remote.scheme}://${remote.host}/api/v4`];
   if (remote.scheme === 'https' && remote.host.split(':')[0] !== 'gitlab.com') {
     bases.push(`http://${remote.host}/api/v4`);
   }
-  let baseIndex = 0;
+  const baseIndex = () => Math.min(workingBaseByHost.get(remote.host) ?? 0, bases.length - 1);
 
   const requestAt = async (
     base: string,
@@ -77,12 +79,13 @@ export function gitlabForgeProvider(remote: ForgeRemote, http: HttpClient): Forg
   };
 
   const request = async (method: 'GET' | 'POST', path: string, payload?: unknown): Promise<unknown> => {
+    const index = baseIndex();
     try {
-      return await requestAt(bases[baseIndex], method, path, payload);
+      return await requestAt(bases[index], method, path, payload);
     } catch (error) {
-      if (error instanceof ForgeError || baseIndex + 1 >= bases.length) throw error;
-      const result = await requestAt(bases[baseIndex + 1], method, path, payload);
-      baseIndex += 1;
+      if (error instanceof ForgeError || index + 1 >= bases.length) throw error;
+      const result = await requestAt(bases[index + 1], method, path, payload);
+      workingBaseByHost.set(remote.host, index + 1);
       return result;
     }
   };
