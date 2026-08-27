@@ -257,7 +257,7 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-fn parse_account_bindings(raw: &str) -> HashMap<String, String> {
+pub(crate) fn parse_account_bindings(raw: &str) -> HashMap<String, String> {
     raw.split(',')
         .filter_map(|pair| pair.trim().split_once('='))
         .map(|(host, user)| (host.trim().to_lowercase(), user.trim().to_string()))
@@ -580,6 +580,83 @@ pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
         status: "fast_forward".into(),
         message: format!("Fast-forwarded {branch_name} to {upstream_name}"),
     })
+}
+
+const PR_HEAD_TMP_REF: &str = "refs/angkorgit/pr-head";
+
+pub fn checkout_remote_ref(
+    path: &str,
+    remote_name: &str,
+    source_ref: &str,
+    local_branch: &str,
+    track: bool,
+) -> AppResult<()> {
+    if !source_ref.starts_with("refs/") {
+        return Err(AppError::other(
+            "the source ref must be fully qualified (refs/…)",
+        ));
+    }
+    let branch_ref = format!("refs/heads/{local_branch}");
+    if !git2::Reference::is_valid_name(&branch_ref) {
+        return Err(AppError::other(format!(
+            "'{local_branch}' is not a valid branch name"
+        )));
+    }
+
+    let repo = super::repo::open(path)?;
+    prime_account_bindings(Some(&repo));
+
+    if track {
+        let refspec = format!("+{source_ref}:refs/remotes/{remote_name}/{local_branch}");
+        let mut remote = repo.find_remote(remote_name)?;
+        let mut opts = FetchOptions::new();
+        opts.remote_callbacks(make_callbacks());
+        remote.fetch(&[refspec.as_str()], Some(&mut opts), None)?;
+        drop(remote);
+        drop(repo);
+        return super::branch::checkout_branch(path, &format!("{remote_name}/{local_branch}"));
+    }
+
+    {
+        let refspec = format!("+{source_ref}:{PR_HEAD_TMP_REF}");
+        let mut remote = repo.find_remote(remote_name)?;
+        let mut opts = FetchOptions::new();
+        opts.remote_callbacks(make_callbacks());
+        remote.fetch(&[refspec.as_str()], Some(&mut opts), None)?;
+    }
+    let target = repo.find_reference(PR_HEAD_TMP_REF)?.peel_to_commit()?.id();
+    let result = point_branch_and_checkout(&repo, local_branch, target);
+    if let Ok(mut tmp) = repo.find_reference(PR_HEAD_TMP_REF) {
+        let _ = tmp.delete();
+    }
+    result
+}
+
+fn point_branch_and_checkout(
+    repo: &Repository,
+    local_branch: &str,
+    target: git2::Oid,
+) -> AppResult<()> {
+    let branch_ref = format!("refs/heads/{local_branch}");
+    if let Some(current) = repo
+        .find_reference(&branch_ref)
+        .ok()
+        .and_then(|reference| reference.target())
+    {
+        if current != target && !repo.graph_descendant_of(target, current)? {
+            return Err(AppError::other(format!(
+                "local branch {local_branch} has commits that are not on the pull request — \
+                 delete or rename it first"
+            )));
+        }
+    }
+    let commit = repo.find_commit(target)?;
+    let mut builder = CheckoutBuilder::new();
+    builder.safe();
+    repo.checkout_tree(commit.as_object(), Some(&mut builder))?;
+    repo.reference(&branch_ref, target, true, "pull request checkout")?;
+    repo.set_head(&branch_ref)?;
+    Ok(())
 }
 
 pub fn push_tag(path: &str, remote_name: &str, tag: &str) -> AppResult<OpOutcome> {

@@ -9,8 +9,10 @@ import {
   cn,
 } from '@angkorgit/design-system';
 import { appVersion, openExternal } from '@/core/ipc';
+import { useForge } from '@/features/forge/store';
 import { useRepo } from '@/features/repository/store';
 import { useSettings } from '@/features/settings/store';
+import { useUi } from '@/features/ui/store';
 import { capCount, currentPullRequestUrl } from '@/shared/utils';
 
 const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
@@ -29,7 +31,13 @@ export function StatusBar() {
 
   const changes = status?.files.length ?? 0;
   const branch = repo?.isDetached ? `detached @ ${repo.headOid?.slice(0, 8) ?? '?'}` : repo?.headBranch;
-  const prUrl = currentPullRequestUrl(repo, remotes[0]?.url);
+  const forgeRemote = useForge((s) => s.remote);
+  const forgeRemoteUrl = useForge((s) => s.remoteUrl);
+  const prUrl = currentPullRequestUrl(repo, forgeRemoteUrl ?? remotes[0]?.url);
+  const forgeAccount = useForge((s) => s.hasAccount);
+  const openDialog = useUi((s) => s.openDialog);
+  const createInApp = !!forgeRemote && forgeAccount;
+  const prNoun = forgeRemote?.kind === 'gitlab' ? 'merge request' : 'pull request';
 
   return (
     <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-border-subtle bg-surface px-3 text-[11px] text-muted">
@@ -62,14 +70,22 @@ export function StatusBar() {
         {changes > 0 ? `${changes} change${changes === 1 ? '' : 's'}` : 'Clean'}
       </span>
       {prUrl && (
-        <Hint label={`Open a pre-filled pull request page for ${repo?.headBranch}`}>
+        <Hint
+          label={
+            createInApp
+              ? `Create a ${prNoun} for ${repo?.headBranch} without leaving AngKorGit`
+              : `Open a pre-filled pull request page for ${repo?.headBranch}`
+          }
+        >
           <button
             type="button"
             className="flex items-center gap-1 rounded px-1 hover:bg-surface-raised hover:text-foreground"
-            onClick={() => void openExternal(prUrl)}
+            onClick={() =>
+              createInApp ? openDialog('createPullRequest') : void openExternal(prUrl)
+            }
           >
             <GitPullRequest className="size-3" />
-            Create pull request
+            Create {prNoun}
           </button>
         </Hint>
       )}

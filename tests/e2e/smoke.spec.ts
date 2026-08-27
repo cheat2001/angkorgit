@@ -281,3 +281,17 @@ test('opening a diff hides the sidebar and toggling it back returns to the graph
   await expect(sidebar).toBeVisible();
   await expect(diff).toBeHidden();
 });
+
+test('sidebar lists demo pull requests and opens the create dialog', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Pull requests')).toBeVisible();
+  await expect(page.getByText(/side-by-side word diff polish/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Draft', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Create pull request' })).toBeVisible();
+  await expect(page.getByPlaceholder('Title')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+});

@@ -574,6 +574,27 @@ export const ipc = {
     return invoke('ai_cli_run', { request });
   },
 
+  async forgeRequest(repoPath: string | null, host: string, request: HttpRequest): Promise<HttpResponse> {
+    if (!isTauri()) {
+      await delay(200);
+      return demo.demoForgeResponse(request);
+    }
+    return invoke('forge_request', { repoPath, host, request });
+  },
+  async prCheckout(
+    path: string,
+    remote: string,
+    sourceRef: string,
+    branch: string,
+    track: boolean,
+  ): Promise<void> {
+    if (!isTauri()) {
+      await delay(300);
+      return;
+    }
+    return invoke('pr_checkout', { path, remote, sourceRef, branch, track });
+  },
+
   async httpRequest(request: HttpRequest): Promise<HttpResponse> {
     if (!isTauri()) {
       const res = await fetch(request.url, {

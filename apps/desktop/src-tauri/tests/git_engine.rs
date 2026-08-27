@@ -1182,3 +1182,121 @@ fn signing_failure_blocks_the_commit_and_leaves_the_repo_untouched() {
     assert_eq!(status.files.len(), 1);
     assert_eq!(status.files[0].staged.as_deref(), Some("modified"));
 }
+
+fn add_origin(local: &TempRepo, origin: &TempRepo) {
+    let status = Command::new("git")
+        .args(["remote", "add", "origin", origin.path()])
+        .current_dir(&local.dir)
+        .status()
+        .expect("git CLI available");
+    assert!(status.success());
+}
+
+fn set_pull_head(origin: &TempRepo, oid: &str) {
+    let status = Command::new("git")
+        .args(["update-ref", "refs/pull/1/head", oid])
+        .current_dir(&origin.dir)
+        .status()
+        .expect("git CLI available");
+    assert!(status.success());
+}
+
+#[test]
+fn pr_checkout_fetches_the_pull_head_and_updates_on_rerun() {
+    let origin = TempRepo::new();
+    origin.write("a.txt", "base\n");
+    commit_all(&origin, "base");
+    core::branch_create(origin.path(), "feature", None, true).unwrap();
+    origin.write("pr.txt", "one\n");
+    let first = commit_all(&origin, "pr work");
+    set_pull_head(&origin, &first);
+
+    let local = TempRepo::new();
+    local.write("readme.md", "local\n");
+    commit_all(&local, "local base");
+    add_origin(&local, &origin);
+
+    core::checkout_remote_ref(local.path(), "origin", "refs/pull/1/head", "pr/1", false).unwrap();
+    let info = core::repo_info(local.path()).unwrap();
+    assert_eq!(info.head_branch.as_deref(), Some("pr/1"));
+    assert_eq!(local.read("pr.txt"), "one\n");
+
+    origin.write("pr.txt", "two\n");
+    let second = commit_all(&origin, "pr follow-up");
+    set_pull_head(&origin, &second);
+
+    core::checkout_remote_ref(local.path(), "origin", "refs/pull/1/head", "pr/1", false).unwrap();
+    assert_eq!(local.read("pr.txt"), "two\n");
+    assert_eq!(core::status(local.path()).unwrap().files.len(), 0);
+}
+
+#[test]
+fn pr_checkout_refuses_a_diverged_local_branch() {
+    let origin = TempRepo::new();
+    origin.write("a.txt", "base\n");
+    commit_all(&origin, "base");
+    core::branch_create(origin.path(), "feature", None, true).unwrap();
+    origin.write("pr.txt", "one\n");
+    let first = commit_all(&origin, "pr work");
+    set_pull_head(&origin, &first);
+
+    let local = TempRepo::new();
+    local.write("readme.md", "local\n");
+    commit_all(&local, "local base");
+    add_origin(&local, &origin);
+    core::checkout_remote_ref(local.path(), "origin", "refs/pull/1/head", "pr/1", false).unwrap();
+
+    local.write("mine.txt", "local work\n");
+    let mine = commit_all(&local, "local divergence");
+
+    origin.write("pr.txt", "two\n");
+    let second = commit_all(&origin, "pr follow-up");
+    set_pull_head(&origin, &second);
+
+    let err = core::checkout_remote_ref(local.path(), "origin", "refs/pull/1/head", "pr/1", false)
+        .unwrap_err();
+    assert!(err.to_string().contains("delete or rename"));
+    let head = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&local.dir)
+        .output()
+        .expect("git CLI available");
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), mine);
+}
+
+#[test]
+fn pr_checkout_tracks_the_source_branch_for_same_repo_pull_requests() {
+    let origin = TempRepo::new();
+    origin.write("a.txt", "base\n");
+    commit_all(&origin, "base");
+    core::branch_create(origin.path(), "feature", None, true).unwrap();
+    origin.write("pr.txt", "one\n");
+    commit_all(&origin, "pr work");
+
+    let local = TempRepo::new();
+    local.write("readme.md", "local\n");
+    commit_all(&local, "local base");
+    add_origin(&local, &origin);
+
+    core::checkout_remote_ref(
+        local.path(),
+        "origin",
+        "refs/heads/feature",
+        "feature",
+        true,
+    )
+    .unwrap();
+    let info = core::repo_info(local.path()).unwrap();
+    assert_eq!(info.head_branch.as_deref(), Some("feature"));
+    assert_eq!(local.read("pr.txt"), "one\n");
+
+    let upstream = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "feature@{upstream}"])
+        .current_dir(&local.dir)
+        .output()
+        .expect("git CLI available");
+    assert_eq!(
+        String::from_utf8_lossy(&upstream.stdout).trim(),
+        "origin/feature"
+    );
+}

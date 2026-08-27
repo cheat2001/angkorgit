@@ -6,7 +6,33 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.6.6] — 2026-08-23
+### Added
+- **Pull requests in the app** — a new sidebar section lists the open pull
+  requests (GitHub, GitLab, Bitbucket Cloud) for the current repository's
+  remote, using the hosting account already connected in Settings →
+  Authentication. Each entry shows its number, title and draft state; the row
+  menu checks the pull request out locally (same-repo branches get proper
+  tracking, fork PRs land on a `pr/<number>` branch via the forge's pull
+  ref), opens it in the browser, or copies its URL.
+- **Create pull requests without leaving AngKorGit** — the status bar button,
+  palette command and sidebar "+" now open an in-app dialog when a connected
+  account matches the remote: pick the target branch (pre-selected from the
+  forge's default branch), write or AI-generate the description, optionally
+  mark it as draft, and the created pull request opens with one click.
+  Without a connected account the button keeps opening the pre-filled
+  browser page as before.
+
+### Changed
+- Forge API calls run through the Rust engine, which attaches the connected
+  account's token from the OS keychain — tokens never reach the webview, and
+  requests are only allowed to the remote's own host (or its api subdomain).
+- Repositories with several remotes talk to the right forge: the pull request
+  list and create dialog follow the current branch's upstream remote (falling
+  back to `origin`), instead of whichever remote happens to be listed first.
+  GitHub validation errors now spell out the failing field, so "Validation
+  Failed" on a branch that only exists on another remote explains itself.
+- Every forge loading state shows the AngKorGit mark drawing itself, matching
+  the AI panels.
 
 The review release. AngKorGit now gives your staged changes a second pair of
 eyes: one click asks your AI for a real code review, shaped by your team's

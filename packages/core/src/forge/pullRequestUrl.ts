@@ -1,19 +1,4 @@
-interface ParsedRemote {
-  scheme: string;
-  host: string;
-  path: string;
-}
-
-function parseRemote(url: string): ParsedRemote | null {
-  const trimmed = url.trim().replace(/\/$/, '').replace(/\.git$/, '');
-  const web = trimmed.match(/^(https?):\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/);
-  if (web) return { scheme: web[1], host: web[2], path: web[3] };
-  const ssh = trimmed.match(/^ssh:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/);
-  if (ssh) return { scheme: 'https', host: ssh[1], path: ssh[2] };
-  const scp = trimmed.match(/^(?:[^@/]+@)([^:/]+):(.+)$/);
-  if (scp) return { scheme: 'https', host: scp[1], path: scp[2] };
-  return null;
-}
+import { parseRemote } from './remote';
 
 export function pullRequestUrl(remoteUrl: string, branch: string): string | null {
   if (!branch) return null;

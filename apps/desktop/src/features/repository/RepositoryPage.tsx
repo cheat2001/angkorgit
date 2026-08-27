@@ -21,6 +21,8 @@ import { ConflictResolver } from '@/features/conflicts/ConflictResolver';
 import { SettingsDialog } from '@/features/settings/SettingsDialog';
 import { RepoDialogs } from './RepoDialogs';
 import { CloneDialog } from './CloneDialog';
+import { CreatePrDialog } from '@/features/forge/CreatePrDialog';
+import { useForge } from '@/features/forge/store';
 import { useShortcuts } from '@/shared/useShortcuts';
 import { useUndo } from '@/features/history/undoStore';
 import { useSettings } from '@/features/settings/store';
@@ -111,6 +113,16 @@ export function RepositoryPage() {
       void ipc.watchStop();
     };
   }, [repoPath, reload, navigate]);
+
+  const forgeKey = useRepo((s) => {
+    if (s.remotes.length === 0) return '';
+    const upstream = s.branches.find((b) => !b.isRemote && b.isHead)?.upstream ?? '';
+    return `${s.remotes.map((r) => `${r.name}=${r.url}`).join(',')}|${upstream}`;
+  });
+  useEffect(() => {
+    if (repoPath && forgeKey) void useForge.getState().load();
+    else useForge.getState().reset();
+  }, [repoPath, forgeKey]);
 
   const autoFetchMinutes = useSettings((s) => s.autoFetchMinutes);
   useEffect(() => {
@@ -258,6 +270,7 @@ export function RepositoryPage() {
       <CommandPalette onRefresh={refreshAll} />
       <SettingsDialog />
       <RepoDialogs onDone={refreshAll} />
+      <CreatePrDialog />
       <InteractiveRebaseDialog />
       <CloneDialog onCloned={() => void refreshAll()} />
       {conflictFile && <ConflictResolver key={conflictFile} file={conflictFile} onResolved={refreshAll} />}

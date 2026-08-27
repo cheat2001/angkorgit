@@ -68,10 +68,19 @@ angkorgit/
 │       ├── graph/layout.ts    ← incremental commit-graph lane layout (GraphLayout)
 │       ├── diff/wordDiff.ts   ← LCS word-level diff
 │       ├── conflicts/parse.ts ← conflict-marker parser + serializer (lossless)
-│       ├── forge/pullRequestUrl.ts ← remote URL → pre-filled create-PR page (GitHub
-│       │                        compare, GitLab MR incl. self-hosted + ports + http,
-│       │                        Bitbucket Cloud AND Server /scm/→/projects/ shape;
-│       │                        unknown forge → null). Seed of future packages/forge
+│       ├── forge/             ← forge layer (mirrors the ai/ adapter pattern):
+│       │                        remote.ts (parseRemote + parseForgeRemote → kind/host/
+│       │                        owner/repo; gitlab subgroups, bitbucket /scm/ server
+│       │                        shape), types.ts (PullRequestInfo, CreatePullRequestInput,
+│       │                        PullRequestCheckoutSpec, ForgeError), provider.ts
+│       │                        (ForgeProvider: list/defaultBranch/create/checkoutSpec;
+│       │                        createForgeProvider — github + gitlab + bitbucket CLOUD
+│       │                        only, bitbucket server → null), providers/{github,gitlab,
+│       │                        bitbucket}.ts (REST adapters over the injected HttpClient;
+│       │                        NO auth headers here — the Rust forge_request command
+│       │                        injects the account token), and pullRequestUrl.ts
+│       │                        (remote URL → pre-filled create-PR browser page,
+│       │                        unknown forge → null — the no-account fallback)
 │       └── ai/                ← provider-agnostic AI (types, providers, capabilities, models
 │                                (listAiModels: per-provider model listing for the settings picker),
                                 cliAgents: local AI-CLI adapters — Claude Code/Codex/Gemini/OpenCode/Antigravity(agy),
@@ -144,6 +153,14 @@ terminal.rs           ← real PTY per session (portable-pty), events term-data-
 watcher.rs            ← notify-debouncer-mini (400ms) → "repo-changed" event;
                         filters .git noise, keeps HEAD/index/refs/packed-refs, skips *.lock
 http.rs               ← AI/HTTP proxy (reqwest, rustls) — keeps CORS + keys out of webview
+forge.rs              ← forge API proxy: forge_request(repoPath, host, request) looks up the
+                        connected account for the remote host (repo-bound account first via
+                        angkorgit.accounts, then host default), injects the auth header per
+                        provider (github Bearer + api-version, gitlab PRIVATE-TOKEN,
+                        bitbucket Basic email:token) and forwards via http.rs; the URL host
+                        must equal the remote host or its api. subdomain (dot-anchored, so
+                        evilgithub.com never matches) — tokens never reach the webview;
+                        6 module tests
 proc.rs               ← EVERY child process starts here: proc::hidden(program) adds
                         CREATE_NO_WINDOW on Windows (see G31). A module test scans src/
                         and fails on any bare Command::new outside proc.rs
@@ -189,7 +206,12 @@ core/
 │                       requires clean tracked tree, keeps authors, committer = sig)
 ├── remote.rs         ← credential chain (see below), fetch/pull/push(+branch param)/clone,
 │                       pull_branch (ff-without-checkout for non-HEAD), push_tag,
-│                       credential_approve (git credential approve → OS keychain)
+│                       credential_approve (git credential approve → OS keychain),
+│                       checkout_remote_ref (PR checkout: track=true fetches
+│                       +src:refs/remotes/<remote>/<branch> then checkout_branch so the
+│                       local branch gets an upstream; track=false fetches into
+│                       refs/angkorgit/pr-head, refuses a diverged local branch, safe
+│                       checkout_tree BEFORE moving the ref, then points refs/heads/<b>)
 ├── accounts.rs       ← app-managed hosting accounts, MULTIPLE per host keyed by
 │                       (host, username): tokens in OS keyring (service "AngKorGit",
 │                       entry "acct:<host>:<username>"; legacy bare-host entries
@@ -377,7 +399,33 @@ features/
 │                               render virtualized (paired-row flatten keeps A/B
 │                               aligned, scrollToIndex nav, editor row measured),
 │                               smaller files keep the plain path
-├── sidebar/Sidebar.tsx       ← branch FOLDER TREE (buildBranchTree), HeadMark reserves a
+├── forge/                    ← store.ts (per-repo forge state: PICKED remote — core
+│                               pickForgeRemote: the HEAD branch's upstream remote first,
+│                               then 'origin', then the first; NEVER remotes[0] blindly —
+│                               a two-remote repo (github + bitbucket) once routed PR
+│                               creation to the wrong host — parsed remote + remoteUrl,
+│                               PR list, hasAccount, loading/error, 60s freshness window
+│                               keyed to repo path AND remote url, G26 seq guard;
+│                               forgeProviderFor binds a core provider to
+│                               ipc.forgeRequest so the Rust side attaches the token;
+│                               loaded by a RepositoryPage effect keyed on repo path +
+│                               remotes fingerprint + HEAD upstream; StatusBar/palette
+│                               browser-link fallback uses the same picked remoteUrl),
+│                               CreatePrDialog.tsx (ui dialog kind
+│                               'createPullRequest': source = HEAD, base Select from the
+│                               remote's branches pre-picked via provider.defaultBranch,
+│                               title prefilled from the branch name, description textarea
+│                               with a stoppable AI generate button — commits from
+│                               rebaseCommits(base) with history fallback —, draft
+│                               checkbox, disabled + hint while the branch has no
+│                               upstream; success toast carries an Open action)
+├── sidebar/Sidebar.tsx       ← PULL REQUESTS section (shown when the first remote parses
+│                               to a known forge; count badge, refresh + create actions,
+│                               connect-account hint that opens Settings, rows with draft
+│                               badge and a menu: checkout via provider.checkoutSpec →
+│                               ipc.prCheckout — bitbucket fork PRs have no fetchable ref
+│                               and toast instead —, open in browser, copy URL),
+│                               branch FOLDER TREE (buildBranchTree), HeadMark reserves a
 │                               fixed tick gutter so names align with each other AND with
 │                               folder labels at the same depth (remote rows carry the empty
 │                               slot for the same reason), right-click context
@@ -802,10 +850,10 @@ update CLAUDE.md or docs/ — never the code.
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (41) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop, commit signing (SSH sign verified via `git verify-commit`, unsigned without config, amend re-signs, merge commit signed, failure blocks the commit and leaves HEAD/index untouched) |
-| Rust module (42) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (6), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/core/sign.rs` (7), `src/proc.rs` (1) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim, io NotFound → not_found while other io errors stay io · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · signing config: off by default, ssh setup read from git config, empty-string values read as unset, ssh-without-key and x509 are clear errors, openpgp falls back to the committer identity, literal-key detection, ~ expansion · proc: no bare `Command::new` anywhere outside proc.rs (G31) |
-| Unit (98) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), aiProviders (empty/whitespace/missing content rejected for openai-compatible + ollama, HTTP status+body surfaced, real content passes), aiCapabilities (review conventions: absent by default, general-only, general+project order with precedence note, whitespace = absent, clipping), aiTextSegments (token parse: adjacent tokens, unclosed/inner-asterisk/multi-line markers stay literal, ** inside backticks is code), reviewSignature (staged-only, order-insensitive, unstaged-edit + set changes alter it, newline filenames don't collide, hashText determinism), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null), aiModels (per-provider list endpoints/headers incl. Groq-style base URLs, generateContent filtering for Gemini, dedupe/sort, invalid-JSON + HTTP-status errors, cli → empty without a request) |
-| E2E (15) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop), long path stays inside the discard confirm dialog, sidebar branch names align with and without the HEAD tick (measured left offsets), hovering a working-copy file reveals its full path, opening a diff folds the sidebar away and the toggle brings back the graph — all on demo mode |
+| Rust integration (44) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick, revert, reset (+ unknown-mode error), history pagination with and without filters, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop, commit signing (SSH sign verified via `git verify-commit`, unsigned without config, amend re-signs, merge commit signed, failure blocks the commit and leaves HEAD/index untouched), PR checkout (fork-style refs/pull fetch creates + updates the local branch and re-runs cleanly, diverged local branch refused with HEAD untouched, same-repo tracking checkout sets the upstream) |
+| Rust module (48) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (6), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/core/sign.rs` (7), `src/forge.rs` (6), `src/proc.rs` (1) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim, io NotFound → not_found while other io errors stay io · forge proxy: api-subdomain host allowlist (dot-anchored), per-provider auth headers, bitbucket email requirement, unknown provider rejected · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · signing config: off by default, ssh setup read from git config, empty-string values read as unset, ssh-without-key and x509 are clear errors, openpgp falls back to the committer identity, literal-key detection, ~ expansion · proc: no bare `Command::new` anywhere outside proc.rs (G31) |
+| Unit (122) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), aiProviders (empty/whitespace/missing content rejected for openai-compatible + ollama, HTTP status+body surfaced, real content passes), aiCapabilities (review conventions: absent by default, general-only, general+project order with precedence note, whitespace = absent, clipping), aiTextSegments (token parse: adjacent tokens, unclosed/inner-asterisk/multi-line markers stay literal, ** inside backticks is code), reviewSignature (staged-only, order-insensitive, unstaged-edit + set changes alter it, newline filenames don't collide, hashText determinism), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null), aiModels (per-provider list endpoints/headers incl. Groq-style base URLs, generateContent filtering for Gemini, dedupe/sort, invalid-JSON + HTTP-status errors, cli → empty without a request), forge (parseForgeRemote for all three forges + rejects, provider creation gating, github/gitlab/bitbucket adapters: request URLs, field mapping incl. fork + draft detection, create payloads, error-message surfacing incl. github field-level validation entries without a message, checkoutSpec shapes incl. bitbucket fork → null, pickForgeRemote upstream-first ordering) |
+| E2E (16) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop), long path stays inside the discard confirm dialog, sidebar branch names align with and without the HEAD tick (measured left offsets), hovering a working-copy file reveals its full path, opening a diff folds the sidebar away and the toggle brings back the graph, sidebar lists the demo pull requests and the create dialog opens — all on demo mode |
 
 ## 9.5 Open-source & community files
 
@@ -891,12 +939,13 @@ plugin can be added), and the Homebrew cask.
    layered over Gravatar.
 3. File-tree view for the working copy (deep C# paths); prev/next-file arrows in DiffPanel.
 4. Blame (file history shipped; annotate view remains). 5. Worktrees.
-7. Forge integrations (PRs/issues) as `packages/forge` mirroring the AI adapter pattern
-   (the browser-link teaser shipped in 0.6.0 — core `forge/pullRequestUrl.ts` surfaced as
-   a StatusBar footer button + palette command via `currentPullRequestUrl` in shared/utils,
-   shown only on non-main/master branches with a recognized forge remote; deliberately a
-   persistent affordance, NOT a post-push toast — transient popups nag non-PR users and
-   can't help with a branch pushed yesterday. Real API-backed PRs remain the v0.7 flagship).
+7. Forge integrations, remaining scope (PR list/checkout/create shipped unreleased after
+   0.6.6 in `packages/core/src/forge` — NOT a separate `packages/forge` package, it mirrors
+   where the ai/ adapters live): issue viewer, PR detail view (commits, CI status, review
+   state), review comments inline in diffs, Bitbucket Server + Azure DevOps adapters,
+   refreshing the PR list after push. The browser-link fallback stays for hosts without a
+   connected account (deliberately a persistent StatusBar affordance, NOT a post-push
+   toast — transient popups nag non-PR users and can't help with a branch pushed yesterday).
 8. Plugin host (palette commands, sidebar sections, inspector tabs are list-driven already).
 
 ## 12. Voice & positioning (for docs/website work)

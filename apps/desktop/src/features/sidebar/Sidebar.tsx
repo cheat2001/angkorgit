@@ -16,6 +16,7 @@ import {
   GitBranch,
   FastForward,
   GitMerge,
+  GitPullRequest,
   MoveRight,
   ListRestart,
   MoreHorizontal,
@@ -23,6 +24,7 @@ import {
   Pencil,
   Play,
   Plus,
+  RefreshCw,
   Search,
   Tag as TagIcon,
   Trash2,
@@ -45,15 +47,17 @@ import {
   DropdownMenuTrigger,
   Hint,
   Input,
+  Logo,
   cn,
 } from '@angkorgit/design-system';
-import { ipc } from '@/core/ipc';
+import { ipc, openExternal } from '@/core/ipc';
 import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import type { BranchInfo, RemoteInfo, SubmoduleInfo } from '@angkorgit/core';
+import { forgeProviderFor, useForge } from '@/features/forge/store';
+import type { BranchInfo, PullRequestInfo, RemoteInfo, SubmoduleInfo } from '@angkorgit/core';
 import { capCount } from '@/shared/utils';
 
 interface BranchTreeNode {
@@ -252,6 +256,29 @@ export function Sidebar() {
     }
   };
 
+  const forgeRemote = useForge((s) => s.remote);
+  const forgeRemoteName = useForge((s) => s.remoteName);
+  const forgeAccount = useForge((s) => s.hasAccount);
+  const forgePrs = useForge((s) => s.prs);
+  const forgeLoading = useForge((s) => s.loading);
+  const forgeError = useForge((s) => s.error);
+  const forgeLoadedAt = useForge((s) => s.loadedAt);
+
+  const checkoutPullRequest = (pr: PullRequestInfo) => {
+    const provider = repo && forgeRemote ? forgeProviderFor(repo.path, forgeRemote) : null;
+    const spec = provider?.checkoutSpec(pr);
+    if (!spec) {
+      toast.error('Bitbucket fork pull requests cannot be checked out yet — open it in the browser instead.');
+      return;
+    }
+    void act(
+      `Checkout #${pr.number}`,
+      () =>
+        ipc.prCheckout(path, forgeRemoteName ?? 'origin', spec.sourceRef, spec.localBranch, spec.track),
+      { kind: 'checkout' },
+    );
+  };
+
   const q = query.trim().toLowerCase();
   const locals = useMemo(
     () => branches.filter((b) => !b.isRemote && (!q || b.name.toLowerCase().includes(q))),
@@ -262,6 +289,17 @@ export function Sidebar() {
     [branches, q],
   );
   const filteredTags = useMemo(() => tags.filter((t) => !q || t.name.toLowerCase().includes(q)), [tags, q]);
+  const filteredPrs = useMemo(
+    () =>
+      forgePrs.filter(
+        (pr) =>
+          !q ||
+          pr.title.toLowerCase().includes(q) ||
+          pr.sourceBranch.toLowerCase().includes(q) ||
+          `#${pr.number}`.includes(q),
+      ),
+    [forgePrs, q],
+  );
 
   const localTree = useMemo(() => buildBranchTree(locals), [locals]);
   const remoteTree = useMemo(() => buildBranchTree(remoteBranches), [remoteBranches]);
@@ -474,6 +512,107 @@ export function Sidebar() {
             ? locals.map((branch) => renderLocalBranch(branch, branch.name, 0))
             : renderTree(localTree, 0, 'local')}
         </Section>
+
+        {forgeRemote && (
+          <Section
+            icon={<GitPullRequest className="size-3.5" />}
+            title={forgeRemote.kind === 'gitlab' ? 'Merge requests' : 'Pull requests'}
+            count={filteredPrs.length}
+            action={
+              <span className="flex items-center">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Refresh pull requests"
+                  onClick={() => void useForge.getState().load(true)}
+                >
+                  <RefreshCw className={cn('size-3.5', forgeLoading && 'animate-spin')} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Create pull request"
+                  onClick={() => openDialog('createPullRequest')}
+                >
+                  <Plus className="size-3.5" />
+                </Button>
+              </span>
+            }
+          >
+            {!forgeAccount && forgeLoadedAt !== null && (
+              <button
+                className="w-full rounded-md px-2 py-1 pl-7 text-left text-xs text-muted hover:bg-surface-raised"
+                onClick={() => openDialog('settings')}
+              >
+                Connect a {forgeRemote.host} account in Settings → Authentication to see pull requests.
+              </button>
+            )}
+            {forgeAccount && forgeError && (
+              <button
+                className="w-full rounded-md px-2 py-1 pl-7 text-left text-xs text-danger [overflow-wrap:anywhere] hover:bg-surface-raised"
+                title="Click to retry"
+                onClick={() => void useForge.getState().load(true)}
+              >
+                {forgeError}
+              </button>
+            )}
+            {forgeAccount && !forgeError && filteredPrs.length === 0 && !forgeLoading && (
+              <div className="px-2 py-1 pl-7 text-xs text-faint">
+                No open {forgeRemote.kind === 'gitlab' ? 'merge requests' : 'pull requests'}
+              </div>
+            )}
+            {forgeLoading && filteredPrs.length === 0 && (
+              <div className="flex items-center gap-2 px-2 py-1 pl-7 text-xs text-faint">
+                <Logo size={14} animated="loop" className="logo-draw-loop shrink-0" />
+                Loading…
+              </div>
+            )}
+            {filteredPrs.map((pr) => (
+              <div
+                key={pr.number}
+                className="group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised"
+                title={`#${pr.number} ${pr.title} — ${pr.author} wants to merge ${pr.sourceBranch} into ${pr.targetBranch}. Double-click to open in the browser.`}
+                onDoubleClick={() => void openExternal(pr.url)}
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="text-faint">#{pr.number}</span> {pr.title}
+                </span>
+                {pr.isDraft && <Badge>Draft</Badge>}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="shrink-0 opacity-0 group-hover:opacity-100"
+                      aria-label={`Pull request #${pr.number} actions`}
+                    >
+                      <MoreHorizontal className="size-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuLabel className="max-w-64 truncate">
+                      #{pr.number} {pr.title}
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => checkoutPullRequest(pr)}>
+                      <Check /> Checkout
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void openExternal(pr.url)}>
+                      <Cloud /> Open in browser
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        void navigator.clipboard.writeText(pr.url);
+                        toast.success('URL copied');
+                      }}
+                    >
+                      <Copy /> Copy URL
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+          </Section>
+        )}
 
         <Section icon={<Cloud className="size-3.5" />} title="Remotes" count={remoteBranches.length} defaultOpen={false}>
           {q

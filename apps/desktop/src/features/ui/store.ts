@@ -11,6 +11,7 @@ export type DialogKind =
   | 'settings'
   | 'rename'
   | 'interactiveRebase'
+  | 'createPullRequest'
   | null;
 
 export interface CenterDiffTarget {

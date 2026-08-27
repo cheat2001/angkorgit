@@ -687,6 +687,26 @@ pub async fn http_request(
 }
 
 #[tauri::command]
+pub async fn forge_request(
+    repoPath: Option<String>,
+    host: String,
+    request: crate::http::HttpRequest,
+) -> AppResult<crate::http::HttpResponse> {
+    crate::forge::request(repoPath, host, request).await
+}
+
+#[tauri::command]
+pub async fn pr_checkout(
+    path: String,
+    remote: String,
+    sourceRef: String,
+    branch: String,
+    track: bool,
+) -> AppResult<()> {
+    blocking(move || remote::checkout_remote_ref(&path, &remote, &sourceRef, &branch, track)).await
+}
+
+#[tauri::command]
 pub async fn ai_cli_detect() -> AppResult<Vec<crate::ai_cli::CliAgentInfo>> {
     blocking(|| Ok(crate::ai_cli::detect())).await
 }

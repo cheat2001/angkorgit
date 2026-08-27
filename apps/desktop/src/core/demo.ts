@@ -6,6 +6,8 @@ import type {
   FileDiff,
   HistoryPage,
   HistoryQuery,
+  HttpRequest,
+  HttpResponse,
   RecentRepository,
   RepositoryInfo,
   StashInfo,
@@ -305,6 +307,55 @@ export function drawGraph(rows: Row[]) {
 >>>>>>> feature/lane-colors
 }
 `;
+
+const demoPull = (
+  number: number,
+  title: string,
+  branch: string,
+  author: string,
+  draft: boolean,
+  fork: boolean,
+) => ({
+  number,
+  title,
+  html_url: `https://github.com/demo/angkorgit/pull/${number}`,
+  state: 'open',
+  draft,
+  merged_at: null,
+  created_at: '2026-08-18T09:00:00Z',
+  updated_at: '2026-08-21T14:00:00Z',
+  user: { login: author, avatar_url: null },
+  head: {
+    ref: branch,
+    sha: ALL_COMMITS[7].oid,
+    repo: { full_name: fork ? `${author}/angkorgit` : 'demo/angkorgit' },
+  },
+  base: { ref: 'main' },
+});
+
+export function demoForgeResponse(request: HttpRequest): HttpResponse {
+  const url = request.url;
+  if (request.method === 'POST' && url.includes('/pulls')) {
+    const payload = JSON.parse(request.body ?? '{}') as { title?: string; head?: string; draft?: boolean };
+    return {
+      status: 201,
+      body: JSON.stringify(
+        demoPull(99, payload.title ?? 'New pull request', payload.head ?? 'feature/demo', 'demo-user', payload.draft === true, false),
+      ),
+    };
+  }
+  if (url.includes('/pulls')) {
+    return {
+      status: 200,
+      body: JSON.stringify([
+        demoPull(12, 'feat(diff): side-by-side word diff polish', 'feature/diff-viewer', 'dara', false, false),
+        demoPull(11, 'fix(stash): apply race on fast repos', 'fix/stash-race', 'maly', true, false),
+        demoPull(9, 'docs: translate first-launch guide', 'docs/khmer-guide', 'sokha', false, true),
+      ]),
+    };
+  }
+  return { status: 200, body: JSON.stringify({ default_branch: 'main' }) };
+}
 
 export const demoCliAgents: CliAgentInfo[] = [
   { id: 'claude', label: 'Claude Code', path: '/usr/local/bin/claude', version: '2.0.0 (demo)' },

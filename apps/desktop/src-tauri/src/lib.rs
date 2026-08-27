@@ -5,6 +5,7 @@ mod ai_cli;
 mod commands;
 mod core;
 mod error;
+mod forge;
 mod http;
 mod proc;
 mod state;
@@ -25,6 +26,7 @@ pub mod test_api {
     pub use crate::core::misc::{
         stash_create, stash_list, stash_pop, tag_create, tag_delete, tag_list,
     };
+    pub use crate::core::remote::checkout_remote_ref;
     pub use crate::core::repo::{cleanup_state, info as repo_info, init, set_config, status};
     pub use crate::core::stage::{
         discard_all, discard_line, stage_all, stage_file, stage_hunk, stage_line, unstage_all,
@@ -143,6 +145,8 @@ pub fn run() {
             commands::ai_key_set,
             commands::ai_key_delete,
             commands::http_request,
+            commands::forge_request,
+            commands::pr_checkout,
             commands::ai_cli_detect,
             commands::ai_cli_run,
         ])
