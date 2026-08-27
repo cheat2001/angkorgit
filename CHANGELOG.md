@@ -21,6 +21,15 @@ All notable changes to AngKorGit are documented here. The format follows
   mark it as draft, and the created pull request opens with one click.
   Without a connected account the button keeps opening the pre-filled
   browser page as before.
+- **Request reviewers while creating** — the create dialog lists the
+  repository's members (GitHub collaborators, GitLab project members,
+  Bitbucket workspace members) in a multi-select with their avatars, and the
+  chosen people are asked for review as part of creation. Your own connected
+  account is left out of the list, and the member list is remembered for the
+  session so reopening the dialog is instant.
+- New Settings → Git toggle "Pull requests": turn it off to hide the sidebar
+  section and stop fetching pull requests entirely, for people who don't use
+  them. The create button then falls back to the pre-filled browser page.
 
 ### Fixed
 - With many repository tabs open, the tab bar's horizontal scrollbar covered
@@ -43,15 +52,9 @@ All notable changes to AngKorGit are documented here. The format follows
   reach <host>, check your network or VPN") with click-to-retry, instead of
   dumping the raw request error into the sidebar; the full detail stays in the
   row's tooltip. Self-hosted GitLab instances served over plain http work now:
-  when https fails at the transport level the API calls retry over http, the
-  same way account verification already does.
-- New Settings → Git toggle "Pull requests": turn it off to hide the sidebar
-  section and stop fetching pull requests entirely, for people who don't use
-  them. The create button then falls back to the pre-filled browser page.
-- Request reviewers while creating: the create dialog lists the repository's
-  members (GitHub collaborators, GitLab project members, Bitbucket workspace
-  members) in a multi-select, and the chosen people are asked for review as
-  part of creation.
+  when https fails at the transport level, read requests retry over http (the
+  same way account verification already does) and the working scheme is
+  remembered; writes never retry, so a merge request can't be filed twice.
 - Switching repository tabs no longer flashes a loading state in the pull
   requests section: each repository's list is cached for the session, shows
   instantly on return, and refreshes quietly in the background when stale.
@@ -60,6 +63,8 @@ All notable changes to AngKorGit are documented here. The format follows
   is needed instead of silently disabling the button, and double-clicking a
   pull request in the sidebar checks it out — the same gesture branches use.
   Bitbucket lists are now ordered by most recently updated like the others.
+
+## [0.6.6] — 2026-08-23
 
 The review release. AngKorGit now gives your staged changes a second pair of
 eyes: one click asks your AI for a real code review, shaped by your team's
