@@ -1299,4 +1299,31 @@ fn pr_checkout_tracks_the_source_branch_for_same_repo_pull_requests() {
         String::from_utf8_lossy(&upstream.stdout).trim(),
         "origin/feature"
     );
+
+    origin.write("pr.txt", "two\n");
+    commit_all(&origin, "pr follow-up");
+    core::checkout_remote_ref(
+        local.path(),
+        "origin",
+        "refs/heads/feature",
+        "feature",
+        true,
+    )
+    .unwrap();
+    assert_eq!(local.read("pr.txt"), "two\n");
+
+    local.write("mine.txt", "local work\n");
+    commit_all(&local, "local divergence");
+    origin.write("pr.txt", "three\n");
+    commit_all(&origin, "pr third");
+    let err = core::checkout_remote_ref(
+        local.path(),
+        "origin",
+        "refs/heads/feature",
+        "feature",
+        true,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("delete or rename"));
+    assert_eq!(local.read("pr.txt"), "two\n");
 }

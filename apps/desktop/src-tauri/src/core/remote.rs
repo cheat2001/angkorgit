@@ -265,12 +265,16 @@ pub(crate) fn parse_account_bindings(raw: &str) -> HashMap<String, String> {
         .collect()
 }
 
-fn prime_account_bindings(repo: Option<&Repository>) {
-    let map = repo
-        .and_then(|r| r.config().ok())
+pub(crate) fn read_account_bindings(repo: &Repository) -> HashMap<String, String> {
+    repo.config()
+        .ok()
         .and_then(|c| c.get_string("angkorgit.accounts").ok())
         .map(|raw| parse_account_bindings(&raw))
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+fn prime_account_bindings(repo: Option<&Repository>) {
+    let map = repo.map(read_account_bindings).unwrap_or_default();
     REPO_ACCOUNT_BINDINGS.with(|slot| *slot.borrow_mut() = map);
 }
 
@@ -613,8 +617,14 @@ pub fn checkout_remote_ref(
         opts.remote_callbacks(make_callbacks());
         remote.fetch(&[refspec.as_str()], Some(&mut opts), None)?;
         drop(remote);
-        drop(repo);
-        return super::branch::checkout_branch(path, &format!("{remote_name}/{local_branch}"));
+        let target = repo
+            .find_reference(&format!("refs/remotes/{remote_name}/{local_branch}"))?
+            .peel_to_commit()?
+            .id();
+        point_branch_and_checkout(&repo, local_branch, target)?;
+        let mut branch = repo.find_branch(local_branch, git2::BranchType::Local)?;
+        branch.set_upstream(Some(&format!("{remote_name}/{local_branch}")))?;
+        return Ok(());
     }
 
     {

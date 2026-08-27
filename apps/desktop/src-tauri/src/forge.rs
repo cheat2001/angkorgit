@@ -54,8 +54,7 @@ fn auth_headers(
 
 fn bound_username(repo_path: Option<&str>, host: &str) -> Option<String> {
     let repo = crate::core::repo::open(repo_path?).ok()?;
-    let raw = repo.config().ok()?.get_string("angkorgit.accounts").ok()?;
-    crate::core::remote::parse_account_bindings(&raw)
+    crate::core::remote::read_account_bindings(&repo)
         .get(&normalize(host))
         .cloned()
 }
@@ -77,17 +76,12 @@ pub async fn request(
         let host = host.clone();
         move || -> AppResult<Vec<(String, String)>> {
             let preferred = bound_username(repo_path.as_deref(), &host);
-            let (username, token) = accounts::candidates(&host, preferred.as_deref())
-                .into_iter()
-                .next()
+            let (account, token) = accounts::account_with_token(&host, preferred.as_deref())
                 .ok_or_else(|| {
                     AppError::other(format!(
                         "no connected {host} account — connect one in Settings → Authentication"
                     ))
                 })?;
-            let account = accounts::find(&host, &username).ok_or_else(|| {
-                AppError::other(format!("no account metadata for {username} on {host}"))
-            })?;
             auth_headers(&account.provider, &token, account.email.as_deref())
         }
     })

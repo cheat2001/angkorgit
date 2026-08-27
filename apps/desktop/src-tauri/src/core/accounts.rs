@@ -266,6 +266,16 @@ pub fn set_default(host: &str, username: &str) -> AppResult<Vec<AccountInfo>> {
     Ok(accounts)
 }
 
+pub fn account_with_token(host: &str, preferred: Option<&str>) -> Option<(AccountInfo, String)> {
+    let host = normalize_host(host);
+    let accounts = list();
+    ordered_for_host(&accounts, &host, preferred)
+        .into_iter()
+        .find_map(|account| {
+            token_of(&account.host, &account.username).map(|token| (account.clone(), token))
+        })
+}
+
 pub fn candidates(host: &str, preferred: Option<&str>) -> Vec<(String, String)> {
     let host = normalize_host(host);
     let accounts = list();
