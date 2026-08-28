@@ -6,6 +6,15 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-08-28
+
+The pull request release. AngKorGit now closes the loop between your local
+branches and the forge they live on: open pull requests appear in the sidebar,
+check out locally in one move, and new ones are created from inside the app
+with reviewers attached, on GitHub, GitLab and Bitbucket Cloud alike. The
+commit search also learned the move everyone expects: paste a hash and the
+graph takes you straight there.
+
 ### Added
 - **Pull requests in the app** — a new sidebar section lists the open pull
   requests (GitHub, GitLab, Bitbucket Cloud) for the current repository's
@@ -746,7 +755,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.6.6...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/cheat2001/angkorgit/compare/v0.6.6...v0.7.0
 [0.6.6]: https://github.com/cheat2001/angkorgit/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/cheat2001/angkorgit/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/cheat2001/angkorgit/compare/v0.6.3...v0.6.4

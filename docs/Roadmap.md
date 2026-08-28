@@ -1,10 +1,10 @@
 # Roadmap
 
-Updated for v0.6.6 (August 2026). [CHANGELOG.md](../CHANGELOG.md) is the
+Updated for v0.7.0 (August 2026). [CHANGELOG.md](../CHANGELOG.md) is the
 authoritative record of what shipped in each release; this file tracks
 direction.
 
-## Shipped (0.1.0 → 0.6.6)
+## Shipped (0.1.0 → 0.7.0)
 
 - [x] Repository: open, clone (with progress), recents, search, repository tabs (drag to reorder)
 - [x] Commit: stage files, hunks, and individual lines; unstage, commit, amend; per-repo commit drafts
@@ -20,10 +20,11 @@ direction.
 - [x] Undo/redo for recent operations; drag-and-drop merge/rebase
 - [x] Auto-update: pull-based from GitHub releases, signature-verified
 - [x] Commit signing: SSH and GPG, driven by existing git config (commit.gpgSign, gpg.format, user.signingKey) — covers commit, amend, merge
+- [x] Pull requests: sidebar list, checkout and in-app create with reviewer selection for GitHub, GitLab (incl. self-hosted) and Bitbucket Cloud, through the connected account; browser fallback without one
+- [x] Graph search: a commit hash jumps to the commit in the full graph, centered and highlighted; ⌘F focuses the search
 
 ## Next
 
-- [ ] Forge integrations: API-backed pull requests and issues (the v0.7 flagship — the pre-filled create-PR link shipped in 0.6.0)
 - [ ] Blame view
 - [ ] Worktrees
 - [ ] Provider avatars via connected accounts, layered over Gravatar

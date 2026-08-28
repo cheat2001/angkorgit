@@ -1011,7 +1011,7 @@ plugin can be added), and the Homebrew cask.
 3. File-tree view for the working copy (deep C# paths); prev/next-file arrows in DiffPanel.
 4. Blame (file history shipped; annotate view remains). 5. Worktrees.
 7. Forge integrations, remaining scope (PR list/checkout/create + reviewer selection
-   shipped unreleased after 0.6.6 in `packages/core/src/forge` — NOT a separate
+   shipped in 0.7.0 in `packages/core/src/forge` — NOT a separate
    `packages/forge` package, it mirrors where the ai/ adapters live): possible later
    items are an issue viewer, a read-only PR detail view (commits, CI status, review
    state), Bitbucket Server + Azure DevOps adapters, refreshing the PR list after push.
