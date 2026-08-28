@@ -24,6 +24,7 @@ interface GraphState {
   selectedOids: string[];
   layout: GraphLayout;
   lastPath: string | null;
+  pendingScrollIndex: number | null;
 
   reload: (path: string) => Promise<void>;
   loadMore: (path: string) => Promise<void>;
@@ -31,6 +32,8 @@ interface GraphState {
   select: (oid: string | null) => void;
   toggleSelect: (oid: string) => void;
   rangeSelect: (oid: string) => void;
+  jumpTo: (path: string, rev: string) => Promise<string | null>;
+  clearPendingScroll: () => void;
 }
 
 let requestSeq = 0;
@@ -46,6 +49,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   selectedOids: [],
   layout: new GraphLayout(),
   lastPath: null,
+  pendingScrollIndex: null,
 
   reload: async (path: string) => {
     if (get().lastPath !== path) {
@@ -59,6 +63,7 @@ export const useGraph = create<GraphState>((set, get) => ({
         filters: { search: '', author: '', branch: '' },
         layout: new GraphLayout(),
         lastPath: path,
+        pendingScrollIndex: null,
       });
     }
     const { filters } = get();
@@ -125,6 +130,40 @@ export const useGraph = create<GraphState>((set, get) => ({
   },
 
   select: (oid) => set({ selectedOid: oid, selectedOids: oid ? [oid] : [] }),
+
+  jumpTo: async (path, rev) => {
+    const target = await ipc.historyPosition(path, rev);
+    if (!target || get().lastPath !== path) return null;
+
+    const { filters } = get();
+    if (filters.search || filters.author || filters.branch) {
+      set({ filters: { search: '', author: '', branch: '' } });
+      await get().reload(path);
+      if (get().lastPath !== path) return null;
+    }
+
+    while (get().lastPath === path && get().hasMore && get().commits.length <= target.index) {
+      const before = get().commits.length;
+      await get().loadMore(path);
+      if (get().commits.length === before) {
+        if (!get().loading) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+    if (get().lastPath !== path) return null;
+
+    const commits = get().commits;
+    const index =
+      commits[target.index]?.oid === target.oid
+        ? target.index
+        : commits.findIndex((c) => c.oid === target.oid);
+    if (index === -1) return null;
+    get().select(target.oid);
+    set({ pendingScrollIndex: index });
+    return target.oid;
+  },
+
+  clearPendingScroll: () => set({ pendingScrollIndex: null }),
 
   toggleSelect: (oid) =>
     set((s) => ({

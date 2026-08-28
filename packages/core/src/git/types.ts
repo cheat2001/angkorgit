@@ -158,6 +158,11 @@ export interface HistoryPage {
   total: number | null;
 }
 
+export interface HistoryPosition {
+  index: number;
+  oid: string;
+}
+
 export type RebaseTodoAction = 'pick' | 'reword' | 'squash' | 'fixup' | 'drop';
 
 export interface RebaseTodoEntry {

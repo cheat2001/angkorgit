@@ -22,7 +22,7 @@ pub mod test_api {
         list as conflict_list, read as conflict_read, resolve as conflict_resolve,
     };
     pub use crate::core::diff::file_diff;
-    pub use crate::core::history::{file_history, list as history};
+    pub use crate::core::history::{file_history, list as history, position as history_position};
     pub use crate::core::misc::{
         stash_create, stash_list, stash_pop, tag_create, tag_delete, tag_list,
     };
@@ -84,6 +84,7 @@ pub fn run() {
             commands::merge_can_ff,
             commands::commit_revert,
             commands::history_list,
+            commands::history_position,
             commands::history_commit,
             commands::history_file,
             commands::repo_files,

@@ -7,6 +7,7 @@ import type {
   ConflictFile,
   FileDiff,
   HistoryPage,
+  HistoryPosition,
   HistoryQuery,
   HttpRequest,
   HttpResponse,
@@ -221,6 +222,10 @@ export const ipc = {
       return demo.demoHistory(query);
     }
     return invoke('history_list', { path, query });
+  },
+  async historyPosition(path: string, rev: string): Promise<HistoryPosition | null> {
+    if (!isTauri()) return demo.demoHistoryPosition(rev);
+    return invoke('history_position', { path, rev });
   },
   async commitInfo(path: string, oid: string): Promise<CommitInfo> {
     if (!isTauri()) return demo.demoHistory({ skip: 0, limit: 1 }).commits[0];

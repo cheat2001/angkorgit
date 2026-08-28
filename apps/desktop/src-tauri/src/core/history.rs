@@ -4,7 +4,9 @@ use git2::{Oid, Repository, Sort};
 
 use crate::error::AppResult;
 
-use super::types::{CommitInfo, HistoryPage, HistoryQuery, RefInfo, SignatureInfo};
+use super::types::{
+    CommitInfo, HistoryPage, HistoryPosition, HistoryQuery, RefInfo, SignatureInfo,
+};
 
 fn signature_info(sig: &git2::Signature) -> SignatureInfo {
     SignatureInfo {
@@ -151,6 +153,34 @@ pub fn list(path: &str, query: HistoryQuery) -> AppResult<HistoryPage> {
         has_more,
         total: None,
     })
+}
+
+pub fn position(path: &str, rev: &str) -> AppResult<Option<HistoryPosition>> {
+    let repo = super::repo::open(path)?;
+    let Ok(object) = repo.revparse_single(rev) else {
+        return Ok(None);
+    };
+    let Ok(commit) = object.peel_to_commit() else {
+        return Ok(None);
+    };
+    let target = commit.id();
+
+    let mut walk = repo.revwalk()?;
+    walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
+    let _ = walk.push_glob("refs/heads/*");
+    let _ = walk.push_glob("refs/remotes/*");
+    let _ = walk.push_glob("refs/tags/*");
+    let _ = walk.push_head();
+
+    for (index, oid) in walk.flatten().enumerate() {
+        if oid == target {
+            return Ok(Some(HistoryPosition {
+                index,
+                oid: oid.to_string(),
+            }));
+        }
+    }
+    Ok(None)
 }
 
 pub fn file_history(path: &str, file: &str, limit: usize, skip: usize) -> AppResult<HistoryPage> {

@@ -58,6 +58,13 @@ pub struct HistoryPage {
     pub total: Option<usize>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryPosition {
+    pub index: usize,
+    pub oid: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RebaseTodoEntry {

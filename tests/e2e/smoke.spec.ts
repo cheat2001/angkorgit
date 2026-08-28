@@ -300,3 +300,36 @@ test('sidebar lists demo pull requests and opens the create dialog', async ({ pa
   await page.getByRole('button', { name: 'Add reviewers' }).click();
   await expect(page.getByRole('menuitemcheckbox', { name: /Dara Kim/ })).toBeVisible();
 });
+
+test('searching a commit hash jumps to it in the full graph', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  const search = page.getByPlaceholder('Search commits…');
+  await expect(search).toBeVisible({ timeout: 10_000 });
+  await search.fill('000096aaaaaa');
+  await expect(page.getByText('400 commits')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('000096aa').first()).toBeVisible();
+
+  await page.getByText('fix(diff): handle renamed files in word diff').first().click();
+  await expect(search).toHaveValue('');
+  await expect(page.getByText('400 commits')).toBeVisible();
+});
+
+test('searching a hash that does not exist keeps the graph and says so', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  const search = page.getByPlaceholder('Search commits…');
+  await expect(search).toBeVisible({ timeout: 10_000 });
+  await search.fill('deadbeef123');
+  await expect(page.getByText('Commit not found')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/200 commits\+/)).toBeVisible();
+});
+
+test('mod+f focuses the commit search box', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  const search = page.getByPlaceholder('Search commits…');
+  await expect(search).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('ControlOrMeta+f');
+  await expect(search).toBeFocused();
+});

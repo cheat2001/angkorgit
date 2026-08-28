@@ -274,6 +274,11 @@ pub async fn history_commit(path: String, oid: String) -> AppResult<CommitInfo> 
 }
 
 #[tauri::command]
+pub async fn history_position(path: String, rev: String) -> AppResult<Option<HistoryPosition>> {
+    blocking(move || history::position(&path, &rev)).await
+}
+
+#[tauri::command]
 pub async fn history_file(
     path: String,
     file: String,

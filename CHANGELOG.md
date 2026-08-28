@@ -30,6 +30,15 @@ All notable changes to AngKorGit are documented here. The format follows
 - New Settings → Git toggle "Pull requests": turn it off to hide the sidebar
   section and stop fetching pull requests entirely, for people who don't use
   them. The create button then falls back to the pre-filled browser page.
+- **Searching a commit hash jumps to it in the graph** — pasting a hash (7 to
+  40 hex characters, short or full) into the commit search no longer filters
+  the view down to that single row: the graph loads up to the commit, scrolls
+  it to the center, selects it and marks it with a highlight, so the commits
+  around it stay visible. Clicking any other commit clears the highlight and
+  the search box, Enter re-runs the jump, and a hash that doesn't exist keeps
+  the graph untouched with a small "Commit not found" note instead of
+  emptying the view. Text searches still filter as before, and ⌘F focuses
+  the commit search whenever no diff is open (a diff keeps its find bar).
 
 ### Fixed
 - With many repository tabs open, the tab bar's horizontal scrollbar covered

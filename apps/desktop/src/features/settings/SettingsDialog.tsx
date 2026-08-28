@@ -554,6 +554,7 @@ const SHORTCUTS: Array<[string, string[]]> = [
   ['Refresh repository', ['mod', 'R']],
   ['Settings', ['mod', ',']],
   ['Commit (in message box)', ['mod', '⏎']],
+  ['Search commits / find in diff', ['mod', 'F']],
   ['Zoom in / out / reset', ['mod', '+ / − / 0']],
   ['Previous / next change (diff)', ['P / N']],
   ['Previous / next file (diff)', ['[ / ]']],

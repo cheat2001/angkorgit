@@ -24,6 +24,8 @@ import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { useShortcuts } from '@/shared/useShortcuts';
 
+const HASH_QUERY = /^[0-9a-f]{7,40}$/i;
+
 interface MenuState {
   x: number;
   y: number;
@@ -39,7 +41,7 @@ interface RefMenuState {
 export function CommitGraph() {
   const repo = useRepo((s) => s.repo);
   const refresh = useRepo((s) => s.refresh);
-  const { rows, commits, maxLane, hasMore, loading, filters, selectedOid, selectedOids, loadMore, reload, setFilters, select, toggleSelect, rangeSelect } =
+  const { rows, commits, maxLane, hasMore, loading, filters, selectedOid, selectedOids, pendingScrollIndex, loadMore, reload, setFilters, select, toggleSelect, rangeSelect, jumpTo, clearPendingScroll } =
     useGraph();
   const openDialog = useUi((s) => s.openDialog);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -47,6 +49,10 @@ export function CommitGraph() {
   const [refMenu, setRefMenu] = useState<RefMenuState | null>(null);
   const [searchDraft, setSearchDraft] = useState(filters.search);
   const [authorDraft, setAuthorDraft] = useState(filters.author);
+  const [jumpedOid, setJumpedOid] = useState<string | null>(null);
+  const [jumpMiss, setJumpMiss] = useState(false);
+  const jumpedRef = useRef('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const path = repo?.path ?? '';
 
@@ -65,14 +71,56 @@ export function CommitGraph() {
     }
   }, [items, rows.length, hasMore, loading, path, loadMore]);
 
+  const runJump = useCallback(
+    (rev: string) => {
+      void jumpTo(path, rev).then((oid) => {
+        if (useGraph.getState().lastPath !== path) return;
+        if (oid) {
+          jumpedRef.current = rev;
+          setJumpedOid(oid);
+          setJumpMiss(false);
+        } else {
+          setJumpMiss(true);
+        }
+      });
+    },
+    [jumpTo, path],
+  );
+
   useEffect(() => {
+    const trimmed = searchDraft.trim();
+    const hashLike = HASH_QUERY.test(trimmed);
+    if (jumpedRef.current && jumpedRef.current !== trimmed) {
+      jumpedRef.current = '';
+      setJumpMiss(false);
+    }
     const timer = setTimeout(() => {
+      if (hashLike && !authorDraft) {
+        if (jumpedRef.current !== trimmed) runJump(trimmed);
+        return;
+      }
       if (searchDraft !== filters.search || authorDraft !== filters.author) {
+        setJumpedOid(null);
+        setJumpMiss(false);
         setFilters(path, { search: searchDraft, author: authorDraft });
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchDraft, authorDraft, filters.search, filters.author, path, setFilters]);
+  }, [searchDraft, authorDraft, filters.search, filters.author, path, setFilters, runJump]);
+
+  useEffect(() => {
+    if (!jumpedOid || selectedOid === jumpedOid) return;
+    setJumpedOid(null);
+    setJumpMiss(false);
+    jumpedRef.current = '';
+    setSearchDraft('');
+  }, [selectedOid, jumpedOid]);
+
+  useEffect(() => {
+    if (pendingScrollIndex === null || pendingScrollIndex >= rows.length) return;
+    virtualizer.scrollToIndex(pendingScrollIndex, { align: 'center' });
+    clearPendingScroll();
+  }, [pendingScrollIndex, rows.length, virtualizer, clearPendingScroll]);
 
   const flat = Boolean(filters.search || filters.author);
   const gutterWidth = flat ? FLAT_GUTTER_WIDTH : Math.min(16 + (maxLane + 1) * 14, 200);
@@ -105,6 +153,14 @@ export function CommitGraph() {
       { combo: 'arrowup', handler: () => moveSelection(-1) },
       { combo: 'home', handler: () => moveSelection('home') },
       { combo: 'end', handler: () => moveSelection('end') },
+      {
+        combo: 'mod+f',
+        handler: () => {
+          const ui = useUi.getState();
+          if (ui.centerDiff || ui.centerEditor || ui.centerFileHistory || ui.paletteOpen || ui.dialog || ui.conflictFile) return;
+          searchInputRef.current?.select();
+        },
+      },
     ],
     [moveSelection],
   );
@@ -191,12 +247,22 @@ export function CommitGraph() {
         <div className="relative w-64">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
           <Input
+            ref={searchInputRef}
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              const trimmed = searchDraft.trim();
+              if (HASH_QUERY.test(trimmed) && !authorDraft) {
+                jumpedRef.current = '';
+                runJump(trimmed);
+              }
+            }}
             placeholder="Search commits…"
             className="h-7 pl-8 text-xs"
           />
         </div>
+        {jumpMiss && <span className="text-xs text-danger">Commit not found</span>}
         <div className="relative w-44">
           <User className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
           <Input
@@ -239,6 +305,11 @@ export function CommitGraph() {
               return (
                 <div
                   key={commit.oid}
+                  className={
+                    jumpedOid === commit.oid
+                      ? 'rounded-md ring-1 ring-inset ring-primary/60'
+                      : undefined
+                  }
                   style={{
                     position: 'absolute',
                     top: 0,

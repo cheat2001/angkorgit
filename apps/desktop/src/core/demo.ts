@@ -108,6 +108,12 @@ export function demoHistory(query: HistoryQuery): HistoryPage {
   return { commits: page, hasMore: query.skip + query.limit < commits.length, total: commits.length };
 }
 
+export function demoHistoryPosition(rev: string): { index: number; oid: string } | null {
+  const needle = rev.trim().toLowerCase();
+  const index = ALL_COMMITS.findIndex((c) => c.oid.startsWith(needle));
+  return index === -1 ? null : { index, oid: ALL_COMMITS[index].oid };
+}
+
 export const demoStatus: StatusSummary = {
   files: [
     { path: 'src/features/graph/CommitGraph.tsx', origPath: null, staged: 'modified', unstaged: null },

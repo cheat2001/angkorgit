@@ -1327,3 +1327,33 @@ fn pr_checkout_tracks_the_source_branch_for_same_repo_pull_requests() {
     assert!(err.to_string().contains("delete or rename"));
     assert_eq!(local.read("pr.txt"), "two\n");
 }
+
+#[test]
+fn history_position_locates_a_commit_in_the_default_walk() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let first = commit_all(&repo, "first");
+    repo.write("a.txt", "two\n");
+    commit_all(&repo, "second");
+    repo.write("a.txt", "three\n");
+    let third = commit_all(&repo, "third");
+
+    let head = core::history_position(repo.path(), &third)
+        .unwrap()
+        .unwrap();
+    assert_eq!(head.index, 0);
+    assert_eq!(head.oid, third);
+
+    let oldest = core::history_position(repo.path(), &first[..8])
+        .unwrap()
+        .unwrap();
+    assert_eq!(oldest.index, 2);
+    assert_eq!(oldest.oid, first);
+
+    assert!(core::history_position(repo.path(), "deadbeef")
+        .unwrap()
+        .is_none());
+    assert!(core::history_position(repo.path(), "not a rev")
+        .unwrap()
+        .is_none());
+}
