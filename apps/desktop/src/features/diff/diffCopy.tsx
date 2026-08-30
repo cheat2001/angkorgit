@@ -37,7 +37,8 @@ const isEditableTarget = (): boolean => {
 };
 
 export function useDiffSelectAll(diff: FileDiff | null, scrollRef: React.RefObject<HTMLDivElement>) {
-  const { diffView, wrapLines } = useUi();
+  const diffView = useUi((s) => s.diffView);
+  const wrapLines = useUi((s) => s.wrapLines);
   const [selectedSide, setSelectedSide] = useState<DiffSide | null>(null);
   const [activeSide, setActiveSide] = useState<DiffSide>('new');
   const [caretPos, setCaretPos] = useState<CaretState | null>(null);

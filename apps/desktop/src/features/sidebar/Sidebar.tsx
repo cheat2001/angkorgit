@@ -128,6 +128,8 @@ const outcomeOk = (result: unknown) => {
   return status === undefined || status === 'ok' || status === 'fast_forward';
 };
 
+const FLAT_FILTER_CAP = 300;
+
 function Section({
   icon,
   title,
@@ -147,7 +149,11 @@ function Section({
   return (
     <div className="mb-1">
       <div className="group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted hover:bg-surface-raised">
-        <button className="flex min-w-0 flex-1 items-center gap-1.5" onClick={() => setOpen(!open)}>
+        <button
+          className="flex min-w-0 flex-1 items-center gap-1.5"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
           <ChevronRight className={cn('size-3.5 shrink-0 transition-transform duration-150', open && 'rotate-90')} />
           {icon}
           <span className="truncate">{title}</span>
@@ -168,11 +174,17 @@ export function Sidebar() {
   const remotes = useRepo((s) => s.remotes);
   const submodules = useRepo((s) => s.submodules);
   const refresh = useRepo((s) => s.refresh);
+  const repoRefreshing = useRepo((s) => s.refreshing);
   const graphReload = useGraph((s) => s.reload);
   const setFilters = useGraph((s) => s.setFilters);
   const filters = useGraph((s) => s.filters);
   const openDialog = useUi((s) => s.openDialog);
   const [query, setQuery] = useState('');
+  const [filterQuery, setFilterQuery] = useState('');
+  useEffect(() => {
+    const handle = window.setTimeout(() => setFilterQuery(query), 150);
+    return () => window.clearTimeout(handle);
+  }, [query]);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [dropAction, setDropAction] = useState<{ source: string; target: string; canFf?: boolean } | null>(null);
@@ -180,6 +192,7 @@ export function Sidebar() {
   const [subMenu, setSubMenu] = useState<{ x: number; y: number; sub: SubmoduleInfo } | null>(null);
   const [remoteMenu, setRemoteMenu] = useState<{ x: number; y: number; remote: RemoteInfo } | null>(null);
   const [editRemote, setEditRemote] = useState<{ original: string; name: string; url: string } | null>(null);
+  const [savingRemote, setSavingRemote] = useState(false);
 
   const openSubmodule = (sub: SubmoduleInfo) => {
     void useRepo
@@ -285,7 +298,7 @@ export function Sidebar() {
     );
   };
 
-  const q = query.trim().toLowerCase();
+  const q = filterQuery.trim().toLowerCase();
   const locals = useMemo(
     () => branches.filter((b) => !b.isRemote && (!q || b.name.toLowerCase().includes(q))),
     [branches, q],
@@ -309,6 +322,23 @@ export function Sidebar() {
 
   const localTree = useMemo(() => buildBranchTree(locals), [locals]);
   const remoteTree = useMemo(() => buildBranchTree(remoteBranches), [remoteBranches]);
+
+  const noFilterMatches =
+    q !== '' &&
+    locals.length === 0 &&
+    remoteBranches.length === 0 &&
+    filteredTags.length === 0 &&
+    stashes.length === 0;
+  const hasRemoteBranches = branches.some((b) => b.isRemote);
+
+  const submitEditRemote = async () => {
+    const edit = editRemote;
+    if (!edit || !edit.name.trim() || !edit.url.trim() || savingRemote) return;
+    setSavingRemote(true);
+    await act(`Update remote ${edit.original}`, () => ipc.remoteEdit(path, edit.original, edit.name, edit.url));
+    setSavingRemote(false);
+    setEditRemote(null);
+  };
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -349,7 +379,7 @@ export function Sidebar() {
         if (source && source !== branch.name) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'link';
-          setDropTarget(branch.name);
+          setDropTarget((t) => (t === branch.name ? t : branch.name));
         }
       }}
       onDragLeave={() => setDropTarget((t) => (t === branch.name ? null : t))}
@@ -361,11 +391,14 @@ export function Sidebar() {
         if (source && source !== branch.name) {
           const target = branch.name;
           setDropAction({ source, target });
-          void ipc.mergeCanFastForward(path, target, source).then((canFf) => {
-            setDropAction((cur) =>
-              cur && cur.source === source && cur.target === target ? { ...cur, canFf } : cur,
-            );
-          });
+          void ipc
+            .mergeCanFastForward(path, target, source)
+            .then((canFf) => {
+              setDropAction((cur) =>
+                cur && cur.source === source && cur.target === target ? { ...cur, canFf } : cur,
+              );
+            })
+            .catch(() => undefined);
         }
       }}
       onContextMenu={(e) => {
@@ -389,14 +422,14 @@ export function Sidebar() {
         title={`${branch.name} — click to filter graph, double-click to checkout`}
       >
         <HeadMark active={branch.isHead} />
-        <span className="truncate">{label}</span>
+        <span className="min-w-0 truncate">{label}</span>
         {branch.ahead > 0 && <Badge tone="primary">↑{capCount(branch.ahead)}</Badge>}
         {branch.behind > 0 && <Badge tone="info">↓{capCount(branch.behind)}</Badge>}
       </button>
       <Button
         variant="ghost"
         size="icon-sm"
-        className="shrink-0 opacity-0 group-hover:opacity-100"
+        className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
         aria-label={`${branch.name} actions`}
         onClick={(e) => {
           e.stopPropagation();
@@ -439,12 +472,12 @@ export function Sidebar() {
         title={`${branch.name} — double-click to checkout`}
       >
         <HeadMark active={false} />
-        <span className="truncate">{label}</span>
+        <span className="min-w-0 truncate">{label}</span>
       </button>
       <Button
         variant="ghost"
         size="icon-sm"
-        className="shrink-0 opacity-0 group-hover:opacity-100"
+        className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
         aria-label={`${branch.name} actions`}
         onClick={(e) => {
           e.stopPropagation();
@@ -481,7 +514,7 @@ export function Sidebar() {
             ) : (
               <Folder className="size-3.5 shrink-0 text-faint" />
             )}
-            <span className="truncate">{node.key}</span>
+            <span className="min-w-0 truncate">{node.key}</span>
             <span className="text-[10px] text-faint">{leafCount(node)}</span>
           </button>
           {expanded && renderTree(node.children, depth + 1, kind)}
@@ -509,14 +542,27 @@ export function Sidebar() {
           title="Branches"
           count={locals.length}
           action={
-            <Button variant="ghost" size="icon-sm" aria-label="New branch" onClick={() => openDialog('createBranch')}>
-              <Plus className="size-3.5" />
-            </Button>
+            <Hint label="New branch">
+              <Button variant="ghost" size="icon-sm" aria-label="New branch" onClick={() => openDialog('createBranch')}>
+                <Plus className="size-3.5" />
+              </Button>
+            </Hint>
           }
         >
+          {repoRefreshing && locals.length === 0 && (
+            <div className="flex flex-col gap-1.5 py-1 pl-7 pr-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-4 animate-pulse rounded bg-surface-raised" />
+              ))}
+            </div>
+          )}
           {q
-            ? locals.map((branch) => renderLocalBranch(branch, branch.name, 0))
+            ? locals.slice(0, FLAT_FILTER_CAP).map((branch) => renderLocalBranch(branch, branch.name, 0))
             : renderTree(localTree, 0, 'local')}
+          {q && locals.length > FLAT_FILTER_CAP && (
+            <div className="px-2 py-1 pl-7 text-xs text-faint">+{locals.length - FLAT_FILTER_CAP} more…</div>
+          )}
+          {noFilterMatches && <div className="px-2 py-1 pl-7 text-xs text-faint">No refs match the filter.</div>}
         </Section>
 
         {forgeRemote && showPullRequests && forgeRepoPath === repo.path && (
@@ -526,22 +572,26 @@ export function Sidebar() {
             count={filteredPrs.length}
             action={
               <span className="flex items-center">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Refresh pull requests"
-                  onClick={() => void useForge.getState().load(true)}
-                >
-                  <RefreshCw className={cn('size-3.5', forgeLoading && 'animate-spin')} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Create pull request"
-                  onClick={() => openDialog('createPullRequest')}
-                >
-                  <Plus className="size-3.5" />
-                </Button>
+                <Hint label="Refresh pull requests">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Refresh pull requests"
+                    onClick={() => void useForge.getState().load(true)}
+                  >
+                    <RefreshCw className={cn('size-3.5', forgeLoading && 'animate-spin')} />
+                  </Button>
+                </Hint>
+                <Hint label="Create pull request">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Create pull request"
+                    onClick={() => openDialog('createPullRequest')}
+                  >
+                    <Plus className="size-3.5" />
+                  </Button>
+                </Hint>
               </span>
             }
           >
@@ -591,7 +641,7 @@ export function Sidebar() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="shrink-0 opacity-0 group-hover:opacity-100"
+                      className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
                       aria-label={`Pull request #${pr.number} actions`}
                     >
                       <MoreHorizontal className="size-3.5" />
@@ -623,9 +673,15 @@ export function Sidebar() {
         )}
 
         <Section icon={<Cloud className="size-3.5" />} title="Remotes" count={remoteBranches.length} defaultOpen={false}>
+          {remotes.length === 0 && !hasRemoteBranches && !repoRefreshing && (
+            <div className="px-2 py-1 pl-7 text-xs text-faint">No remotes yet.</div>
+          )}
           {q
-            ? remoteBranches.map((branch) => renderRemoteBranch(branch, branch.name, 0))
+            ? remoteBranches.slice(0, FLAT_FILTER_CAP).map((branch) => renderRemoteBranch(branch, branch.name, 0))
             : renderTree(remoteTree, 0, 'remote')}
+          {q && remoteBranches.length > FLAT_FILTER_CAP && (
+            <div className="px-2 py-1 pl-7 text-xs text-faint">+{remoteBranches.length - FLAT_FILTER_CAP} more…</div>
+          )}
           {remotes.map((r) => (
             <div
               key={r.name}
@@ -641,7 +697,7 @@ export function Sidebar() {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="shrink-0 opacity-0 group-hover:opacity-100"
+                className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
                 aria-label={`Remote ${r.name} actions`}
                 onClick={(e) => setRemoteMenu({ x: e.clientX, y: e.clientY, remote: r })}
               >
@@ -657,11 +713,16 @@ export function Sidebar() {
           count={filteredTags.length}
           defaultOpen={false}
           action={
-            <Button variant="ghost" size="icon-sm" aria-label="New tag" onClick={() => openDialog('createTag')}>
-              <Plus className="size-3.5" />
-            </Button>
+            <Hint label="New tag">
+              <Button variant="ghost" size="icon-sm" aria-label="New tag" onClick={() => openDialog('createTag')}>
+                <Plus className="size-3.5" />
+              </Button>
+            </Hint>
           }
         >
+          {tags.length === 0 && !repoRefreshing && (
+            <div className="px-2 py-1 pl-7 text-xs text-faint">No tags yet.</div>
+          )}
           {filteredTags.map((tag) => (
             <div key={tag.name} className="group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised">
               <span className="min-w-0 flex-1 truncate" title={tag.message ?? tag.name}>
@@ -669,7 +730,7 @@ export function Sidebar() {
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-0 group-hover:opacity-100" aria-label={`${tag.name} actions`}>
+                  <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100" aria-label={`${tag.name} actions`}>
                     <MoreHorizontal className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -698,11 +759,16 @@ export function Sidebar() {
           count={stashes.length}
           defaultOpen={stashes.length > 0}
           action={
-            <Button variant="ghost" size="icon-sm" aria-label="New stash" onClick={() => openDialog('createStash')}>
-              <Plus className="size-3.5" />
-            </Button>
+            <Hint label="New stash">
+              <Button variant="ghost" size="icon-sm" aria-label="New stash" onClick={() => openDialog('createStash')}>
+                <Plus className="size-3.5" />
+              </Button>
+            </Hint>
           }
         >
+          {stashes.length === 0 && !repoRefreshing && (
+            <div className="px-2 py-1 pl-7 text-xs text-faint">Nothing stashed.</div>
+          )}
           {stashes.map((stash) => (
             <div
               key={stash.oid}
@@ -714,7 +780,7 @@ export function Sidebar() {
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-0 group-hover:opacity-100" aria-label="Stash actions">
+                  <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100" aria-label="Stash actions">
                     <MoreHorizontal className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -753,7 +819,7 @@ export function Sidebar() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="shrink-0 opacity-0 group-hover:opacity-100"
+                    className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
                     aria-label={`Open ${sub.name}`}
                     onClick={() => openSubmodule(sub)}
                   >
@@ -764,7 +830,7 @@ export function Sidebar() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="shrink-0 opacity-0 group-hover:opacity-100"
+                    className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
                     aria-label={`Update ${sub.name}`}
                     onClick={() => void act(`Update ${sub.name}`, () => ipc.submoduleUpdate(path, sub.name))}
                   >
@@ -865,6 +931,9 @@ export function Sidebar() {
               <Input
                 value={editRemote?.name ?? ''}
                 onChange={(e) => setEditRemote((s) => (s ? { ...s, name: e.target.value } : s))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void submitEditRemote();
+                }}
                 placeholder="origin"
                 autoFocus
               />
@@ -874,6 +943,9 @@ export function Sidebar() {
               <Input
                 value={editRemote?.url ?? ''}
                 onChange={(e) => setEditRemote((s) => (s ? { ...s, url: e.target.value } : s))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void submitEditRemote();
+                }}
                 placeholder="https://github.com/user/repo.git"
                 className="font-mono"
               />
@@ -884,15 +956,8 @@ export function Sidebar() {
               Cancel
             </Button>
             <Button
-              disabled={!editRemote?.name.trim() || !editRemote?.url.trim()}
-              onClick={() => {
-                const edit = editRemote;
-                if (!edit) return;
-                setEditRemote(null);
-                void act(`Update remote ${edit.original}`, () =>
-                  ipc.remoteEdit(path, edit.original, edit.name, edit.url),
-                );
-              }}
+              disabled={savingRemote || !editRemote?.name.trim() || !editRemote?.url.trim()}
+              onClick={() => void submitEditRemote()}
             >
               Save changes
             </Button>

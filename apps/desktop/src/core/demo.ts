@@ -2,6 +2,7 @@ import type {
   BranchInfo,
   CliAgentInfo,
   CliRunResult,
+  CommitFileInfo,
   CommitInfo,
   FileDiff,
   HistoryPage,
@@ -299,6 +300,18 @@ export function demoFileDiffFor(path: string): FileDiff {
 
 export function demoCommitDiff(): FileDiff[] {
   return [demoFileDiff];
+}
+
+export function demoCommitFiles(): CommitFileInfo[] {
+  return demoCommitDiff().map((diff) => ({
+    path: diff.path,
+    oldPath: diff.oldPath,
+    status: diff.status,
+    isBinary: diff.isBinary,
+    isImage: diff.isImage,
+    additions: diff.additions,
+    deletions: diff.deletions,
+  }));
 }
 
 export const demoConflictContent = `import { render } from './renderer';

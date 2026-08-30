@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { AnimatePresence, MotionConfig } from 'framer-motion';
 import { Toaster } from 'sonner';
-import { TooltipProvider } from '@angkorgit/design-system';
+import { Spinner, TooltipProvider } from '@angkorgit/design-system';
 import { SplashScreen } from './SplashScreen';
 import { ConfirmHost } from '@/components/confirm';
 import { ProfilePromptHost } from '@/components/profilePrompt';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WelcomePage } from '@/features/repository/WelcomePage';
-import { RepositoryPage } from '@/features/repository/RepositoryPage';
+
+const RepositoryPage = lazy(() =>
+  import('@/features/repository/RepositoryPage').then((m) => ({ default: m.RepositoryPage })),
+);
 import { useRepo } from '@/features/repository/store';
 import { applyTheme, themeBase, useSettings } from '@/features/settings/store';
 import { useShortcuts } from '@/shared/useShortcuts';
@@ -31,35 +34,57 @@ function Shell() {
   useShortcuts(zoomShortcuts);
 
   useEffect(() => {
-    void loadRecents();
-    const timer = setTimeout(() => {
+    const splashStart = Date.now();
+    const splashFloor = useSettings.getState().reduceMotion ? 0 : 600;
+    let finished = false;
+    let readyTimer: number | undefined;
+    const finishSplash = () => {
+      if (finished) return;
+      finished = true;
       setSplash(false);
       navigate('/welcome', { replace: true });
-    }, 1600);
+    };
+    const splashFallback = window.setTimeout(finishSplash, 1600);
+    void loadRecents()
+      .catch(() => undefined)
+      .finally(() => {
+        readyTimer = window.setTimeout(
+          finishSplash,
+          Math.max(0, splashFloor - (Date.now() - splashStart)),
+        );
+      });
     const updateTimer = setTimeout(() => {
       void import('@/features/updater/check').then(({ checkForUpdates }) =>
         checkForUpdates({ silent: true }),
       );
     }, 5000);
     return () => {
-      clearTimeout(timer);
+      clearTimeout(splashFallback);
+      if (readyTimer !== undefined) clearTimeout(readyTimer);
       clearTimeout(updateTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <AnimatePresence mode="wait">
-      {splash ? (
-        <SplashScreen key="splash" />
-      ) : (
-        <Routes key="app">
-          <Route path="/welcome" element={<WelcomePage />} />
-          <Route path="/repo" element={<RepositoryPage />} />
-          <Route path="*" element={<WelcomePage />} />
-        </Routes>
+    <>
+      {!splash && (
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center bg-background">
+              <Spinner className="size-5" />
+            </div>
+          }
+        >
+          <Routes>
+            <Route path="/welcome" element={<WelcomePage />} />
+            <Route path="/repo" element={<RepositoryPage />} />
+            <Route path="*" element={<WelcomePage />} />
+          </Routes>
+        </Suspense>
       )}
-    </AnimatePresence>
+      <AnimatePresence>{splash && <SplashScreen key="splash" />}</AnimatePresence>
+    </>
   );
 }
 

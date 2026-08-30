@@ -1,35 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import { Button } from '@angkorgit/design-system';
+import { Button, Hint } from '@angkorgit/design-system';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { ipc, isTauri, listen } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
-
-interface TerminalSession {
-  terminal: Terminal;
-  fit: FitAddon;
-  container: HTMLDivElement;
-  termId: number | null;
-  unlisteners: Array<() => void>;
-  killed: boolean;
-  exited: boolean;
-}
-
-const sessions = new Map<string, TerminalSession>();
-
-export function killTerminalSession(path: string): void {
-  const session = sessions.get(path);
-  if (!session) return;
-  sessions.delete(path);
-  session.killed = true;
-  session.unlisteners.forEach((fn) => fn());
-  if (session.termId !== null) void ipc.termKill(session.termId);
-  session.terminal.dispose();
-  session.container.remove();
-}
+import { killTerminalSession, sessions, type TerminalSession } from './sessions';
 
 const terminalTheme = () =>
   document.documentElement.classList.contains('dark')
@@ -44,6 +22,7 @@ function newSession(): TerminalSession {
     fontFamily: "'JetBrains Mono', monospace",
     fontSize: 12,
     cursorBlink: true,
+    scrollback: 5000,
     theme: terminalTheme(),
   });
   const fit = new FitAddon();
@@ -72,31 +51,39 @@ function spawnShell(session: TerminalSession, repoPath: string): void {
     return;
   }
   void (async () => {
-    const id = await ipc.termCreate(repoPath, terminal.cols, terminal.rows);
-    if (session.killed) {
-      void ipc.termKill(id);
-      return;
-    }
-    session.termId = id;
-    const dataUnlisten = await listen(`term-data-${id}`, (payload) => {
-      terminal.write((payload as { data: string }).data);
-    });
-    if (session.killed) {
-      dataUnlisten();
-      return;
-    }
-    session.unlisteners.push(dataUnlisten);
-    const exitUnlisten = await listen(`term-exit-${id}`, () => {
+    try {
+      const id = await ipc.termCreate(repoPath, terminal.cols, terminal.rows);
+      if (session.killed) {
+        void ipc.termKill(id);
+        return;
+      }
+      session.termId = id;
+      const dataUnlisten = await listen(`term-data-${id}`, (payload) => {
+        terminal.write((payload as { data: string }).data);
+      });
+      if (session.killed) {
+        dataUnlisten();
+        return;
+      }
+      session.unlisteners.push(dataUnlisten);
+      const exitUnlisten = await listen(`term-exit-${id}`, () => {
+        session.exited = true;
+        terminal.writeln('\r\n[process exited]');
+      });
+      if (session.killed) {
+        exitUnlisten();
+        return;
+      }
+      session.unlisteners.push(exitUnlisten);
+      terminal.onData((data) => void ipc.termWrite(id, data));
+      terminal.onResize(({ cols, rows }) => void ipc.termResize(id, cols, rows));
+    } catch (error) {
+      if (session.killed) return;
       session.exited = true;
-      terminal.writeln('\r\n[process exited]');
-    });
-    if (session.killed) {
-      exitUnlisten();
-      return;
+      terminal.writeln(
+        `\r\n[could not start shell: ${(error as { message?: string }).message ?? error}]`,
+      );
     }
-    session.unlisteners.push(exitUnlisten);
-    terminal.onData((data) => void ipc.termWrite(id, data));
-    terminal.onResize(({ cols, rows }) => void ipc.termResize(id, cols, rows));
   })();
 }
 
@@ -144,10 +131,12 @@ export function TerminalPanel() {
     <div className="flex h-full flex-col bg-surface">
       <div className="flex h-7 shrink-0 items-center border-b border-border-subtle px-3">
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Terminal</span>
-        <span className="ml-2 truncate font-mono text-[10px] text-faint">{repoPath}</span>
-        <Button variant="ghost" size="icon-sm" className="ml-auto" aria-label="Close terminal" onClick={toggleTerminal}>
-          <X className="size-3" />
-        </Button>
+        <span className="ml-2 min-w-0 flex-1 truncate font-mono text-[10px] text-faint">{repoPath}</span>
+        <Hint label="Close terminal">
+          <Button variant="ghost" size="icon-sm" className="ml-auto shrink-0" aria-label="Close terminal" onClick={toggleTerminal}>
+            <X className="size-3" />
+          </Button>
+        </Hint>
       </div>
       <div ref={hostRef} className="terminal-host min-h-0 flex-1" />
     </div>

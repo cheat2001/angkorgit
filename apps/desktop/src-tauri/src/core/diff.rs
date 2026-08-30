@@ -3,7 +3,7 @@ use git2::{Delta, Diff, DiffOptions, Patch, Repository};
 
 use crate::error::{AppError, AppResult};
 
-use super::types::{DiffHunk, DiffLine, FileDiff};
+use super::types::{CommitFileInfo, DiffHunk, DiffLine, FileDiff};
 
 const IMAGE_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg", "avif",
@@ -122,15 +122,7 @@ fn workdir_base64(repo: &Repository, path: &str) -> Option<String> {
         .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
-fn file_diff_from(
-    repo: &Repository,
-    diff: &Diff,
-    delta_index: usize,
-    workdir_new: bool,
-) -> AppResult<FileDiff> {
-    let delta = diff
-        .get_delta(delta_index)
-        .ok_or_else(|| AppError::other("delta out of range"))?;
+fn delta_summary(delta: &git2::DiffDelta) -> (String, Option<String>, String) {
     let new_path = delta
         .new_file()
         .path()
@@ -141,7 +133,6 @@ fn file_diff_from(
         .path()
         .map(|p| p.to_string_lossy().to_string())
         .filter(|p| *p != new_path && delta.status() == Delta::Renamed);
-
     let status = match delta.status() {
         Delta::Added | Delta::Copied | Delta::Untracked => "new",
         Delta::Deleted => "deleted",
@@ -149,6 +140,19 @@ fn file_diff_from(
         _ => "modified",
     }
     .to_string();
+    (new_path, old_path, status)
+}
+
+fn file_diff_from(
+    repo: &Repository,
+    diff: &Diff,
+    delta_index: usize,
+    workdir_new: bool,
+) -> AppResult<FileDiff> {
+    let delta = diff
+        .get_delta(delta_index)
+        .ok_or_else(|| AppError::other("delta out of range"))?;
+    let (new_path, old_path, status) = delta_summary(&delta);
 
     let is_binary = delta.flags().is_binary();
     let is_image = is_image_path(&new_path);
@@ -213,24 +217,110 @@ pub fn file_diff(path: &str, file: &str, staged: bool, context_lines: u32) -> Ap
     file_diff_from(&repo, &diff, 0, !staged)
 }
 
-pub fn commit_diff(path: &str, oid: &str, context_lines: u32) -> AppResult<Vec<FileDiff>> {
-    let repo = super::repo::open(path)?;
+fn commit_tree_diff<'a>(
+    repo: &'a Repository,
+    oid: &str,
+    file: Option<&str>,
+    old_path: Option<&str>,
+    context_lines: u32,
+) -> AppResult<Diff<'a>> {
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
     let tree = commit.tree()?;
     let parent_tree = commit.parent(0).ok().map(|p| p.tree()).transpose()?;
 
-    let mut opts = base_opts(None, context_lines);
+    let mut opts = base_opts(file, context_lines);
+    if let Some(old) = old_path {
+        opts.pathspec(old);
+    }
     let mut diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
     let mut find_opts = git2::DiffFindOptions::new();
     find_opts.renames(true);
     diff.find_similar(Some(&mut find_opts))?;
+    Ok(diff)
+}
 
+pub fn commit_diff(path: &str, oid: &str, context_lines: u32) -> AppResult<Vec<FileDiff>> {
+    let repo = super::repo::open(path)?;
+    let diff = commit_tree_diff(&repo, oid, None, None, context_lines)?;
     let count = diff.deltas().len();
     let mut result = Vec::with_capacity(count);
     for i in 0..count {
         result.push(file_diff_from(&repo, &diff, i, false)?);
     }
     Ok(result)
+}
+
+pub fn commit_files(path: &str, oid: &str) -> AppResult<Vec<CommitFileInfo>> {
+    let repo = super::repo::open(path)?;
+    let diff = commit_tree_diff(&repo, oid, None, None, 0)?;
+    let count = diff.deltas().len();
+    let mut result = Vec::with_capacity(count);
+    for i in 0..count {
+        let delta = diff
+            .get_delta(i)
+            .ok_or_else(|| AppError::other("delta out of range"))?;
+        let (new_path, old_path, status) = delta_summary(&delta);
+        let is_binary = delta.flags().is_binary();
+        let is_image = is_image_path(&new_path);
+        let (additions, deletions) = if is_binary || is_image {
+            (0, 0)
+        } else {
+            match Patch::from_diff(&diff, i)? {
+                Some(patch) => {
+                    let (_, adds, dels) = patch.line_stats()?;
+                    (adds as u32, dels as u32)
+                }
+                None => (0, 0),
+            }
+        };
+        result.push(CommitFileInfo {
+            path: new_path,
+            old_path,
+            status,
+            is_binary,
+            is_image,
+            additions,
+            deletions,
+        });
+    }
+    Ok(result)
+}
+
+pub fn commit_file_diff(
+    path: &str,
+    oid: &str,
+    file: &str,
+    old_path: Option<&str>,
+    context_lines: u32,
+) -> AppResult<FileDiff> {
+    let repo = super::repo::open(path)?;
+    let diff = commit_tree_diff(&repo, oid, Some(file), old_path, context_lines)?;
+    let count = diff.deltas().len();
+    for i in 0..count {
+        let delta = diff
+            .get_delta(i)
+            .ok_or_else(|| AppError::other("delta out of range"))?;
+        let matches_file = delta
+            .new_file()
+            .path()
+            .map(|p| p.to_string_lossy() == file)
+            .unwrap_or(false);
+        if matches_file {
+            return file_diff_from(&repo, &diff, i, false);
+        }
+    }
+    Ok(FileDiff {
+        path: file.to_string(),
+        old_path: None,
+        status: "modified".into(),
+        hunks: Vec::new(),
+        is_binary: false,
+        is_image: is_image_path(file),
+        old_image: None,
+        new_image: None,
+        additions: 0,
+        deletions: 0,
+    })
 }
 
 pub fn staged_patch_text(path: &str) -> AppResult<String> {

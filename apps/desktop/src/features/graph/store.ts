@@ -19,6 +19,7 @@ interface GraphState {
   maxLane: number;
   hasMore: boolean;
   loading: boolean;
+  error: string | null;
   filters: GraphFilters;
   selectedOid: string | null;
   selectedOids: string[];
@@ -38,12 +39,16 @@ interface GraphState {
 
 let requestSeq = 0;
 
+const errorText = (error: unknown) =>
+  (error as { message?: string } | undefined)?.message ?? String(error);
+
 export const useGraph = create<GraphState>((set, get) => ({
   commits: [],
   rows: [],
   maxLane: 0,
   hasMore: true,
   loading: false,
+  error: null,
   filters: { search: '', author: '', branch: '' },
   selectedOid: null,
   selectedOids: [],
@@ -52,12 +57,14 @@ export const useGraph = create<GraphState>((set, get) => ({
   pendingScrollIndex: null,
 
   reload: async (path: string) => {
-    if (get().lastPath !== path) {
+    const samePath = get().lastPath === path;
+    if (!samePath) {
       set({
         commits: [],
         rows: [],
         maxLane: 0,
         hasMore: true,
+        error: null,
         selectedOid: null,
         selectedOids: [],
         filters: { search: '', author: '', branch: '' },
@@ -67,12 +74,14 @@ export const useGraph = create<GraphState>((set, get) => ({
       });
     }
     const { filters } = get();
+    const filterActive = Boolean(filters.search || filters.author || filters.branch);
+    const loadedCount = samePath && !filterActive ? get().commits.length : 0;
     const seq = ++requestSeq;
     set({ loading: true });
     try {
       const page = await ipc.history(path, {
         skip: 0,
-        limit: PAGE_SIZE,
+        limit: loadedCount > PAGE_SIZE ? Math.max(PAGE_SIZE, loadedCount) : PAGE_SIZE,
         search: filters.search || undefined,
         author: filters.author || undefined,
         branch: filters.branch || undefined,
@@ -88,9 +97,10 @@ export const useGraph = create<GraphState>((set, get) => ({
         hasMore: page.hasMore,
         layout,
         loading: false,
+        error: null,
       });
-    } catch {
-      if (seq === requestSeq) set({ loading: false });
+    } catch (error) {
+      if (seq === requestSeq) set({ loading: false, error: errorText(error) });
     }
   },
 
@@ -118,9 +128,10 @@ export const useGraph = create<GraphState>((set, get) => ({
         maxLane: flat ? 0 : layout.maxLane,
         hasMore: page.hasMore,
         loading: false,
+        error: null,
       });
-    } catch {
-      if (seq === requestSeq) set({ loading: false });
+    } catch (error) {
+      if (seq === requestSeq) set({ loading: false, error: errorText(error) });
     }
   },
 
@@ -142,12 +153,29 @@ export const useGraph = create<GraphState>((set, get) => ({
       if (get().lastPath !== path) return null;
     }
 
-    while (get().lastPath === path && get().hasMore && get().commits.length <= target.index) {
-      const before = get().commits.length;
-      await get().loadMore(path);
-      if (get().commits.length === before) {
-        if (!get().loading) break;
-        await new Promise((resolve) => setTimeout(resolve, 50));
+    const loaded = get().commits;
+    if (get().hasMore && loaded.length <= target.index) {
+      const layout = get().layout;
+      const seq = ++requestSeq;
+      set({ loading: true });
+      try {
+        const page = await ipc.history(path, {
+          skip: loaded.length,
+          limit: target.index - loaded.length + PAGE_SIZE,
+        });
+        if (seq !== requestSeq || get().lastPath !== path || get().layout !== layout) return null;
+        layout.add(page.commits);
+        set({
+          commits: [...loaded, ...page.commits],
+          rows: [...layout.getRows()],
+          maxLane: layout.maxLane,
+          hasMore: page.hasMore,
+          loading: false,
+          error: null,
+        });
+      } catch {
+        if (seq === requestSeq) set({ loading: false });
+        return null;
       }
     }
     if (get().lastPath !== path) return null;

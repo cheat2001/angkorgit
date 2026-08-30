@@ -18,6 +18,7 @@ export interface CenterDiffTarget {
   path: string;
   staged?: boolean;
   oid?: string;
+  oldPath?: string | null;
 }
 
 export interface InteractiveRebasePreset {
@@ -72,6 +73,21 @@ interface UiState {
 
 export const sidebarVisible = (s: UiState) => s.sidebarOpen && !s.sidebarHiddenForDiff;
 
+let dialogReturnFocus: HTMLElement | null = null;
+
+const captureDialogFocus = () => {
+  const active = document.activeElement;
+  dialogReturnFocus = active instanceof HTMLElement ? active : null;
+};
+
+const restoreDialogFocus = () => {
+  const target = dialogReturnFocus;
+  dialogReturnFocus = null;
+  if (target && document.contains(target)) {
+    requestAnimationFrame(() => target.focus());
+  }
+};
+
 export const useUi = create<UiState>()(
   persist(
     (set) => ({
@@ -101,8 +117,14 @@ export const useUi = create<UiState>()(
     ),
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
-  openDialog: (dialog, context = null) => set({ dialog, dialogContext: context }),
-  closeDialog: () => set({ dialog: null, dialogContext: null }),
+  openDialog: (dialog, context = null) => {
+    captureDialogFocus();
+    set({ dialog, dialogContext: context });
+  },
+  closeDialog: () => {
+    set({ dialog: null, dialogContext: null });
+    restoreDialogFocus();
+  },
   setDiffView: (diffView) => set({ diffView }),
   setWordDiff: (wordDiff) => set({ wordDiff }),
   setFullFileDiff: (fullFileDiff) => set({ fullFileDiff }),

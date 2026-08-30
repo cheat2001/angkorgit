@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { Columns2, Copy, FileText, History, Rows3, TextSelect, WholeWord, WrapText, X } from 'lucide-react';
@@ -27,21 +28,55 @@ import { useDiffSelectAll } from '@/features/diff/diffCopy';
 import type { LineMenuInfo } from '@/features/diff/VirtualDiff';
 
 const HISTORY_PAGE = 500;
+const COMMIT_ROW_ESTIMATE = 54;
+
+function VirtualCommitList({
+  commits,
+  scrollRef,
+  renderRow,
+}: {
+  commits: CommitInfo[];
+  scrollRef: React.RefObject<HTMLDivElement>;
+  renderRow: (commit: CommitInfo) => React.ReactNode;
+}) {
+  const virtualizer = useVirtualizer({
+    count: commits.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => COMMIT_ROW_ESTIMATE,
+    getItemKey: (index) => commits[index].oid,
+    overscan: 12,
+  });
+  return (
+    <ul className="relative" style={{ height: virtualizer.getTotalSize() }}>
+      {virtualizer.getVirtualItems().map((item) => (
+        <li
+          key={item.key}
+          ref={virtualizer.measureElement}
+          data-index={item.index}
+          className="absolute left-0 top-0 w-full"
+          style={{ transform: `translateY(${item.start}px)` }}
+        >
+          {renderRow(commits[item.index])}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function FileHistoryPanel({ file }: { file: string }) {
   const repo = useRepo((s) => s.repo);
-  const {
-    closeFileHistory,
-    diffView,
-    setDiffView,
-    wordDiff,
-    setWordDiff,
-    wrapLines,
-    setWrapLines,
-    fullFileDiff,
-    setFullFileDiff,
-  } = useUi();
+  const closeFileHistory = useUi((s) => s.closeFileHistory);
+  const diffView = useUi((s) => s.diffView);
+  const setDiffView = useUi((s) => s.setDiffView);
+  const wordDiff = useUi((s) => s.wordDiff);
+  const setWordDiff = useUi((s) => s.setWordDiff);
+  const wrapLines = useUi((s) => s.wrapLines);
+  const setWrapLines = useUi((s) => s.setWrapLines);
+  const fullFileDiff = useUi((s) => s.fullFileDiff);
+  const setFullFileDiff = useUi((s) => s.setFullFileDiff);
   const [commits, setCommits] = useState<CommitInfo[] | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyAttempt, setHistoryAttempt] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const historySeq = useRef(0);
@@ -49,6 +84,7 @@ export function FileHistoryPanel({ file }: { file: string }) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const listScrollRef = useRef<HTMLDivElement>(null);
   const textDiff = diff && !diff.isBinary && !diff.isImage ? diff : null;
   const { findBar, search } = useDiffFind(textDiff, scrollRef);
   const { selectAllOverlay, selectSide } = useDiffSelectAll(textDiff, scrollRef);
@@ -65,6 +101,7 @@ export function FileHistoryPanel({ file }: { file: string }) {
     if (!path) return;
     const seq = ++historySeq.current;
     setCommits(null);
+    setHistoryError(null);
     setSelected(null);
     setHasMore(false);
     setLoadingMore(false);
@@ -78,13 +115,12 @@ export function FileHistoryPanel({ file }: { file: string }) {
       })
       .catch((error) => {
         if (seq !== historySeq.current) return;
-        toast.error(`File history failed: ${(error as { message?: string }).message ?? error}`);
-        setCommits([]);
+        setHistoryError((error as { message?: string }).message ?? String(error));
       });
     return () => {
       historySeq.current++;
     };
-  }, [path, file]);
+  }, [path, file, historyAttempt]);
 
   const loadOlder = () => {
     if (!path || !commits || loadingMore) return;
@@ -220,8 +256,15 @@ export function FileHistoryPanel({ file }: { file: string }) {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="w-72 shrink-0 overflow-y-auto border-r border-border-subtle bg-surface">
-          {commits === null ? (
+        <div ref={listScrollRef} className="w-72 shrink-0 overflow-y-auto border-r border-border-subtle bg-surface">
+          {historyError ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
+              <p className="text-sm text-danger">Could not load file history: {historyError}</p>
+              <Button variant="ghost" size="sm" onClick={() => setHistoryAttempt((n) => n + 1)}>
+                Retry
+              </Button>
+            </div>
+          ) : commits === null ? (
             <div className="flex h-full items-center justify-center">
               <Spinner className="size-5" />
             </div>
@@ -230,9 +273,11 @@ export function FileHistoryPanel({ file }: { file: string }) {
               No commits touch this file on the current branch.
             </p>
           ) : (
-            <ul>
-              {commits.map((commit) => (
-                <li key={commit.oid}>
+            <>
+              <VirtualCommitList
+                commits={commits}
+                scrollRef={listScrollRef}
+                renderRow={(commit) => (
                   <button
                     type="button"
                     className={cn(
@@ -254,16 +299,16 @@ export function FileHistoryPanel({ file }: { file: string }) {
                       {commit.shortOid}
                     </Badge>
                   </button>
-                </li>
-              ))}
+                )}
+              />
               {hasMore && (
-                <li className="py-2 text-center">
+                <div className="py-2 text-center">
                   <Button variant="ghost" size="sm" disabled={loadingMore} onClick={loadOlder}>
                     {loadingMore ? <Spinner className="size-3.5" /> : 'Show older changes'}
                   </Button>
-                </li>
+                </div>
               )}
-            </ul>
+            </>
           )}
         </div>
 

@@ -185,6 +185,18 @@ pub struct FileDiff {
     pub deletions: u32,
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitFileInfo {
+    pub path: String,
+    pub old_path: Option<String>,
+    pub status: String,
+    pub is_binary: bool,
+    pub is_image: bool,
+    pub additions: u32,
+    pub deletions: u32,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConflictFile {

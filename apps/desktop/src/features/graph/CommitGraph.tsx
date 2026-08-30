@@ -5,6 +5,7 @@ import { toastOutcome } from '@/shared/toastOutcome';
 import { ArrowDownToLine, ArrowUpFromLine, Check, Combine, Copy, Filter, GitBranchPlus, GitMerge, ListOrdered, ListRestart, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
 import type { CommitInfo, RefInfo } from '@angkorgit/core';
 import {
+  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -41,7 +42,7 @@ interface RefMenuState {
 export function CommitGraph() {
   const repo = useRepo((s) => s.repo);
   const refresh = useRepo((s) => s.refresh);
-  const { rows, commits, maxLane, hasMore, loading, filters, selectedOid, selectedOids, pendingScrollIndex, loadMore, reload, setFilters, select, toggleSelect, rangeSelect, jumpTo, clearPendingScroll } =
+  const { rows, commits, maxLane, hasMore, loading, error, filters, selectedOid, selectedOids, pendingScrollIndex, loadMore, reload, setFilters, select, toggleSelect, rangeSelect, jumpTo, clearPendingScroll } =
     useGraph();
   const openDialog = useUi((s) => s.openDialog);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -66,10 +67,10 @@ export function CommitGraph() {
   const items = virtualizer.getVirtualItems();
   useEffect(() => {
     const last = items[items.length - 1];
-    if (last && last.index >= rows.length - 40 && hasMore && !loading && path) {
+    if (last && last.index >= rows.length - 40 && hasMore && !loading && !error && path) {
       void loadMore(path);
     }
-  }, [items, rows.length, hasMore, loading, path, loadMore]);
+  }, [items, rows.length, hasMore, loading, error, path, loadMore]);
 
   const runJump = useCallback(
     (rev: string) => {
@@ -293,9 +294,18 @@ export function CommitGraph() {
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" role="table" aria-label="Commits">
         <WipRow gutterWidth={gutterWidth} flat={flat} />
         {rows.length === 0 && !loading ? (
-          <div className="flex h-full items-center justify-center text-sm text-faint">
-            No commits found
-          </div>
+          error ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-danger">
+              <span className="[overflow-wrap:anywhere]">Could not load the history: {error}</span>
+              <Button variant="ghost" size="sm" onClick={() => void reload(path)}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-faint">
+              No commits found
+            </div>
+          )
         ) : (
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {items.map((item) => {
@@ -333,6 +343,14 @@ export function CommitGraph() {
                 </div>
               );
             })}
+          </div>
+        )}
+        {error && rows.length > 0 && !loading && (
+          <div className="flex items-center justify-center gap-2 px-3 py-2 text-xs text-danger">
+            <span className="[overflow-wrap:anywhere]">Could not load more commits: {error}</span>
+            <button className="shrink-0 underline underline-offset-2" onClick={() => void reload(path)}>
+              Retry
+            </button>
           </div>
         )}
       </div>

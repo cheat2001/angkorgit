@@ -1,12 +1,14 @@
 import { motion } from 'framer-motion';
 import { Logo, TemplePattern } from '@angkorgit/design-system';
+import { useSettings } from '@/features/settings/store';
 
 export function SplashScreen() {
+  const reduceMotion = useSettings((s) => s.reduceMotion);
   return (
     <motion.div
-      className="relative flex h-full flex-col items-center justify-center gap-6 bg-background"
+      className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background"
       initial={{ opacity: 1 }}
-      exit={{ opacity: 0, transition: { duration: 0.4, ease: 'easeInOut' } }}
+      exit={{ opacity: 0, transition: { duration: reduceMotion ? 0 : 0.4, ease: 'easeInOut' } }}
     >
       <TemplePattern className="[mask-image:radial-gradient(ellipse_at_center,transparent_35%,black_80%)]" />
       <motion.div

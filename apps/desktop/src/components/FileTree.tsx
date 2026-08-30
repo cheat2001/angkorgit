@@ -7,6 +7,7 @@ interface TreeFolder<T> {
   path: string;
   folders: TreeFolder<T>[];
   files: T[];
+  count: number;
 }
 
 function buildFileTree<T>(items: T[], pathOf: (item: T) => string): TreeFolder<T> {
@@ -44,20 +45,19 @@ function buildFileTree<T>(items: T[], pathOf: (item: T) => string): TreeFolder<T
       name = `${name}/${only.name}`;
       current = only;
     }
+    const folders = [...current.folders.values()]
+      .map(finalize)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const files = [...current.files].sort((a, b) => pathOf(a).localeCompare(pathOf(b)));
     return {
       name,
       path: current.path,
-      folders: [...current.folders.values()]
-        .map(finalize)
-        .sort((a, b) => a.name.localeCompare(b.name)),
-      files: [...current.files].sort((a, b) => pathOf(a).localeCompare(pathOf(b))),
+      folders,
+      files,
+      count: files.length + folders.reduce((sum, f) => sum + f.count, 0),
     };
   };
   return finalize(root);
-}
-
-function countTreeFiles<T>(folder: TreeFolder<T>): number {
-  return folder.files.length + folder.folders.reduce((sum, f) => sum + countTreeFiles(f), 0);
 }
 
 function TreeLevel<T>({
@@ -88,7 +88,7 @@ function TreeLevel<T>({
             />
             <Folder className="size-3 shrink-0" />
             <span className="min-w-0 flex-1 truncate text-left font-medium">{child.name}</span>
-            <span className="text-[10px] text-faint">{countTreeFiles(child)}</span>
+            <span className="text-[10px] text-faint">{child.count}</span>
           </button>
           {!collapsed.has(child.path) && (
             <TreeLevel

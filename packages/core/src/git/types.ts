@@ -138,6 +138,16 @@ export interface FileDiff {
   deletions: number;
 }
 
+export interface CommitFileInfo {
+  path: string;
+  oldPath: string | null;
+  status: 'new' | 'modified' | 'deleted' | 'renamed';
+  isBinary: boolean;
+  isImage: boolean;
+  additions: number;
+  deletions: number;
+}
+
 export interface ConflictFile {
   path: string;
   content: string;

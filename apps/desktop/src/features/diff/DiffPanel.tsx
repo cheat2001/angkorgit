@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Columns2, Copy, FileText, Minus, Plus, Rows3, TextSelect, Trash2, WholeWord, WrapText, X } from 'lucide-react';
-import type { FileDiff } from '@angkorgit/core';
+import type { CommitFileInfo, FileDiff } from '@angkorgit/core';
 import {
   Badge,
   Button,
@@ -45,6 +45,8 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const setWrapLines = useUi((s) => s.setWrapLines);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const loadedKey = useRef<string | null>(null);
   const requestSeq = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -60,7 +62,25 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
 
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
-  const [commitFiles, setCommitFiles] = useState<string[]>([]);
+  const [commitFileList, setCommitFileList] = useState<CommitFileInfo[]>([]);
+  const commitFiles = useMemo(() => commitFileList.map((f) => f.path), [commitFileList]);
+
+  useEffect(() => {
+    if (!path || !target.oid) {
+      setCommitFileList([]);
+      return;
+    }
+    let cancelled = false;
+    void ipc
+      .commitFiles(path, target.oid)
+      .then((files) => {
+        if (!cancelled) setCommitFileList(files);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [path, target.oid]);
 
   const workingSiblings = useMemo(
     () =>
@@ -79,7 +99,11 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     const next = siblings[fileIndex + direction];
     if (!next) return;
     if (target.oid) {
-      openCenterDiff({ path: next, oid: target.oid });
+      openCenterDiff({
+        path: next,
+        oid: target.oid,
+        oldPath: commitFileList.find((f) => f.path === next)?.oldPath ?? null,
+      });
     } else {
       const staged = target.staged ?? false;
       useUi.getState().selectFile({ path: next, staged });
@@ -87,12 +111,21 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     }
   };
 
-  useShortcuts([
-    { combo: '[', handler: () => goFile(-1), skipInInput: true },
-    { combo: ']', handler: () => goFile(1), skipInInput: true },
-    { combo: 'p', handler: () => jumpChange(-1), skipInInput: true },
-    { combo: 'n', handler: () => jumpChange(1), skipInInput: true },
-  ]);
+  const goFileRef = useRef(goFile);
+  goFileRef.current = goFile;
+  const jumpChangeRef = useRef<(direction: 1 | -1) => void>(() => {});
+
+  useShortcuts(
+    useMemo(
+      () => [
+        { combo: '[', handler: () => goFileRef.current(-1), skipInInput: true },
+        { combo: ']', handler: () => goFileRef.current(1), skipInInput: true },
+        { combo: 'p', handler: () => jumpChangeRef.current(-1), skipInInput: true },
+        { combo: 'n', handler: () => jumpChangeRef.current(1), skipInInput: true },
+      ],
+      [],
+    ),
+  );
 
   useEffect(() => {
     if (!isWorkingCopy || !status) return;
@@ -141,21 +174,36 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
           blocks[blocks.length - 1]);
     scrollToFraction(el, next.fraction);
   };
+  jumpChangeRef.current = jumpChange;
+
+  const statusEntry = isWorkingCopy
+    ? status?.files.find((f) => f.path === target.path)
+    : undefined;
+  const statusSignature = `${statusEntry?.staged ?? ''}|${statusEntry?.unstaged ?? ''}`;
 
   useEffect(() => {
     if (!path) return;
     let cancelled = false;
     const seq = ++requestSeq.current;
-    const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}|${fullFileDiff}`;
+    const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}|${fullFileDiff}|${reloadToken}`;
     if (loadedKey.current !== key) setLoading(true);
     const context = fullFileDiff ? 10_000_000 : undefined;
     const load = async (): Promise<FileDiff | null> => {
       if (target.oid) {
-        const diffs = await ipc.diffCommit(path, target.oid, context);
-        if (!cancelled && seq === requestSeq.current) {
-          setCommitFiles(diffs.map((d) => d.path));
-        }
-        return diffs.find((d) => d.path === target.path) ?? null;
+        const result = await ipc.commitFileDiff(
+          path,
+          target.oid,
+          target.path,
+          target.oldPath ?? null,
+          context,
+        );
+        const untouched =
+          result.hunks.length === 0 &&
+          result.additions === 0 &&
+          result.deletions === 0 &&
+          !result.isBinary &&
+          !result.isImage;
+        return untouched ? null : result;
       }
       return ipc.diffFile(path, target.path, target.staged ?? false, context);
     };
@@ -163,12 +211,13 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
       .then((result) => {
         if (!cancelled && seq === requestSeq.current) {
           setDiff(result);
+          setLoadError(null);
           loadedKey.current = key;
         }
       })
       .catch((error) => {
         if (!cancelled && seq === requestSeq.current) {
-          toast.error(`Could not load diff: ${(error as { message?: string }).message ?? error}`);
+          setLoadError(String((error as { message?: string }).message ?? error));
           setDiff(null);
           loadedKey.current = key;
         }
@@ -180,7 +229,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, target.path, target.oid, target.staged, fullFileDiff, isWorkingCopy ? status : null]);
+  }, [path, target.path, target.oid, target.staged, fullFileDiff, reloadToken, statusSignature]);
 
   const runStage = async (op: () => Promise<unknown>, label: string) => {
     try {
@@ -393,6 +442,15 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
           {loading ? (
             <div className="flex h-full items-center justify-center">
               <Spinner className="size-5" />
+            </div>
+          ) : loadError ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6">
+              <p className="max-w-md text-center text-sm text-danger [overflow-wrap:anywhere]">
+                Could not load the diff: {loadError}
+              </p>
+              <Button variant="ghost" size="sm" onClick={() => setReloadToken((t) => t + 1)}>
+                Retry
+              </Button>
             </div>
           ) : diff ? (
             <DiffViewer

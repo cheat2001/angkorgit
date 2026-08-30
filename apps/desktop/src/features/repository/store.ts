@@ -22,6 +22,8 @@ interface RepoState {
   conflicts: string[];
   recents: RecentRepository[];
   busy: string | null;
+  opening: string | null;
+  refreshing: boolean;
   profileId: string | null;
 
   loadRecents: () => Promise<void>;
@@ -48,6 +50,8 @@ export const useRepo = create<RepoState>((set, get) => ({
   conflicts: [],
   recents: [],
   busy: null,
+  opening: null,
+  refreshing: false,
   profileId: null,
 
   loadRecents: async () => {
@@ -57,16 +61,47 @@ export const useRepo = create<RepoState>((set, get) => ({
 
   open: async (path: string) => {
     const seq = ++openSeq;
-    const repo = await ipc.openRepository(path);
+    const previousPath = get().repo?.path;
+    set({ opening: path });
+    let repo: RepositoryInfo;
+    try {
+      repo = await ipc.openRepository(path);
+    } catch (error) {
+      if (seq === openSeq) set({ opening: null });
+      throw error;
+    }
     if (seq !== openSeq) return repo;
-    set({ repo, profileId: null });
-    void ipc.configGet(repo.path, 'angkorgit.profile').then((profileId) => {
-      if (seq === openSeq && get().repo?.path === repo.path) set({ profileId });
-    });
+    if (previousPath !== undefined && previousPath !== repo.path) {
+      set({
+        repo,
+        profileId: null,
+        opening: null,
+        refreshing: true,
+        status: null,
+        branches: [],
+        tags: [],
+        stashes: [],
+        remotes: [],
+        submodules: [],
+        conflicts: [],
+      });
+    } else {
+      set({ repo, profileId: null, opening: null, refreshing: true });
+    }
+    void ipc
+      .configGet(repo.path, 'angkorgit.profile')
+      .then((profileId) => {
+        if (seq === openSeq && get().repo?.path === repo.path) set({ profileId });
+      })
+      .catch(() => undefined);
     void import('@/features/ui/store').then(({ useUi }) =>
       useUi.getState().addRepoTab(repo.path),
     );
-    await get().refresh();
+    try {
+      await get().refresh();
+    } finally {
+      if (seq === openSeq) set({ refreshing: false });
+    }
     void get().loadRecents();
     return repo;
   },
@@ -81,6 +116,8 @@ export const useRepo = create<RepoState>((set, get) => ({
       remotes: [],
       submodules: [],
       conflicts: [],
+      opening: null,
+      refreshing: false,
       profileId: null,
     }),
 

@@ -4,7 +4,7 @@ import { Plus, X } from 'lucide-react';
 import { Button, Hint, cn } from '@angkorgit/design-system';
 import { pickDirectory } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
-import { killTerminalSession } from '@/features/terminal/TerminalPanel';
+import { killTerminalSession } from '@/features/terminal/sessions';
 import { useUi } from '@/features/ui/store';
 
 export function RepoTabs() {

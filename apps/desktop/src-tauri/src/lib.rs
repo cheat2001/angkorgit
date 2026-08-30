@@ -21,13 +21,15 @@ pub mod test_api {
     pub use crate::core::conflict::{
         list as conflict_list, read as conflict_read, resolve as conflict_resolve,
     };
-    pub use crate::core::diff::file_diff;
+    pub use crate::core::diff::{commit_file_diff, commit_files, file_diff};
     pub use crate::core::history::{file_history, list as history, position as history_position};
     pub use crate::core::misc::{
         stash_create, stash_list, stash_pop, tag_create, tag_delete, tag_list,
     };
     pub use crate::core::remote::checkout_remote_ref;
-    pub use crate::core::repo::{cleanup_state, info as repo_info, init, set_config, status};
+    pub use crate::core::repo::{
+        cleanup_state, info as repo_info, init, ref_fingerprint, set_config, status,
+    };
     pub use crate::core::stage::{
         discard_all, discard_line, stage_all, stage_file, stage_hunk, stage_line, unstage_all,
         unstage_file, unstage_hunk, unstage_line,
@@ -54,6 +56,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::repo_open,
             commands::repo_info,
+            commands::repo_ref_fingerprint,
             commands::repo_init,
             commands::repo_status,
             commands::state_cleanup,
@@ -123,6 +126,8 @@ pub fn run() {
             commands::submodule_update,
             commands::diff_file,
             commands::diff_commit,
+            commands::diff_commit_files,
+            commands::diff_commit_file,
             commands::staged_patch,
             commands::conflict_list,
             commands::conflict_read,

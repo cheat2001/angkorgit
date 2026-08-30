@@ -30,6 +30,11 @@ pub async fn repo_info(path: String) -> AppResult<RepositoryInfo> {
 }
 
 #[tauri::command]
+pub async fn repo_ref_fingerprint(path: String) -> AppResult<String> {
+    blocking(move || repo::ref_fingerprint(&path)).await
+}
+
+#[tauri::command]
 pub async fn repo_init(app: AppHandle, path: String) -> AppResult<RepositoryInfo> {
     let info = blocking(move || repo::init(&path)).await?;
     crate::state::recent_add(&app, &info.path)?;
@@ -521,6 +526,31 @@ pub async fn diff_commit(
     contextLines: Option<u32>,
 ) -> AppResult<Vec<FileDiff>> {
     blocking(move || diff::commit_diff(&path, &oid, contextLines.unwrap_or(3))).await
+}
+
+#[tauri::command]
+pub async fn diff_commit_files(path: String, oid: String) -> AppResult<Vec<CommitFileInfo>> {
+    blocking(move || diff::commit_files(&path, &oid)).await
+}
+
+#[tauri::command]
+pub async fn diff_commit_file(
+    path: String,
+    oid: String,
+    file: String,
+    oldPath: Option<String>,
+    contextLines: Option<u32>,
+) -> AppResult<FileDiff> {
+    blocking(move || {
+        diff::commit_file_diff(
+            &path,
+            &oid,
+            &file,
+            oldPath.as_deref(),
+            contextLines.unwrap_or(3),
+        )
+    })
+    .await
 }
 
 #[tauri::command]

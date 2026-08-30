@@ -3,6 +3,7 @@ import type {
   CliAgentInfo,
   CliRunRequest,
   CliRunResult,
+  CommitFileInfo,
   CommitInfo,
   ConflictFile,
   FileDiff,
@@ -20,7 +21,7 @@ import type {
   SubmoduleInfo,
   TagInfo,
 } from '@angkorgit/core';
-import * as demo from './demo';
+let demo = null as unknown as typeof import('./demo');
 
 export interface OpOutcome {
   status: 'ok' | 'conflicts' | 'up_to_date' | 'fast_forward';
@@ -58,6 +59,10 @@ export interface AccountCheckResult {
 
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+if (!isTauri()) {
+  demo = await import('./demo');
+}
 
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core');
@@ -98,6 +103,10 @@ export const ipc = {
   async repoInfo(path: string): Promise<RepositoryInfo> {
     if (!isTauri()) return demo.demoRepo;
     return invoke('repo_info', { path });
+  },
+  async refFingerprint(path: string): Promise<string> {
+    if (!isTauri()) return 'demo';
+    return invoke('repo_ref_fingerprint', { path });
   },
   async initRepository(path: string): Promise<RepositoryInfo> {
     if (!isTauri()) return demo.demoRepo;
@@ -430,6 +439,26 @@ export const ipc = {
   async diffCommit(path: string, oid: string, contextLines?: number): Promise<FileDiff[]> {
     if (!isTauri()) return demo.demoCommitDiff();
     return invoke('diff_commit', { path, oid, contextLines: contextLines ?? null });
+  },
+  async commitFiles(path: string, oid: string): Promise<CommitFileInfo[]> {
+    if (!isTauri()) return demo.demoCommitFiles();
+    return invoke('diff_commit_files', { path, oid });
+  },
+  async commitFileDiff(
+    path: string,
+    oid: string,
+    file: string,
+    oldPath?: string | null,
+    contextLines?: number,
+  ): Promise<FileDiff> {
+    if (!isTauri()) return demo.demoFileDiffFor(file);
+    return invoke('diff_commit_file', {
+      path,
+      oid,
+      file,
+      oldPath: oldPath ?? null,
+      contextLines: contextLines ?? null,
+    });
   },
   async stagedPatch(path: string): Promise<string> {
     if (!isTauri()) return '--- demo staged patch ---';

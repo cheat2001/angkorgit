@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { FileDiff } from '@angkorgit/core';
+import { useSettings } from '@/features/settings/store';
 import type { DiffViewMode } from '@/features/ui/store';
 
 type RowKind = 'header' | 'context' | 'addition' | 'deletion' | 'mixed';
@@ -62,11 +63,11 @@ export function changeBlocks(diff: FileDiff, view: DiffViewMode): ChangeBlock[] 
 export function scrollToFraction(
   el: HTMLElement,
   fraction: number,
-  behavior: ScrollBehavior = 'smooth',
+  behavior?: ScrollBehavior,
 ): void {
   el.scrollTo({
     top: Math.max(0, fraction * el.scrollHeight - el.clientHeight * 0.35),
-    behavior,
+    behavior: behavior ?? (useSettings.getState().reduceMotion ? 'auto' : 'smooth'),
   });
 }
 
@@ -80,6 +81,27 @@ interface MarkerBlock {
   start: number;
   end: number;
   kind: RowKind;
+}
+
+const MAX_MARKERS = 200;
+
+function bucketMarkers(blocks: MarkerBlock[], total: number): MarkerBlock[] {
+  if (blocks.length <= MAX_MARKERS) return blocks;
+  const bucketSize = total / MAX_MARKERS;
+  const merged: MarkerBlock[] = [];
+  let lastBucket = -1;
+  for (const block of blocks) {
+    const bucket = Math.floor(block.start / bucketSize);
+    const last = merged[merged.length - 1];
+    if (last && bucket === lastBucket) {
+      last.end = Math.max(last.end, block.end);
+      if (last.kind !== block.kind) last.kind = 'mixed';
+    } else {
+      merged.push({ ...block });
+      lastBucket = bucket;
+    }
+  }
+  return merged;
 }
 
 export function DiffMinimap({
@@ -104,8 +126,8 @@ export function DiffMinimap({
       if (last && last.kind === kind && last.end === index) last.end = index + 1;
       else blocks.push({ start: index, end: index + 1, kind });
     });
-    return blocks;
-  }, [rows]);
+    return bucketMarkers(blocks, total);
+  }, [rows, total]);
 
   useEffect(() => {
     const el = scrollRef.current;

@@ -86,13 +86,32 @@ export function measureWidth(content: string): number {
   return measureCtx.measureText(content.replace(/\t/g, '    ')).width;
 }
 
+const MEASURE_CANDIDATES = 20;
+
 function contentWidth(lines: Iterable<string>): number {
-  const candidates: { content: string; est: number }[] = [];
-  for (const content of lines) candidates.push({ content, est: visualLength(content) });
-  candidates.sort((a, b) => b.est - a.est);
+  const top: { content: string; est: number }[] = [];
+  for (const content of lines) {
+    const est = visualLength(content);
+    if (top.length === MEASURE_CANDIDATES && est <= top[top.length - 1].est) continue;
+    let i = top.length;
+    while (i > 0 && top[i - 1].est < est) i--;
+    top.splice(i, 0, { content, est });
+    if (top.length > MEASURE_CANDIDATES) top.pop();
+  }
   let max = 30 * CHAR_W;
-  for (const c of candidates.slice(0, 20)) max = Math.max(max, measureWidth(c.content));
+  for (const c of top) max = Math.max(max, measureWidth(c.content));
   return Math.ceil(max) + 32;
+}
+
+function* rowContents(rows: FlatRow[]): Iterable<string> {
+  for (const row of rows) {
+    if (row.kind === 'line') {
+      yield row.line.content;
+    } else if (row.kind === 'pair') {
+      if (row.left) yield row.left.content;
+      if (row.right) yield row.right.content;
+    }
+  }
 }
 
 const ROW_W: React.CSSProperties = { minWidth: '100%', width: 'max-content' };
@@ -314,10 +333,7 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
   const items = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
 
-  const width = useMemo(
-    () => contentWidth(rows.flatMap((row) => (row.kind === 'line' ? [row.line.content] : []))),
-    [rows],
-  );
+  const width = useMemo(() => contentWidth(rowContents(rows)), [rows]);
 
   const paneRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -539,17 +555,7 @@ export function VirtualSplitDiff(props: CommonProps) {
   const panes = useMemo(() => [paneL, paneR], []);
   const layers = useMemo(() => [layerL, layerR], []);
 
-  const width = useMemo(
-    () =>
-      contentWidth(
-        props.rows.flatMap((row) =>
-          row.kind === 'pair'
-            ? [row.left?.content ?? '', row.right?.content ?? '']
-            : [],
-        ),
-      ),
-    [props.rows],
-  );
+  const width = useMemo(() => contentWidth(rowContents(props.rows)), [props.rows]);
 
   useHorizontalPan(panes, layers, width);
 

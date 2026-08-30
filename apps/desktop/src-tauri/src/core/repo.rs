@@ -172,6 +172,31 @@ pub fn upstream_divergence(repo: &Repository) -> (Option<String>, usize, usize) 
     }
 }
 
+pub fn ref_fingerprint(path: &str) -> AppResult<String> {
+    let repo = open(path)?;
+    let mut parts: Vec<String> = Vec::new();
+    parts.push(format!("state:{}", state_name(repo.state())));
+    match repo.head() {
+        Ok(head) => parts.push(format!(
+            "HEAD:{}:{}",
+            head.shorthand().unwrap_or(""),
+            head.target().map(|o| o.to_string()).unwrap_or_default()
+        )),
+        Err(_) => parts.push("HEAD:unborn".to_string()),
+    }
+    for reference in repo.references()?.flatten() {
+        let name = reference.name().unwrap_or("").to_string();
+        let target = reference
+            .target()
+            .map(|o| o.to_string())
+            .or_else(|| reference.symbolic_target().map(String::from))
+            .unwrap_or_default();
+        parts.push(format!("{name}:{target}"));
+    }
+    parts.sort();
+    Ok(parts.join("\n"))
+}
+
 pub fn init(path: &str) -> AppResult<RepositoryInfo> {
     Repository::init(path)?;
     info(path)

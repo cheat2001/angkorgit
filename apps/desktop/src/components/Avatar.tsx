@@ -3,10 +3,15 @@ import { cn } from '@angkorgit/design-system';
 import { avatarHue, initials } from '@/shared/utils';
 
 const hashCache = new Map<string, Promise<string>>();
+const urlCache = new Map<string, string>();
 const noGravatar = new Set<string>();
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 function emailHash(email: string): Promise<string> {
-  const normalized = email.trim().toLowerCase();
+  const normalized = normalizeEmail(email);
   let promise = hashCache.get(normalized);
   if (!promise) {
     promise = crypto.subtle
@@ -19,6 +24,11 @@ function emailHash(email: string): Promise<string> {
     hashCache.set(normalized, promise);
   }
   return promise;
+}
+
+function cachedUrl(email: string, size: number): string | null {
+  if (!email || noGravatar.has(email)) return null;
+  return urlCache.get(`${normalizeEmail(email)}|${size}`) ?? null;
 }
 
 export const Avatar = memo(function Avatar({
@@ -34,17 +44,20 @@ export const Avatar = memo(function Avatar({
   className?: string;
   title?: string;
 }) {
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(() => cachedUrl(email, size));
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setUrl(null);
+    const cached = cachedUrl(email, size);
+    setUrl(cached);
     setLoaded(false);
-    if (!email || noGravatar.has(email)) return;
+    if (cached || !email || noGravatar.has(email)) return;
     void emailHash(email).then((hash) => {
       if (!cancelled) {
-        setUrl(`https://www.gravatar.com/avatar/${hash}?s=${Math.ceil(size * 2)}&d=404`);
+        const resolved = `https://www.gravatar.com/avatar/${hash}?s=${Math.ceil(size * 2)}&d=404`;
+        urlCache.set(`${normalizeEmail(email)}|${size}`, resolved);
+        setUrl(resolved);
       }
     });
     return () => {

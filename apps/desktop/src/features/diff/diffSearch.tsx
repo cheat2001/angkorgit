@@ -30,7 +30,8 @@ function findMatches(diff: FileDiff, query: string, caseSensitive: boolean): Dif
 }
 
 export function useDiffFind(diff: FileDiff | null, scrollRef: React.RefObject<HTMLDivElement>) {
-  const { diffView, wrapLines } = useUi();
+  const diffView = useUi((s) => s.diffView);
+  const wrapLines = useUi((s) => s.wrapLines);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [caseSensitive, setCaseSensitive] = useState(false);

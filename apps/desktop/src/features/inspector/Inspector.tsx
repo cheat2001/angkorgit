@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { CommitInfo, FileDiff } from '@angkorgit/core';
+import { toast } from 'sonner';
+import type { CommitFileInfo, CommitInfo } from '@angkorgit/core';
 import { FolderTree, List } from 'lucide-react';
 import { Hint, Button, cn } from '@angkorgit/design-system';
 import { useGraph } from '@/features/graph/store';
@@ -16,8 +17,11 @@ export function Inspector() {
   const setFileTree = useUi((s) => s.setFileTree);
 
   const [commit, setCommit] = useState<CommitInfo | null>(null);
-  const [diffs, setDiffs] = useState<FileDiff[]>([]);
+  const [diffs, setDiffs] = useState<CommitFileInfo[]>([]);
   const [loadingDiffs, setLoadingDiffs] = useState(false);
+  const [commitError, setCommitError] = useState<string | null>(null);
+  const [diffsError, setDiffsError] = useState<string | null>(null);
+  const [retrySeq, setRetrySeq] = useState(0);
 
   useEffect(() => {
     const { centerDiff, closeCenterDiff } = useUi.getState();
@@ -26,10 +30,15 @@ export function Inspector() {
     if (!selectedOid || !repoPath) {
       setCommit(null);
       setDiffs([]);
+      setCommitError(null);
+      setDiffsError(null);
       return;
     }
     const local = useGraph.getState().commits.find((c) => c.oid === selectedOid) ?? null;
     setCommit(local);
+    setDiffs([]);
+    setCommitError(null);
+    setDiffsError(null);
     setLoadingDiffs(true);
     let cancelled = false;
     if (!local) {
@@ -38,15 +47,21 @@ export function Inspector() {
         .then((info) => {
           if (!cancelled) setCommit(info);
         })
-        .catch(() => {});
+        .catch((error) => {
+          if (cancelled) return;
+          const message = String((error as { message?: string }).message ?? error);
+          toast.error(`Could not load commit: ${message}`);
+          setCommitError(message);
+        });
     }
     void ipc
-      .diffCommit(repoPath, selectedOid)
+      .commitFiles(repoPath, selectedOid)
       .then((result) => {
         if (!cancelled) setDiffs(result);
       })
-      .catch(() => {
-        if (!cancelled) setDiffs([]);
+      .catch((error) => {
+        if (cancelled) return;
+        setDiffsError(String((error as { message?: string }).message ?? error));
       })
       .finally(() => {
         if (!cancelled) setLoadingDiffs(false);
@@ -54,13 +69,15 @@ export function Inspector() {
     return () => {
       cancelled = true;
     };
-  }, [selectedOid, repoPath]);
+  }, [selectedOid, repoPath, retrySeq]);
+
+  const retry = () => setRetrySeq((n) => n + 1);
 
   return (
     <aside className="flex h-full flex-col bg-surface" aria-label="Inspector">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border-subtle px-2">
         <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
-          {commit ? 'Commit' : 'Working copy'}
+          {commit || commitError ? 'Commit' : 'Working copy'}
         </span>
         <div className="ml-auto flex items-center gap-0.5">
           <Hint label="Flat list">
@@ -90,7 +107,23 @@ export function Inspector() {
 
       <div className="min-h-0 flex-1 overflow-hidden">
         {commit ? (
-          <CommitDetails key={commit.oid} commit={commit} diffs={diffs} loading={loadingDiffs} />
+          <CommitDetails
+            key={commit.oid}
+            commit={commit}
+            diffs={diffs}
+            loading={loadingDiffs}
+            error={diffsError}
+            onRetry={retry}
+          />
+        ) : commitError ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+            <p className="text-xs text-danger [overflow-wrap:anywhere]">
+              Could not load commit: {commitError}
+            </p>
+            <Button variant="ghost" size="sm" onClick={retry}>
+              Retry
+            </Button>
+          </div>
         ) : (
           <WorkingCopyPanel />
         )}

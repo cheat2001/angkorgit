@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { AlertTriangle, Copy, ExternalLink, FolderOpen, History, Maximize2, Minus, Pencil, Plus, SearchCheck, Sparkles, Trash2, Undo2, X } from 'lucide-react';
@@ -78,9 +78,10 @@ const FileRow = memo(function FileRow({
 }) {
   const kind = staged ? file.staged : file.unstaged;
   const conflicted = file.unstaged === 'conflicted';
-  return (
-    <Hint label={file.path} side="left" className="max-w-[34rem] font-mono">
+  const row = (
       <div
+        data-selected-file-row={selected || undefined}
+        title={treeMode ? file.path : undefined}
         className={cn(
           'group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
           selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
@@ -107,7 +108,7 @@ const FileRow = memo(function FileRow({
             variant="ghost"
             size="icon-sm"
             aria-label={`Discard ${file.path}`}
-            className="opacity-0 group-hover:opacity-100"
+            className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
             onClick={(e) => {
               e.stopPropagation();
               onDiscard(file);
@@ -117,11 +118,18 @@ const FileRow = memo(function FileRow({
           </Button>
         )}
       </div>
+  );
+  if (treeMode) return row;
+  return (
+    <Hint label={file.path} side="left" className="max-w-[34rem] font-mono">
+      {row}
     </Hint>
   );
 });
 
 const fileStatusPath = (file: FileStatus) => file.path;
+
+export const commitShortcut = { current: null as (() => void) | null };
 
 const REVIEW_WAIT_MESSAGES = [
   'Reading your staged changes…',
@@ -161,7 +169,10 @@ function VirtualFileList({
     overscan: 12,
     scrollMargin,
   });
-  const sizeSignature = files.map((file) => rowHeight(file)).join(',');
+  const sizeSignature = useMemo(
+    () => files.map((file) => rowHeight(file)).join(','),
+    [files, rowHeight],
+  );
   useEffect(() => {
     virtualizer.measure();
   }, [virtualizer, sizeSignature]);
@@ -217,20 +228,23 @@ export function WorkingCopyPanel() {
   useEffect(() => {
     if (!path || useCommitDraft.getState().drafts[path]) return;
     let cancelled = false;
-    void ipc.mergeMessage(path).then((mergeMsg) => {
-      if (cancelled || !mergeMsg) return;
-      if (useCommitDraft.getState().drafts[path]) return;
-      useCommitDraft.getState().setDraft(path, mergeMsg);
-    });
+    void ipc
+      .mergeMessage(path)
+      .then((mergeMsg) => {
+        if (cancelled || !mergeMsg) return;
+        if (useCommitDraft.getState().drafts[path]) return;
+        useCommitDraft.getState().setDraft(path, mergeMsg);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, [path, status]);
 
-  const files = status?.files ?? [];
-  const stagedFiles = files.filter((f) => f.staged);
-  const unstagedFiles = files.filter((f) => f.unstaged);
-  const stagedSignature = buildStagedReviewSignature(files);
+  const files = useMemo(() => status?.files ?? [], [status]);
+  const stagedFiles = useMemo(() => files.filter((f) => f.staged), [files]);
+  const unstagedFiles = useMemo(() => files.filter((f) => f.unstaged), [files]);
+  const stagedSignature = useMemo(() => buildStagedReviewSignature(files), [files]);
   const review = useAiWork((s) => (path ? (s.reviews[path] ?? null) : null));
   const reviewBusy = useAiWork((s) => (path ? !!s.reviewBusy[path] : false));
   const reviewCurrent = review !== null && review.stagedSignature === stagedSignature;
@@ -454,8 +468,12 @@ export function WorkingCopyPanel() {
     if (path) useAiWork.getState().stopReview(path);
   };
 
+  const committingRef = useRef(false);
+
   const commit = async () => {
     if (!message.trim() && !amend) return;
+    if (committingRef.current) return;
+    committingRef.current = true;
     setCommitting(true);
     try {
       await ensureRepoProfile(path);
@@ -480,11 +498,79 @@ export function WorkingCopyPanel() {
     } catch (error) {
       toast.error(`Commit failed: ${(error as { message?: string }).message ?? error}`);
     } finally {
+      committingRef.current = false;
       setCommitting(false);
     }
   };
 
-  const conflictedPaths = new Set(conflicts);
+  useEffect(() => {
+    commitShortcut.current = () => void commit();
+    return () => {
+      commitShortcut.current = null;
+    };
+  });
+
+  const conflictedPaths = useMemo(() => new Set(conflicts), [conflicts]);
+
+  const unstagedRowHeight = useCallback(
+    (file: FileStatus) =>
+      conflictedPaths.has(file.path) ? CONFLICT_ROW_HEIGHT : UNSTAGED_ROW_HEIGHT,
+    [conflictedPaths],
+  );
+  const stagedRowHeight = useCallback(() => STAGED_ROW_HEIGHT, []);
+
+  const visibleOrder = useMemo(
+    () => [
+      ...unstagedFiles.map((file) => ({ file, staged: false })),
+      ...stagedFiles.map((file) => ({ file, staged: true })),
+    ],
+    [unstagedFiles, stagedFiles],
+  );
+
+  const moveFileSelection = (direction: 1 | -1) => {
+    if (visibleOrder.length === 0) return;
+    const current = useUi.getState().selectedFile;
+    const index = current
+      ? visibleOrder.findIndex((e) => e.file.path === current.path && e.staged === current.staged)
+      : -1;
+    const nextIndex =
+      index < 0 ? (direction === 1 ? 0 : visibleOrder.length - 1) : index + direction;
+    const next = visibleOrder[nextIndex];
+    if (!next) return;
+    selectFile({ path: next.file.path, staged: next.staged });
+    requestAnimationFrame(() => {
+      listScrollRef.current
+        ?.querySelector('[data-selected-file-row]')
+        ?.scrollIntoView({ block: 'nearest' });
+    });
+  };
+
+  const onListKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveFileSelection(1);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveFileSelection(-1);
+      return;
+    }
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const current = useUi.getState().selectedFile;
+    if (!current) return;
+    const entry = visibleOrder.find(
+      (x) => x.file.path === current.path && x.staged === current.staged,
+    );
+    if (!entry) return;
+    e.preventDefault();
+    if (e.key === 'Enter') {
+      if (conflictedPaths.has(entry.file.path) && !entry.staged) openConflict(entry.file.path);
+      else showDiff(entry.file, entry.staged);
+    } else {
+      toggleStage(entry.file, entry.staged);
+    }
+  };
 
   const treeIndent = (depth?: number) =>
     fileTree && depth !== undefined ? sharedTreeIndent(depth) : undefined;
@@ -493,7 +579,13 @@ export function WorkingCopyPanel() {
     conflictedPaths.has(file.path) ? (
       <div
         key={`u-${file.path}`}
-        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-danger hover:bg-danger/10"
+        data-selected-file-row={
+          selectedFile?.path === file.path && !selectedFile.staged ? true : undefined
+        }
+        className={cn(
+          'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-danger hover:bg-danger/10',
+          selectedFile?.path === file.path && !selectedFile.staged && 'bg-danger/10',
+        )}
         style={treeIndent(depth) !== undefined ? { paddingLeft: treeIndent(depth) } : undefined}
         onClick={() => openConflict(file.path)}
       >
@@ -550,7 +642,19 @@ export function WorkingCopyPanel() {
         </div>
       )}
 
-      <div ref={listScrollRef} className="relative min-h-0 flex-1 overflow-y-auto p-2">
+      <div
+        ref={listScrollRef}
+        tabIndex={0}
+        aria-label="Changed files"
+        onKeyDown={onListKeyDown}
+        className="relative min-h-0 flex-1 overflow-y-auto p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+      >
+        {status === null ? (
+          <div className="flex h-full items-center justify-center">
+            <Spinner className="size-5" />
+          </div>
+        ) : (
+        <>
         <div className="mb-1 flex items-center justify-between px-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted">
             Changes <span className="text-faint">{unstagedFiles.length}</span>
@@ -588,7 +692,7 @@ export function WorkingCopyPanel() {
           <VirtualFileList
             files={unstagedFiles}
             scrollRef={listScrollRef}
-            rowHeight={(file) => (conflictedPaths.has(file.path) ? CONFLICT_ROW_HEIGHT : UNSTAGED_ROW_HEIGHT)}
+            rowHeight={unstagedRowHeight}
             renderRow={renderUnstaged}
           />
         )}
@@ -609,9 +713,11 @@ export function WorkingCopyPanel() {
           <VirtualFileList
             files={stagedFiles}
             scrollRef={listScrollRef}
-            rowHeight={() => STAGED_ROW_HEIGHT}
+            rowHeight={stagedRowHeight}
             renderRow={renderStaged}
           />
+        )}
+        </>
         )}
       </div>
 
@@ -647,10 +753,30 @@ export function WorkingCopyPanel() {
             <DropdownMenuItem onClick={() => useUi.getState().openFileHistory(fileMenu.file.path)}>
               <History /> File history
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void ipc.openPath(`${path}/${fileMenu.file.path}`)}>
+            <DropdownMenuItem
+              onClick={() =>
+                void ipc
+                  .openPath(`${path}/${fileMenu.file.path}`)
+                  .catch((error) =>
+                    toast.error(
+                      `Could not open the file: ${(error as { message?: string }).message ?? error}`,
+                    ),
+                  )
+              }
+            >
               <ExternalLink /> Open in external app
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void ipc.revealPath(`${path}/${fileMenu.file.path}`)}>
+            <DropdownMenuItem
+              onClick={() =>
+                void ipc
+                  .revealPath(`${path}/${fileMenu.file.path}`)
+                  .catch((error) =>
+                    toast.error(
+                      `Could not reveal the file: ${(error as { message?: string }).message ?? error}`,
+                    ),
+                  )
+              }
+            >
               <FolderOpen /> Show in Finder
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -686,7 +812,7 @@ export function WorkingCopyPanel() {
         </DropdownMenu>
       )}
 
-      {files.length === 0 && !amend && repo?.state !== 'merge' ? (
+      {status === null ? null : files.length === 0 && !amend && repo?.state !== 'merge' ? (
         <div className="shrink-0 border-t border-border-subtle px-3 py-2">
           <Button variant="ghost" size="sm" className="text-muted" onClick={() => setAmend(true)}>
             <Undo2 className="size-3" /> Amend last commit…
@@ -764,9 +890,6 @@ export function WorkingCopyPanel() {
                   : 'Commit message  —  ⌘⏎ to commit'
               }
               className="max-h-[300px] min-h-[140px] resize-none pr-9 font-mono text-xs leading-5"
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void commit();
-              }}
             />
             <Hint label={aiBusy ? 'Stop generating' : 'Generate message with AI'}>
               <Button

@@ -1357,3 +1357,61 @@ fn history_position_locates_a_commit_in_the_default_walk() {
         .unwrap()
         .is_none());
 }
+
+#[test]
+fn ref_fingerprint_tracks_refs_but_not_file_edits() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    commit_all(&repo, "first");
+    let base = core::ref_fingerprint(repo.path()).unwrap();
+
+    repo.write("a.txt", "two\n");
+    assert_eq!(core::ref_fingerprint(repo.path()).unwrap(), base);
+
+    commit_all(&repo, "second");
+    let after_commit = core::ref_fingerprint(repo.path()).unwrap();
+    assert_ne!(after_commit, base);
+
+    core::branch_create(repo.path(), "feature", None, false).unwrap();
+    assert_ne!(core::ref_fingerprint(repo.path()).unwrap(), after_commit);
+}
+
+#[test]
+fn commit_files_reports_per_file_counts_without_hunks() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    repo.write("b.txt", "keep\n");
+    commit_all(&repo, "add files");
+    repo.write("a.txt", "one\nplus\n");
+    repo.write("c.txt", "new\n");
+    let oid = commit_all(&repo, "change a add c");
+
+    let files = core::commit_files(repo.path(), &oid).unwrap();
+    assert_eq!(files.len(), 2);
+    let a = files.iter().find(|f| f.path == "a.txt").unwrap();
+    assert_eq!(a.status, "modified");
+    assert_eq!(a.additions, 1);
+    assert_eq!(a.deletions, 0);
+    let c = files.iter().find(|f| f.path == "c.txt").unwrap();
+    assert_eq!(c.status, "new");
+    assert_eq!(c.additions, 1);
+}
+
+#[test]
+fn commit_file_diff_scopes_hunks_to_one_file() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    repo.write("b.txt", "keep\n");
+    commit_all(&repo, "add files");
+    repo.write("a.txt", "one\nplus\n");
+    repo.write("b.txt", "keep\nmore\n");
+    let oid = commit_all(&repo, "change both");
+
+    let diff = core::commit_file_diff(repo.path(), &oid, "a.txt", None, 3).unwrap();
+    assert_eq!(diff.path, "a.txt");
+    assert_eq!(diff.hunks.len(), 1);
+    assert_eq!(diff.additions, 1);
+
+    let untouched = core::commit_file_diff(repo.path(), &oid, "z.txt", None, 3).unwrap();
+    assert!(untouched.hunks.is_empty());
+}
