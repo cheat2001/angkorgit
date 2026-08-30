@@ -6,6 +6,55 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **The app starts as soon as it is ready** — the splash screen now waits for
+  the app, not a timer: launch lands on your repositories in a fraction of the
+  old fixed two seconds, and with reduce motion enabled the splash is skipped
+  entirely. The window's native background also matches the default theme, so
+  launching no longer flashes the wrong color.
+- **Half the code loads at startup** — the terminal emulator, the conflict
+  resolver and the repository view now load on first use instead of at launch
+  (the startup bundle dropped from 1.26 MB to 0.58 MB), and demo-mode data no
+  longer ships in the desktop app at all.
+- **The app stays quiet while you work elsewhere** — a file save no longer
+  triggers ahead/behind computations for every tracking branch on every
+  watcher tick; an open diff no longer refetches and re-renders on every tick;
+  and selecting a commit ships a lightweight file list instead of the whole
+  commit's diff text (the full diff loads per file, on demand).
+- Typing a commit message no longer re-scans the changed-file list on every
+  keystroke, the sidebar filter is debounced and capped, the command palette
+  mounts at most 100 branch items, and the file history's commit list is
+  virtualized.
+- Graph reloads after a commit or watcher event keep the loaded pages and
+  scroll position, and jumping to a commit hash fetches the target window in
+  one request instead of paging sequentially.
+
+### Fixed
+- Enter in confirmation dialogs now activates the confirm button instead of
+  silently cancelling, and Enter submits the create tag, stash, rename branch,
+  edit remote and clone dialogs (with double-submit guards).
+- Switching repositories no longer shows the previous repository's branches,
+  status and file lists while the new one loads; opening a repository from the
+  welcome screen shows progress on the row.
+- A failed history, commit, diff, file-history or file-list load now shows a
+  visible error with a retry button instead of rendering as an empty state;
+  a shell that fails to start writes the error into the terminal pane instead
+  of leaving it blank.
+- ⌘⏎ commits from anywhere, Esc closes the editor, the diff, the file history
+  and the conflict resolver (which now also takes focus on open), and the
+  working-copy file list is keyboard-navigable (arrows, Enter, Space).
+- Reduce motion now disables all transitions and animations, including the
+  splash logo draw and smooth scrolling in the diff minimap and conflict
+  resolver.
+- Long paths and branch names no longer push buttons out of the conflict
+  resolver header, terminal bar, welcome rows and sidebar; empty sidebar
+  sections say so instead of rendering a blank body; hover-only row actions
+  become visible when focused with the keyboard.
+- Accounts re-checks run in parallel and show an explicit "could not check"
+  state instead of silently keeping the last known one, AI provider keys are
+  migrated to the keyring once instead of on every launch, and checking for
+  updates shows a pending toast.
+
 ## [0.7.0] — 2026-08-28
 
 The pull request release. AngKorGit now closes the loop between your local
