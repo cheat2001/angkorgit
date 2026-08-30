@@ -35,7 +35,10 @@ All notable changes to AngKorGit are documented here. The format follows
   edit remote and clone dialogs (with double-submit guards).
 - Switching repositories no longer shows the previous repository's branches,
   status and file lists while the new one loads; opening a repository from the
-  welcome screen shows progress on the row.
+  welcome screen shows progress on the row. When a switch takes longer than a
+  moment, the content area shows a themed loading overlay with the Angkor logo
+  drawing itself and the repository's name — fast switches stay instant and
+  never flash it.
 - A failed history, commit, diff, file-history or file-list load now shows a
   visible error with a retry button instead of rendering as an empty state;
   a shell that fails to start writes the error into the terminal pane instead

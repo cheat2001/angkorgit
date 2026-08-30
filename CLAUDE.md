@@ -321,7 +321,10 @@ features/
 │   │                           loaded from angkorgit.profile on open, cleared on close,
 │   │                           refresh/refreshStatus), WelcomePage,
 │   │                           RepositoryPage (layout, shortcuts, watcher subscription,
-│   │                           per-repo state reset), CloneDialog, RepoDialogs
+│   │                           per-repo state reset, RepoLoadingOverlay: content-area
+│   │                           bg-background/95 blur + Logo draw loop + repo name while
+│   │                           opening/refreshing — shows only after 250ms, stays ≥450ms
+│   │                           so fast switches never flash it), CloneDialog, RepoDialogs
 ├── graph/                    ← store (pagination, filters, lastPath guard vs cross-repo
 │   │                           leaks, jumpTo: engine history_position locates a rev in the
 │   │                           unfiltered walk, pages auto-load up to it, pendingScrollIndex

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { motion } from 'framer-motion';
@@ -32,6 +32,48 @@ import { useShortcuts } from '@/shared/useShortcuts';
 import { useUndo } from '@/features/history/undoStore';
 import { useSettings } from '@/features/settings/store';
 import { ipc, listen } from '@/core/ipc';
+import { Logo } from '@angkorgit/design-system';
+import { basename } from '@/shared/utils';
+
+const OVERLAY_SHOW_DELAY = 250;
+const OVERLAY_MIN_VISIBLE = 450;
+
+function useRepoLoadingOverlay(): boolean {
+  const active = useRepo((s) => s.opening !== null || s.refreshing);
+  const [visible, setVisible] = useState(false);
+  const shownAt = useRef(0);
+  useEffect(() => {
+    if (active) {
+      if (visible) return;
+      const timer = window.setTimeout(() => {
+        shownAt.current = Date.now();
+        setVisible(true);
+      }, OVERLAY_SHOW_DELAY);
+      return () => window.clearTimeout(timer);
+    }
+    if (!visible) return;
+    const remaining = Math.max(0, OVERLAY_MIN_VISIBLE - (Date.now() - shownAt.current));
+    const timer = window.setTimeout(() => setVisible(false), remaining);
+    return () => window.clearTimeout(timer);
+  }, [active, visible]);
+  return visible;
+}
+
+function RepoLoadingOverlay() {
+  const visible = useRepoLoadingOverlay();
+  const opening = useRepo((s) => s.opening);
+  const repoName = useRepo((s) => s.repo?.name ?? '');
+  if (!visible) return null;
+  const name = opening ? basename(opening) : repoName;
+  return (
+    <div className="animate-fade-in absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-background/95 backdrop-blur-sm">
+      <Logo size={64} animated="loop" className="logo-draw-loop text-foreground" />
+      {name && (
+        <span className="max-w-md truncate text-sm text-muted">Opening {name}…</span>
+      )}
+    </div>
+  );
+}
 
 export function RepositoryPage() {
   const repo = useRepo((s) => s.repo);
@@ -242,7 +284,8 @@ export function RepositoryPage() {
     >
       <RepoTabs />
       <Toolbar onRefresh={refreshAll} />
-      <div className="min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1">
+        <RepoLoadingOverlay />
         <PanelGroup direction="horizontal" autoSaveId="angkorgit-main">
           {sidebarOpen && !focusMode && (
             <>
