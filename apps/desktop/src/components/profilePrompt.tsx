@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { create } from 'zustand';
 import { UserRound } from 'lucide-react';
 import {
@@ -36,9 +37,16 @@ export function pickProfile(repoName: string): Promise<IdentityProfile | null> {
 export function ProfilePromptHost() {
   const { request, settle } = useProfilePromptStore();
   const profiles = useSettings((s) => s.profiles);
+  const firstProfileRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog open={request !== null} onOpenChange={(open) => !open && settle(null)}>
-      <DialogContent className="max-w-sm">
+      <DialogContent
+        className="max-w-sm"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          firstProfileRef.current?.focus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Which profile for {request?.repoName}?</DialogTitle>
           <DialogDescription>
@@ -47,9 +55,10 @@ export function ProfilePromptHost() {
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-1.5">
-          {profiles.map((profile) => (
+          {profiles.map((profile, index) => (
             <button
               key={profile.id}
+              ref={index === 0 ? firstProfileRef : undefined}
               type="button"
               className="flex items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-primary/60 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
               onClick={() => settle(profile)}

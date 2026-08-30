@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { motion } from 'framer-motion';
@@ -12,12 +12,17 @@ import { Sidebar } from '@/features/sidebar/Sidebar';
 import { CommitGraph } from '@/features/graph/CommitGraph';
 import { InteractiveRebaseDialog } from '@/features/graph/InteractiveRebaseDialog';
 import { DiffPanel } from '@/features/diff/DiffPanel';
-import { EditorPanel } from '@/features/editor/EditorPanel';
+import { EditorPanel, editorCloseShortcut } from '@/features/editor/EditorPanel';
+import { commitShortcut } from '@/features/commit/WorkingCopyPanel';
 import { FileHistoryPanel } from '@/features/history/FileHistoryPanel';
 import { Inspector } from '@/features/inspector/Inspector';
-import { TerminalPanel } from '@/features/terminal/TerminalPanel';
+const TerminalPanel = lazy(() =>
+  import('@/features/terminal/TerminalPanel').then((m) => ({ default: m.TerminalPanel })),
+);
 import { CommandPalette } from '@/components/CommandPalette';
-import { ConflictResolver } from '@/features/conflicts/ConflictResolver';
+const ConflictResolver = lazy(() =>
+  import('@/features/conflicts/ConflictResolver').then((m) => ({ default: m.ConflictResolver })),
+);
 import { SettingsDialog } from '@/features/settings/SettingsDialog';
 import { RepoDialogs } from './RepoDialogs';
 import { CloneDialog } from './CloneDialog';
@@ -63,7 +68,14 @@ export function RepositoryPage() {
     let cancelled = false;
     let refreshing = false;
     let pending = false;
+    let refsFingerprint: string | null = null;
     const stillCurrent = () => !cancelled && useRepo.getState().repo?.path === repoPath;
+    void ipc
+      .refFingerprint(repoPath)
+      .then((fingerprint) => {
+        if (stillCurrent() && refsFingerprint === null) refsFingerprint = fingerprint;
+      })
+      .catch(() => undefined);
     const handleChange = async () => {
       if (refreshing) {
         pending = true;
@@ -74,20 +86,11 @@ export function RepositoryPage() {
         do {
           pending = false;
           if (!stillCurrent()) return;
-          const info = await ipc.repoInfo(repoPath);
+          const fingerprint = await ipc.refFingerprint(repoPath);
           if (!stillCurrent()) return;
-          const current = useRepo.getState().repo;
-          const headChanged =
-            info.headOid !== current?.headOid || info.headBranch !== current?.headBranch;
-          let refsChanged = false;
-          if (!headChanged) {
-            const branches = await ipc.branches(repoPath);
-            if (!stillCurrent()) return;
-            const fingerprint = (list: { name: string; targetOid: string }[]) =>
-              list.map((b) => `${b.name}:${b.targetOid}`).join('|');
-            refsChanged = fingerprint(branches) !== fingerprint(useRepo.getState().branches);
-          }
-          if (headChanged || refsChanged) {
+          const refsChanged = refsFingerprint !== fingerprint;
+          refsFingerprint = fingerprint;
+          if (refsChanged) {
             await useRepo.getState().refresh();
             if (!stillCurrent()) return;
             await useGraph.getState().reload(repoPath);
@@ -101,7 +104,7 @@ export function RepositoryPage() {
     };
     void ipc.watchRepo(repoPath);
     void listen('repo-changed', () => {
-      void handleChange();
+      void handleChange().catch(() => undefined);
     }).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
@@ -206,6 +209,7 @@ export function RepositoryPage() {
         },
       },
       { combo: 'mod+r', handler: () => void refreshAll() },
+      { combo: 'mod+enter', handler: () => commitShortcut.current?.() },
       {
         combo: 'mod+,',
         handler: () => useUi.getState().openDialog('settings'),
@@ -214,7 +218,9 @@ export function RepositoryPage() {
         combo: 'escape',
         handler: () => {
           const ui = useUi.getState();
-          if (ui.centerDiff) closeCenterDiff();
+          if (ui.conflictFile) ui.openConflict(null);
+          else if (ui.centerEditor) editorCloseShortcut.current?.();
+          else if (ui.centerDiff) closeCenterDiff();
           else if (ui.centerFileHistory) ui.closeFileHistory();
         },
       },
@@ -266,7 +272,9 @@ export function RepositoryPage() {
                 <>
                   <PanelResizeHandle className="h-px bg-border-subtle" />
                   <Panel defaultSize={30} minSize={12} maxSize={60}>
-                    <TerminalPanel />
+                    <Suspense fallback={null}>
+                      <TerminalPanel />
+                    </Suspense>
                   </Panel>
                 </>
               )}
@@ -290,7 +298,11 @@ export function RepositoryPage() {
       <CreatePrDialog />
       <InteractiveRebaseDialog />
       <CloneDialog onCloned={() => void refreshAll()} />
-      {conflictFile && <ConflictResolver key={conflictFile} file={conflictFile} onResolved={refreshAll} />}
+      {conflictFile && (
+        <Suspense fallback={null}>
+          <ConflictResolver key={conflictFile} file={conflictFile} onResolved={refreshAll} />
+        </Suspense>
+      )}
     </motion.div>
   );
 }

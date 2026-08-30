@@ -13,6 +13,7 @@ import {
 import { Badge, Button, Checkbox, Hint, Logo, Spinner, cn } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
+import { useSettings } from '@/features/settings/store';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { AiText } from '@/features/ai/AiText';
@@ -101,6 +102,10 @@ function sideLabel(block: ConflictBlock, side: Side, headBranch: string | null):
 export function ConflictResolver({ file, onResolved }: { file: string; onResolved: () => Promise<void> }) {
   const repo = useRepo((s) => s.repo);
   const openConflict = useUi((s) => s.openConflict);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    overlayRef.current?.focus({ preventScroll: true });
+  }, []);
   const [blocks, setBlocks] = useState<Block[] | null>(null);
   const [picks, setPicks] = useState<Map<number, Pick[]>>(new Map());
   const [manualText, setManualText] = useState<string | null>(null);
@@ -434,7 +439,12 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       const row = outputModel.blockRow.get(block);
       if (row !== undefined) outputVirtualizer.scrollToIndex(row, { align: 'center' });
     } else {
-      outputBlockRefs.current.get(block)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      outputBlockRefs.current
+        .get(block)
+        ?.scrollIntoView({
+          behavior: useSettings.getState().reduceMotion ? 'auto' : 'smooth',
+          block: 'center',
+        });
     }
   };
 
@@ -442,7 +452,12 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     if (virtualized) {
       topVirtualizer.scrollToIndex(paneModel.blockStart.get(blockIndex) ?? 0, { align: 'center' });
     } else {
-      blockRefs.current.get(blockIndex)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      blockRefs.current
+        .get(blockIndex)
+        ?.scrollIntoView({
+          behavior: useSettings.getState().reduceMotion ? 'auto' : 'smooth',
+          block: 'center',
+        });
     }
   };
 
@@ -742,15 +757,18 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm"
+      ref={overlayRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex flex-col bg-background/95 outline-none backdrop-blur-sm"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       role="dialog"
+      aria-modal="true"
       aria-label={`Resolve conflicts in ${file}`}
     >
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border-subtle bg-surface px-4">
         <span className="text-sm font-semibold">Resolve conflicts</span>
-        <span className="truncate font-mono text-xs text-muted">{file}</span>
+        <span className="min-w-0 truncate font-mono text-xs text-muted">{file}</span>
         <Badge tone={resolvedCount === total ? 'success' : 'primary'}>
           {resolvedCount}/{total} resolved
         </Badge>
@@ -771,9 +789,11 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
               </Button>
             </span>
           </Hint>
-          <Button variant="ghost" size="icon" aria-label="Close" onClick={() => openConflict(null)}>
-            <X />
-          </Button>
+          <Hint label="Close">
+            <Button variant="ghost" size="icon" aria-label="Close" onClick={() => openConflict(null)}>
+              <X />
+            </Button>
+          </Hint>
         </div>
       </header>
 
@@ -793,7 +813,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                   aria-label="Take all lines from side A"
                 />
                 <Badge tone="info">A</Badge>
-                <span className="truncate text-xs font-medium text-info">{aLabel}</span>
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-info">{aLabel}</span>
               </label>
               <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5">
                 <Checkbox
@@ -802,7 +822,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                   aria-label="Take all lines from side B"
                 />
                 <Badge tone="success">B</Badge>
-                <span className="truncate text-xs font-medium text-success">{bLabel}</span>
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-success">{bLabel}</span>
               </label>
             </div>
             {virtualized ? (

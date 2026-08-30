@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Clock, FolderOpen, GitBranchPlus, Search, Settings, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button, Input, Logo, TemplePattern } from '@angkorgit/design-system';
-import { pickDirectory } from '@/core/ipc';
+import { Button, Hint, Input, Logo, Spinner, TemplePattern } from '@angkorgit/design-system';
+import { ipc, pickDirectory } from '@/core/ipc';
 import { useRepo } from './store';
 import { useUi } from '@/features/ui/store';
 import { CloneDialog } from './CloneDialog';
@@ -13,7 +13,7 @@ import { timeAgo } from '@/shared/utils';
 
 export function WelcomePage() {
   const navigate = useNavigate();
-  const { recents, open, loadRecents } = useRepo();
+  const { recents, open, opening, loadRecents } = useRepo();
   const openDialog = useUi((s) => s.openDialog);
   const [query, setQuery] = useState('');
 
@@ -26,6 +26,7 @@ export function WelcomePage() {
   }, [recents, query]);
 
   const openRepository = async (path: string) => {
+    if (useRepo.getState().opening !== null) return;
     try {
       await open(path);
       navigate('/repo');
@@ -40,7 +41,6 @@ export function WelcomePage() {
   };
 
   const removeRecent = async (path: string) => {
-    const { ipc } = await import('@/core/ipc');
     await ipc.removeRecent(path);
     await loadRecents();
   };
@@ -65,9 +65,11 @@ export function WelcomePage() {
             <p className="text-sm text-muted">Everyday Git, made delightful.</p>
           </div>
           <div className="ml-auto">
-            <Button variant="ghost" size="icon" onClick={() => openDialog('settings')} aria-label="Settings">
-              <Settings />
-            </Button>
+            <Hint label="Settings">
+              <Button variant="ghost" size="icon" onClick={() => openDialog('settings')} aria-label="Settings">
+                <Settings />
+              </Button>
+            </Hint>
           </div>
         </div>
 
@@ -124,21 +126,31 @@ export function WelcomePage() {
                   className="group flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-surface-raised"
                   onClick={() => void openRepository(repo.path)}
                 >
-                  <span className="font-medium">{repo.name}</span>
-                  <span className="truncate font-mono text-xs text-faint">{repo.path}</span>
-                  <span className="ml-auto shrink-0 text-xs text-faint">{timeAgo(repo.lastOpenedAt)}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="opacity-0 group-hover:opacity-100"
-                    aria-label={`Remove ${repo.name} from recents`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void removeRecent(repo.path);
-                    }}
-                  >
-                    <X className="size-3.5" />
-                  </Button>
+                  <span className="shrink-0 font-medium">{repo.name}</span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-faint">
+                    {repo.path}
+                  </span>
+                  {opening === repo.path ? (
+                    <Spinner className="ml-auto size-3.5 shrink-0 text-primary" />
+                  ) : (
+                    <span className="ml-auto shrink-0 text-xs text-faint">
+                      {timeAgo(repo.lastOpenedAt)}
+                    </span>
+                  )}
+                  <Hint label="Remove from recents">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                      aria-label={`Remove ${repo.name} from recents`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeRecent(repo.path);
+                      }}
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </Hint>
                 </div>
               ))
             )}

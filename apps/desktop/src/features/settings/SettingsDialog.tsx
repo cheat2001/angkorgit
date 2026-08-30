@@ -547,14 +547,19 @@ function ReviewStyleCard() {
 }
 
 const SHORTCUTS: Array<[string, string[]]> = [
-  ['Command palette', ['mod', 'K']],
+  ['Command palette', ['mod', 'K / P']],
   ['Toggle terminal', ['mod', '`']],
   ['Toggle sidebar', ['mod', 'B']],
   ['Undo / redo operation', ['mod', 'Z / ⇧Z']],
   ['Refresh repository', ['mod', 'R']],
   ['Settings', ['mod', ',']],
-  ['Commit (in message box)', ['mod', '⏎']],
+  ['Commit staged changes', ['mod', '⏎']],
+  ['Previous / next commit', ['↑ / ↓']],
+  ['First / last commit', ['Home / End']],
   ['Search commits / find in diff', ['mod', 'F']],
+  ['Previous match (find in diff)', ['⇧', '⏎']],
+  ['Select / copy diff side', ['mod', 'A / C']],
+  ['Save (file editor)', ['mod', 'S']],
   ['Zoom in / out / reset', ['mod', '+ / − / 0']],
   ['Previous / next change (diff)', ['P / N']],
   ['Previous / next file (diff)', ['[ / ]']],
@@ -578,13 +583,22 @@ export function SettingsDialog() {
 
   useEffect(() => {
     if (!open) return;
-    void ipc.configGet(repo?.path ?? null, 'user.name').then((v) => setGitName(v ?? ''));
-    void ipc.configGet(repo?.path ?? null, 'user.email').then((v) => setGitEmail(v ?? ''));
+    void ipc
+      .configGet(repo?.path ?? null, 'user.name')
+      .then((v) => setGitName(v ?? ''))
+      .catch(() => undefined);
+    void ipc
+      .configGet(repo?.path ?? null, 'user.email')
+      .then((v) => setGitEmail(v ?? ''))
+      .catch(() => undefined);
   }, [open, repo]);
 
   useEffect(() => {
     if (!open) return;
-    void ipc.accountList().then(setHostAccounts);
+    void ipc
+      .accountList()
+      .then(setHostAccounts)
+      .catch(() => undefined);
   }, [open, section]);
 
   const saveIdentity = async () => {
@@ -931,7 +945,7 @@ export function SettingsDialog() {
                               variant="ghost"
                               size="icon-sm"
                               aria-label={`Remove profile ${profile.label}`}
-                              className="opacity-0 group-hover:opacity-100"
+                              className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
                               onClick={() => settings.removeProfile(profile.id)}
                             >
                               <Trash2 className="size-3.5 text-danger" />

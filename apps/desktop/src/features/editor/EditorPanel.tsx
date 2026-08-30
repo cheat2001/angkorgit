@@ -9,6 +9,8 @@ import { useUi } from '@/features/ui/store';
 import { confirmDialog } from '@/components/confirm';
 import { modKey } from '@/shared/utils';
 
+export const editorCloseShortcut = { current: null as (() => void) | null };
+
 export function EditorPanel({ file }: { file: string }) {
   const repo = useRepo((s) => s.repo);
   const refreshStatus = useRepo((s) => s.refreshStatus);
@@ -69,6 +71,13 @@ export function EditorPanel({ file }: { file: string }) {
       if (ok) closeEditor();
     });
   };
+
+  useEffect(() => {
+    editorCloseShortcut.current = requestClose;
+    return () => {
+      editorCloseShortcut.current = null;
+    };
+  });
 
   return (
     <motion.section

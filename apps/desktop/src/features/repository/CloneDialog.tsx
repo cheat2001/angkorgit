@@ -40,7 +40,7 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
   }, [open]);
 
   const clone = async () => {
-    if (!url.trim() || !into.trim()) return;
+    if (progress !== null || !url.trim() || !into.trim()) return;
     setProgress(0);
     try {
       const name = url.trim().replace(/\.git$/, '').split('/').pop() ?? 'repository';
@@ -71,9 +71,19 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
             placeholder="git@github.com:user/repo.git"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void clone();
+            }}
           />
           <div className="flex gap-2">
-            <Input placeholder="Destination folder" value={into} onChange={(e) => setInto(e.target.value)} />
+            <Input
+              placeholder="Destination folder"
+              value={into}
+              onChange={(e) => setInto(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void clone();
+              }}
+            />
             <Button
               variant="secondary"
               size="icon"
@@ -87,11 +97,16 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
             </Button>
           </div>
           {progress !== null && (
-            <div className="h-1.5 overflow-hidden rounded-full bg-surface-raised">
-              <div
-                className="h-full rounded-full bg-primary transition-[width] duration-300"
-                style={{ width: `${Math.max(4, progress)}%` }}
-              />
+            <div className="flex flex-col gap-1">
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-raised">
+                <div
+                  className={`h-full rounded-full bg-primary transition-[width] duration-300 ${progress === 0 ? 'animate-pulse' : ''}`}
+                  style={{ width: `${Math.max(4, progress)}%` }}
+                />
+              </div>
+              <span className="text-xs text-muted">
+                {progress === 0 ? 'Connecting…' : `Cloning… ${Math.round(progress)}%`}
+              </span>
             </div>
           )}
         </div>

@@ -90,6 +90,19 @@ body {
   50% { opacity: 0; }
 }
 
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+.reduce-motion .animate-spin {
+  animation-duration: 1.5s !important;
+  animation-iteration-count: infinite !important;
+}
+
 .reduce-motion .animate-dialog-in,
 .reduce-motion .animate-fade-in,
 .reduce-motion .animate-slide-up,

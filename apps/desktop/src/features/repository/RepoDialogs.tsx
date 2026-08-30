@@ -27,15 +27,19 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
   const [message, setMessage] = useState('');
   const [checkout, setCheckout] = useState(true);
   const [includeUntracked, setIncludeUntracked] = useState(true);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setName(dialog === 'rename' ? (dialogContext ?? '') : '');
     setMessage('');
     setCheckout(true);
     setIncludeUntracked(true);
+    setBusy(false);
   }, [dialog, dialogContext]);
 
   const submit = async (label: string, op: () => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(true);
     try {
       await op();
       toast.success(`${label} done`);
@@ -43,7 +47,46 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
       await onDone();
     } catch (error) {
       toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
+    } finally {
+      setBusy(false);
     }
+  };
+
+  const submitCreateBranch = () => {
+    if (!name.trim()) return;
+    void submit('Create branch', () =>
+      useUndo.getState().tracked({
+        path,
+        kind: 'branchCreate',
+        label: `create branch ${name.trim()}`,
+        extra: { branch: name.trim(), oid: dialogContext ?? (repo?.headOid ?? '') },
+        action: () => ipc.createBranch(path, name.trim(), dialogContext, checkout),
+      }),
+    );
+  };
+
+  const submitCreateTag = () => {
+    if (!name.trim()) return;
+    void submit('Create tag', () =>
+      ipc.tagCreate(path, name.trim(), dialogContext, message.trim() || null),
+    );
+  };
+
+  const submitStash = () => {
+    void submit('Stash', () => ipc.stashCreate(path, message.trim() || null, includeUntracked));
+  };
+
+  const submitRename = () => {
+    if (!name.trim() || name.trim() === dialogContext) return;
+    void submit('Rename branch', () =>
+      useUndo.getState().tracked({
+        path,
+        kind: 'branchRename',
+        label: `rename ${dialogContext} → ${name.trim()}`,
+        extra: { from: dialogContext ?? '', to: name.trim() },
+        action: () => ipc.renameBranch(path, dialogContext ?? '', name.trim()),
+      }),
+    );
   };
 
   return (
@@ -63,17 +106,7 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && name.trim()) {
-                  void submit('Create branch', () =>
-                    useUndo.getState().tracked({
-                      path,
-                      kind: 'branchCreate',
-                      label: `create branch ${name.trim()}`,
-                      extra: { branch: name.trim(), oid: dialogContext ?? (repo?.headOid ?? '') },
-                      action: () => ipc.createBranch(path, name.trim(), dialogContext, checkout),
-                    }),
-                  );
-                }
+                if (e.key === 'Enter') submitCreateBranch();
               }}
             />
             <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
@@ -85,18 +118,7 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
             <Button variant="ghost" onClick={closeDialog}>
               Cancel
             </Button>
-            <Button
-              disabled={!name.trim()}
-              onClick={() => void submit('Create branch', () =>
-                    useUndo.getState().tracked({
-                      path,
-                      kind: 'branchCreate',
-                      label: `create branch ${name.trim()}`,
-                      extra: { branch: name.trim(), oid: dialogContext ?? (repo?.headOid ?? '') },
-                      action: () => ipc.createBranch(path, name.trim(), dialogContext, checkout),
-                    }),
-                  )}
-            >
+            <Button disabled={busy || !name.trim()} onClick={submitCreateBranch}>
               Create
             </Button>
           </DialogFooter>
@@ -112,7 +134,15 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
-            <Input autoFocus placeholder="v1.0.0" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input
+              autoFocus
+              placeholder="v1.0.0"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitCreateTag();
+              }}
+            />
             <Textarea
               placeholder="Tag message (optional)"
               value={message}
@@ -123,12 +153,7 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
             <Button variant="ghost" onClick={closeDialog}>
               Cancel
             </Button>
-            <Button
-              disabled={!name.trim()}
-              onClick={() =>
-                void submit('Create tag', () => ipc.tagCreate(path, name.trim(), dialogContext, message.trim() || null))
-              }
-            >
+            <Button disabled={busy || !name.trim()} onClick={submitCreateTag}>
               Create
             </Button>
           </DialogFooter>
@@ -147,6 +172,9 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
               placeholder="Stash message (optional)"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitStash();
+              }}
             />
             <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
               <Checkbox checked={includeUntracked} onCheckedChange={(v) => setIncludeUntracked(v === true)} />
@@ -157,11 +185,7 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
             <Button variant="ghost" onClick={closeDialog}>
               Cancel
             </Button>
-            <Button
-              onClick={() =>
-                void submit('Stash', () => ipc.stashCreate(path, message.trim() || null, includeUntracked))
-              }
-            >
+            <Button disabled={busy} onClick={submitStash}>
               Stash
             </Button>
           </DialogFooter>
@@ -174,24 +198,21 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
             <DialogTitle>Rename branch</DialogTitle>
             <DialogDescription>Renaming “{dialogContext}”.</DialogDescription>
           </DialogHeader>
-          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+          <Input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitRename();
+            }}
+          />
           <DialogFooter>
             <Button variant="ghost" onClick={closeDialog}>
               Cancel
             </Button>
             <Button
-              disabled={!name.trim() || name.trim() === dialogContext}
-              onClick={() =>
-                void submit('Rename branch', () =>
-                  useUndo.getState().tracked({
-                    path,
-                    kind: 'branchRename',
-                    label: `rename ${dialogContext} → ${name.trim()}`,
-                    extra: { from: dialogContext ?? '', to: name.trim() },
-                    action: () => ipc.renameBranch(path, dialogContext ?? '', name.trim()),
-                  }),
-                )
-              }
+              disabled={busy || !name.trim() || name.trim() === dialogContext}
+              onClick={submitRename}
             >
               Rename
             </Button>

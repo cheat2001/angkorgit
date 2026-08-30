@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { create } from 'zustand';
 import { AlertTriangle } from 'lucide-react';
 import {
@@ -24,16 +25,27 @@ interface ConfirmState {
   settle: (value: boolean) => void;
 }
 
+let confirmReturnFocus: HTMLElement | null = null;
+
 const useConfirmStore = create<ConfirmState>((set, get) => ({
   request: null,
   ask: (options) =>
     new Promise<boolean>((resolve) => {
+      if (!get().request) {
+        const active = document.activeElement;
+        confirmReturnFocus = active instanceof HTMLElement ? active : null;
+      }
       get().request?.resolve(false);
       set({ request: { ...options, resolve } });
     }),
   settle: (value) => {
     get().request?.resolve(value);
     set({ request: null });
+    const target = confirmReturnFocus;
+    confirmReturnFocus = null;
+    if (target && document.contains(target)) {
+      requestAnimationFrame(() => target.focus());
+    }
   },
 }));
 
@@ -58,9 +70,16 @@ function PathBlock({ path }: { path: string }) {
 
 export function ConfirmHost() {
   const { request, settle } = useConfirmStore();
+  const confirmRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog open={request !== null} onOpenChange={(open) => !open && settle(false)}>
-      <DialogContent className="max-w-sm">
+      <DialogContent
+        className="max-w-sm"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          confirmRef.current?.focus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {request?.destructive && <AlertTriangle className="size-4 shrink-0 text-danger" />}
@@ -74,6 +93,7 @@ export function ConfirmHost() {
             Cancel
           </Button>
           <Button
+            ref={confirmRef}
             variant={request?.destructive ? 'danger' : 'default'}
             onClick={() => settle(true)}
           >

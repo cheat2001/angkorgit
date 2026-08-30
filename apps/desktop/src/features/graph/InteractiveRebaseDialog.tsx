@@ -195,6 +195,11 @@ export function InteractiveRebaseDialog() {
             aria-label="Rebase plan"
             className="flex max-h-[50vh] flex-col gap-1 overflow-y-auto pr-1"
           >
+            {rows.length === 0 && (
+              <p className="py-6 text-center text-sm text-faint">
+                No commits to rebase above this point.
+              </p>
+            )}
             {rows.map((row) => (
               <div
                 key={row.commit.oid}

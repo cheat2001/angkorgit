@@ -177,6 +177,9 @@ function AccountStatus({
   check: AccountCheckStatus | 'checking' | undefined;
 }) {
   if (check === 'checking') return <Spinner className="size-3.5" />;
+  if (check === 'unreachable') {
+    return <span className="text-xs text-muted">Could not check (offline?)</span>;
+  }
   if (!account.verified) {
     if (!account.verifiedAt) {
       return <span className="text-xs text-faint">Not verified</span>;
@@ -219,31 +222,48 @@ export function AccountsTab() {
   const [username, setUsername] = useState('');
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const tokenInputRef = useRef<HTMLInputElement>(null);
 
   const runChecks = async (list: HostingAccount[]) => {
-    for (const account of list) {
-      if (account.provider === 'other') continue;
-      if (account.provider === 'bitbucket' && !account.email) continue;
-      const key = accountKey(account);
-      setChecks((c) => ({ ...c, [key]: 'checking' }));
-      try {
-        const result = await ipc.accountCheck(account.host, account.username);
-        setChecks((c) => ({ ...c, [key]: result.status }));
-        setAccounts(result.accounts);
-      } catch {
-        setChecks((c) => ({ ...c, [key]: 'unreachable' }));
-      }
-    }
+    const eligible = list.filter(
+      (account) =>
+        account.provider !== 'other' && !(account.provider === 'bitbucket' && !account.email),
+    );
+    setChecks((c) => ({
+      ...c,
+      ...Object.fromEntries(eligible.map((account) => [accountKey(account), 'checking' as const])),
+    }));
+    await Promise.all(
+      eligible.map(async (account) => {
+        const key = accountKey(account);
+        try {
+          const result = await ipc.accountCheck(account.host, account.username);
+          setChecks((c) => ({ ...c, [key]: result.status }));
+          setAccounts(result.accounts);
+        } catch {
+          setChecks((c) => ({ ...c, [key]: 'unreachable' }));
+        }
+      }),
+    );
   };
 
   useEffect(() => {
     let cancelled = false;
-    void ipc.accountList().then((list) => {
-      if (cancelled) return;
-      setAccounts(list);
-      void runChecks(list);
-    });
+    void ipc
+      .accountList()
+      .then((list) => {
+        if (cancelled) return;
+        setAccounts(list);
+        setLoading(false);
+        void runChecks(list);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoading(false);
+        setLoadFailed(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -335,7 +355,24 @@ export function AccountsTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      {accounts.length > 0 && (
+      {loading && (
+        <div className="flex flex-col gap-1">
+          {[0, 1].map((row) => (
+            <div
+              key={row}
+              className="flex items-center gap-3 rounded-lg border border-border p-3"
+            >
+              <div className="size-4 animate-pulse rounded bg-surface-raised" />
+              <div className="flex flex-1 flex-col gap-1.5">
+                <div className="h-3.5 w-36 animate-pulse rounded bg-surface-raised" />
+                <div className="h-3 w-52 animate-pulse rounded bg-surface-raised" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {loadFailed && <p className="text-xs text-danger">Could not load accounts.</p>}
+      {!loading && accounts.length > 0 && (
         <div className="flex flex-col gap-1">
           {accounts.map((account) => {
             const key = accountKey(account);
@@ -372,7 +409,7 @@ export function AccountsTab() {
                       variant="ghost"
                       size="icon-sm"
                       aria-label={`Make ${account.username} the default for ${account.host}`}
-                      className="opacity-0 group-hover:opacity-100"
+                      className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
                       onClick={() => void makeDefault(account)}
                     >
                       <Star className="size-3.5" />
@@ -383,7 +420,7 @@ export function AccountsTab() {
                   variant="ghost"
                   size="icon-sm"
                   aria-label={`Remove ${account.username} on ${account.host}`}
-                  className="opacity-0 group-hover:opacity-100"
+                  className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
                   onClick={() => void remove(account)}
                 >
                   <Trash2 className="size-3.5 text-danger" />

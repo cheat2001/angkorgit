@@ -142,6 +142,7 @@ interface SettingsState {
   profiles: IdentityProfile[];
   ai: AiConfig;
   aiProfiles: Partial<Record<AiProviderKind, AiProfile>>;
+  aiKeysMigrated: boolean;
   aiStyle: AiStyleConfig;
   setTheme: (theme: Theme) => void;
   setAccent: (accent: AccentId) => void;
@@ -212,6 +213,7 @@ export const useSettings = create<SettingsState>()(
       profiles: [],
       ai: { provider: 'ollama', apiKey: '', model: 'llama3.1', baseUrl: '' },
       aiProfiles: {},
+      aiKeysMigrated: false,
       aiStyle: DEFAULT_AI_STYLE,
       setTheme: (theme) => {
         applyTheme(theme);
@@ -308,17 +310,20 @@ export const useSettings = create<SettingsState>()(
           state.aiProfiles = { [provider]: profile };
         }
         if (!state) return;
-        const plaintext: Array<[AiProviderKind, string]> = [];
-        for (const [provider, profile] of Object.entries(state.aiProfiles ?? {})) {
-          if (profile?.apiKey) plaintext.push([provider as AiProviderKind, profile.apiKey]);
+        const migrate = !state.aiKeysMigrated;
+        if (migrate) {
+          const plaintext: Array<[AiProviderKind, string]> = [];
+          for (const [provider, profile] of Object.entries(state.aiProfiles ?? {})) {
+            if (profile?.apiKey) plaintext.push([provider as AiProviderKind, profile.apiKey]);
+          }
+          if (state.ai.apiKey && !plaintext.some(([provider]) => provider === state.ai.provider)) {
+            plaintext.push([state.ai.provider, state.ai.apiKey]);
+          }
+          for (const [provider, key] of plaintext) void ipc.aiKeySet(provider, key);
         }
-        if (state.ai.apiKey && !plaintext.some(([provider]) => provider === state.ai.provider)) {
-          plaintext.push([state.ai.provider, state.ai.apiKey]);
-        }
-        for (const [provider, key] of plaintext) void ipc.aiKeySet(provider, key);
         const active = state.ai.provider;
         queueMicrotask(() => {
-          if (plaintext.length > 0) useSettings.setState((s) => ({ zoom: s.zoom }));
+          if (migrate) useSettings.setState({ aiKeysMigrated: true });
           if (!useSettings.getState().ai.apiKey) void loadAiKey(active);
         });
       },

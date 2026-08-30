@@ -64,6 +64,7 @@ export function CreatePrDialog() {
   const [reviewers, setReviewers] = useState<string[]>([]);
   const [defaultBranchName, setDefaultBranchName] = useState<string | null>(null);
   const [accountUsername, setAccountUsername] = useState<string | null>(null);
+  const [accountLookupFailed, setAccountLookupFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -110,6 +111,7 @@ export function CreatePrDialog() {
     setCandidates(cached?.users ?? []);
     setCandidatesLoading(!cached?.users);
 
+    setAccountLookupFailed(false);
     let cancelled = false;
     void ipc
       .accountList()
@@ -119,7 +121,12 @@ export function CreatePrDialog() {
         );
         if (!cancelled) setAccountUsername(match?.username ?? null);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) {
+          setAccountUsername(null);
+          setAccountLookupFailed(true);
+        }
+      });
     if (!provider || !key) return;
     const meta: DialogMeta = cached ? { ...cached } : { defaultBranch: null, users: null };
     if (meta.defaultBranch === null) {
@@ -330,12 +337,17 @@ export function CreatePrDialog() {
                     Loading members…
                   </div>
                 )}
-                {!candidatesLoading && visibleCandidates.length === 0 && (
+                {accountLookupFailed && (
+                  <div className="px-2 py-1.5 text-xs text-faint">
+                    Could not identify your account — add reviewers on {provider.label} instead.
+                  </div>
+                )}
+                {!candidatesLoading && !accountLookupFailed && visibleCandidates.length === 0 && (
                   <div className="px-2 py-1.5 text-xs text-faint">
                     No members found — reviewers can still be added on {provider.label}.
                   </div>
                 )}
-                {visibleCandidates.map((user) => (
+                {!accountLookupFailed && visibleCandidates.map((user) => (
                   <DropdownMenuCheckboxItem
                     key={user.id}
                     checked={reviewers.includes(user.id)}
