@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@angkorgit/design-system';
 import { avatarHue, initials } from '@/shared/utils';
 
@@ -46,6 +46,12 @@ export const Avatar = memo(function Avatar({
 }) {
   const [url, setUrl] = useState<string | null>(() => cachedUrl(email, size));
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useLayoutEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) setLoaded(true);
+  }, [url]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +89,7 @@ export const Avatar = memo(function Avatar({
       {initials(name)}
       {url && (
         <img
+          ref={imgRef}
           src={url}
           alt=""
           loading="lazy"

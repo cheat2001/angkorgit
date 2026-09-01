@@ -21,6 +21,7 @@ import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { timeAgo } from '@/shared/utils';
+import { captureSelectionRanges, useKeepSelection } from '@/shared/useKeepSelection';
 import { DiffViewer } from '@/features/diff/DiffViewer';
 import { DiffMinimap } from '@/features/diff/DiffMinimap';
 import { useDiffFind } from '@/features/diff/diffSearch';
@@ -93,7 +94,9 @@ export function FileHistoryPanel({ file }: { file: string }) {
     y: number;
     info: LineMenuInfo;
     selection: string;
+    ranges: Range[];
   } | null>(null);
+  useKeepSelection(lineMenu?.ranges ?? null);
 
   const path = repo?.path ?? '';
 
@@ -332,6 +335,7 @@ export function FileHistoryPanel({ file }: { file: string }) {
                     y: e.clientY,
                     info,
                     selection: window.getSelection()?.toString() ?? '',
+                    ranges: captureSelectionRanges(),
                   });
                 }}
               />
@@ -354,7 +358,7 @@ export function FileHistoryPanel({ file }: { file: string }) {
           <DropdownMenuTrigger asChild>
             <span style={{ position: 'fixed', left: lineMenu.x, top: lineMenu.y }} />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="bottom">
+          <DropdownMenuContent align="start" side="bottom" onCloseAutoFocus={(e) => e.preventDefault()}>
             {lineMenu.selection && (
               <DropdownMenuItem
                 onClick={() => {

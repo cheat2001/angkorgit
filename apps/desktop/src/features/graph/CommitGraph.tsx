@@ -25,7 +25,8 @@ import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { useShortcuts } from '@/shared/useShortcuts';
 
-const HASH_QUERY = /^[0-9a-f]{7,40}$/i;
+const HASH_QUERY = /^[0-9a-f]{4,40}$/i;
+const AMBIGUOUS_HASH_MAX = 6;
 
 interface MenuState {
   x: number;
@@ -53,6 +54,8 @@ export function CommitGraph() {
   const [jumpedOid, setJumpedOid] = useState<string | null>(null);
   const [jumpMiss, setJumpMiss] = useState(false);
   const jumpedRef = useRef('');
+  const draftsRef = useRef({ search: '', author: '' });
+  draftsRef.current = { search: searchDraft, author: authorDraft };
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const path = repo?.path ?? '';
@@ -76,16 +79,24 @@ export function CommitGraph() {
     (rev: string) => {
       void jumpTo(path, rev).then((oid) => {
         if (useGraph.getState().lastPath !== path) return;
+        if (draftsRef.current.search.trim() !== rev || draftsRef.current.author) return;
         if (oid) {
           jumpedRef.current = rev;
           setJumpedOid(oid);
           setJumpMiss(false);
-        } else {
-          setJumpMiss(true);
+          return;
         }
+        if (rev.length <= AMBIGUOUS_HASH_MAX) {
+          jumpedRef.current = rev;
+          setJumpedOid(null);
+          setJumpMiss(false);
+          setFilters(path, { search: rev, author: '' });
+          return;
+        }
+        setJumpMiss(true);
       });
     },
-    [jumpTo, path],
+    [jumpTo, path, setFilters],
   );
 
   useEffect(() => {

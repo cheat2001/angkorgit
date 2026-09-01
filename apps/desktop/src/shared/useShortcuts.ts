@@ -32,6 +32,7 @@ function inEditable(event: KeyboardEvent): boolean {
 export function useShortcuts(shortcuts: Shortcut[]): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented && event.key === 'Escape') return;
       for (const shortcut of shortcuts) {
         if (!matches(event, shortcut.combo)) continue;
         const hasModifier = shortcut.combo.includes('mod+') || shortcut.combo.includes('alt+');

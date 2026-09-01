@@ -22,6 +22,7 @@ import type { LineMenuInfo } from './VirtualDiff';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useShortcuts } from '@/shared/useShortcuts';
+import { captureSelectionRanges, useKeepSelection } from '@/shared/useKeepSelection';
 import { useUi, type CenterDiffTarget } from '@/features/ui/store';
 import { DiffViewer } from './DiffViewer';
 import { wrapUnavailable } from './diffShared';
@@ -55,7 +56,9 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     y: number;
     info: LineMenuInfo;
     selection: string;
+    ranges: Range[];
   } | null>(null);
+  useKeepSelection(lineMenu?.ranges ?? null);
   const textDiff = diff && !diff.isBinary && !diff.isImage ? diff : null;
   const { findBar, search } = useDiffFind(textDiff, scrollRef);
   const { selectAllOverlay, selectSide } = useDiffSelectAll(textDiff, scrollRef);
@@ -464,6 +467,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
                 y: e.clientY,
                 info,
                 selection: window.getSelection()?.toString() ?? '',
+                ranges: captureSelectionRanges(),
               });
             }}
             hunkActions={
@@ -511,7 +515,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
           <DropdownMenuTrigger asChild>
             <span style={{ position: 'fixed', left: lineMenu.x, top: lineMenu.y }} />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="bottom">
+          <DropdownMenuContent align="start" side="bottom" onCloseAutoFocus={(e) => e.preventDefault()}>
             {isWorkingCopy && lineMenu.info.line.kind !== 'context' && (
               <>
                 {target.staged ? (

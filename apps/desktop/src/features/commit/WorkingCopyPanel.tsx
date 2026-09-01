@@ -923,52 +923,50 @@ export function WorkingCopyPanel() {
               );
             })()}
           </div>
-          <div className="mt-2 flex items-center gap-3">
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted">
+          <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+            <label className="mr-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted">
               <Checkbox checked={amend} onCheckedChange={(v) => setAmend(v === true)} />
               <Undo2 className="size-3" /> Amend
             </label>
-            <span className="ml-auto flex items-center gap-2">
-              <Hint label="Review staged changes with AI before committing">
+            <Hint label="Review staged changes with AI before committing">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={reviewBusy || committing || aiBusy}
+                onClick={() => void reviewStaged()}
+              >
+                {reviewBusy ? (
+                  <Logo size={14} animated="loop" className="logo-draw-loop" />
+                ) : (
+                  <SearchCheck className="size-3 text-primary" />
+                )}
+                Review
+              </Button>
+            </Hint>
+            {repo?.state === 'merge' && (
+              <Hint label="Reset the working copy to the state before the merge started">
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={reviewBusy || committing || aiBusy}
-                  onClick={() => void reviewStaged()}
+                  className="text-danger hover:text-danger"
+                  onClick={() => void abortMergeFlow(path)}
                 >
-                  {reviewBusy ? (
-                    <Logo size={14} animated="loop" className="logo-draw-loop" />
-                  ) : (
-                    <SearchCheck className="size-3 text-primary" />
-                  )}
-                  Review
+                  Abort merge
                 </Button>
               </Hint>
-              {repo?.state === 'merge' && (
-                <Hint label="Reset the working copy to the state before the merge started">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-danger hover:text-danger"
-                    onClick={() => void abortMergeFlow(path)}
-                  >
-                    Abort merge
-                  </Button>
-                </Hint>
-              )}
-              <Button
-                size="sm"
-                disabled={
-                  committing ||
-                  (!message.trim() && !amend) ||
-                  (stagedFiles.length === 0 && !amend && repo?.state !== 'merge')
-                }
-                onClick={() => void commit()}
-              >
-                {committing && <Spinner className="text-primary-foreground" />}
-                {amend ? 'Amend commit' : `Commit${stagedFiles.length > 0 ? ` ${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'}` : ''}`}
-              </Button>
-            </span>
+            )}
+            <Button
+              size="sm"
+              disabled={
+                committing ||
+                (!message.trim() && !amend) ||
+                (stagedFiles.length === 0 && !amend && repo?.state !== 'merge')
+              }
+              onClick={() => void commit()}
+            >
+              {committing && <Spinner className="text-primary-foreground" />}
+              {amend ? 'Amend commit' : `Commit${stagedFiles.length > 0 ? ` ${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'}` : ''}`}
+            </Button>
           </div>
         </div>
       )}

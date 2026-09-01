@@ -30,6 +30,24 @@ All notable changes to AngKorGit are documented here. The format follows
   one request instead of paging sequentially.
 
 ### Fixed
+- The commit actions no longer overflow a narrow working copy panel: with the
+  merge-only "Abort merge" button present (or a wide "Commit N files" label),
+  the Commit button was clipped at the panel edge — the action row now wraps
+  onto extra lines instead.
+- Searching a short commit hash (down to git's 4-character minimum, e.g. one
+  copied from GitLab or GitHub) now jumps to the commit in the full graph the
+  same way a full hash does, instead of switching to a filtered list. A short
+  hex string that matches no commit falls back to plain text filtering, so
+  searches like "added" keep working.
+- Avatars no longer disappear from the graph after opening a diff and coming
+  back: images restored from the browser cache could finish loading before
+  their load handler attached, leaving them permanently transparent until the
+  repository was reopened.
+- Selected text in a diff no longer loses its highlight when the right-click
+  menu opens: the selection stays visible while the menu is up and is restored
+  after it closes, in the diff view and the file history view alike.
+- Pressing Escape with a context menu open now closes only the menu — it used
+  to also close the diff, editor or conflict view underneath it.
 - Enter in confirmation dialogs now activates the confirm button instead of
   silently cancelling, and Enter submits the create tag, stash, rename branch,
   edit remote and clone dialogs (with double-submit guards).
