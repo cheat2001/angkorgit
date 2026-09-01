@@ -6,6 +6,15 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-09-01
+
+The fast release. AngKorGit now gets out of your way: launch lands on your
+repositories in a fraction of the old splash time, half the code waits until
+you actually need it, and the app stays quiet while you work in your editor.
+A long list of paper cuts went with it, from text selections lost to the
+right-click menu to avatars that vanished after viewing a diff, and short
+commit hashes now jump straight to their commit.
+
 ### Changed
 - **The app starts as soon as it is ready** — the splash screen now waits for
   the app, not a timer: launch lands on your repositories in a fraction of the
@@ -825,7 +834,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/cheat2001/angkorgit/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/cheat2001/angkorgit/compare/v0.6.6...v0.7.0
 [0.6.6]: https://github.com/cheat2001/angkorgit/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/cheat2001/angkorgit/compare/v0.6.4...v0.6.5
