@@ -1,15 +1,15 @@
 # Roadmap
 
-Updated for v0.8.0 (September 2026). [CHANGELOG.md](../CHANGELOG.md) is the
+Updated for v0.9.0 (September 2026). [CHANGELOG.md](../CHANGELOG.md) is the
 authoritative record of what shipped in each release; this file tracks
 direction.
 
-## Shipped (0.1.0 → 0.8.0)
+## Shipped (0.1.0 → 0.9.0)
 
 - [x] Repository: open, clone (with progress), recents, search, repository tabs (drag to reorder)
 - [x] Commit: stage files, hunks, and individual lines; unstage, commit, amend; per-repo commit drafts
 - [x] History: virtualized animated graph, search, author/branch filters, refs/tags/HEAD/merges, file history
-- [x] Branch: create, delete, rename, checkout (incl. remote), merge, rebase (+continue/abort), interactive rebase (reorder/reword/squash/fixup/drop), cherry-pick, reset (soft/mixed/hard) — explicit merges always record a merge commit; abort merge from the commit box
+- [x] Branch: create, delete, rename, checkout (incl. remote), merge, rebase (+continue/abort), interactive rebase (reorder/reword/squash/fixup/drop), cherry-pick (single or multi-commit, optional "(cherry picked from commit …)" reference), reset (soft/mixed/hard) — explicit merges always record a merge commit; abort merge from the commit box
 - [x] Remote: fetch, pull, push, force push, push/fetch tags, background auto fetch
 - [x] Conflicts: visual resolver — aligned A/B panes, per-line and per-side picks, a clean Output pane with direct click-to-edit results, GitKraken-style conflict navigation, AI explanations
 - [x] Stash: create, apply, pop, drop · Tags: create (annotated/lightweight), delete, checkout · Submodules: list & update

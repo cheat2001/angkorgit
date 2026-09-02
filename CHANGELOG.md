@@ -6,6 +6,13 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-09-02
+
+The backport release. Cherry-picking grew up: pick one commit or a whole
+selection in one motion, and let every new commit carry git's standard
+"(cherry picked from commit …)" reference so scripts and teammates can trace
+where a change came from — written exactly as git itself writes it.
+
 ### Added
 - **Cherry-pick can record its origin** (#4) — cherry-picking from the graph
   now opens a small dialog showing the commit, and a "Reference the source
@@ -850,7 +857,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/cheat2001/angkorgit/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/cheat2001/angkorgit/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/cheat2001/angkorgit/compare/v0.6.6...v0.7.0
 [0.6.6]: https://github.com/cheat2001/angkorgit/compare/v0.6.5...v0.6.6
