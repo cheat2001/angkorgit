@@ -139,6 +139,7 @@ interface SettingsState {
   reduceMotion: boolean;
   autoFetchMinutes: number;
   showPullRequests: boolean;
+  cherryPickRecordOrigin: boolean;
   profiles: IdentityProfile[];
   ai: AiConfig;
   aiProfiles: Partial<Record<AiProviderKind, AiProfile>>;
@@ -156,6 +157,7 @@ interface SettingsState {
   setReduceMotion: (value: boolean) => void;
   setAutoFetchMinutes: (minutes: number) => void;
   setShowPullRequests: (value: boolean) => void;
+  setCherryPickRecordOrigin: (value: boolean) => void;
   addProfile: (profile: Omit<IdentityProfile, 'id'>) => void;
   updateProfile: (id: string, patch: Partial<Omit<IdentityProfile, 'id'>>) => void;
   removeProfile: (id: string) => void;
@@ -207,6 +209,7 @@ export const useSettings = create<SettingsState>()(
       useCredentialHelper: true,
       autoFetchMinutes: 1,
       showPullRequests: true,
+      cherryPickRecordOrigin: true,
       reduceMotion:
         typeof window !== 'undefined' &&
         window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -236,6 +239,7 @@ export const useSettings = create<SettingsState>()(
       setUseCredentialHelper: (useCredentialHelper) => set({ useCredentialHelper }),
       setAutoFetchMinutes: (autoFetchMinutes) => set({ autoFetchMinutes }),
       setShowPullRequests: (showPullRequests) => set({ showPullRequests }),
+      setCherryPickRecordOrigin: (cherryPickRecordOrigin) => set({ cherryPickRecordOrigin }),
       setReduceMotion: (reduceMotion) => {
         applyReduceMotion(reduceMotion);
         set({ reduceMotion });

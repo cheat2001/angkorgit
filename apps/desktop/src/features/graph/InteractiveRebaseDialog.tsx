@@ -24,7 +24,7 @@ import {
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
-import { useUi } from '@/features/ui/store';
+import { useUi, type DialogContext } from '@/features/ui/store';
 import { useUndo } from '@/features/history/undoStore';
 
 const ACTIONS: RebaseTodoAction[] = ['pick', 'reword', 'squash', 'fixup', 'drop'];
@@ -39,8 +39,9 @@ function fullMessage(commit: CommitInfo): string {
   return commit.body ? `${commit.summary}\n\n${commit.body}` : commit.summary;
 }
 
-function contextBaseOid(context: string | { baseOid: string } | null): string {
-  return typeof context === 'string' ? context : (context?.baseOid ?? '');
+function contextBaseOid(context: DialogContext): string {
+  if (typeof context === 'string') return context;
+  return context && 'baseOid' in context ? context.baseOid : '';
 }
 
 function stillOpenFor(baseOid: string): boolean {
@@ -91,7 +92,7 @@ export function InteractiveRebaseDialog() {
         const commits = await ipc.rebaseCommits(path, baseOid);
         if (!stillOpenFor(baseOid)) return;
         const context = useUi.getState().dialogContext;
-        const preset = typeof context === 'object' && context ? context : null;
+        const preset = typeof context === 'object' && context && 'baseOid' in context ? context : null;
         const squashOids = new Set(preset?.squashOids ?? []);
         const dropOids = new Set(preset?.dropOids ?? []);
         const seenSquash = { current: false };

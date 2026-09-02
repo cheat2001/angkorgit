@@ -12,6 +12,7 @@ export type DialogKind =
   | 'rename'
   | 'interactiveRebase'
   | 'createPullRequest'
+  | 'cherryPick'
   | null;
 
 export interface CenterDiffTarget {
@@ -27,7 +28,11 @@ export interface InteractiveRebasePreset {
   dropOids?: string[];
 }
 
-export type DialogContext = string | InteractiveRebasePreset | null;
+export interface CherryPickPreset {
+  oids: string[];
+}
+
+export type DialogContext = string | InteractiveRebasePreset | CherryPickPreset | null;
 
 interface UiState {
   sidebarOpen: boolean;

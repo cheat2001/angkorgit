@@ -265,9 +265,130 @@ fn cherry_pick_applies_commit() {
 
     core::checkout_branch(repo.path(), "master").unwrap();
     assert!(!repo.dir.join("picked.txt").exists());
-    let outcome = core::cherry_pick(repo.path(), &picked_oid).unwrap();
+    let outcome = core::cherry_pick(repo.path(), &picked_oid, false).unwrap();
     assert_eq!(outcome.status, "ok");
     assert!(repo.dir.join("picked.txt").exists());
+    assert_eq!(head_message(&repo), "add picked file\n");
+}
+
+fn head_message(repo: &TempRepo) -> String {
+    let output = Command::new("git")
+        .args(["log", "-1", "--format=%B"])
+        .current_dir(&repo.dir)
+        .output()
+        .expect("git CLI available");
+    assert!(output.status.success());
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn cherry_pick_many_applies_in_order_with_origin_lines() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "source", None, true).unwrap();
+    repo.write("one.txt", "1\n");
+    let first = commit_all(&repo, "feat: one");
+    repo.write("two.txt", "2\n");
+    let second = commit_all(&repo, "feat: two");
+
+    core::checkout_branch(repo.path(), "master").unwrap();
+    let outcome =
+        core::cherry_pick_many(repo.path(), &[first.clone(), second.clone()], true).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_eq!(outcome.message, "Cherry-picked 2 commits");
+    assert!(repo.dir.join("one.txt").exists());
+    assert!(repo.dir.join("two.txt").exists());
+
+    assert_eq!(
+        head_message(&repo),
+        format!("feat: two\n\n(cherry picked from commit {second})\n\n")
+    );
+    let output = Command::new("git")
+        .args(["log", "-1", "--format=%B", "HEAD~1"])
+        .current_dir(&repo.dir)
+        .output()
+        .expect("git CLI available");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!("feat: one\n\n(cherry picked from commit {first})\n\n")
+    );
+}
+
+#[test]
+fn cherry_pick_many_stops_at_the_first_conflict_and_reports_progress() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+
+    core::branch_create(repo.path(), "source", None, true).unwrap();
+    repo.write("clean.txt", "clean\n");
+    let clean = commit_all(&repo, "feat: clean pick");
+    repo.write("a.txt", "source change\n");
+    let conflicting = commit_all(&repo, "feat: conflicting pick");
+    repo.write("after.txt", "later\n");
+    let after = commit_all(&repo, "feat: after the conflict");
+
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("a.txt", "master change\n");
+    commit_all(&repo, "diverge on master");
+
+    let outcome =
+        core::cherry_pick_many(repo.path(), &[clean, conflicting.clone(), after], true).unwrap();
+    assert_eq!(outcome.status, "conflicts");
+    assert_eq!(
+        outcome.message,
+        format!(
+            "Cherry-picked 1 of 3 commits. {} has conflicts to resolve; 1 more commit is waiting",
+            &conflicting[..8]
+        )
+    );
+    assert!(repo.dir.join("clean.txt").exists());
+    assert!(!repo.dir.join("after.txt").exists());
+    assert!(head_message(&repo).starts_with("feat: clean pick\n"));
+    assert!(!core::conflict_list(repo.path()).unwrap().is_empty());
+}
+
+#[test]
+fn cherry_pick_record_origin_matches_git_cli() {
+    let messages = [
+        "feat: add picked file\n\nSome body text.",
+        "fix: adjust\n\nSigned-off-by: Test User <test@angkorgit.dev>",
+    ];
+    for message in messages {
+        let repo = TempRepo::new();
+        repo.write("a.txt", "base\n");
+        let base = commit_all(&repo, "base");
+
+        core::branch_create(repo.path(), "source", None, true).unwrap();
+        repo.write("picked.txt", "cherry\n");
+        let picked = commit_all(&repo, message);
+
+        core::checkout_branch(repo.path(), "master").unwrap();
+        let outcome = core::cherry_pick(repo.path(), &picked, true).unwrap();
+        assert_eq!(outcome.status, "ok");
+        let engine_message = head_message(&repo);
+        assert!(
+            engine_message.contains(&format!("(cherry picked from commit {picked})")),
+            "missing origin line in: {engine_message:?}"
+        );
+
+        core::reset(repo.path(), &base, "hard").unwrap();
+        let output = Command::new("git")
+            .args(["cherry-pick", "-x", &picked])
+            .current_dir(&repo.dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .output()
+            .expect("git CLI available");
+        assert!(
+            output.status.success(),
+            "git cherry-pick -x failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(engine_message, head_message(&repo), "message {message:?}");
+    }
 }
 
 #[test]

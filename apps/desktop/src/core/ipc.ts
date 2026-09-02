@@ -331,9 +331,13 @@ export const ipc = {
     }
     return invoke('rebase_interactive', { path, baseOid, todo });
   },
-  async cherryPick(path: string, oid: string): Promise<OpOutcome> {
+  async cherryPick(path: string, oid: string, recordOrigin: boolean): Promise<OpOutcome> {
     if (!isTauri()) return { status: 'ok', message: 'Cherry-picked (demo)' };
-    return invoke('cherry_pick', { path, oid });
+    return invoke('cherry_pick', { path, oid, recordOrigin });
+  },
+  async cherryPickMany(path: string, oids: string[], recordOrigin: boolean): Promise<OpOutcome> {
+    if (!isTauri()) return { status: 'ok', message: `Cherry-picked ${oids.length} commits (demo)` };
+    return invoke('cherry_pick_many', { path, oids, recordOrigin });
   },
   async reset(path: string, oid: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
     if (!isTauri()) return;

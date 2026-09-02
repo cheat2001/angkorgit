@@ -6,6 +6,22 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Cherry-pick can record its origin** (#4) — cherry-picking from the graph
+  now opens a small dialog showing the commit, and a "Reference the source
+  commit" option appends git's standard
+  `(cherry picked from commit …)` line to the new message, exactly as
+  `git cherry-pick -x` writes it (verified byte-for-byte against the git CLI,
+  including trailer-block placement for messages ending in `Signed-off-by:`
+  style footers). The choice is remembered across sessions, and the dialog
+  confirms the pick with Enter or a click.
+- **Cherry-pick several commits at once** — select multiple commits in the
+  graph and the context menu offers "Cherry-pick N commits onto current
+  branch". The dialog lists every commit, applies them oldest first, and each
+  one gets its own origin reference. If a commit conflicts, the run stops
+  there and tells you how many were applied and how many are waiting, so you
+  can resolve, commit, and pick the rest.
+
 ## [0.8.0] — 2026-09-01
 
 The fast release. AngKorGit now gets out of your way: launch lands on your

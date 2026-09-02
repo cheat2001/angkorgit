@@ -434,7 +434,46 @@ pub fn rebase_interactive(path: &str, base: &str, todo: &[RebaseTodoEntry]) -> A
     Ok(parent.id().to_string())
 }
 
-pub fn cherry_pick(path: &str, oid: &str) -> AppResult<OpOutcome> {
+fn is_trailer_line(line: &str) -> bool {
+    if line.starts_with(' ') || line.starts_with('\t') {
+        return true;
+    }
+    if line.starts_with("(cherry picked from commit ") && line.trim_end().ends_with(')') {
+        return true;
+    }
+    match line.split_once(':') {
+        Some((key, _)) => {
+            !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        }
+        None => false,
+    }
+}
+
+fn ends_with_trailer_block(message: &str) -> bool {
+    let trimmed = message.trim_end_matches('\n');
+    let Some((_, footer)) = trimmed.rsplit_once("\n\n") else {
+        return false;
+    };
+    let mut lines = footer.lines().filter(|line| !line.trim().is_empty());
+    let Some(first) = lines.next() else {
+        return false;
+    };
+    is_trailer_line(first) && lines.all(is_trailer_line)
+}
+
+fn append_pick_origin(message: &str, oid: git2::Oid) -> String {
+    let mut result = message.to_string();
+    if !result.is_empty() && !result.ends_with('\n') {
+        result.push('\n');
+    }
+    if !ends_with_trailer_block(&result) {
+        result.push('\n');
+    }
+    result.push_str(&format!("(cherry picked from commit {oid})\n"));
+    result
+}
+
+pub fn cherry_pick(path: &str, oid: &str, record_origin: bool) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
     let sig = super::commit::default_signature(&repo)?;
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
@@ -452,11 +491,17 @@ pub fn cherry_pick(path: &str, oid: &str) -> AppResult<OpOutcome> {
     let tree = repo.find_tree(index.write_tree()?)?;
     let head_commit = repo.head()?.peel_to_commit()?;
     let author = commit.author().to_owned();
+    let base_message = commit.message().unwrap_or("cherry-pick");
+    let message = if record_origin {
+        append_pick_origin(base_message, commit.id())
+    } else {
+        base_message.to_string()
+    };
     repo.commit(
         Some("HEAD"),
         &author,
         &sig,
-        commit.message().unwrap_or("cherry-pick"),
+        &message,
         &tree,
         &[&head_commit],
     )?;
@@ -464,6 +509,38 @@ pub fn cherry_pick(path: &str, oid: &str) -> AppResult<OpOutcome> {
     Ok(OpOutcome {
         status: "ok".into(),
         message: format!("Cherry-picked {}", &oid[..8.min(oid.len())]),
+    })
+}
+
+pub fn cherry_pick_many(path: &str, oids: &[String], record_origin: bool) -> AppResult<OpOutcome> {
+    if oids.is_empty() {
+        return Err(AppError::other("no commits to cherry-pick"));
+    }
+    if oids.len() == 1 {
+        return cherry_pick(path, &oids[0], record_origin);
+    }
+    for (applied, oid) in oids.iter().enumerate() {
+        let outcome = cherry_pick(path, oid, record_origin)?;
+        if outcome.status == "conflicts" {
+            let short = &oid[..8.min(oid.len())];
+            let remaining = oids.len() - applied - 1;
+            let rest = match remaining {
+                0 => String::new(),
+                1 => "; 1 more commit is waiting".into(),
+                n => format!("; {n} more commits are waiting"),
+            };
+            return Ok(OpOutcome {
+                status: "conflicts".into(),
+                message: format!(
+                    "Cherry-picked {applied} of {} commits. {short} has conflicts to resolve{rest}",
+                    oids.len()
+                ),
+            });
+        }
+    }
+    Ok(OpOutcome {
+        status: "ok".into(),
+        message: format!("Cherry-picked {} commits", oids.len()),
     })
 }
 

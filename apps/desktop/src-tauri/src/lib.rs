@@ -14,8 +14,8 @@ mod watcher;
 
 pub mod test_api {
     pub use crate::core::branch::{
-        can_fast_forward, checkout_branch, cherry_pick, create as branch_create, merge, rebase,
-        rebase_commits, rebase_interactive, reset,
+        can_fast_forward, checkout_branch, cherry_pick, cherry_pick_many, create as branch_create,
+        merge, rebase, rebase_commits, rebase_interactive, reset,
     };
     pub use crate::core::commit::{amend, commit, merge_message, revert};
     pub use crate::core::conflict::{
@@ -105,6 +105,7 @@ pub fn run() {
             commands::rebase_commits,
             commands::rebase_interactive,
             commands::cherry_pick,
+            commands::cherry_pick_many,
             commands::reset_to,
             commands::remote_list,
             commands::remote_edit,

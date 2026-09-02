@@ -374,8 +374,17 @@ pub async fn rebase_interactive(
 }
 
 #[tauri::command]
-pub async fn cherry_pick(path: String, oid: String) -> AppResult<OpOutcome> {
-    blocking(move || branch::cherry_pick(&path, &oid)).await
+pub async fn cherry_pick(path: String, oid: String, recordOrigin: bool) -> AppResult<OpOutcome> {
+    blocking(move || branch::cherry_pick(&path, &oid, recordOrigin)).await
+}
+
+#[tauri::command]
+pub async fn cherry_pick_many(
+    path: String,
+    oids: Vec<String>,
+    recordOrigin: bool,
+) -> AppResult<OpOutcome> {
+    blocking(move || branch::cherry_pick_many(&path, &oids, recordOrigin)).await
 }
 
 #[tauri::command]

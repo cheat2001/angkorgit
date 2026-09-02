@@ -240,6 +240,14 @@ export function CommitGraph() {
     };
   }, [menu, selectedOids, commits]);
 
+  const pickSelection = useMemo(() => {
+    if (!menu || selectedOids.length < 2 || !selectedOids.includes(menu.commit.oid)) return null;
+    const indices = selectedOids.map((oid) => commits.findIndex((c) => c.oid === oid));
+    if (indices.some((i) => i < 0)) return null;
+    if (indices.some((i) => commits[i].parents.length > 1)) return null;
+    return [...indices].sort((a, b) => b - a).map((i) => commits[i].oid);
+  }, [menu, selectedOids, commits]);
+
   const checkoutRef = useCallback(
     (ref: RefInfo) => {
       void act(`Checkout ${ref.shorthand}`, () => ipc.checkout(path, ref.shorthand), {
@@ -453,9 +461,15 @@ export function CommitGraph() {
               <TagIcon /> Create tag here…
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => void act(`Cherry-pick ${menu.commit.shortOid}`, () => ipc.cherryPick(path, menu.commit.oid), { kind: 'cherryPick' })}>
-              <ListRestart /> Cherry-pick onto current branch
-            </DropdownMenuItem>
+            {pickSelection ? (
+              <DropdownMenuItem onClick={() => openDialog('cherryPick', { oids: pickSelection })}>
+                <ListRestart /> Cherry-pick {pickSelection.length} commits onto current branch…
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => openDialog('cherryPick', menu.commit.oid)}>
+                <ListRestart /> Cherry-pick onto current branch…
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={() =>
                 void act(`Revert ${menu.commit.shortOid}`, () => ipc.revert(path, menu.commit.oid), {

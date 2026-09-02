@@ -114,6 +114,42 @@ test('interactive rebase dialog opens from the commit context menu', async ({ pa
   await expect(page.getByRole('dialog')).toBeHidden();
 });
 
+test('cherry-pick opens a dialog with the source reference option', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('row').nth(3).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /Cherry-pick onto current branch/ }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Cherry-pick commit')).toBeVisible();
+  await expect(dialog.getByRole('checkbox')).toBeChecked();
+  await expect(dialog.getByText(/cherry picked from commit/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cherry-pick', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.getByText('Cherry-picked (demo)')).toBeVisible();
+});
+
+test('multi-select cherry-pick lists every commit in the dialog', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('row').nth(1).click();
+  await page.getByRole('row').nth(2).click({ modifiers: ['ControlOrMeta'] });
+  await page.getByRole('row').nth(2).click({ button: 'right' });
+  await page
+    .getByRole('menuitem', { name: /Cherry-pick 2 commits onto current branch/ })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Cherry-pick 2 commits' })).toBeVisible();
+  await expect(dialog.getByText(/oldest first/)).toBeVisible();
+  await expect(dialog.locator('.font-mono')).toHaveCount(2);
+  await dialog.getByRole('button', { name: 'Cherry-pick 2 commits' }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.getByText('Cherry-picked 2 commits (demo)')).toBeVisible();
+});
+
 test('multi-select offers squash and pre-fills the rebase plan', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();
