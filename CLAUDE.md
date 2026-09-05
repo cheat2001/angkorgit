@@ -602,7 +602,16 @@ features/
 │                               slot for the same reason), right-click context
 │                               menu (checkout/merge/rebase/pull/push/create-branch-here/
 │                               rename/delete), drag-and-drop merge/rebase, tags/stashes/
-│                               remotes/submodules sections
+│                               remotes/submodules sections. Remotes: the top-level
+│                               FOLDER row of each remote (origin, upstream…) IS the
+│                               remote — Cloud icon, hover "…" and right-click open the
+│                               remote menu (fetch/edit/remove); remotes with no fetched
+│                               branches render as a chevron-less row with the same
+│                               menu; there is no separate remote list under the tree
+│                               (owner request 2026-09-05). Stash rows: right-click and
+│                               the hover "…" share ONE positioned stashMenu (apply/pop/
+│                               delete) — inline DropdownMenu triggers only answered the
+│                               button, not right-click
 ├── history/undoStore.ts      ← undo/redo: tracked() records before/after HEAD snapshots;
 │                               kinds commit/checkout/merge/cherryPick/rebase/reset/revert/
 │                               branchCreate/Delete/Rename; validation guards (repo moved,

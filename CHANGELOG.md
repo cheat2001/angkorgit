@@ -31,6 +31,11 @@ All notable changes to AngKorGit are documented here. The format follows
   live when the theme changes.
 
 ### Changed
+- Right-clicking a stash opens its Apply, Pop and Delete menu; before, only the
+  hover button did.
+- In the Remotes section each remote's folder row (origin, upstream…) now carries
+  the remote actions: hover for the menu button or right-click to fetch, edit or
+  remove it. The separate list of remotes under the branch tree is gone.
 - Checking out a branch that another worktree holds is refused with a message
   naming that folder, matching the git CLI (libgit2 alone allowed it).
 - The file watcher follows a linked worktree's own HEAD and index and the shared

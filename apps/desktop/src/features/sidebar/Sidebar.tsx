@@ -64,7 +64,7 @@ import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import { useForge } from '@/features/forge/store';
 import { useSettings } from '@/features/settings/store';
 import { forgeNoun, pullRequestCheckoutSpec } from '@angkorgit/core';
-import type { BranchInfo, PullRequestInfo, RemoteInfo, SubmoduleInfo, WorktreeInfo } from '@angkorgit/core';
+import type { BranchInfo, PullRequestInfo, RemoteInfo, StashInfo, SubmoduleInfo, WorktreeInfo } from '@angkorgit/core';
 import { capCount, isMac } from '@/shared/utils';
 import { killTerminalSession } from '@/features/terminal/sessions';
 
@@ -200,6 +200,7 @@ export function Sidebar() {
   const [subMenu, setSubMenu] = useState<{ x: number; y: number; sub: SubmoduleInfo } | null>(null);
   const [remoteMenu, setRemoteMenu] = useState<{ x: number; y: number; remote: RemoteInfo } | null>(null);
   const [worktreeMenu, setWorktreeMenu] = useState<{ x: number; y: number; worktree: WorktreeInfo } | null>(null);
+  const [stashMenu, setStashMenu] = useState<{ x: number; y: number; stash: StashInfo } | null>(null);
   const [editRemote, setEditRemote] = useState<{ original: string; name: string; url: string } | null>(null);
   const [savingRemote, setSavingRemote] = useState(false);
 
@@ -657,29 +658,94 @@ export function Sidebar() {
           : renderRemoteBranch(node.branch, node.key, depth);
       }
       const expanded = expandedFolders.has(node.path);
+      const remote = kind === 'remote' && depth === 0 ? remotes.find((r) => r.name === node.key) : undefined;
       return (
         <div key={`folder:${node.path}`}>
-          <button
-            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted hover:bg-surface-raised"
-            style={{ paddingLeft: 10 + depth * 14 }}
-            onClick={() => toggleFolder(node.path)}
-            title={node.path}
+          <div
+            className="group flex items-center rounded-md hover:bg-surface-raised"
+            onContextMenu={
+              remote
+                ? (e) => {
+                    e.preventDefault();
+                    setRemoteMenu({ x: e.clientX, y: e.clientY, remote });
+                  }
+                : undefined
+            }
           >
-            <ChevronRight
-              className={cn('size-3.5 shrink-0 text-faint transition-transform duration-150', expanded && 'rotate-90')}
-            />
-            {expanded ? (
-              <FolderOpen className="size-3.5 shrink-0 text-primary/70" />
-            ) : (
-              <Folder className="size-3.5 shrink-0 text-faint" />
+            <button
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted"
+              style={{ paddingLeft: 10 + depth * 14 }}
+              onClick={() => toggleFolder(node.path)}
+              title={remote ? `${remote.name} — ${remote.url}` : node.path}
+            >
+              <ChevronRight
+                className={cn('size-3.5 shrink-0 text-faint transition-transform duration-150', expanded && 'rotate-90')}
+              />
+              {remote ? (
+                <Cloud className={cn('size-3.5 shrink-0', expanded ? 'text-primary/70' : 'text-faint')} />
+              ) : expanded ? (
+                <FolderOpen className="size-3.5 shrink-0 text-primary/70" />
+              ) : (
+                <Folder className="size-3.5 shrink-0 text-faint" />
+              )}
+              <span className="min-w-0 truncate">{node.key}</span>
+              <span className="text-[10px] text-faint">{leafCount(node)}</span>
+            </button>
+            {remote && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="mr-0.5 shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                aria-label={`Remote ${remote.name} actions`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setRemoteMenu({ x: rect.left, y: rect.bottom + 4, remote });
+                }}
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
             )}
-            <span className="min-w-0 truncate">{node.key}</span>
-            <span className="text-[10px] text-faint">{leafCount(node)}</span>
-          </button>
+          </div>
           {expanded && renderTree(node.children, depth + 1, kind)}
         </div>
       );
     });
+
+  const renderBranchlessRemote = (remote: RemoteInfo) => (
+    <div
+      key={`remote:${remote.name}`}
+      className="group flex items-center rounded-md hover:bg-surface-raised"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setRemoteMenu({ x: e.clientX, y: e.clientY, remote });
+      }}
+    >
+      <div
+        className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-sm text-muted"
+        style={{ paddingLeft: 10 }}
+        title={`${remote.name} — ${remote.url} (no branches fetched yet)`}
+      >
+        <span className="size-3.5 shrink-0" />
+        <Cloud className="size-3.5 shrink-0 text-faint" />
+        <span className="min-w-0 truncate">{remote.name}</span>
+        <span className="text-[10px] text-faint">0</span>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="mr-0.5 shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+        aria-label={`Remote ${remote.name} actions`}
+        onClick={(e) => {
+          e.stopPropagation();
+          const rect = e.currentTarget.getBoundingClientRect();
+          setRemoteMenu({ x: rect.left, y: rect.bottom + 4, remote });
+        }}
+      >
+        <MoreHorizontal className="size-3.5" />
+      </Button>
+    </div>
+  );
 
   return (
     <aside className="flex h-full flex-col bg-surface" aria-label="Branches and refs">
@@ -903,29 +969,10 @@ export function Sidebar() {
           {q && remoteBranches.length > FLAT_FILTER_CAP && (
             <div className="px-2 py-1 pl-7 text-xs text-faint">+{remoteBranches.length - FLAT_FILTER_CAP} more…</div>
           )}
-          {remotes.map((r) => (
-            <div
-              key={r.name}
-              className="group flex items-center gap-1.5 rounded-md px-2 py-1 pl-7 text-xs text-faint hover:bg-surface-raised"
-              title={r.url}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setRemoteMenu({ x: e.clientX, y: e.clientY, remote: r });
-              }}
-            >
-              <Cloud className="size-3 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{r.name}</span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-                aria-label={`Remote ${r.name} actions`}
-                onClick={(e) => setRemoteMenu({ x: e.clientX, y: e.clientY, remote: r })}
-              >
-                <MoreHorizontal className="size-3.5" />
-              </Button>
-            </div>
-          ))}
+          {!q &&
+            remotes
+              .filter((r) => !remoteTree.some((node) => !node.branch && node.key === r.name))
+              .map(renderBranchlessRemote)}
         </Section>
 
         <Section
@@ -995,29 +1042,27 @@ export function Sidebar() {
               key={stash.oid}
               className="group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised"
               onClick={() => useGraph.getState().select(stash.oid)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setStashMenu({ x: e.clientX, y: e.clientY, stash });
+              }}
             >
-              <span className="min-w-0 flex-1 truncate" title={`${stash.message} — click to preview`}>
+              <span className="min-w-0 flex-1 truncate" title={`${stash.message} — click to preview, right-click for actions`}>
                 {stash.message}
               </span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100" aria-label="Stash actions">
-                    <MoreHorizontal className="size-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => void act('Apply stash', () => ipc.stashApply(path, stash.index))}>
-                    <Play /> Apply
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => void act('Pop stash', () => ipc.stashPop(path, stash.index))}>
-                    <Undo2 /> Pop
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem destructive onClick={() => void act('Drop stash', () => ipc.stashDrop(path, stash.index))}>
-                    <Trash2 /> Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                aria-label="Stash actions"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setStashMenu({ x: rect.left, y: rect.bottom + 4, stash });
+                }}
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
             </div>
           ))}
         </Section>
@@ -1090,6 +1135,43 @@ export function Sidebar() {
               }}
             >
               <Copy /> Copy path
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {stashMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setStashMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: stashMenu.x, top: stashMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            <DropdownMenuLabel className="max-w-72 truncate">{stashMenu.stash.message}</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => {
+                const stash = stashMenu.stash;
+                void act('Apply stash', () => ipc.stashApply(path, stash.index));
+              }}
+            >
+              <Play /> Apply
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                const stash = stashMenu.stash;
+                void act('Pop stash', () => ipc.stashPop(path, stash.index));
+              }}
+            >
+              <Undo2 /> Pop
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              destructive
+              onClick={() => {
+                const stash = stashMenu.stash;
+                void act('Drop stash', () => ipc.stashDrop(path, stash.index));
+              }}
+            >
+              <Trash2 /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
