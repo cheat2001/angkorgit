@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { AlertTriangle, Copy, ExternalLink, FolderOpen, History, Maximize2, Minus, Pencil, Plus, SearchCheck, Sparkles, Trash2, Undo2, X } from 'lucide-react';
 import type { FileStatus } from '@angkorgit/core';
-import { aiCapabilities, buildStagedReviewSignature, hashText, PROJECT_REVIEW_FILE } from '@angkorgit/core';
+import { aiCapabilities, buildStagedReviewSignature, hashText, PROJECT_REVIEW_FILE, joinCommitMessage, splitCommitMessage } from '@angkorgit/core';
 import {
   Badge,
   Button,
@@ -208,6 +208,10 @@ export function WorkingCopyPanel() {
   const message = useCommitDraft((s) => (path ? (s.drafts[path] ?? '') : ''));
   const amend = useCommitDraft((s) => !!path && s.amendFor === path);
   const setMessage = (text: string) => useCommitDraft.getState().setDraft(path, text);
+  const { summary, body } = splitCommitMessage(message);
+  const setSummary = (text: string) => setMessage(joinCommitMessage(text, body));
+  const setBody = (text: string) => setMessage(joinCommitMessage(summary, text));
+  const summaryRef = useRef<HTMLInputElement>(null);
   const setAmend = (value: boolean) => useCommitDraft.getState().setAmend(path, value);
   const [committing, setCommitting] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -222,8 +226,8 @@ export function WorkingCopyPanel() {
     const el = messageRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 300)}px`;
-  }, [message]);
+    el.style.height = `${Math.max(72, Math.min(el.scrollHeight, 260))}px`;
+  }, [body]);
 
   useEffect(() => {
     if (!path || useCommitDraft.getState().drafts[path]) return;
@@ -471,7 +475,7 @@ export function WorkingCopyPanel() {
   const committingRef = useRef(false);
 
   const commit = async () => {
-    if (!message.trim() && !amend) return;
+    if (!summary.trim() && !amend) return;
     if (committingRef.current) return;
     committingRef.current = true;
     setCommitting(true);
@@ -879,49 +883,75 @@ export function WorkingCopyPanel() {
               </div>
             </div>
           )}
-          <div className="relative">
-            <Textarea
-              ref={messageRef}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder={
-                amend
-                  ? 'New message (leave empty to keep current)'
-                  : 'Commit message  —  ⌘⏎ to commit'
-              }
-              className="max-h-[300px] min-h-[140px] resize-none pr-9 font-mono text-xs leading-5"
-            />
-            <Hint label={aiBusy ? 'Stop generating' : 'Generate message with AI'}>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={aiBusy ? 'Stop generating the commit message' : 'Generate commit message with AI'}
-                className="absolute right-1.5 top-1.5"
-                disabled={reviewBusy}
-                onClick={() => void generateMessage()}
-              >
-                {aiBusy ? (
-                  <Logo size={14} animated="loop" className="logo-draw-loop" />
-                ) : (
-                  <Sparkles className="size-3.5 text-primary" />
+          <div
+            className={cn(
+              'rounded-md border border-border bg-surface shadow-sm transition-colors',
+              'focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/60',
+            )}
+          >
+            <div className="relative flex items-center">
+              <input
+                ref={summaryRef}
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+                    e.preventDefault();
+                    messageRef.current?.focus();
+                  }
+                }}
+                placeholder={amend ? 'New summary (leave empty to keep current)' : 'Summary'}
+                aria-label="Commit summary"
+                spellCheck
+                className={cn(
+                  'h-9 min-w-0 flex-1 bg-transparent pl-3 text-sm font-medium text-foreground outline-none',
+                  'placeholder:font-normal placeholder:text-faint',
+                  summary.length > 50 ? 'pr-24' : 'pr-9',
                 )}
-              </Button>
-            </Hint>
-            {(() => {
-              const summaryLength = message.split('\n')[0].length;
-              if (summaryLength <= 50) return null;
-              return (
+              />
+              {summary.length > 50 && (
                 <span
                   className={cn(
-                    'pointer-events-none absolute bottom-1.5 right-2 font-mono text-[10px]',
-                    summaryLength > 72 ? 'text-danger' : 'text-faint',
+                    'pointer-events-none absolute right-9 font-mono text-[10px] tabular-nums',
+                    summary.length > 72 ? 'text-danger' : 'text-faint',
                   )}
-                  title="Summary line length (50 recommended, 72 max)"
+                  title="Summary length (50 recommended, 72 max)"
                 >
-                  {summaryLength}/72
+                  {summary.length}/72
                 </span>
-              );
-            })()}
+              )}
+              <Hint label={aiBusy ? 'Stop generating' : 'Generate message with AI'}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={aiBusy ? 'Stop generating the commit message' : 'Generate commit message with AI'}
+                  className="absolute right-1.5"
+                  disabled={reviewBusy}
+                  onClick={() => void generateMessage()}
+                >
+                  {aiBusy ? (
+                    <Logo size={14} animated="loop" className="logo-draw-loop" />
+                  ) : (
+                    <Sparkles className="size-3.5 text-primary" />
+                  )}
+                </Button>
+              </Hint>
+            </div>
+            <div className="mx-3 h-px bg-border-subtle" />
+            <Textarea
+              ref={messageRef}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Backspace' && body.length === 0) {
+                  e.preventDefault();
+                  summaryRef.current?.focus();
+                }
+              }}
+              placeholder="Description — what changed and why  ·  ⌘⏎ to commit"
+              aria-label="Commit description"
+              className="max-h-[260px] min-h-[72px] resize-none rounded-none border-0 bg-transparent px-3 py-2 text-xs leading-relaxed text-foreground shadow-none focus-visible:ring-0 focus-visible:border-0"
+            />
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
             <label className="mr-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted">
@@ -959,7 +989,7 @@ export function WorkingCopyPanel() {
               size="sm"
               disabled={
                 committing ||
-                (!message.trim() && !amend) ||
+                (!summary.trim() && !amend) ||
                 (stagedFiles.length === 0 && !amend && repo?.state !== 'merge')
               }
               onClick={() => void commit()}

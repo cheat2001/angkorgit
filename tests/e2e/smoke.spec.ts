@@ -555,3 +555,31 @@ test('opening a diff keeps the inspector at the same width', async ({ page }) =>
   expect(Math.abs(((await sidebar.boundingBox())?.width ?? 0) - sidebarBefore)).toBeLessThan(2);
   expect(Math.abs(((await inspector.boundingBox())?.width ?? 0) - inspectorBefore)).toBeLessThan(2);
 });
+
+test('commit box separates a summary line from a smaller description', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const summary = page.getByLabel('Commit summary');
+  const description = page.getByLabel('Commit description');
+  await summary.click();
+  await summary.fill('feat(worktrees): list, create and remove linked worktrees');
+  await expect(page.getByTitle('Summary length (50 recommended, 72 max)')).toHaveText('57/72');
+  await summary.press('Enter');
+  await expect(description).toBeFocused();
+  await page.keyboard.type('Explains the why.');
+  const [summarySize, descriptionSize] = await Promise.all([
+    summary.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+    description.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+  ]);
+  expect(summarySize).toBeGreaterThan(descriptionSize);
+  await expect(summary).toHaveCSS('font-weight', '500');
+  await expect(page.getByRole('button', { name: /^Commit \d+ files?$/ })).toBeEnabled();
+
+  await summary.fill('');
+  await expect(page.getByRole('button', { name: /^Commit \d+ files?$/ })).toBeDisabled();
+  await description.click();
+  await description.fill('');
+  await description.press('Backspace');
+  await expect(summary).toBeFocused();
+});
