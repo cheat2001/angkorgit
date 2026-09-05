@@ -804,8 +804,14 @@ features/
 │                               for a clean redesign 2026-09-05: each profile is a card
 │                               with Avatar + label + "In use" Badge + secondary Use
 │                               button + "…" menu whose Remove goes through confirmDialog;
-│                               linked-account chips read `username @ host` with a tick
-│                               when linked, aria-pressed, Hint explaining the toggle;
+│                               account linking is "Account to use per host": one row per
+│                               host with ≥2 accounts (provider icon tile, host, Select
+│                               with "Host default · <name>" = unlink + each username) —
+│                               hosts with one account render NOTHING because the default
+│                               already applies (the earlier chip row was rejected as
+│                               messy); setProfileHostAccount writes/deletes
+│                               profile.accounts[host]; providerIcon is exported from
+│                               AccountsTab for this;
 │                               "New profile" header button (or the empty-state card's
 │                               button) reveals a labeled 3-column form with Cancel/Add,
 │                               Enter adds, Escape cancels — never the old inline row of

@@ -65,7 +65,7 @@ import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { ACCENTS, THEMES, useSettings, ZOOM_MAX, ZOOM_MIN, type IdentityProfile } from './store';
 import { applyProfileToRepo } from './profiles';
-import { AccountsTab } from './AccountsTab';
+import { AccountsTab, providerIcon } from './AccountsTab';
 import { Field, SettingCard, SettingEmpty, SettingRow } from './SettingCard';
 import { getAiProvider } from '@/features/ai/client';
 import { modKey } from '@/shared/utils';
@@ -648,12 +648,19 @@ export function SettingsDialog() {
     }
   };
 
-  const toggleProfileAccount = (profile: IdentityProfile, account: HostingAccount) => {
+  const setProfileHostAccount = (profile: IdentityProfile, host: string, username: string | null) => {
     const accounts = { ...(profile.accounts ?? {}) };
-    if (accounts[account.host] === account.username) delete accounts[account.host];
-    else accounts[account.host] = account.username;
+    if (username === null) delete accounts[host];
+    else accounts[host] = username;
     settings.updateProfile(profile.id, { accounts });
   };
+  const accountsByHost = hostAccounts.reduce<Record<string, HostingAccount[]>>((acc, account) => {
+    (acc[account.host] ??= []).push(account);
+    return acc;
+  }, {});
+  const multiAccountHosts = Object.keys(accountsByHost)
+    .filter((host) => accountsByHost[host].length > 1)
+    .sort();
 
   const addProfile = () => {
     if (!profileLabel.trim() || !profileName.trim() || !profileEmail.trim()) return;
@@ -936,7 +943,11 @@ export function SettingsDialog() {
 
                   <SettingCard
                     title="Profiles"
-                    description="Work and personal identities, each with the hosting accounts it should use. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository."
+                    description={
+                      multiAccountHosts.length > 0
+                        ? 'Work and personal identities, each with the account it should use on hosts where you have several. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository.'
+                        : 'Work and personal identities. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository. With one account per host, every profile uses it automatically.'
+                    }
                     action={
                       !addingProfile && settings.profiles.length > 0 ? (
                         <Button variant="secondary" size="sm" onClick={() => setAddingProfile(true)}>
@@ -948,9 +959,6 @@ export function SettingsDialog() {
                     <div className="flex flex-col gap-2">
                       {settings.profiles.map((profile) => {
                         const isActive = activeProfile?.id === profile.id;
-                        const linkedAccounts = hostAccounts.filter(
-                          (account) => profile.accounts?.[account.host] === account.username,
-                        );
                         return (
                           <div
                             key={profile.id}
@@ -995,38 +1003,41 @@ export function SettingsDialog() {
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
-                            {hostAccounts.length > 0 && (
-                              <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-border-subtle pt-2.5">
-                                <span className="mr-0.5 text-[11px] text-faint">
-                                  {linkedAccounts.length === 0 ? 'Accounts' : `Accounts · ${linkedAccounts.length} linked`}
+                            {multiAccountHosts.length > 0 && (
+                              <div className="mt-3 flex flex-col gap-1.5 border-t border-border-subtle pt-2.5">
+                                <span className="text-[11px] font-medium text-faint">
+                                  Account to use per host
                                 </span>
-                                {hostAccounts.map((account) => {
-                                  const linked = profile.accounts?.[account.host] === account.username;
+                                {multiAccountHosts.map((host) => {
+                                  const options = accountsByHost[host];
+                                  const fallback = options.find((a) => a.isDefault) ?? options[0];
+                                  const chosen = profile.accounts?.[host];
+                                  const value = chosen && options.some((a) => a.username === chosen) ? chosen : '__default';
                                   return (
-                                    <Hint
-                                      key={`${account.host}:${account.username}`}
-                                      label={
-                                        linked
-                                          ? `Pushes to ${account.host} from this profile use ${account.username}. Click to unlink.`
-                                          : `Click to use ${account.username} for ${account.host} in this profile.`
-                                      }
-                                    >
-                                      <button
-                                        type="button"
-                                        aria-pressed={linked}
-                                        className={cn(
-                                          'flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] transition-colors',
-                                          linked
-                                            ? 'border-primary/40 bg-primary/10 text-primary'
-                                            : 'border-border-subtle text-muted hover:border-border hover:bg-surface-raised hover:text-foreground',
-                                        )}
-                                        onClick={() => toggleProfileAccount(profile, account)}
+                                    <div key={host} className="flex items-center gap-2">
+                                      <span className="flex size-6 shrink-0 items-center justify-center rounded bg-surface text-muted [&_svg]:size-3.5">
+                                        {providerIcon(options[0].provider)}
+                                      </span>
+                                      <span className="min-w-0 flex-1 truncate text-xs text-foreground">{host}</span>
+                                      <Select
+                                        value={value}
+                                        onValueChange={(v) => setProfileHostAccount(profile, host, v === '__default' ? null : v)}
                                       >
-                                        {linked && <Check className="size-3" />}
-                                        <span className="font-medium">{account.username}</span>
-                                        <span className="text-faint">@ {account.host}</span>
-                                      </button>
-                                    </Hint>
+                                        <SelectTrigger className="h-7 w-52 text-xs" aria-label={`Account for ${host} in ${profile.label}`}>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="__default">
+                                            Host default <span className="text-faint">· {fallback.username}</span>
+                                          </SelectItem>
+                                          {options.map((account) => (
+                                            <SelectItem key={account.username} value={account.username}>
+                                              {account.username}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
                                   );
                                 })}
                               </div>

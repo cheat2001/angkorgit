@@ -90,7 +90,7 @@ const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
   },
 };
 
-function providerIcon(provider: string) {
+export function providerIcon(provider: string) {
   if (provider === 'github') return <Github className="size-4" />;
   if (provider.startsWith('gitlab')) return <Gitlab className="size-4" />;
   return <Globe className="size-4" />;
