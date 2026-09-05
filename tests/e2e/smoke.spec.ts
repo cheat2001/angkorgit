@@ -688,3 +688,17 @@ test('welcome page flags missing folders and opens a repository from the keyboar
   await search.press('Enter');
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
 });
+
+test('conflict resolver shows line numbers in both sides and the result', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: /drawGraph\.ts/ }).first().click();
+  const dialog = page.getByRole('dialog', { name: /Resolve conflicts/ });
+  await expect(dialog).toBeVisible();
+  const gutters = dialog.locator('span.w-9.tabular-nums');
+  const values = (await gutters.allInnerTexts()).map((t) => t.trim()).filter(Boolean).map(Number);
+  expect(values.length).toBeGreaterThan(6);
+  expect(values.filter((n) => n === 1).length).toBeGreaterThanOrEqual(3);
+  expect(values.every((n) => Number.isInteger(n) && n > 0)).toBe(true);
+});

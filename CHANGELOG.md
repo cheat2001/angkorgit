@@ -49,6 +49,11 @@ All notable changes to AngKorGit are documented here. The format follows
   B pane headers carry their colors as a top edge and say which is current and
   which is incoming; each conflict block is numbered; block borders are softer
   so the active one stands out; the bottom pane is labeled Result.
+- **Line numbers in the conflict resolver.** The A pane, the B pane and the
+  Result each carry a line-number gutter. A and B count through their own
+  version of the file, so a line in a conflict block shows where it sits in
+  that branch, and the Result counts the file you are about to write, updating
+  as you pick lines or edit a block.
 - **Conflicts in the working copy** are their own section above Changes, in
   the same style as Changes and Staged: a red "Conflicts n" header with a
   Resolve action, a one-line hint, and one row per file with the file name

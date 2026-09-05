@@ -33,15 +33,20 @@ const TEXT_ROW_HEIGHT = 20;
 const CONFLICT_ROW_HEIGHT = 24;
 
 type PaneRow =
-  | { kind: 'text'; block: number; text: string }
+  | { kind: 'text'; block: number; text: string; li: number }
   | { kind: 'header'; block: number }
   | { kind: 'conflict'; block: number; li: number; last: boolean };
 
+interface SideStart {
+  a: number;
+  b: number;
+}
+
 type OutputRow =
-  | { kind: 'text'; text: string; key: string }
-  | { kind: 'unresolved'; block: number; text: string; key: string }
-  | { kind: 'pick'; side: Side; text: string; block: number; first: boolean; key: string }
-  | { kind: 'edited'; text: string; block: number; first: boolean; key: string }
+  | { kind: 'text'; text: string; key: string; lineNo: number }
+  | { kind: 'unresolved'; block: number; text: string; key: string; lineNo: number }
+  | { kind: 'pick'; side: Side; text: string; block: number; first: boolean; key: string; lineNo: number }
+  | { kind: 'edited'; text: string; block: number; first: boolean; key: string; lineNo: number }
   | { kind: 'deleted'; block: number; side: Side | null; key: string }
   | { kind: 'editor'; block: number; key: string };
 
@@ -67,22 +72,42 @@ function editSaveLines(edit: string, crlf: boolean): string[] {
   return crlf ? lines.map((line) => `${line}\r`) : lines;
 }
 
-function buildPaneRows(blocks: Block[] | null): { rows: PaneRow[]; blockStart: Map<number, number> } {
+function buildPaneRows(blocks: Block[] | null): {
+  rows: PaneRow[];
+  blockStart: Map<number, number>;
+  lineStart: Map<number, SideStart>;
+} {
   const rows: PaneRow[] = [];
   const blockStart = new Map<number, number>();
-  (blocks ?? []).forEach((b, block) => {
+  const lineStart = new Map<number, SideStart>();
+  let a = 1;
+  let b = 1;
+  (blocks ?? []).forEach((blk, block) => {
     blockStart.set(block, rows.length);
-    if (b.kind === 'text') {
-      for (const text of b.lines) rows.push({ kind: 'text', block, text });
+    lineStart.set(block, { a, b });
+    if (blk.kind === 'text') {
+      blk.lines.forEach((text, li) => rows.push({ kind: 'text', block, text, li }));
+      a += blk.lines.length;
+      b += blk.lines.length;
       return;
     }
     rows.push({ kind: 'header', block });
-    const count = Math.max(b.current.length || 1, b.incoming.length || 1);
+    const count = Math.max(blk.current.length || 1, blk.incoming.length || 1);
     for (let li = 0; li < count; li += 1) {
       rows.push({ kind: 'conflict', block, li, last: li === count - 1 });
     }
+    a += blk.current.length;
+    b += blk.incoming.length;
   });
-  return { rows, blockStart };
+  return { rows, blockStart, lineStart };
+}
+
+function LineNo({ n }: { n: number | null }) {
+  return (
+    <span className="w-9 shrink-0 select-none pr-2 text-right font-mono text-[10px] leading-5 text-faint tabular-nums">
+      {n ?? ''}
+    </span>
+  );
 }
 
 function useOffsetTop(ref: React.RefObject<HTMLDivElement>): number {
@@ -159,13 +184,42 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   );
   const paneModel = useMemo(() => buildPaneRows(blocks), [blocks]);
   const virtualized = paneModel.rows.length > VIRTUAL_THRESHOLD;
+  const outputStarts = useMemo(() => {
+    const starts = new Map<number, number>();
+    let n = 1;
+    (blocks ?? []).forEach((block, index) => {
+      starts.set(index, n);
+      if (block.kind === 'text') {
+        n += block.lines.length;
+        return;
+      }
+      if (editingBlock === index) {
+        n += Math.max(1, editDraft === '' ? 0 : editDraft.split('\n').length);
+        return;
+      }
+      const edit = blockEdits.get(index);
+      if (edit !== undefined) {
+        n += edit === '' ? 0 : edit.split('\n').length;
+        return;
+      }
+      const blockPicks = picks.get(index) ?? [];
+      if (blockPicks.length === 0) {
+        n += unresolvedPreview(block).length;
+        return;
+      }
+      n += blockPicks.filter((p) => p.line !== EMPTY_SIDE).length;
+    });
+    return starts;
+  }, [blocks, picks, blockEdits, editingBlock, editDraft]);
+
   const outputModel = useMemo<{ rows: OutputRow[]; blockRow: Map<number, number> }>(() => {
     const rows: OutputRow[] = [];
     const blockRow = new Map<number, number>();
     if (!virtualized || !blocks) return { rows, blockRow };
     blocks.forEach((block, index) => {
+      const start = outputStarts.get(index) ?? 1;
       if (block.kind === 'text') {
-        block.lines.forEach((text, li) => rows.push({ kind: 'text', text, key: `t${index}:${li}` }));
+        block.lines.forEach((text, li) => rows.push({ kind: 'text', text, key: `t${index}:${li}`, lineNo: start + li }));
         return;
       }
       blockRow.set(index, rows.length);
@@ -182,14 +236,14 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         edit
           .split('\n')
           .forEach((text, li) =>
-            rows.push({ kind: 'edited', text, block: index, first: li === 0, key: `e${index}:${li}` }),
+            rows.push({ kind: 'edited', text, block: index, first: li === 0, key: `e${index}:${li}`, lineNo: start + li }),
           );
         return;
       }
       const blockPicks = picks.get(index) ?? [];
       if (blockPicks.length === 0) {
         unresolvedPreview(block).forEach((text, li) =>
-          rows.push({ kind: 'unresolved', block: index, text, key: `u${index}:${li}` }),
+          rows.push({ kind: 'unresolved', block: index, text, key: `u${index}:${li}`, lineNo: start + li }),
         );
         return;
       }
@@ -206,11 +260,12 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
           block: index,
           first: pi === 0,
           key: `p${index}:${pi}`,
+          lineNo: start + pi,
         }),
       );
     });
     return { rows, blockRow };
-  }, [virtualized, blocks, picks, blockEdits, editingBlock]);
+  }, [virtualized, blocks, picks, blockEdits, editingBlock, outputStarts]);
 
   const topMargin = useOffsetTop(topListRef);
   const outputMargin = useOffsetTop(outputListRef);
@@ -559,6 +614,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         startEdit(index);
       }}
     >
+      <LineNo n={null} />
       {side === null ? (
         <span className="flex w-4 shrink-0 items-center justify-center leading-5">
           <Pencil className="size-3 text-primary" />
@@ -620,7 +676,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     </div>
   );
 
-  const renderUnresolvedLine = (index: number, text: string) => (
+  const renderUnresolvedLine = (index: number, text: string, lineNo: number | null = null) => (
     <div
       className="flex cursor-text items-start gap-2 border-l-2 border-danger bg-danger/5 px-2 transition-colors hover:bg-danger/10"
       title="Unresolved conflict — click to edit the result, or pick lines above"
@@ -629,6 +685,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         startEdit(index);
       }}
     >
+      <LineNo n={lineNo} />
       <span className="w-3.5 shrink-0" />
       <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs italic leading-5 text-faint">
         {text || ' '}
@@ -670,6 +727,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
 
   const renderSideCell = (block: ConflictBlock, index: number, side: Side) => {
     const lines = side === 'current' ? block.current : block.incoming;
+    const start = paneModel.lineStart.get(index);
+    const first = start ? (side === 'current' ? start.a : start.b) : null;
     return (
       <div
         className={cn(
@@ -699,6 +758,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                   : 'hover:bg-surface-raised/80',
               )}
             >
+              <LineNo n={first === null ? null : first + li} />
               <Checkbox
                 className="mt-1"
                 checked={isPicked(index, side, li)}
@@ -718,6 +778,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const renderSideLine = (block: ConflictBlock, index: number, side: Side, li: number) => {
     const lines = side === 'current' ? block.current : block.incoming;
     const paneCls = side === 'current' ? 'border-r border-border-subtle bg-info/5' : 'bg-success/5';
+    const start = paneModel.lineStart.get(index);
+    const first = start ? (side === 'current' ? start.a : start.b) : null;
     if (lines.length === 0) {
       return (
         <div className={cn('min-w-0', paneCls)}>
@@ -747,6 +809,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
               : 'hover:bg-surface-raised/80',
           )}
         >
+          <LineNo n={first === null ? null : first + li} />
           <Checkbox
             className="mt-1"
             checked={isPicked(index, side, li)}
@@ -867,12 +930,18 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                     >
                       {row.kind === 'text' || block.kind !== 'conflict' ? (
                         <div className="grid grid-cols-2">
-                          <pre className="min-w-0 whitespace-pre-wrap break-words border-r border-border-subtle px-3 font-mono text-xs leading-5 text-faint">
-                            {(row.kind === 'text' && row.text) || ' '}
-                          </pre>
-                          <pre className="min-w-0 whitespace-pre-wrap break-words px-3 font-mono text-xs leading-5 text-faint">
-                            {(row.kind === 'text' && row.text) || ' '}
-                          </pre>
+                          <div className="flex min-w-0 items-start border-r border-border-subtle px-3">
+                            <LineNo n={row.kind === 'text' ? (paneModel.lineStart.get(row.block)?.a ?? 1) + row.li : null} />
+                            <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-faint">
+                              {(row.kind === 'text' && row.text) || ' '}
+                            </pre>
+                          </div>
+                          <div className="flex min-w-0 items-start px-3">
+                            <LineNo n={row.kind === 'text' ? (paneModel.lineStart.get(row.block)?.b ?? 1) + row.li : null} />
+                            <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-faint">
+                              {(row.kind === 'text' && row.text) || ' '}
+                            </pre>
+                          </div>
                         </div>
                       ) : row.kind === 'header' ? (
                         <div
@@ -921,13 +990,23 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
             ) : (
               blocks.map((block, index) =>
                 block.kind === 'text' ? (
-                  <div key={index} className="grid grid-cols-2">
-                    <pre className="min-w-0 whitespace-pre-wrap break-words border-r border-border-subtle px-3 py-0.5 font-mono text-xs leading-5 text-faint">
-                      {block.lines.join('\n')}
-                    </pre>
-                    <pre className="min-w-0 whitespace-pre-wrap break-words px-3 py-0.5 font-mono text-xs leading-5 text-faint">
-                      {block.lines.join('\n')}
-                    </pre>
+                  <div key={index} className="grid grid-cols-2 py-0.5">
+                    <div className="min-w-0 border-r border-border-subtle px-3">
+                      {block.lines.map((line, li) => (
+                        <div key={li} className="flex items-start">
+                          <LineNo n={(paneModel.lineStart.get(index)?.a ?? 1) + li} />
+                          <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-faint">{line || ' '}</pre>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="min-w-0 px-3">
+                      {block.lines.map((line, li) => (
+                        <div key={li} className="flex items-start">
+                          <LineNo n={(paneModel.lineStart.get(index)?.b ?? 1) + li} />
+                          <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-faint">{line || ' '}</pre>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <div
@@ -1114,13 +1193,17 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                           style={{ transform: `translateY(${item.start - outputMargin}px)` }}
                         >
                           {row.kind === 'text' ? (
-                            <pre className="whitespace-pre-wrap break-words px-8 font-mono text-xs leading-5 text-muted">
-                              {row.text || ' '}
-                            </pre>
+                            <div className="flex items-start px-2">
+                              <LineNo n={row.lineNo} />
+                              <span className="w-4 shrink-0" />
+                              <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted">
+                                {row.text || ' '}
+                              </pre>
+                            </div>
                           ) : row.kind === 'editor' ? (
                             renderBlockEditor(row.block)
                           ) : row.kind === 'unresolved' ? (
-                            renderUnresolvedLine(row.block, row.text)
+                            renderUnresolvedLine(row.block, row.text, row.lineNo)
                           ) : row.kind === 'deleted' ? (
                             renderDeletedRow(row.block, row.side)
                           ) : row.kind === 'edited' ? (
@@ -1131,6 +1214,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         startEdit(row.block);
       }}
                             >
+                              <LineNo n={row.lineNo} />
                               <span className="flex w-4 shrink-0 items-center justify-center leading-5">
                                 <Pencil className="size-3 text-primary" />
                               </span>
@@ -1150,6 +1234,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         startEdit(row.block);
       }}
                             >
+                              <LineNo n={row.lineNo} />
                               <span
                                 className={cn(
                                   'w-4 shrink-0 text-center font-mono text-[10px] font-bold leading-5',
@@ -1170,13 +1255,19 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                 ) : (
                   blocks.map((block, index) => {
                     if (block.kind === 'text') {
+                      const start = outputStarts.get(index) ?? 1;
                       return (
-                        <pre
-                          key={index}
-                          className="whitespace-pre-wrap break-words px-8 py-0.5 font-mono text-xs leading-5 text-muted"
-                        >
-                          {block.lines.join('\n')}
-                        </pre>
+                        <div key={index} className="py-0.5">
+                          {block.lines.map((line, li) => (
+                            <div key={li} className="flex items-start px-2">
+                              <LineNo n={start + li} />
+                              <span className="w-4 shrink-0" />
+                              <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted">
+                                {line || ' '}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
                       );
                     }
                     if (editingBlock === index) {
@@ -1207,6 +1298,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                         >
                           {edit.split('\n').map((line, li) => (
                             <div key={li} className="flex items-start gap-2 bg-primary/10 px-2">
+                              <LineNo n={(outputStarts.get(index) ?? 1) + li} />
                               <span className="flex w-4 shrink-0 items-center justify-center leading-5">
                                 <Pencil className="size-3 text-primary" />
                               </span>
@@ -1224,7 +1316,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                       return (
                         <div key={index} ref={registerOutputBlock(index)}>
                           {unresolvedPreview(block).map((text, li) => (
-                            <div key={li}>{renderUnresolvedLine(index, text)}</div>
+                            <div key={li}>{renderUnresolvedLine(index, text, (outputStarts.get(index) ?? 1) + li)}</div>
                           ))}
                         </div>
                       );
@@ -1256,6 +1348,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                                 p.side === 'current' ? 'bg-info/10' : 'bg-success/10',
                               )}
                             >
+                              <LineNo n={(outputStarts.get(index) ?? 1) + pi} />
                               <span
                                 className={cn(
                                   'w-4 shrink-0 text-center font-mono text-[10px] font-bold leading-5',
