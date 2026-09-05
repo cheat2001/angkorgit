@@ -47,6 +47,14 @@ All notable changes to AngKorGit are documented here. The format follows
   open or closed between launches.
 
 ### Changed
+- **Settings, Git tab redesigned.** Toggles and pickers (auto fetch, pull
+  requests, reduce motion) sit on the same line as their title instead of
+  below a paragraph. The identity card says which scope it writes to and shows
+  which profile it matches. Profiles are cards with an avatar, an "In use"
+  badge, a clear Use button, and a menu for removal with a confirm; linked
+  accounts are readable chips showing username and host with a tick when
+  linked; adding a profile opens a labeled three-field form instead of a row of
+  bare placeholders; and an empty list explains what profiles do.
 - Graph ref chips no longer get crushed to two letters. Inside the same fixed
   column, the graph shows as many whole labels as fit and folds the rest behind
   a "+n" badge with a tooltip, ordering the checked-out branch first. A separate

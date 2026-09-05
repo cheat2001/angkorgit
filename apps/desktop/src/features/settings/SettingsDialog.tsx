@@ -10,6 +10,7 @@ import {
   KeyRound,
   Minus,
   Moon,
+  MoreHorizontal,
   Palette,
   Plus,
   RefreshCw,
@@ -33,10 +34,15 @@ import {
   type CommitStylePreset,
 } from '@angkorgit/core';
 import {
+  Badge,
   Button,
   Dialog,
   DialogContent,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Hint,
   Input,
   Kbd,
@@ -53,6 +59,8 @@ import {
   cn,
 } from '@angkorgit/design-system';
 import { ipc, pickFile, type HostingAccount } from '@/core/ipc';
+import { Avatar } from '@/components/Avatar';
+import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { ACCENTS, THEMES, useSettings, ZOOM_MAX, ZOOM_MIN, type IdentityProfile } from './store';
@@ -70,7 +78,7 @@ const SECTIONS: Array<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   { id: 'appearance', label: 'Appearance', description: 'Theme, accent color, zoom and motion', icon: Palette },
-  { id: 'git', label: 'Git', description: 'Auto fetch, committer identity and identity profiles', icon: User },
+  { id: 'git', label: 'Git', description: 'Auto fetch, pull requests, identity and profiles', icon: User },
   { id: 'accounts', label: 'Authentication', description: 'https:// remotes use accounts · git@ remotes use SSH keys', icon: Github },
   { id: 'ai', label: 'AI Assistant', description: 'Provider, connection and message style', icon: Sparkles },
   { id: 'shortcuts', label: 'Shortcuts', description: 'Keyboard reference', icon: Keyboard },
@@ -88,17 +96,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function SettingCard({
   title,
   description,
+  action,
   children,
 }: {
   title: string;
   description?: string;
-  children: React.ReactNode;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4">
-      <h3 className="text-sm font-medium">{title}</h3>
-      {description && <p className="mt-0.5 text-xs text-faint">{description}</p>}
-      <div className="mt-3">{children}</div>
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-medium">{title}</h3>
+          {description && <p className="mt-0.5 text-xs leading-relaxed text-faint">{description}</p>}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+      {children && <div className="mt-3">{children}</div>}
     </section>
   );
 }
@@ -580,6 +595,7 @@ export function SettingsDialog() {
   const [profileName, setProfileName] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
   const [hostAccounts, setHostAccounts] = useState<HostingAccount[]>([]);
+  const [addingProfile, setAddingProfile] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -648,6 +664,17 @@ export function SettingsDialog() {
     setProfileLabel('');
     setProfileName('');
     setProfileEmail('');
+    setAddingProfile(false);
+  };
+  const removeProfile = async (profile: IdentityProfile) => {
+    const ok = await confirmDialog({
+      title: `Remove profile "${profile.label}"?`,
+      description:
+        'Repositories already assigned to it keep the identity written in their config; they just lose the profile link.',
+      confirmLabel: 'Remove profile',
+      destructive: true,
+    });
+    if (ok) settings.removeProfile(profile.id);
   };
 
   const testAi = async () => {
@@ -665,6 +692,8 @@ export function SettingsDialog() {
 
   const preset = AI_PROVIDER_PRESETS[settings.ai.provider];
   const active = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
+  const activeProfile =
+    settings.profiles.find((p) => p.email === gitEmail && p.name === gitName) ?? null;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && closeDialog()}>
@@ -820,9 +849,11 @@ export function SettingsDialog() {
                     </div>
                   </SettingCard>
 
-                  <SettingCard title="Reduce motion" description="Minimize animations across the app">
-                    <Switch checked={settings.reduceMotion} onCheckedChange={settings.setReduceMotion} />
-                  </SettingCard>
+                  <SettingCard
+                    title="Reduce motion"
+                    description="Minimize animations across the app"
+                    action={<Switch checked={settings.reduceMotion} onCheckedChange={settings.setReduceMotion} />}
+                  />
                 </div>
               )}
 
@@ -830,46 +861,53 @@ export function SettingsDialog() {
                 <div className="flex flex-col gap-4">
                   <SettingCard
                     title="Auto fetch"
-                    description="Fetch from the first remote in the background so teammates' commits appear on the graph by themselves. Failures are silent and never interrupt you."
-                  >
-                    <Field label="Fetch every">
+                    description="Fetch from the first remote in the background so teammates' commits show up by themselves. Failures stay silent."
+                    action={
                       <Select
                         value={String(settings.autoFetchMinutes)}
                         onValueChange={(v) => settings.setAutoFetchMinutes(Number(v))}
                       >
-                        <SelectTrigger className="w-44">
+                        <SelectTrigger className="h-8 w-36">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="0">Off</SelectItem>
-                          <SelectItem value="1">Minute</SelectItem>
-                          <SelectItem value="5">5 minutes</SelectItem>
-                          <SelectItem value="15">15 minutes</SelectItem>
+                          <SelectItem value="1">Every minute</SelectItem>
+                          <SelectItem value="5">Every 5 minutes</SelectItem>
+                          <SelectItem value="15">Every 15 minutes</SelectItem>
                         </SelectContent>
                       </Select>
-                    </Field>
-                  </SettingCard>
+                    }
+                  />
 
                   <SettingCard
                     title="Pull requests"
-                    description="Show the pull requests section in the sidebar and fetch the remote's open pull requests through your connected account. Turn off if you don't use pull requests."
-                  >
-                    <Switch
-                      checked={settings.showPullRequests}
-                      onCheckedChange={settings.setShowPullRequests}
-                    />
-                  </SettingCard>
+                    description="Show the pull requests section in the sidebar, loaded through your connected account."
+                    action={
+                      <Switch
+                        checked={settings.showPullRequests}
+                        onCheckedChange={settings.setShowPullRequests}
+                      />
+                    }
+                  />
 
                   <SettingCard
-                    title="Committer identity"
+                    title={repo ? 'Identity for this repository' : 'Global identity'}
                     description={
                       repo
-                        ? `Saved to this repository's .git/config (wins over the global config).`
-                        : 'Saved to your global git config.'
+                        ? 'The name and email written on commits made here. Saved to this repository, so it wins over your global git config.'
+                        : 'The name and email written on commits when a repository has no identity of its own.'
+                    }
+                    action={
+                      activeProfile ? (
+                        <Badge tone="primary" className="mt-0.5">
+                          <UserRound className="size-3" /> {activeProfile.label}
+                        </Badge>
+                      ) : undefined
                     }
                   >
-                    <div className="flex flex-col gap-3">
-                      <Field label="User name">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Name">
                         <Input value={gitName} onChange={(e) => setGitName(e.target.value)} placeholder="Your Name" />
                       </Field>
                       <Field label="Email">
@@ -879,117 +917,195 @@ export function SettingsDialog() {
                           placeholder="you@example.com"
                         />
                       </Field>
-                      <div className="flex justify-end">
-                        <Button onClick={() => void saveIdentity()}>Save identity</Button>
-                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <span className="text-[11px] text-faint">
+                        {repo ? `Writes user.name and user.email to ${repo.name}/.git/config` : 'Writes user.name and user.email to ~/.gitconfig'}
+                      </span>
+                      <Button size="sm" onClick={() => void saveIdentity()}>
+                        Save identity
+                      </Button>
                     </div>
                   </SettingCard>
 
                   <SettingCard
                     title="Profiles"
-                    description="Save work and personal profiles — identity plus hosting accounts. Each repository is assigned to one profile (repo-local config only, asked once on first commit or push), so commits and pushes always use the right identity and token. The chips under a profile are its linked accounts — click to toggle which account each host uses."
+                    description="Work and personal identities, each with the hosting accounts it should use. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository."
+                    action={
+                      !addingProfile && settings.profiles.length > 0 ? (
+                        <Button variant="secondary" size="sm" onClick={() => setAddingProfile(true)}>
+                          <Plus className="size-3.5" /> New profile
+                        </Button>
+                      ) : undefined
+                    }
                   >
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-2">
                       {settings.profiles.map((profile) => {
-                        const isActive = profile.email === gitEmail && profile.name === gitName;
+                        const isActive = activeProfile?.id === profile.id;
+                        const linkedAccounts = hostAccounts.filter(
+                          (account) => profile.accounts?.[account.host] === account.username,
+                        );
                         return (
                           <div
                             key={profile.id}
                             className={cn(
-                              'group flex items-center gap-2 rounded-md border p-2',
-                              isActive ? 'border-primary/50 bg-primary/10' : 'border-border-subtle',
+                              'rounded-lg border p-3 transition-colors',
+                              isActive ? 'border-primary/40 bg-primary/5' : 'border-border-subtle bg-surface-raised/40',
                             )}
                           >
-                            <UserRound className={cn('size-4 shrink-0', isActive ? 'text-primary' : 'text-muted')} />
-                            <div className="min-w-0 flex-1">
-                              <p className="flex items-center gap-1.5 text-sm">
-                                {profile.label}
-                                {isActive && <Check className="size-3.5 text-primary" />}
-                              </p>
-                              <p className="truncate text-xs text-faint">
-                                {profile.name} · {profile.email}
-                              </p>
-                              {hostAccounts.length > 0 && (
-                                <div className="mt-1.5 flex flex-wrap gap-1">
-                                  {hostAccounts.map((account) => {
-                                    const linked =
-                                      profile.accounts?.[account.host] === account.username;
-                                    return (
+                            <div className="flex items-center gap-3">
+                              <Avatar name={profile.name} email={profile.email} size={32} />
+                              <div className="min-w-0 flex-1 leading-tight">
+                                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                                  <span className="truncate">{profile.label}</span>
+                                  {isActive && (
+                                    <Badge tone="primary">
+                                      <Check className="size-3" /> {repo ? 'In use here' : 'In use'}
+                                    </Badge>
+                                  )}
+                                </p>
+                                <p className="truncate text-xs text-faint">
+                                  {profile.name} · {profile.email}
+                                </p>
+                              </div>
+                              {!isActive && (
+                                <Button variant="secondary" size="sm" onClick={() => void applyProfile(profile)}>
+                                  {repo ? 'Use for this repo' : 'Use'}
+                                </Button>
+                              )}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon-sm" aria-label={`${profile.label} profile actions`}>
+                                    <MoreHorizontal className="size-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem disabled={isActive} onClick={() => void applyProfile(profile)}>
+                                    <Check /> {repo ? 'Use for this repo' : 'Use as global identity'}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem destructive onClick={() => void removeProfile(profile)}>
+                                    <Trash2 /> Remove profile…
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                            {hostAccounts.length > 0 && (
+                              <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-border-subtle pt-2.5">
+                                <span className="mr-0.5 text-[11px] text-faint">
+                                  {linkedAccounts.length === 0 ? 'Accounts' : `Accounts · ${linkedAccounts.length} linked`}
+                                </span>
+                                {hostAccounts.map((account) => {
+                                  const linked = profile.accounts?.[account.host] === account.username;
+                                  return (
+                                    <Hint
+                                      key={`${account.host}:${account.username}`}
+                                      label={
+                                        linked
+                                          ? `Pushes to ${account.host} from this profile use ${account.username}. Click to unlink.`
+                                          : `Click to use ${account.username} for ${account.host} in this profile.`
+                                      }
+                                    >
                                       <button
-                                        key={`${account.host}:${account.username}`}
                                         type="button"
+                                        aria-pressed={linked}
                                         className={cn(
-                                          'rounded-md border px-1.5 py-0.5 text-[10px] transition-colors',
+                                          'flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] transition-colors',
                                           linked
-                                            ? 'border-primary/50 bg-primary/10 text-primary'
-                                            : 'border-border-subtle text-faint hover:border-border hover:text-muted',
+                                            ? 'border-primary/40 bg-primary/10 text-primary'
+                                            : 'border-border-subtle text-muted hover:border-border hover:bg-surface-raised hover:text-foreground',
                                         )}
                                         onClick={() => toggleProfileAccount(profile, account)}
                                       >
-                                        {account.host} · {account.username}
+                                        {linked && <Check className="size-3" />}
+                                        <span className="font-medium">{account.username}</span>
+                                        <span className="text-faint">@ {account.host}</span>
                                       </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              disabled={isActive}
-                              onClick={() => void applyProfile(profile)}
-                            >
-                              {isActive ? 'Active' : repo ? 'Use for this repo' : 'Use'}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={`Remove profile ${profile.label}`}
-                              className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-                              onClick={() => settings.removeProfile(profile.id)}
-                            >
-                              <Trash2 className="size-3.5 text-danger" />
-                            </Button>
+                                    </Hint>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
-                      {settings.profiles.length === 0 && (
-                        <p className="flex items-center gap-2 rounded-md border border-dashed border-border p-3 text-xs text-faint">
-                          <UsersRound className="size-4" /> No profiles yet — add your Work and Personal identities below.
-                        </p>
-                      )}
-                      <div className="mt-1 flex flex-col gap-2 rounded-md border border-dashed border-border p-2">
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="Label, e.g. Work"
-                            value={profileLabel}
-                            onChange={(e) => setProfileLabel(e.target.value)}
-                            className="w-32 shrink-0"
-                          />
-                          <Input placeholder="Name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
-                        </div>
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="email@example.com"
-                            value={profileEmail}
-                            onChange={(e) => setProfileEmail(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') addProfile();
-                            }}
-                          />
-                          <Button
-                            variant="secondary"
-                            disabled={!profileLabel.trim() || !profileName.trim() || !profileEmail.trim()}
-                            onClick={addProfile}
-                          >
-                            Add
+
+                      {settings.profiles.length === 0 && !addingProfile && (
+                        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border-subtle bg-surface-raised/40 p-4 sm:flex-row sm:items-center">
+                          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+                            <UsersRound className="size-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground">No profiles yet</p>
+                            <p className="text-xs leading-relaxed text-muted">
+                              Add Work and Personal once, then every repository picks the right name, email and account.
+                            </p>
+                          </div>
+                          <Button variant="secondary" size="sm" onClick={() => setAddingProfile(true)}>
+                            <Plus className="size-3.5" /> New profile
                           </Button>
                         </div>
-                      </div>
+                      )}
+
+                      {addingProfile && (
+                        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                          <p className="mb-3 text-xs font-medium text-foreground">New profile</p>
+                          <div className="grid grid-cols-3 gap-3">
+                            <Field label="Label">
+                              <Input
+                                autoFocus
+                                placeholder="Work"
+                                value={profileLabel}
+                                onChange={(e) => setProfileLabel(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') addProfile();
+                                  if (e.key === 'Escape') setAddingProfile(false);
+                                }}
+                              />
+                            </Field>
+                            <Field label="Name">
+                              <Input
+                                placeholder="Your Name"
+                                value={profileName}
+                                onChange={(e) => setProfileName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') addProfile();
+                                  if (e.key === 'Escape') setAddingProfile(false);
+                                }}
+                              />
+                            </Field>
+                            <Field label="Email">
+                              <Input
+                                placeholder="you@company.com"
+                                value={profileEmail}
+                                onChange={(e) => setProfileEmail(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') addProfile();
+                                  if (e.key === 'Escape') setAddingProfile(false);
+                                }}
+                              />
+                            </Field>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <span className="text-[11px] text-faint">
+                              Link hosting accounts to the profile after adding it.
+                            </span>
+                            <span className="flex gap-2">
+                              <Button variant="ghost" size="sm" onClick={() => setAddingProfile(false)}>
+                                Cancel
+                              </Button>
+                              <Button
+                                size="sm"
+                                disabled={!profileLabel.trim() || !profileName.trim() || !profileEmail.trim()}
+                                onClick={addProfile}
+                              >
+                                Add profile
+                              </Button>
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </SettingCard>
-
-
                 </div>
               )}
 

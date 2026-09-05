@@ -775,7 +775,22 @@ features/
 │                               → proceed unassigned; called before commit and push),
 │                               SettingsDialog (Appearance/Git/AUTHENTICATION/AI/Shortcuts
 │                               tabs incl. commit-style card w/ live branch preview +
-│                               SshCard; profile rows carry account-link toggle chips),
+│                               SshCard; SettingCard takes an optional `action` rendered
+│                               in the HEADER row — single controls (Switch, Select) go
+│                               there, never alone under a paragraph (Reduce motion, Auto
+│                               fetch, Pull requests use it); Git tab order: Auto fetch,
+│                               Pull requests, Identity (title says the scope — repo or
+│                               global — a footnote names the file written, a primary
+│                               Badge shows the matching profile), Profiles (owner asked
+│                               for a clean redesign 2026-09-05: each profile is a card
+│                               with Avatar + label + "In use" Badge + secondary Use
+│                               button + "…" menu whose Remove goes through confirmDialog;
+│                               linked-account chips read `username @ host` with a tick
+│                               when linked, aria-pressed, Hint explaining the toggle;
+│                               "New profile" header button (or the empty-state card's
+│                               button) reveals a labeled 3-column form with Cancel/Add,
+│                               Enter adds, Escape cancels — never the old inline row of
+│                               bare placeholder inputs)),
 │                               AccountsTab (per-provider token connect, verified-on-
 │                               connect, host-matched; auto re-check on open via
 │                               account_check, expiry countdown, Reconnect prefill,
