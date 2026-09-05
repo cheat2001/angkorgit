@@ -52,7 +52,12 @@ All notable changes to AngKorGit are documented here. The format follows
   (Branch / tag, Graph, Message, Hash, Date) and follows the display toggles.
 - Graph lanes are spaced wider (20px instead of 14px) so parallel branches and
   merge curves stop crowding each other, and the graph keeps a clear gap before
-  the message column.
+  the message column. On very busy histories the lanes compress evenly so the
+  graph column never grows past a fixed width and the message column stays
+  close to the graph.
+- Commit nodes got a double ring: a thin gap in the page color and then the
+  lane color around the avatar, so nodes read as distinct markers on top of the
+  lines even where several lanes cross.
 - Merge commits read one shade quieter in the graph so the commits that changed
   code stand out in merge-heavy histories.
 - Click a hash in the graph to copy it; hover a relative time for the full date.

@@ -19,15 +19,29 @@ const CHIP_PADDING = 18;
 const CHIP_ICON = 14;
 export const FLAT_GUTTER_WIDTH = 28;
 export const LANE_WIDTH = 20;
+export const LANE_WIDTH_MIN = 11;
+export const GUTTER_MAX_WIDTH = 190;
+export const GUTTER_BASE = 18;
 const NODE_RADIUS = 4;
-const AVATAR_SIZE = 18;
+const AVATAR_SIZE = 20;
+const NODE_RING = 2;
+const NODE_HALO = 1.5;
 
 export function laneColor(color: number): string {
   return `hsl(var(--graph-${color % 10}))`;
 }
 
-export const laneX = (lane: number) => AVATAR_SIZE / 2 + 3 + lane * LANE_WIDTH;
-const x = laneX;
+export const laneX = (lane: number, laneWidth: number = LANE_WIDTH) =>
+  AVATAR_SIZE / 2 + NODE_RING + NODE_HALO + 1 + lane * laneWidth;
+
+export function laneWidthFor(maxLane: number): number {
+  const fit = Math.floor((GUTTER_MAX_WIDTH - GUTTER_BASE) / (maxLane + 1));
+  return Math.max(LANE_WIDTH_MIN, Math.min(LANE_WIDTH, fit));
+}
+
+export function gutterWidthFor(maxLane: number, laneWidth: number): number {
+  return GUTTER_BASE + (maxLane + 1) * laneWidth;
+}
 const CY = ROW_HEIGHT / 2;
 
 function FlatGutter({ author }: { author: CommitInfo['author'] }) {
@@ -55,16 +69,19 @@ function FlatGutter({ author }: { author: CommitInfo['author'] }) {
 function GraphGutter({
   row,
   width,
+  laneWidth,
   author,
   hasRefs,
 }: {
   row: GraphRowData;
   width: number;
+  laneWidth: number;
   author: CommitInfo['author'];
   hasRefs: boolean;
 }) {
   const { node, passing } = row;
-  const nx = Math.min(x(node.lane), width - AVATAR_SIZE / 2 - 2);
+  const x = (lane: number) => laneX(lane, laneWidth);
+  const nx = Math.min(x(node.lane), width - AVATAR_SIZE / 2 - NODE_RING - NODE_HALO - 1);
   return (
     <div className="relative shrink-0 overflow-hidden" style={{ width, height: ROW_HEIGHT, marginRight: GUTTER_GAP }}>
       <svg width={width} height={ROW_HEIGHT} aria-hidden>
@@ -134,7 +151,7 @@ function GraphGutter({
             top: CY - AVATAR_SIZE / 2,
             width: AVATAR_SIZE,
             height: AVATAR_SIZE,
-            boxShadow: `0 0 0 2px ${laneColor(node.color)}`,
+            boxShadow: `0 0 0 ${NODE_HALO}px hsl(var(--background)), 0 0 0 ${NODE_HALO + NODE_RING}px ${laneColor(node.color)}`,
             background: 'hsl(var(--surface))',
           }}
         >
@@ -306,6 +323,7 @@ interface Props {
   gutterWidth: number;
   flat?: boolean;
   selected: boolean;
+  laneWidth?: number;
   columns?: GraphColumns;
   worktrees?: ReadonlyMap<string, string>;
   onSelect: (oid: string, event: React.MouseEvent) => void;
@@ -320,6 +338,7 @@ export const CommitRow = memo(function CommitRow({
   gutterWidth,
   flat,
   selected,
+  laneWidth = LANE_WIDTH,
   columns = DEFAULT_GRAPH_COLUMNS,
   worktrees,
   onSelect,
@@ -360,6 +379,7 @@ export const CommitRow = memo(function CommitRow({
         <GraphGutter
           row={row}
           width={gutterWidth}
+          laneWidth={laneWidth}
           author={commit.author}
           hasRefs={columns.refs && commit.refs.length > 0}
         />

@@ -403,8 +403,14 @@ features/
 │                           mirroring the row layout exactly — REF_COL_WIDTH with the
 │                           same -mr-2, gutterWidth, flex-1, w-14, w-[4.5rem] — and
 │                           hiding a header with its column; LANE_WIDTH is 20px (was 14,
-│                           owner found lanes crowded) and the gutter is
-│                           16 + lanes×LANE_WIDTH capped at 280 —
+│                           owner found lanes crowded) BUT laneWidthFor(maxLane) shrinks
+│                           the spacing (never below LANE_WIDTH_MIN 11) so the gutter
+│                           gutterWidthFor() stays ≤ GUTTER_MAX_WIDTH 190 — a busy repo's
+│                           deep history used to widen the gutter for EVERY row and the
+│                           owner saw "a really long gap" before the message; laneX takes
+│                           laneWidth (WipRow's laneX(0) is width-independent); nodes are
+│                           20px avatars with a double ring (NODE_HALO 1.5px background
+│                           + NODE_RING 2px lane color via two box-shadows) —
 │                           CommitRow takes `columns`, WipRow `showRefs`; with refs off
 │                           rows AND the WIP banner
 │                           switch pl-1 → pl-4 so lanes don't hug the sidebar divider

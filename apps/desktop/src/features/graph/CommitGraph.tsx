@@ -23,7 +23,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { AUTHOR_COL_WIDTH, CommitRow, FLAT_GUTTER_WIDTH, GUTTER_GAP, LANE_WIDTH, REF_COL_WIDTH, ROW_HEIGHT } from './GraphRow';
+import { AUTHOR_COL_WIDTH, CommitRow, FLAT_GUTTER_WIDTH, GUTTER_GAP, REF_COL_WIDTH, ROW_HEIGHT, gutterWidthFor, laneWidthFor } from './GraphRow';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { useShortcuts } from '@/shared/useShortcuts';
@@ -147,7 +147,8 @@ export function CommitGraph() {
   }, [pendingScrollIndex, rows.length, virtualizer, clearPendingScroll]);
 
   const flat = Boolean(filters.search || filters.author);
-  const gutterWidth = flat ? FLAT_GUTTER_WIDTH : Math.min(16 + (maxLane + 1) * LANE_WIDTH, 280);
+  const laneWidth = laneWidthFor(maxLane);
+  const gutterWidth = flat ? FLAT_GUTTER_WIDTH : gutterWidthFor(maxLane, laneWidth);
   const filtersActive = Boolean(filters.search || filters.author || filters.branch);
 
   const moveSelection = useCallback(
@@ -453,6 +454,7 @@ export function CommitGraph() {
                     gutterWidth={gutterWidth}
                     flat={flat}
                     selected={selectedOid === commit.oid || selectedOids.includes(commit.oid)}
+                    laneWidth={laneWidth}
                     columns={graphColumns}
                     worktrees={worktreeBranches}
                     onSelect={onRowSelect}
