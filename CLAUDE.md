@@ -784,8 +784,17 @@ features/
 │                               SshCard (agent switch is a SettingRow; the credential-
 │                               helper switch is NOT here any more — it is its own
 │                               CredentialHelperCard between Accounts and SSH because it
-│                               governs HTTPS accounts); Zoom and the AI Provider Select
-│                               are header actions; SettingCard takes an optional `action` rendered
+│                               governs HTTPS accounts); Zoom, the AI Provider Select and
+│                               the Commit-style preset Select are header actions; the AI
+│                               Provider card ends with a status footer (aiStatus
+│                               unknown/ok/fail, reset whenever provider/key/url/agent
+│                               change) beside Test connection — toasts alone were not
+│                               enough; CliAgentPicker rows are icon-tile cards with an
+│                               "In use" Badge, a skeleton while scanning, SettingEmpty
+│                               when nothing is found; prefix rules render as a labeled
+│                               two-column table ("Branch matches" → "Message starts
+│                               with") with a dashed empty hint and a primary-tinted live
+│                               preview; SettingCard takes an optional `action` rendered
 │                               in the HEADER row — single controls (Switch, Select) go
 │                               there, never alone under a paragraph (Reduce motion, Auto
 │                               fetch, Pull requests use it); Git tab order: Auto fetch,

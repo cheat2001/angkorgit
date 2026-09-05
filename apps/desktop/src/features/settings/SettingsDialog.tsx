@@ -254,7 +254,9 @@ function ModelField() {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted">Model</span>
+        <span className="text-xs font-medium text-muted">
+          Model <span className="font-normal text-faint">· type any name or load the list your key can access</span>
+        </span>
         <div className="flex items-center gap-1">
           {models.length > 0 && !open && (
             <Hint label="Fetch the list again">
@@ -297,9 +299,6 @@ function ModelField() {
           })}
         </div>
       )}
-      <p className="text-xs text-faint">
-        Load models lists what your key and base URL can access — or type any model name yourself.
-      </p>
     </div>
   );
 }
@@ -348,33 +347,57 @@ function CliAgentPicker() {
             key={agent.id}
             onClick={() => useSettings.getState().setAi({ cliAgent: agent.id, cliPath: agent.path })}
             className={cn(
-              'flex items-center gap-2.5 rounded-md border p-2.5 text-left transition-colors',
-              isActive ? 'border-primary/50 bg-primary/10' : 'border-border-subtle hover:border-muted',
+              'flex items-center gap-3 rounded-lg border p-3 text-left transition-colors',
+              isActive ? 'border-primary/40 bg-primary/5' : 'border-border-subtle bg-surface-raised/40 hover:border-border',
             )}
           >
-            <SquareTerminal className={cn('size-4 shrink-0', isActive ? 'text-primary' : 'text-muted')} />
-            <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-1.5 text-sm">
-                {agent.label}
-                {isActive && <Check className="size-3.5 text-primary" />}
+            <span
+              className={cn(
+                'flex size-8 shrink-0 items-center justify-center rounded-md',
+                isActive ? 'bg-primary/15 text-primary' : 'bg-surface text-muted',
+              )}
+            >
+              <SquareTerminal className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1 leading-tight">
+              <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <span className="truncate">{agent.label}</span>
+                {isActive && (
+                  <Badge tone="primary">
+                    <Check className="size-3" /> In use
+                  </Badge>
+                )}
+                {agent.version && <span className="font-mono text-[11px] font-normal text-faint">{agent.version}</span>}
               </p>
-              <p className="truncate text-xs text-faint">
-                {agent.version ? `${agent.version} · ` : ''}
-                {agent.path}
-              </p>
+              <p className="truncate font-mono text-[11px] text-faint">{agent.path}</p>
             </div>
           </button>
         );
       })}
-      {!scanning && agents.length === 0 && (
-        <p className="rounded-md border border-dashed border-border p-3 text-xs text-faint">
-          No AI CLI found. Install Claude Code, Codex CLI, Gemini CLI, OpenCode or Antigravity CLI, then
-          scan again.
-        </p>
+      {scanning && agents.length === 0 && (
+        <div className="flex items-center gap-2.5 rounded-md border border-border-subtle p-2.5">
+          <div className="size-8 animate-pulse rounded-md bg-surface-raised" />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <div className="h-3.5 w-32 animate-pulse rounded bg-surface-raised" />
+            <div className="h-3 w-56 animate-pulse rounded bg-surface-raised" />
+          </div>
+        </div>
       )}
-      <p className="mt-1 text-xs text-faint">
-        Requests run through your CLI locally and use its own login and quota — AngKorGit stores no key
-        and sends nothing anywhere itself.
+      {!scanning && agents.length === 0 && (
+        <SettingEmpty
+          icon={<SquareTerminal className="size-4" />}
+          title="No AI CLI found"
+          description="Install Claude Code, Codex CLI, Gemini CLI, OpenCode or Antigravity CLI, then scan again."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void scan()}>
+              <RefreshCw className="size-3.5" /> Scan again
+            </Button>
+          }
+        />
+      )}
+      <p className="mt-1 text-[11px] leading-relaxed text-faint">
+        Requests run through the CLI on this machine with its own login and quota. AngKorGit stores no key and
+        sends nothing anywhere itself.
       </p>
     </div>
   );
@@ -399,14 +422,13 @@ function CommitStyleCard() {
   return (
     <SettingCard
       title="Commit message style"
-      description="How generated commit messages are written. Branch prefix rules are applied by AngKorGit itself, so they always hold."
-    >
-      <div className="flex flex-col gap-3">
+      description={COMMIT_STYLE_PRESETS[commit.preset].description}
+      action={
         <Select
           value={commit.preset}
           onValueChange={(value) => setCommitStyle({ preset: value as CommitStylePreset })}
         >
-          <SelectTrigger>
+          <SelectTrigger className="h-8 w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -417,7 +439,9 @@ function CommitStyleCard() {
             ))}
           </SelectContent>
         </Select>
-        <p className="-mt-1.5 text-xs text-faint">{COMMIT_STYLE_PRESETS[commit.preset].description}</p>
+      }
+    >
+      <div className="flex flex-col gap-3">
         {commit.preset === 'custom' && (
           <Field label="Your convention, in plain words">
             <Textarea
@@ -430,42 +454,13 @@ function CommitStyleCard() {
             />
           </Field>
         )}
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted">Branch prefix rules (first match wins)</span>
-          {commit.prefixRules.map((rule, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <Input
-                value={rule.pattern}
-                onChange={(e) => updateRule(index, { pattern: e.target.value })}
-                placeholder="feature/*"
-                className="flex-1 font-mono text-xs"
-              />
-              <span className="text-xs text-faint">→</span>
-              <Input
-                value={rule.prefix}
-                onChange={(e) => updateRule(index, { prefix: e.target.value })}
-                placeholder="[{suffix}]"
-                className="flex-1 font-mono text-xs"
-              />
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Remove rule"
-                onClick={() => removeRule(index)}
-              >
-                <Trash2 className="size-3.5 text-danger" />
-              </Button>
-            </div>
-          ))}
+        <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-faint">
-              Patterns match the branch name (<span className="font-mono">*</span> wildcard). Prefix
-              tokens: <span className="font-mono">{'{branch}'}</span>,{' '}
-              <span className="font-mono">{'{suffix}'}</span>,{' '}
-              <span className="font-mono">{'{ticket}'}</span>.
-            </p>
+            <span className="text-xs font-medium text-muted">
+              Branch prefix rules <span className="font-normal text-faint">· first match wins, applied by AngKorGit itself</span>
+            </span>
             <Button
-              variant="secondary"
+              variant="ghost"
               size="sm"
               onClick={() =>
                 setCommitStyle({ prefixRules: [...commit.prefixRules, { pattern: '', prefix: '' }] })
@@ -475,16 +470,60 @@ function CommitStyleCard() {
               Add rule
             </Button>
           </div>
+          {commit.prefixRules.length > 0 ? (
+            <div className="flex flex-col divide-y divide-border-subtle rounded-lg border border-border-subtle bg-surface-raised/40">
+              <div className="grid grid-cols-[1fr_auto_1fr_28px] items-center gap-2 px-2.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-faint">
+                <span>Branch matches</span>
+                <span />
+                <span>Message starts with</span>
+                <span />
+              </div>
+              {commit.prefixRules.map((rule, index) => (
+                <div key={index} className="grid grid-cols-[1fr_auto_1fr_28px] items-center gap-2 px-2.5 py-2">
+                  <Input
+                    value={rule.pattern}
+                    onChange={(e) => updateRule(index, { pattern: e.target.value })}
+                    placeholder="feature/*"
+                    className="h-8 font-mono text-xs"
+                  />
+                  <span className="text-xs text-faint">→</span>
+                  <Input
+                    value={rule.prefix}
+                    onChange={(e) => updateRule(index, { prefix: e.target.value })}
+                    placeholder="[{suffix}]"
+                    className="h-8 font-mono text-xs"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Remove rule"
+                    onClick={() => removeRule(index)}
+                  >
+                    <Trash2 className="size-3.5 text-danger" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-lg border border-dashed border-border-subtle px-3 py-2.5 text-xs text-faint">
+              No rules. Add one to prefix messages by branch, for example{' '}
+              <span className="font-mono">feature/*</span> → <span className="font-mono">[{'{suffix}'}]</span>.
+            </p>
+          )}
+          <p className="text-[11px] leading-relaxed text-faint">
+            <span className="font-mono">*</span> matches any part of the branch name. Prefix tokens:{' '}
+            <span className="font-mono">{'{branch}'}</span>, <span className="font-mono">{'{suffix}'}</span>,{' '}
+            <span className="font-mono">{'{ticket}'}</span>.
+          </p>
           {branch && commit.prefixRules.length > 0 && (
-            <p className="rounded-md border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-muted">
-              On <span className="font-mono">{branch}</span> messages will
+            <p className="flex flex-wrap items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs text-muted">
+              On <span className="font-mono text-foreground">{branch}</span>
               {preview ? (
                 <>
-                  {' '}
-                  start with <span className="font-mono text-foreground">{preview}</span>
+                  messages start with <span className="font-mono text-foreground">{preview}</span>
                 </>
               ) : (
-                ' have no prefix (no rule matches)'
+                <>messages get no prefix, no rule matches</>
               )}
             </p>
           )}
@@ -512,10 +551,10 @@ function ReviewStyleCard() {
           }
           rows={4}
         />
-        <p className="text-xs text-faint">
-          Per-project rules: commit a <span className="font-mono">{PROJECT_REVIEW_FILE}</span> file to a
-          repository and its content is added to these conventions for that repository — the whole team
-          gets the same review rules. Project rules win when they conflict.
+        <p className="text-[11px] leading-relaxed text-faint">
+          Per-project rules: commit <span className="rounded bg-surface-raised px-1 py-0.5 font-mono">{PROJECT_REVIEW_FILE}</span>{' '}
+          to a repository and its content joins these conventions for that repository, so the whole team
+          reviews by the same rules. Project rules win on conflict.
         </p>
       </div>
     </SettingCard>
@@ -552,6 +591,7 @@ export function SettingsDialog() {
   const [gitName, setGitName] = useState('');
   const [gitEmail, setGitEmail] = useState('');
   const [testing, setTesting] = useState(false);
+  const [aiStatus, setAiStatus] = useState<'unknown' | 'ok' | 'fail'>('unknown');
   const [profileLabel, setProfileLabel] = useState('');
   const [profileName, setProfileName] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
@@ -642,14 +682,16 @@ export function SettingsDialog() {
     setTesting(true);
     try {
       const ok = await getAiProvider().ping();
-      if (ok) toast.success('AI provider reachable');
-      else toast.error('AI provider not reachable');
+      setAiStatus(ok ? 'ok' : 'fail');
     } catch {
-      toast.error('AI provider not reachable');
+      setAiStatus('fail');
     } finally {
       setTesting(false);
     }
   };
+  useEffect(() => {
+    setAiStatus('unknown');
+  }, [settings.ai.provider, settings.ai.baseUrl, settings.ai.apiKey, settings.ai.cliAgent]);
 
   const preset = AI_PROVIDER_PRESETS[settings.ai.provider];
   const active = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
@@ -1138,9 +1180,24 @@ export function SettingsDialog() {
                           <ModelField />
                         </>
                       )}
-                      <div className="flex justify-end">
-                        <Button variant="secondary" onClick={() => void testAi()} disabled={testing}>
-                          {testing ? <Spinner /> : <Wifi />}
+                      <div className="flex items-center justify-between gap-3 border-t border-border-subtle pt-3">
+                        <span className="flex items-center gap-1.5 text-xs">
+                          {aiStatus === 'ok' && (
+                            <>
+                              <span className="size-1.5 rounded-full bg-success" />
+                              <span className="text-success">Reachable</span>
+                            </>
+                          )}
+                          {aiStatus === 'fail' && (
+                            <>
+                              <span className="size-1.5 rounded-full bg-danger" />
+                              <span className="text-danger">Not reachable. Check the key, URL or that the local server is running.</span>
+                            </>
+                          )}
+                          {aiStatus === 'unknown' && <span className="text-faint">Connection not tested yet</span>}
+                        </span>
+                        <Button variant="secondary" size="sm" onClick={() => void testAi()} disabled={testing}>
+                          {testing ? <Spinner /> : <Wifi className="size-3.5" />}
                           Test connection
                         </Button>
                       </div>

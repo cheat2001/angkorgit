@@ -54,7 +54,12 @@ All notable changes to AngKorGit are documented here. The format follows
   Token field; the credential-helper switch moved out of the SSH card into its
   own row, since it concerns HTTPS accounts. Appearance: the zoom stepper sits
   on its title row. AI: the provider picker sits on its title row and the
-  optional fields say so in a hint instead of a long label. The card, field,
+  optional fields say so in a hint instead of a long label; Test connection
+  reports Reachable or Not reachable inline instead of only in a toast, and
+  the status resets when you change the provider, key or URL; detected CLI
+  agents are cards with an "In use" badge, a skeleton while scanning and a
+  proper empty state; branch prefix rules are a small table with column
+  labels, an empty hint, and the live preview highlighted. The card, field,
   row and empty-state primitives are shared by every tab.
 - **Settings, Git tab redesigned.** Toggles and pickers (auto fetch, pull
   requests, reduce motion) sit on the same line as their title instead of
