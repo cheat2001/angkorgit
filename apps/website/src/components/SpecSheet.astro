@@ -1,0 +1,120 @@
+---
+import Commit from './Commit.astro';
+
+const groups: { title: string; items: string[] }[] = [
+  {
+    title: 'Every day',
+    items: [
+      'Stage files, hunks, or single lines',
+      'Commit with summary and description, drafts saved per repository',
+      'Amend, revert, reset (soft, mixed, hard)',
+      'Undo and redo for commits, checkouts, merges, rebases',
+      'Working copy watcher, so the WIP row is always right',
+      'Auto fetch in the background',
+    ],
+  },
+  {
+    title: 'Branches',
+    items: [
+      'Branch folders in the sidebar',
+      'Drag one branch onto another to merge or rebase',
+      'Interactive rebase: reorder, squash, reword, drop',
+      'Cherry-pick one or many, with the origin reference',
+      'Worktrees: list, create, remove, prune',
+      'Stashes, tags, submodules',
+    ],
+  },
+  {
+    title: 'Reading changes',
+    items: [
+      'Inline or side by side, word level highlighting',
+      'Whole file view, image diffs, a minimap you can click',
+      'Previous and next change, previous and next file',
+      'Commit search by text, author, branch, or hash',
+      'File history',
+      'Commit details with parents, refs, and per-file counts',
+    ],
+  },
+  {
+    title: 'Remotes and accounts',
+    items: [
+      'Fetch, pull, push, with the credential chain git itself uses',
+      'SSH keys and access tokens. Several accounts on one host',
+      'Identity profiles stored per repository, never in the global gitconfig',
+      'Pull requests: list, check out, create, pick reviewers (GitHub, GitLab, Bitbucket)',
+      'Commit signing through your existing git config (SSH or GPG)',
+    ],
+  },
+  {
+    title: 'Conflicts',
+    items: [
+      'Both sides aligned, line numbers on each',
+      'Take a side, a block, or one line',
+      'Edit the result in place, or the whole file',
+      'AI explanation of a conflict on request',
+    ],
+  },
+  {
+    title: 'The rest',
+    items: [
+      '⌘K palette with every command, shortcuts shown next to menu items',
+      '16 themes, dark and light, five accents',
+      'Built-in terminal per repository',
+      'Real confirmation dialogs before anything destructive',
+      'Signature-verified updates from GitHub releases',
+    ],
+  },
+];
+
+const notInBox = [
+  ['In-app pull request review', 'The forge does this better, with CI logs and suggestions. There is an Open in browser button.'],
+  ['Telemetry, accounts, a cloud', 'Nothing phones home. There is nothing to sign up for.'],
+  ['A blame view', 'File history is there. Line-level blame is on the list.'],
+  ['A plugin marketplace', 'Not yet. The palette and sidebar are list driven, so it is possible later.'],
+];
+---
+
+<Commit id="box" class="py-20 lg:py-28">
+  <div class="container-site rail-offset">
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div data-reveal>
+        <p class="font-mono text-xs uppercase tracking-[0.18em] text-primary">Spec sheet</p>
+        <h2 class="display mt-3 text-4xl leading-[1.02] sm:text-5xl">Everything in the box</h2>
+        <p class="mt-6 text-[17px] leading-relaxed text-muted">
+          The whole list, in plain words. If it isn't here, it isn't in the app.
+        </p>
+      </div>
+      <div class="grid gap-x-10 gap-y-9 sm:grid-cols-2" data-reveal style={{ '--reveal-delay': '100ms' }}>
+        {
+          groups.map((group) => (
+            <div>
+              <h3 class="font-mono text-xs uppercase tracking-[0.14em] text-faint">{group.title}</h3>
+              <ul class="mt-3 divide-y divide-border-subtle border-y border-border-subtle">
+                {group.items.map((item) => (
+                  <li class="py-2 text-[14px] leading-snug text-foreground/90">{item}</li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <div class="mt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]" data-reveal>
+      <div>
+        <p class="font-mono text-xs uppercase tracking-[0.18em] text-faint">And not</p>
+        <h3 class="display mt-3 text-3xl leading-[1.05] sm:text-4xl">What I left out, on purpose</h3>
+      </div>
+      <dl class="grid gap-x-10 gap-y-6 sm:grid-cols-2">
+        {
+          notInBox.map(([term, why]) => (
+            <div class="border-l-2 border-border pl-4">
+              <dt class="text-[15px] font-medium text-foreground">{term}</dt>
+              <dd class="mt-1 text-[14px] leading-relaxed text-muted">{why}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </div>
+</Commit>

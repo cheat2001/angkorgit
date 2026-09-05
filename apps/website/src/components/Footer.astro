@@ -3,73 +3,64 @@ import Logo from './Logo.astro';
 import { SITE } from '../lib/site';
 ---
 
-<footer class="border-t border-border-subtle">
-  <div class="container-site grid gap-12 py-16 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
-    <div class="space-y-4">
+<footer class="relative overflow-hidden border-t border-border-subtle">
+  <svg
+    aria-hidden="true"
+    class="pointer-events-none absolute -bottom-6 left-1/2 h-40 w-[64rem] -translate-x-1/2 text-primary opacity-[0.07]"
+    viewBox="0 0 640 160"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linejoin="round"
+  >
+    <path d="M320 10 L300 70 L300 160 M320 10 L340 70 L340 160" />
+    <path d="M220 40 L205 90 L205 160 M220 40 L235 90 L235 160" />
+    <path d="M420 40 L405 90 L405 160 M420 40 L435 90 L435 160" />
+    <path d="M120 70 L110 110 L110 160 M120 70 L130 110 L130 160" />
+    <path d="M520 70 L510 110 L510 160 M520 70 L530 110 L530 160" />
+    <path d="M0 160 H640" />
+  </svg>
+
+  <div class="container-site rail-offset relative grid gap-12 py-16 md:grid-cols-[1.6fr_1fr_1fr]">
+    <div class="space-y-5">
       <a href="/" class="flex items-center gap-2.5">
         <Logo size={28} class="text-foreground" />
-        <span class="text-[15px] font-semibold tracking-tight">AngKorGit</span>
+        <span class="display text-2xl">AngKorGit</span>
       </a>
-      <p class="max-w-xs text-sm leading-relaxed text-muted">
-        Everyday Git, made delightful. A modern, fast, beautiful cross-platform Git client — strength,
-        simplicity, and craftsmanship from Cambodia. 🇰🇭
+      <p class="max-w-sm text-[15px] leading-relaxed text-muted">
+        Built by one person who wanted a Git client that gets out of the way. MIT licensed, no telemetry, no account. If it saves
+        you time,
+        <a href={SITE.buyMeACoffee} target="_blank" rel="noreferrer" class="link-underline text-foreground">buy me a coffee</a>.
       </p>
-      <div class="flex flex-wrap gap-2">
-        <span class="chip">12 MB download</span>
-        <span class="chip">MIT</span>
-        <span class="chip">No telemetry</span>
-      </div>
     </div>
 
     <div>
-      <h3 class="mb-3 text-sm font-semibold">Project</h3>
-      <ul class="space-y-2 text-sm text-muted">
+      <h3 class="font-mono text-xs uppercase tracking-[0.14em] text-faint">Project</h3>
+      <ul class="mt-4 space-y-2.5 text-sm text-muted">
         <li><a class="transition-colors hover:text-foreground" href={SITE.repo}>Source code</a></li>
-        <li><a class="transition-colors hover:text-foreground" href={SITE.releases}>Releases</a></li>
+        <li><a class="transition-colors hover:text-foreground" href={SITE.releases}>Releases and changelog</a></li>
         <li><a class="transition-colors hover:text-foreground" href="/docs/">Documentation</a></li>
+        <li><a class="transition-colors hover:text-foreground" href="/docs/roadmap/">Roadmap</a></li>
         <li><a class="transition-colors hover:text-foreground" href={SITE.ci}>CI status</a></li>
       </ul>
     </div>
 
     <div>
-      <h3 class="mb-3 text-sm font-semibold">Community</h3>
-      <ul class="space-y-2 text-sm text-muted">
+      <h3 class="font-mono text-xs uppercase tracking-[0.14em] text-faint">Taking part</h3>
+      <ul class="mt-4 space-y-2.5 text-sm text-muted">
+        <li><a class="transition-colors hover:text-foreground" href={`${SITE.repo}/issues`}>Report a bug</a></li>
         <li><a class="transition-colors hover:text-foreground" href={SITE.contributing}>Contributing</a></li>
         <li><a class="transition-colors hover:text-foreground" href={SITE.codeOfConduct}>Code of conduct</a></li>
         <li><a class="transition-colors hover:text-foreground" href={SITE.security}>Security</a></li>
         <li><a class="transition-colors hover:text-foreground" href={SITE.license}>License</a></li>
-        <li>
-          <a
-            class="inline-flex items-center gap-1.5 font-medium text-foreground transition-colors hover:text-primary"
-            href={SITE.buyMeACoffee}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M17 8h1a4 4 0 1 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
-              <path d="M6 2v2M10 2v2M14 2v2" />
-            </svg>
-            Buy me a coffee
-          </a>
-        </li>
-      </ul>
-    </div>
-
-    <div>
-      <h3 class="mb-3 text-sm font-semibold">Guides</h3>
-      <ul class="space-y-2 text-sm text-muted">
-        <li><a class="transition-colors hover:text-foreground" href="/docs/architecture/">Architecture</a></li>
-        <li><a class="transition-colors hover:text-foreground" href="/docs/roadmap/">Roadmap</a></li>
-        <li><a class="transition-colors hover:text-foreground" href="/docs/development/">Development</a></li>
-        <li><a class="transition-colors hover:text-foreground" href="/docs/distribution/">Distribution</a></li>
       </ul>
     </div>
   </div>
 
-  <div class="border-t border-border-subtle">
-    <div class="container-site flex flex-col items-start justify-between gap-2 py-6 text-xs text-faint sm:flex-row sm:items-center">
-      <p>© {new Date().getFullYear()} AngKorGit contributors · MIT License</p>
-      <p class="font-mono">Built with Tauri v2 · Rust · React · TypeScript</p>
+  <div class="relative border-t border-border-subtle">
+    <div class="container-site rail-offset flex flex-col items-start justify-between gap-2 py-6 font-mono text-xs text-faint sm:flex-row sm:items-center">
+      <p>© {new Date().getFullYear()} AngKorGit · MIT</p>
+      <p>Tauri 2 · Rust · libgit2 · React</p>
     </div>
   </div>
 </footer>

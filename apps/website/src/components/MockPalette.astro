@@ -1,0 +1,54 @@
+---
+const items = [
+  { icon: 'merge', label: 'Merge branch into current…', group: 'Branch', kbd: ['⌘', '⇧', 'M'], active: true },
+  { icon: 'rebase', label: 'Rebase current branch onto…', group: 'Branch', kbd: [] },
+  { icon: 'tree', label: 'New worktree…', group: 'Worktrees', kbd: [] },
+  { icon: 'undo', label: 'Undo last operation', group: 'History', kbd: ['⌘', 'Z'] },
+  { icon: 'sparkle', label: 'Generate commit message', group: 'AI', kbd: [] },
+  { icon: 'search', label: 'Jump to commit e713fa3', group: 'Graph', kbd: [] },
+];
+const icons: Record<string, string> = {
+  merge: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
+  rebase: '<path d="M12 3v6M12 15v6M6 12h12"/><circle cx="12" cy="12" r="3"/>',
+  tree: '<path d="M3 5a2 2 0 0 0 2 2h3M3 3v13a2 2 0 0 0 2 2h3"/><rect x="12" y="3" width="9" height="7" rx="1.5"/><rect x="12" y="14" width="9" height="7" rx="1.5"/>',
+  undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+  sparkle: '<path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+};
+---
+
+<div class="relative">
+  <div class="mock hidden font-sans opacity-70 blur-[0.5px] sm:block" aria-hidden="true">
+    <div class="mock-bar"><span class="text-[10px] uppercase tracking-[0.12em] text-faint">Graph</span><span class="ml-auto text-[10px] text-faint">main · 2 ahead</span></div>
+    <div class="h-56 bg-[linear-gradient(to_bottom,hsl(var(--border-subtle)/0.6)_1px,transparent_1px)] bg-[length:100%_30px]"></div>
+  </div>
+
+  <div class="rounded-lg border border-border bg-surface-overlay shadow-[0_24px_60px_-20px_rgb(0_0_0/0.55)] sm:absolute sm:inset-x-14 sm:top-10">
+    <div class="flex h-11 items-center gap-2.5 border-b border-border-subtle px-4">
+      <svg class="h-4 w-4 text-faint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+      <span class="text-[13px] text-foreground">mer<span class="ml-px inline-block h-3.5 w-px translate-y-0.5 bg-primary"></span></span>
+      <span class="ml-auto mock-kbd">esc</span>
+    </div>
+    <ul class="py-1.5">
+      {
+        items.map((item) => (
+          <li class:list={['mx-1.5 flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[12px]', item.active ? 'bg-primary/10 text-foreground' : 'text-muted']}>
+            <svg class:list={['h-3.5 w-3.5 shrink-0', item.active ? 'text-primary' : 'text-faint']} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={icons[item.icon]} />
+            <span class="truncate">{item.label}</span>
+            <span class="ml-auto text-[10px] text-faint">{item.group}</span>
+            {item.kbd.length > 0 && (
+              <span class="flex gap-0.5">
+                {item.kbd.map((k) => <span class="mock-kbd">{k}</span>)}
+              </span>
+            )}
+          </li>
+        ))
+      }
+    </ul>
+    <div class="flex items-center gap-3 border-t border-border-subtle px-4 py-2 text-[10px] text-faint">
+      <span><span class="mock-kbd">↑↓</span> move</span>
+      <span><span class="mock-kbd">↵</span> run</span>
+      <span class="ml-auto">every menu action is in here</span>
+    </div>
+  </div>
+</div>

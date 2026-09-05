@@ -1,6 +1,8 @@
 @import '@fontsource-variable/inter';
 @import '@fontsource/jetbrains-mono/400.css';
 @import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/instrument-serif/400.css';
+@import '@fontsource/instrument-serif/400-italic.css';
 @import '../../../../packages/design-system/src/tokens.css';
 
 .dark {
@@ -37,6 +39,12 @@
 
 html {
   scroll-behavior: smooth;
+  --rail-x: 0.9rem;
+}
+@media (min-width: 1024px) {
+  html {
+    --rail-x: calc(max(0px, (100vw - 72rem) / 2) + 2rem);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -177,3 +185,213 @@ html.reveal-ready [data-reveal].is-revealed {
     @apply bg-surface-raised font-medium text-foreground;
   }
 }
+
+.grain {
+  position: relative;
+}
+.grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.07;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0.9 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+}
+.light .grain::before {
+  opacity: 0.12;
+}
+
+html {
+  --lane-w: 14px;
+  --dot-size: 14px;
+}
+@media (min-width: 1024px) {
+  html {
+    --lane-w: 28px;
+    --dot-size: 18px;
+  }
+}
+
+.rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--rail-x);
+  width: 2px;
+  margin-left: -1px;
+  background: hsl(var(--border-subtle));
+}
+.rail-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: top;
+  transform: scaleY(0);
+  background: hsl(var(--graph-0));
+  transition: transform 120ms linear;
+}
+.commit-dot {
+  position: absolute;
+  left: calc(var(--rail-x) + var(--dot-shift, 0px));
+  top: var(--dot-top-sm, 5rem);
+  width: var(--dot-size);
+  height: var(--dot-size);
+  margin-left: calc(var(--dot-size) / -2);
+  border-radius: 999px;
+  background: hsl(var(--background));
+  box-shadow:
+    0 0 0 2px hsl(var(--dot-color, var(--border))),
+    0 0 0 4px hsl(var(--background));
+  transition: box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1), transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
+}
+@media (min-width: 1024px) {
+  .commit-dot {
+    top: var(--dot-top, 7rem);
+  }
+}
+.commit-dot::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--dot-size) * 0.28);
+  border-radius: 999px;
+  background: hsl(var(--dot-color, var(--border)));
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 200ms, transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.commit-dot.is-past::after,
+.commit-dot.is-head::after {
+  opacity: 1;
+  transform: scale(1);
+}
+.commit-dot.is-head {
+  transform: scale(1.15);
+}
+.commit-dot .head-label {
+  display: none;
+  position: absolute;
+  right: calc(100% + 12px + var(--dot-shift, 0px));
+  top: 50%;
+  transform: translateY(-50%) translateX(6px);
+  font-family: theme('fontFamily.mono');
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--primary));
+  opacity: 0;
+  transition: opacity 200ms, transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+@media (min-width: 1024px) {
+  .commit-dot .head-label {
+    display: block;
+  }
+}
+.commit-dot.is-head .head-label {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+.lane {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--rail-x);
+  width: var(--lane-w);
+  pointer-events: none;
+  color: hsl(var(--lane-color));
+}
+.lane svg {
+  position: absolute;
+  left: 0;
+  width: var(--lane-w);
+  height: 56px;
+  overflow: visible;
+}
+.lane svg.top {
+  top: 0;
+}
+.lane svg.bottom {
+  bottom: 0;
+}
+.lane .straight {
+  position: absolute;
+  left: calc(var(--lane-w) - 1px);
+  top: 56px;
+  bottom: 56px;
+  width: 2px;
+  background: currentColor;
+  opacity: 0.7;
+}
+.rail-page .rail-offset {
+  padding-left: 2.75rem;
+}
+@media (min-width: 1024px) {
+  .rail-page .rail-offset {
+    padding-left: 4.5rem;
+  }
+}
+
+.hg-row {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: hg-in 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--i, 0) * 90ms + 200ms);
+}
+.hg-row path {
+  stroke-dasharray: 90;
+  stroke-dashoffset: 90;
+  animation: angkor-draw 700ms cubic-bezier(0.6, 0, 0.2, 1) forwards;
+  animation-delay: calc(var(--i, 0) * 90ms + 260ms);
+}
+@keyframes hg-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-row,
+  .hg-row path {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    stroke-dashoffset: 0;
+  }
+  .rail-fill,
+  .commit-dot,
+  .commit-dot::after,
+  .commit-dot .head-label {
+    transition: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .mock-scale {
+    zoom: 0.58;
+  }
+}
+
+.display {
+  @apply font-display font-normal tracking-[-0.01em];
+}
+.display em {
+  @apply not-italic;
+  font-style: italic;
+  color: hsl(var(--primary));
+}
+
+.mock {
+  @apply overflow-hidden rounded-lg border border-border bg-surface text-[11px] leading-[1.5] shadow-soft;
+  font-feature-settings: 'tnum';
+}
+.mock-bar {
+  @apply flex h-8 items-center gap-2 border-b border-border-subtle bg-surface-raised/60 px-3 text-[11px] text-muted;
+}
+.mock-kbd {
+  @apply inline-flex h-4 min-w-4 items-center justify-center rounded border border-border bg-background px-1 font-mono text-[9.5px] text-muted;
+}
+.code-kw { color: hsl(var(--graph-3)); }
+.code-fn { color: hsl(var(--graph-1)); }
+.code-str { color: hsl(var(--graph-2)); }
+.code-cm { color: hsl(var(--faint-foreground)); font-style: italic; }

@@ -9,6 +9,9 @@ export default {
       letterSpacing: {
         tightest: '-0.03em',
       },
+      fontFamily: {
+        display: ['"Instrument Serif"', 'Georgia', '"Times New Roman"', 'serif'],
+      },
     },
   },
 } satisfies Config;

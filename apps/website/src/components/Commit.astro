@@ -1,0 +1,42 @@
+---
+interface Props {
+  id: string;
+  lane?: number;
+  class?: string;
+  dotTop?: string;
+  dotTopSm?: string;
+}
+
+const { id, lane, dotTop = '7rem', dotTopSm = '5rem' } = Astro.props;
+const laneColor = lane === undefined ? undefined : ['--graph-0', '--graph-1', '--graph-3'][lane];
+---
+
+<section id={id} class:list={['relative scroll-mt-24', Astro.props.class]} data-commit={id}>
+  {
+    laneColor && (
+      <div class="lane" aria-hidden="true" style={`--lane-color: var(${laneColor})`}>
+        <svg class="top" viewBox="0 0 28 56" fill="none" preserveAspectRatio="none">
+          <path d="M0 0 C0 34 28 22 28 56" stroke="currentColor" stroke-width="2" opacity="0.7" vector-effect="non-scaling-stroke" />
+        </svg>
+        <div class="straight"></div>
+        <svg class="bottom" viewBox="0 0 28 56" fill="none" preserveAspectRatio="none">
+          <path d="M28 0 C28 34 0 22 0 56" stroke="currentColor" stroke-width="2" opacity="0.7" vector-effect="non-scaling-stroke" />
+        </svg>
+      </div>
+    )
+  }
+  <span
+    class="commit-dot"
+    data-commit={id}
+    aria-hidden="true"
+    style={{
+      '--dot-top': dotTop,
+      '--dot-top-sm': dotTopSm,
+      '--dot-shift': laneColor ? 'var(--lane-w)' : '0px',
+      '--dot-color': laneColor ? `var(${laneColor})` : 'var(--graph-0)',
+    }}
+  >
+    <span class="head-label">HEAD</span>
+  </span>
+  <slot />
+</section>

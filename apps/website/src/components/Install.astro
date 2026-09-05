@@ -1,190 +1,119 @@
 ---
-import { SITE } from '../lib/site';
+import Commit from './Commit.astro';
 import TerminalBlock from './TerminalBlock.astro';
-
-interface Platform {
-  name: string;
-  icon: string;
-  viewBox: string;
-  asset: string;
-  fileLabel: string;
-  steps: string[];
-}
+import { SITE } from '../lib/site';
 
 const version = SITE.latestVersion;
 
-const platforms: Platform[] = [
+const platforms = [
   {
     name: 'macOS',
-    viewBox: '0 0 24 24',
-    icon: 'M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.56-1.702z',
+    detail: 'Intel and Apple Silicon, one file',
     asset: `AngKorGit_${version}_universal.dmg`,
-    fileLabel: '.dmg',
-    steps: [
-      'Open the .dmg and drag AngKorGit into Applications.',
-      'On first launch, System Settings → Privacy & Security → "Open Anyway".',
-      'Allow folder access once per folder — it will be remembered.',
-    ],
+    note: 'Not signed with an Apple certificate, so macOS asks once. Right-click, Open, or use Homebrew below and it never asks.',
   },
   {
     name: 'Windows',
-    viewBox: '0 0 24 24',
-    icon: 'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z',
+    detail: 'x64 installer',
     asset: `AngKorGit_${version}_x64-setup.exe`,
-    fileLabel: '.exe',
-    steps: [
-      'Run the installer and launch AngKorGit.',
-      'SmartScreen: More info → Run anyway.',
-      'Updates are verified and self-installing.',
-    ],
+    note: 'SmartScreen will say the publisher is unknown. More info, then Run anyway. An .msi is on the releases page too.',
   },
   {
     name: 'Linux',
-    viewBox: '0 0 24 24',
-    icon: 'M4 17l6-6-6-6M12 19h8',
+    detail: 'AppImage, .deb and .rpm',
     asset: `AngKorGit_${version}_amd64.AppImage`,
-    fileLabel: '.AppImage',
-    steps: [
-      'AppImage: chmod +x AngKorGit_*.AppImage, then run.',
-      'Or install the .deb on Debian / Ubuntu.',
-      'WebKitGTK 4.1+ and libssl required.',
-    ],
+    note: 'chmod +x and run. Needs WebKitGTK 4.1 and libssl, which most desktops already have.',
   },
 ];
+
+const brew = 'brew install --cask cheat2001/tap/angkorgit';
 ---
 
-<section id="install" class="section-pad scroll-mt-20">
-  <div class="container-site">
-    <div class="max-w-2xl" data-reveal>
-      <p class="eyebrow">Install</p>
-      <h2 class="h2-section">One download, three platforms</h2>
-      <p class="lede">
-        Download the latest release for your OS. Free, open source, and cryptographically verified — no
-        telemetry, ever.
-      </p>
-    </div>
-
-    <div class="mt-14 grid gap-4 lg:grid-cols-3">
-      {
-        platforms.map((platform, i) => (
-          <div
-            class="flex flex-col rounded-lg border border-border-subtle bg-surface p-6 transition-colors hover:border-border"
-            data-reveal
-            style={{ '--reveal-delay': `${i * 90}ms` }}
-          >
-            <div class="flex items-center justify-between">
-              <span class="inline-flex h-10 w-10 items-center justify-center rounded-md bg-surface-raised text-foreground">
-                <svg class="h-5 w-5" viewBox={platform.viewBox} fill="currentColor" aria-hidden="true">
-                  <path d={platform.icon} />
-                </svg>
-              </span>
-              <span class="font-mono text-xs text-faint">{platform.fileLabel}</span>
-            </div>
-
-            <h3 class="mt-5 text-lg font-semibold tracking-tight">{platform.name}</h3>
-            <p class="mt-1 truncate font-mono text-xs text-faint">v{version} · {platform.asset}</p>
-
-            <ol class="mt-3 flex-1 space-y-2.5">
-              {
-                platform.steps.map((step, i) => (
-                  <li class="flex gap-3 text-sm leading-relaxed text-muted">
-                    <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 font-mono text-[11px] text-primary">
-                      {i + 1}
-                    </span>
-                    <span>{step}</span>
-                  </li>
-                ))
-              }
-            </ol>
-
-            <a
-              href={SITE.assetUrl(version, platform.asset)}
-              target="_blank"
-              rel="noreferrer"
-              class="mt-6 inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
-            >
-              Download {platform.fileLabel}
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
-              </svg>
-            </a>
+<Commit id="install" class="py-20 lg:py-28">
+  <div class="container-site rail-offset">
+    <div class="grid gap-12 lg:grid-cols-12">
+      <div class="min-w-0 lg:col-span-5" data-reveal>
+        <p class="font-mono text-xs uppercase tracking-[0.18em] text-primary">Install · v{version}</p>
+        <h2 class="display mt-3 text-4xl leading-[1.02] sm:text-5xl">Pick your platform.</h2>
+        <p class="mt-6 text-[17px] leading-relaxed text-muted">
+          Every build is compiled in public by GitHub Actions from the source you can read, and the app checks for
+          the next version itself.
+        </p>
+        <div class="mt-8">
+          <p class="font-mono text-xs uppercase tracking-[0.14em] text-faint">Mac with Homebrew</p>
+          <div class="mt-2">
+            <TerminalBlock label="terminal" lines={[brew]} copy={brew} />
           </div>
-        ))
-      }
-    </div>
-
-    <div class="mt-10 rounded-lg border border-border-subtle bg-surface p-6">
-      <h3 class="text-base font-semibold">Quick install from the terminal</h3>
-      <p class="mt-2 text-sm leading-relaxed text-muted">
-        On a Mac with <a href="https://brew.sh" target="_blank" rel="noreferrer" class="text-primary hover:underline">Homebrew</a>,
-        one command installs AngKorGit and clears the Gatekeeper quarantine automatically:
-      </p>
-      <div class="mt-4">
-        <TerminalBlock
-          label="macOS — Homebrew (recommended)"
-          lines={['brew install --cask cheat2001/tap/angkorgit']}
-          copy={'brew install --cask cheat2001/tap/angkorgit'}
-        />
-      </div>
-      <p class="mt-6 text-sm leading-relaxed text-muted">
-        Or a few short commands per OS — downloads the latest release, bypasses the gatekeeper warning,
-        and launches. Copy runs them in order.
-      </p>
-      <div class="mt-4 grid gap-4 lg:grid-cols-3">
-        <TerminalBlock
-          label="macOS"
-          lines={[
-            `curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_universal.dmg`)} -o ~/Downloads/AngKorGit.dmg`,
-            'xattr -cr ~/Downloads/AngKorGit.dmg',
-            'open ~/Downloads/AngKorGit.dmg',
-          ]}
-          copy={`curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_universal.dmg`)} -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg`}
-        />
-        <TerminalBlock
-          label="Windows"
-          lines={[
-            `curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_x64-setup.exe`)} -o "$env:TEMP\\AngKorGit-setup.exe"`,
-            `Start-Process "$env:TEMP\\AngKorGit-setup.exe"`,
-          ]}
-          copy={`curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_x64-setup.exe`)} -o "$env:TEMP\\AngKorGit-setup.exe"; Start-Process "$env:TEMP\\AngKorGit-setup.exe"`}
-        />
-        <TerminalBlock
-          label="Linux"
-          lines={[
-            `curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_amd64.AppImage`)} -o ~/Downloads/AngKorGit.AppImage`,
-            'chmod +x ~/Downloads/AngKorGit.AppImage',
-            '~/Downloads/AngKorGit.AppImage',
-          ]}
-          copy={`curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_amd64.AppImage`)} -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage`}
-        />
-      </div>
-      <p class="mt-4 text-xs text-muted">
-        <span class="font-mono text-primary">Ubuntu / Debian?</span> Replace the AppImage URL with
-        <span class="font-mono">AngKorGit_{SITE.latestVersion}_amd64.deb</span> and install with{' '}
-        <span class="font-mono">sudo dpkg -i</span>.
-      </p>
-    </div>
-
-    <div class="mt-6 rounded-lg border border-border-subtle bg-surface p-6">
-      <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-        <div class="max-w-xl">
-          <h3 class="text-base font-semibold">About the first-run prompts</h3>
-          <p class="mt-2 text-sm leading-relaxed text-muted">
-            AngKorGit is distributed without a commercial code-signing certificate, so your operating
-            system may show additional prompts on first launch. After that, updates are verified with
-            minisign and built in public by GitHub Actions from this source tree.
-          </p>
         </div>
-        <a
-          href="/docs/getting-started/"
-          class="inline-flex shrink-0 items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-surface-raised"
-        >
-          Step-by-step guides
-          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M7 17 17 7M7 7h10v10" />
-          </svg>
-        </a>
+      </div>
+
+      <div class="min-w-0 lg:col-span-7" data-reveal style={{ '--reveal-delay': '120ms' }}>
+        <ul class="divide-y divide-border-subtle border-y border-border-subtle">
+          {
+            platforms.map((p) => (
+              <li class="grid gap-4 py-6 sm:grid-cols-[7rem_1fr_auto] sm:items-start">
+                <div>
+                  <h3 class="text-lg font-medium tracking-tight text-foreground">{p.name}</h3>
+                  <p class="mt-0.5 text-xs text-faint">{p.detail}</p>
+                </div>
+                <div class="min-w-0">
+                  <p class="truncate font-mono text-[12px] text-muted">{p.asset}</p>
+                  <p class="mt-2 text-[13px] leading-relaxed text-muted">{p.note}</p>
+                </div>
+                <a
+                  href={SITE.assetUrl(version, p.asset)}
+                  class="inline-flex h-9 items-center gap-2 self-start rounded-md border border-border px-3.5 text-sm font-medium text-foreground transition-colors hover:border-primary hover:text-primary"
+                >
+                  Download
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
+                  </svg>
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+
+        <details class="group mt-6">
+          <summary class="flex cursor-pointer list-none items-center gap-2 text-sm text-muted hover:text-foreground">
+            <svg class="h-3.5 w-3.5 transition-transform group-open:rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+            Install from the terminal without Homebrew
+          </summary>
+          <div class="mt-4 grid gap-4">
+            <TerminalBlock
+              label="macOS"
+              lines={[
+                `curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_universal.dmg`)} -o ~/Downloads/AngKorGit.dmg`,
+                'xattr -cr ~/Downloads/AngKorGit.dmg',
+                'open ~/Downloads/AngKorGit.dmg',
+              ]}
+              copy={`curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_universal.dmg`)} -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg`}
+            />
+            <TerminalBlock
+              label="Windows (PowerShell)"
+              lines={[
+                `curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_x64-setup.exe`)} -o "$env:TEMP\\AngKorGit-setup.exe"`,
+                `Start-Process "$env:TEMP\\AngKorGit-setup.exe"`,
+              ]}
+              copy={`curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_x64-setup.exe`)} -o "$env:TEMP\\AngKorGit-setup.exe"; Start-Process "$env:TEMP\\AngKorGit-setup.exe"`}
+            />
+            <TerminalBlock
+              label="Linux"
+              lines={[
+                `curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_amd64.AppImage`)} -o ~/Downloads/AngKorGit.AppImage`,
+                'chmod +x ~/Downloads/AngKorGit.AppImage',
+                '~/Downloads/AngKorGit.AppImage',
+              ]}
+              copy={`curl -L ${SITE.assetUrl(version, `AngKorGit_${version}_amd64.AppImage`)} -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage`}
+            />
+          </div>
+        </details>
+
+        <p class="mt-6 text-sm text-muted">
+          Something odd on first launch? The <a href="/docs/getting-started/" class="link-underline text-foreground">getting started page</a>
+          walks through each prompt. All versions are on the <a href={SITE.releases} class="link-underline text-foreground">releases page</a>.
+        </p>
       </div>
     </div>
   </div>
-</section>
+</Commit>

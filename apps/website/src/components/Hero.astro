@@ -1,118 +1,54 @@
 ---
-import Logo from './Logo.astro';
+import HeroGraph from './HeroGraph.astro';
 import { SITE } from '../lib/site';
+
+const version = SITE.latestVersion;
 ---
 
-<section class="relative overflow-hidden">
+<section class="grain relative overflow-hidden" data-commit-root>
   <div
     aria-hidden="true"
     class="pointer-events-none absolute inset-0"
     style="background:
-      radial-gradient(52% 44% at 50% 0%, hsl(var(--primary) / 0.16), transparent 70%),
-      radial-gradient(30% 24% at 82% 10%, hsl(var(--info) / 0.07), transparent 70%);"
+      radial-gradient(60% 50% at 18% 0%, hsl(var(--primary) / 0.22), transparent 70%),
+      radial-gradient(40% 30% at 90% 20%, hsl(var(--graph-3) / 0.08), transparent 70%),
+      linear-gradient(to bottom, transparent 60%, hsl(var(--background)) 100%);"
   ></div>
   <div
     aria-hidden="true"
-    class="pointer-events-none absolute inset-0 opacity-60 dark:opacity-30"
-    style="background-image:
-      linear-gradient(to right, hsl(var(--border-subtle) / 0.5) 1px, transparent 1px),
-      linear-gradient(to bottom, hsl(var(--border-subtle) / 0.5) 1px, transparent 1px);
-      background-size: 56px 56px;
-      mask-image: radial-gradient(70% 50% at 50% 0%, black, transparent);"
+    class="pointer-events-none absolute inset-x-0 bottom-0 h-px"
+    style="background: linear-gradient(to right, transparent, hsl(var(--primary) / 0.5) 30%, hsl(var(--primary) / 0.5) 70%, transparent);"
   ></div>
 
-  <div class="container-site relative flex flex-col items-center pb-16 pt-20 text-center lg:pt-28" data-reveal>
-    <Logo size={52} animated class="mb-6 text-foreground" />
-
-    <p class="chip mb-6">
-      <span class="inline-block h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true"></span>
-      Free · open source · MIT licensed
-    </p>
-
-    <h1 class="max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tightest sm:text-6xl">
-      AngKorGit — everyday Git, made{' '}
-      <span class="bg-gradient-to-br from-amber-300 to-primary bg-clip-text text-transparent">
-        delightful.
-      </span>
-    </h1>
-
-    <p class="mt-6 max-w-2xl text-base leading-relaxed text-muted sm:text-lg">
-      A modern, fast, beautiful cross-platform Git client — a 12 MB download instead of a gigabyte. Virtualized
-      100k-commit graphs, the full daily toolkit, and conflicts you can understand.
-    </p>
-
-    <div class="mt-9 flex flex-col items-center gap-3 sm:flex-row">
-      <a
-        href="/#install"
-        class="group inline-flex items-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-soft transition-all hover:opacity-90 hover:shadow-none"
-      >
-        Download for free
-        <svg class="h-4 w-4 transition-transform group-hover:translate-y-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
-        </svg>
-      </a>
-      <a
-        href={SITE.repo}
-        target="_blank"
-        rel="noreferrer"
-        class="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-6 py-3 text-sm font-medium transition-colors hover:bg-surface-raised"
-      >
-        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path
-            d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.92.43.37.82 1.11.82 2.24v3.32c0 .32.22.7.83.58A11.99 11.99 0 0 0 24 12.5C24 5.87 18.63.5 12 .5Z"
-          />
-        </svg>
-        View on GitHub
-      </a>
+  <div class="container-site rail-offset relative grid items-center gap-14 pb-20 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:pb-28 lg:pt-24">
+    <div class="min-w-0 max-w-2xl">
+      <p class="font-mono text-xs uppercase tracking-[0.18em] text-primary">Git client · macOS, Windows, Linux</p>
+      <h1 class="display mt-5 text-[2.9rem] leading-[0.98] sm:text-7xl">
+        A native Git client for <em>everyday</em> work.
+      </h1>
+      <p class="mt-7 max-w-xl text-lg leading-relaxed text-muted">
+        I got tired of Git clients that were secretly browsers. This one is native, Rust and libgit2 underneath, and it
+        does the things you do every day without asking for an account or a subscription first.
+      </p>
+      <div class="mt-9 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+        <a
+          href="#install"
+          class="group inline-flex items-center gap-2 rounded-md bg-primary px-5 py-3 text-sm font-medium text-primary-foreground shadow-soft transition-all hover:opacity-90 hover:shadow-none"
+        >
+          Download {version}
+          <svg class="h-4 w-4 transition-transform group-hover:translate-y-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
+          </svg>
+        </a>
+        <a href={SITE.repo} target="_blank" rel="noreferrer" class="link-underline px-1 py-3 text-sm text-muted hover:text-foreground">
+          Read the source on GitHub
+        </a>
+      </div>
+      <p class="mt-8 font-mono text-xs text-faint">Free. MIT. No telemetry. Updates itself.</p>
     </div>
 
-    <div class="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 font-mono text-xs text-faint">
-      <span>macOS</span>
-      <span class="text-border" aria-hidden="true">·</span>
-      <span>Windows</span>
-      <span class="text-border" aria-hidden="true">·</span>
-      <span>Linux</span>
-      <span class="text-border" aria-hidden="true">·</span>
-      <span>Apple Silicon and Intel</span>
-    </div>
-  </div>
-
-  <div class="container-site relative" data-reveal style={{ '--reveal-delay': '120ms' }}>
-    <div class="rounded-lg border border-border-subtle bg-surface shadow-soft">
-      <div class="flex items-center gap-1.5 border-b border-border-subtle px-4 py-3">
-        <span class="h-2.5 w-2.5 rounded-full bg-danger/70" aria-hidden="true"></span>
-        <span class="h-2.5 w-2.5 rounded-full bg-amber-400/70" aria-hidden="true"></span>
-        <span class="h-2.5 w-2.5 rounded-full bg-success/70" aria-hidden="true"></span>
-        <span class="ml-3 hidden font-mono text-xs text-faint sm:inline">main — AngKorGit</span>
-      </div>
-      <div class="relative">
-        <video
-          src={import.meta.env.BASE_URL + 'demo.mp4'}
-          poster={import.meta.env.BASE_URL + 'demo-poster.png'}
-          width="1280"
-          height="800"
-          autoplay
-          loop
-          muted
-          playsinline
-          preload="auto"
-          class="hidden h-auto w-full rounded-b-lg dark:block"
-          aria-label="AngKorGit in action — browsing the commit graph, opening a diff directly at its first change, and resolving a merge conflict"
-        ></video>
-        <video
-          src={import.meta.env.BASE_URL + 'demo-light.mp4'}
-          poster={import.meta.env.BASE_URL + 'demo-light-poster.png'}
-          width="1280"
-          height="800"
-          autoplay
-          loop
-          muted
-          playsinline
-          preload="auto"
-          class="block h-auto w-full rounded-b-lg dark:hidden"
-          aria-label="AngKorGit in action — browsing the commit graph, opening a diff directly at its first change, and resolving a merge conflict"
-        ></video>
-      </div>
+    <div class="relative min-w-0" data-reveal style={{ '--reveal-delay': '160ms' }}>
+      <HeroGraph />
     </div>
   </div>
 </section>

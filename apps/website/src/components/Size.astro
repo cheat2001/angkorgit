@@ -1,0 +1,32 @@
+---
+import Commit from './Commit.astro';
+---
+
+<Commit id="size" lane={1} class="py-20 lg:py-28">
+  <div class="container-site rail-offset">
+    <div class="max-w-2xl" data-reveal>
+      <p class="font-mono text-xs uppercase tracking-[0.18em] text-primary">Native</p>
+      <h2 class="display mt-3 text-4xl leading-[1.02] sm:text-5xl">Native, not <em>a browser</em>.</h2>
+      <p class="mt-6 text-[17px] leading-relaxed text-muted">
+        Most Git clients are a website wrapped in its own copy of a browser, which is why they take a moment to open
+        and sit heavy on the disk. AngKorGit draws its window with the webview your OS already ships, and talks to the
+        repository through libgit2 in the same process. It opens quickly, updates itself, and stays out of the way.
+      </p>
+    </div>
+
+    <dl class="mt-14 grid max-w-3xl gap-6 border-t border-border-subtle pt-8 sm:grid-cols-3" data-reveal style={{ '--reveal-delay': '120ms' }}>
+      <div>
+        <dt class="font-mono text-xs uppercase tracking-[0.14em] text-faint">Engine</dt>
+        <dd class="mt-2 text-[15px] leading-snug text-foreground">Rust and libgit2, no shelling out for the things you do all day.</dd>
+      </div>
+      <div>
+        <dt class="font-mono text-xs uppercase tracking-[0.14em] text-faint">100k commits</dt>
+        <dd class="mt-2 text-[15px] leading-snug text-foreground">The graph and diffs are virtualized. Long histories scroll like short ones.</dd>
+      </div>
+      <div>
+        <dt class="font-mono text-xs uppercase tracking-[0.14em] text-faint">Cold start</dt>
+        <dd class="mt-2 text-[15px] leading-snug text-foreground">Open, splash, repo. The repository is read in process, no daemon to wait for.</dd>
+      </div>
+    </dl>
+  </div>
+</Commit>

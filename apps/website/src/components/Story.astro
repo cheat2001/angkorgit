@@ -1,0 +1,30 @@
+---
+import Commit from './Commit.astro';
+---
+
+<Commit id="why" class="py-20 lg:py-28">
+  <div class="container-site rail-offset">
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]" data-reveal>
+      <div class="min-w-0">
+        <p class="font-mono text-xs uppercase tracking-[0.18em] text-primary">init</p>
+        <h2 class="display mt-3 text-4xl leading-[1.02] sm:text-5xl">Why I made this</h2>
+      </div>
+      <div class="space-y-5 text-[17px] leading-relaxed text-muted">
+        <p>
+          I use Git all day, on a Mac that I like, and every client I tried felt like a website wearing a coat. Slow
+          to open, heavy on disk, a login screen before the first commit. The command line was faster, but a good
+          graph and a proper conflict view are worth having.
+        </p>
+        <p>
+          So in August 2026 I started writing one. The engine is libgit2 through Rust, the window is the system
+          webview, and the rule for what gets in is simple: if GitKraken has a hundred features, I want the twenty-five
+          that matter, done properly.
+        </p>
+        <p>
+          The rest of this page is laid out like a history. Newest commit on top in the graph, oldest first as you
+          scroll. The line on the left fills as you read.
+        </p>
+      </div>
+    </div>
+  </div>
+</Commit>

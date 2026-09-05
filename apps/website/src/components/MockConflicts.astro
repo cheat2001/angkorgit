@@ -1,0 +1,130 @@
+---
+interface Line {
+  n: number;
+  code: string;
+  ctx?: boolean;
+  pick?: boolean;
+  mid?: boolean;
+  empty?: boolean;
+}
+
+const a: Line[] = [
+  { n: 40, code: '<span class="code-kw">export function</span> <span class="code-fn">timeAgo</span>(date: Date) {', ctx: true },
+  { n: 41, code: '  <span class="code-kw">const</span> diff = Date.<span class="code-fn">now</span>() - date.<span class="code-fn">getTime</span>();', ctx: true },
+  { n: 42, code: '  <span class="code-kw">if</span> (diff &lt; 60_000) <span class="code-kw">return</span> <span class="code-str">"just now"</span>;', pick: true },
+  { n: 43, code: '  <span class="code-kw">const</span> minutes = Math.<span class="code-fn">round</span>(diff / 60_000);', pick: true, mid: true },
+  { n: 44, code: '  <span class="code-kw">return</span> <span class="code-str">`${minutes}m ago`</span>;', pick: true },
+  { n: 45, code: '}', ctx: true },
+];
+const b: Line[] = [
+  { n: 40, code: '<span class="code-kw">export function</span> <span class="code-fn">timeAgo</span>(date: Date) {', ctx: true },
+  { n: 41, code: '  <span class="code-kw">const</span> diff = Date.<span class="code-fn">now</span>() - date.<span class="code-fn">getTime</span>();', ctx: true },
+  { n: 42, code: '  <span class="code-kw">if</span> (diff &lt; 45_000) <span class="code-kw">return</span> <span class="code-str">"now"</span>;', pick: false },
+  { n: 43, code: '  <span class="code-kw">return</span> rtf.<span class="code-fn">format</span>(-Math.<span class="code-fn">round</span>(diff / 60_000), <span class="code-str">"minute"</span>);', pick: false, mid: true },
+  { n: 44, code: '', empty: true },
+  { n: 45, code: '}', ctx: true },
+];
+const result = [
+  { n: 40, code: a[0].code },
+  { n: 41, code: a[1].code },
+  { n: 42, code: a[2].code, side: 'a' },
+  { n: 43, code: a[3].code, side: 'a' },
+  { n: 44, code: a[4].code, side: 'a' },
+  { n: 45, code: '}' },
+];
+---
+
+<div class="mock mock-scale min-w-[34rem] font-mono">
+  <div class="mock-bar h-10 gap-3">
+    <span class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-danger/15 text-danger">
+      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M6 21V9a9 9 0 0 0 9 9" />
+      </svg>
+    </span>
+    <span class="flex flex-col leading-none">
+      <span class="text-[9px] uppercase tracking-[0.16em] text-faint">Resolve conflicts</span>
+      <span class="mt-1 text-[11.5px] font-sans"><span class="font-medium text-foreground">utils.ts</span> <span class="text-faint">src/shared/</span></span>
+    </span>
+    <span class="ml-auto flex items-center gap-2 font-sans text-[10.5px] text-muted">
+      <span class="h-1 w-20 overflow-hidden rounded-full bg-border-subtle"><span class="block h-full w-1/2 rounded-full bg-primary"></span></span>
+      1 of 2 resolved
+    </span>
+  </div>
+
+  <div class="grid grid-cols-2 divide-x divide-border-subtle">
+    {
+      [
+        { label: 'A', sub: 'current · main', rows: a, tone: 'info' },
+        { label: 'B', sub: 'incoming · feat/relative-time', rows: b, tone: 'success' },
+      ].map((pane) => (
+        <div>
+          <div class:list={['flex h-7 items-center gap-2 border-b border-border-subtle border-t-2 px-2.5 font-sans', pane.tone === 'info' ? 'border-t-info' : 'border-t-success']}>
+            <span class:list={['text-[10px] font-semibold', pane.tone === 'info' ? 'text-info' : 'text-success']}>{pane.label}</span>
+            <span class="truncate text-[10px] text-faint">{pane.sub}</span>
+            <span class:list={['ml-auto flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border', pane.tone === 'info' ? 'border-info bg-info text-background' : 'border-border']}>
+              {pane.tone === 'info' && (
+                <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+              )}
+            </span>
+          </div>
+          <div class="py-1">
+            {pane.rows.map((row) => (
+              <div
+                class:list={[
+                  'group/line flex h-[18px] items-center gap-1.5 pr-2',
+                  !row.ctx && !row.empty && (pane.tone === 'info' ? 'border-l-2 border-info' : 'border-l-2 border-success'),
+                  row.ctx && 'border-l-2 border-transparent',
+                  row.pick && 'bg-info/10',
+                ]}
+              >
+                <span class="flex w-5 shrink-0 items-center justify-center">
+                  {!row.ctx && !row.empty && (row.mid ? (
+                    <span class:list={['flex h-3 w-3 items-center justify-center rounded-[3px] border', row.pick ? 'border-info bg-info text-background' : 'border-border bg-background']}>
+                      {row.pick && (
+                        <svg class="h-2 w-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+                      )}
+                    </span>
+                  ) : row.pick ? (
+                    <svg class="h-2.5 w-2.5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+                  ) : (
+                    <svg class="h-2.5 w-2.5 text-faint opacity-0 transition-opacity group-hover/line:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                  ))}
+                </span>
+                <span class="w-6 shrink-0 text-right tabular-nums text-faint">{row.empty ? '' : row.n}</span>
+                <span class="truncate whitespace-pre text-foreground/90" set:html={row.empty ? '<span class="text-faint italic">(no line)</span>' : row.code} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))
+    }
+  </div>
+
+  <div class="border-t border-border-subtle">
+    <div class="flex h-7 items-center gap-2 border-b border-border-subtle px-2.5 font-sans">
+      <span class="text-[10px] font-semibold text-foreground">Result</span>
+      <span class="ml-2 inline-flex h-4 items-center gap-1 rounded border border-border px-1.5 text-[9.5px] text-muted">
+        Conflict 1 of 2 <span class="text-faint">↑ ↓</span>
+      </span>
+      <span class="ml-auto text-[10px] text-faint">click a line to edit it in place</span>
+    </div>
+    <div class="py-1">
+      {
+        result.map((row) => (
+          <div class:list={['flex h-[18px] items-center gap-1.5 pr-2', row.side && 'bg-info/5']}>
+            <span class="flex w-5 shrink-0 items-center justify-center">
+              {row.side && <span class="h-2.5 w-0.5 rounded-full bg-info"></span>}
+            </span>
+            <span class="w-6 shrink-0 text-right tabular-nums text-faint">{row.n}</span>
+            <span class="truncate whitespace-pre text-foreground/90" set:html={row.code} />
+          </div>
+        ))
+      }
+    </div>
+    <div class="flex items-center justify-end gap-2 border-t border-border-subtle px-3 py-2 font-sans">
+      <span class="mr-auto text-[10px] text-faint">Nothing is written to disk yet</span>
+      <span class="rounded-md border border-border px-2 py-1 text-[10.5px] text-muted">Cancel</span>
+      <span class="rounded-md bg-primary px-2 py-1 text-[10.5px] font-medium text-primary-foreground">Mark resolved</span>
+    </div>
+  </div>
+</div>

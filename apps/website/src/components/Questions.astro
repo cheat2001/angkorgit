@@ -1,0 +1,46 @@
+---
+import { SITE } from '../lib/site';
+
+const qa = [
+  {
+    q: 'Is it really free?',
+    a: 'Yes. MIT licensed, the whole source is on GitHub, and there is no paid tier hiding behind a feature. If it saves you time and you feel like it, there is a coffee link in the footer.',
+  },
+  {
+    q: 'Why does macOS warn me on first launch?',
+    a: "The build isn't signed with an Apple developer certificate yet, so Gatekeeper asks once. Right-click and Open, or install through Homebrew, which clears the flag for you. After that the updater handles new versions and verifies each one with a signature.",
+  },
+  {
+    q: 'Does it send anything anywhere?',
+    a: 'No telemetry, no crash reporting, no account. The only network traffic is git itself, the update check against GitHub releases, and whatever AI provider you choose to enable.',
+  },
+  {
+    q: 'How does it compare to GitKraken or Fork?',
+    a: 'Faster to open, lighter, and narrower on purpose. GitKraken took the workflow ideas further than anyone and I learned from it, but I wanted the twenty-five features that matter rather than the hundred. Fork is closer in spirit, though it is not open source and not on Linux.',
+  },
+];
+---
+
+<section class="border-t border-border-subtle py-20 lg:py-24">
+  <div class="container-site rail-offset">
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div data-reveal>
+        <p class="font-mono text-xs uppercase tracking-[0.18em] text-faint">Questions</p>
+        <h2 class="display mt-3 text-3xl leading-[1.05] sm:text-4xl">Things people ask me</h2>
+        <p class="mt-4 text-[15px] leading-relaxed text-muted">
+          Anything else, <a href={`${SITE.repo}/issues`} class="link-underline text-foreground">open an issue</a>. I read them all.
+        </p>
+      </div>
+      <dl class="divide-y divide-border-subtle" data-reveal style={{ '--reveal-delay': '100ms' }}>
+        {
+          qa.map((item) => (
+            <div class="grid gap-2 py-6 sm:grid-cols-[14rem_1fr] sm:gap-8">
+              <dt class="text-[15px] font-medium text-foreground">{item.q}</dt>
+              <dd class="text-[15px] leading-relaxed text-muted">{item.a}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </div>
+</section>

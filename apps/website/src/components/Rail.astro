@@ -1,0 +1,54 @@
+---
+---
+
+<div class="rail" aria-hidden="true">
+  <div class="rail-fill" id="rail-fill"></div>
+</div>
+
+<script>
+  const fill = document.getElementById('rail-fill');
+  const main = document.getElementById('main');
+  const dots = Array.from(document.querySelectorAll<HTMLElement>('.commit-dot'));
+  const graphRows = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-hg-row]'));
+
+  const update = () => {
+    if (!fill || !main) return;
+    const rect = main.getBoundingClientRect();
+    const lineY = window.innerHeight * 0.42;
+    const progress = Math.min(1, Math.max(0, (lineY - rect.top) / rect.height));
+    fill.style.transform = `scaleY(${progress})`;
+
+    let head: HTMLElement | null = null;
+    let headDist = Infinity;
+    for (const dot of dots) {
+      const rect = dot.getBoundingClientRect();
+      const top = rect.top + rect.height / 2;
+      const past = top <= lineY;
+      dot.classList.toggle('is-past', past);
+      const dist = Math.abs(top - lineY);
+      if (past && dist < headDist) {
+        headDist = dist;
+        head = dot;
+      }
+    }
+    for (const dot of dots) dot.classList.toggle('is-head', dot === head);
+    const id = head?.dataset.commit;
+    for (const row of graphRows) {
+      const active = row.dataset.hgRow === id;
+      if (active) row.setAttribute('aria-current', 'true');
+      else row.removeAttribute('aria-current');
+    }
+  };
+
+  let raf = 0;
+  const schedule = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      update();
+    });
+  };
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule);
+  update();
+</script>

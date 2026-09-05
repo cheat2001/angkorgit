@@ -20,7 +20,7 @@ export const SITE = {
   title:
     'AngKorGit (Angkor Git) — fast, free Git client and Git GUI for macOS, Windows & Linux',
   description:
-    'Angkor Git (AngKorGit) is a fast, free, open-source Git client and Git GUI for macOS, Windows, and Linux — a 12 MB download (Tauri v2 + Rust + libgit2). Visual commit graphs, side-by-side diff review, visual conflict resolution, and AI assistance.',
+    'Angkor Git (AngKorGit) is a fast, free, open-source Git client and Git GUI for macOS, Windows, and Linux, built native with Tauri v2, Rust and libgit2. Visual commit graphs, side-by-side diff review, visual conflict resolution, and AI assistance.',
   repo: 'https://github.com/cheat2001/angkorgit',
   releases: 'https://github.com/cheat2001/angkorgit/releases',
   license: 'https://github.com/cheat2001/angkorgit/blob/main/LICENSE',
@@ -38,12 +38,8 @@ export const SITE = {
 };
 
 export const NAV = [
-  { href: '/#features', label: 'Features' },
-  { href: '/#gallery', label: 'Gallery' },
-  { href: '/#performance', label: 'Performance' },
+  { href: '/#conflicts', label: 'What it does' },
+  { href: '/#box', label: 'In the box' },
   { href: '/#install', label: 'Install' },
-  { href: '/#ai', label: 'AI' },
   { href: '/docs/', label: 'Docs' },
-  { href: '/#open-source', label: 'Open source' },
-  { href: '/#faq', label: 'FAQ' },
 ] as const;

@@ -2,31 +2,92 @@
 import Base from '../layouts/Base.astro';
 import Header from '../components/Header.astro';
 import Hero from '../components/Hero.astro';
-import Features from '../components/Features.astro';
-import Screenshots from '../components/Screenshots.astro';
-import Performance from '../components/Performance.astro';
+import Rail from '../components/Rail.astro';
+import Story from '../components/Story.astro';
+import Scene from '../components/Scene.astro';
+import MockConflicts from '../components/MockConflicts.astro';
+import MockWorktrees from '../components/MockWorktrees.astro';
+import MockGraph from '../components/MockGraph.astro';
+import MockPalette from '../components/MockPalette.astro';
+import Size from '../components/Size.astro';
+import SpecSheet from '../components/SpecSheet.astro';
 import AiSection from '../components/AiSection.astro';
 import Install from '../components/Install.astro';
-import OpenSource from '../components/OpenSource.astro';
-import Faq from '../components/Faq.astro';
-import FinalCta from '../components/FinalCta.astro';
+import Questions from '../components/Questions.astro';
 import Footer from '../components/Footer.astro';
-import BackToTop from '../components/BackToTop.astro';
 ---
 
 <Base>
   <Header />
-  <main id="main">
+  <div class="rail-page">
+  <main id="main" class="relative">
+    <Rail />
     <Hero />
-    <Features />
-    <Screenshots />
-    <Performance />
+    <Story />
+
+    <Scene id="conflicts" lane={0} kicker="Conflicts" title="Conflicts you can <em>read</em>.">
+      <Fragment slot="body">
+        <p>
+          Both sides in one view, with line numbers on each so you can talk about line 43 with a colleague. One
+          checkbox takes a whole side. Hover a line and a plus takes just that one.
+        </p>
+        <p>
+          The result pane is an editor. Click a line and type. Nothing touches the file until you press Mark
+          resolved, and the markers are guarded so you can't save half a conflict by accident.
+        </p>
+      </Fragment>
+      <MockConflicts slot="mock" />
+    </Scene>
+
+    <Scene id="worktrees" lane={1} kicker="New in 0.10" title="Two branches, <em>two folders</em>, one window." flip>
+      <Fragment slot="body">
+        <p>
+          A worktree is a second checkout of the same repository in a sibling folder. Run a hotfix or an AI agent
+          there while your real work sits untouched. No stash, no "let me just commit this WIP".
+        </p>
+        <p>
+          The sidebar lists every worktree with its branch and whether it has changes. Each opens as its own tab.
+          Try to check out a branch that's already open in another folder and it takes you there instead, the same
+          way git refuses on the command line.
+        </p>
+      </Fragment>
+      <MockWorktrees slot="mock" />
+    </Scene>
+
+    <Scene id="graph" lane={2} kicker="Graph" title="Drag a branch onto another. <em>That's the merge.</em>">
+      <Fragment slot="body">
+        <p>
+          The graph is virtualized, so a hundred thousand commits scroll like fifty. Ref chips show the whole name or
+          fold behind a count, never half a word. Paste a hash into the search and it jumps there.
+        </p>
+        <p>
+          Merges from the app are always real merge commits. Right-click does what you'd expect, and ⌘Z undoes the
+          merge if you picked the wrong branch.
+        </p>
+      </Fragment>
+      <MockGraph slot="mock" />
+    </Scene>
+
+    <Scene id="palette" lane={2} kicker="Keyboard" title="⌘K, then <em>type</em>." flip>
+      <Fragment slot="body">
+        <p>
+          Every command in the app is in the palette, including the ones buried in a right-click menu. Shortcuts are
+          printed next to the menu items so you learn them by using the mouse.
+        </p>
+        <p>
+          ⌘Z undoes, ⌘⇧Z redoes, ⌘B hides the sidebar, [ and ] move between files in a diff. The Escape key closes
+          exactly one thing at a time.
+        </p>
+      </Fragment>
+      <MockPalette slot="mock" />
+    </Scene>
+
+    <Size />
+    <SpecSheet />
     <AiSection />
     <Install />
-    <OpenSource />
-    <Faq />
-    <FinalCta />
+    <Questions />
   </main>
   <Footer />
-  <BackToTop />
+  </div>
 </Base>

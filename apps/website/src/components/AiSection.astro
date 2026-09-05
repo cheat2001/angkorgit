@@ -1,110 +1,86 @@
 ---
-const providers = ['Installed AI CLIs', 'OpenAI', 'Anthropic', 'Gemini', 'Ollama', 'LM Studio'];
-const capabilities = [
-  'Commit messages from your staged changes',
-  'Plain-English explanations of diffs and conflicts',
-  'Pull request descriptions ready to paste',
-  'Staged-change review before you push',
+import Commit from './Commit.astro';
+
+const providers = [
+  { name: 'Claude Code', kind: 'CLI you already log into' },
+  { name: 'Codex', kind: 'CLI you already log into' },
+  { name: 'Gemini CLI', kind: 'CLI you already log into' },
+  { name: 'OpenCode', kind: 'CLI you already log into' },
+  { name: 'Anthropic', kind: 'API key' },
+  { name: 'OpenAI', kind: 'API key' },
+  { name: 'Gemini', kind: 'API key' },
+  { name: 'Ollama', kind: 'local, no key' },
+  { name: 'LM Studio', kind: 'local, no key' },
 ];
 ---
 
-<section id="ai" class="section-pad scroll-mt-20 border-t border-border-subtle bg-surface">
-  <div class="container-site grid items-center gap-14 lg:grid-cols-2">
-    <div class="min-w-0" data-reveal>
-      <p class="eyebrow">AI, done tastefully</p>
-      <h2 class="h2-section">AI assistance on your terms</h2>
-      <p class="lede">
-        AngKorGit works with any provider you already use — hosted APIs, fully local models, or an AI
-        CLI already on your machine (Claude Code, Codex, Gemini CLI, OpenCode) with no API key at all.
-        Your code and keys never touch a service you didn't choose.
-      </p>
+<Commit id="ai" lane={1} class="py-20 lg:py-28">
+  <div class="container-site rail-offset">
+    <div class="grid items-start gap-12 lg:grid-cols-12">
+      <div class="min-w-0 lg:col-span-6" data-reveal>
+        <p class="font-mono text-xs uppercase tracking-[0.18em] text-primary">AI, optional</p>
+        <h2 class="display mt-3 text-4xl leading-[1.02] sm:text-5xl">Uses the AI you <em>already</em> have.</h2>
+        <div class="mt-6 space-y-4 text-[17px] leading-relaxed text-muted">
+          <p>
+            AngKorGit doesn't ship a model or a token wallet. If you've got Claude Code, Codex, Gemini CLI or OpenCode
+            installed, it finds the binary and uses your own login and quota. No key to paste.
+          </p>
+          <p>
+            Or point it at an API key, or at Ollama on your own machine. Whatever you pick, requests go straight from
+            your computer to that provider. There is no server of mine in between.
+          </p>
+          <p>
+            What it's used for: a commit message from the staged diff, a plain-language explanation of a commit or a
+            conflict, a review of what you're about to commit, and a pull request description. Every one of those has
+            a Stop button.
+          </p>
+        </div>
+      </div>
 
-      <ul class="mt-8 space-y-4">
-        {
-          capabilities.map((capability) => (
-            <li class="flex gap-3">
-              <svg class="mt-0.5 h-5 w-5 shrink-0 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />
-              </svg>
-              <p class="text-sm leading-relaxed text-muted">{capability}</p>
-            </li>
-          ))
-        }
-      </ul>
-    </div>
-
-    <div class="min-w-0 rounded-lg border border-border-subtle bg-background p-6 shadow-soft lg:p-8" data-reveal style={{ '--reveal-delay': '120ms' }}>
-      <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
-          <span class="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />
-            </svg>
-          </span>
-          <div>
-            <p class="text-sm font-medium text-foreground">Generate commit message</p>
-            <p class="font-mono text-[11px] text-faint">2 files staged · {providers.length} providers</p>
+      <div class="min-w-0 lg:col-span-6" data-reveal style={{ '--reveal-delay': '120ms' }}>
+        <div class="mock font-sans">
+          <div class="mock-bar">
+            <span class="text-[10px] uppercase tracking-[0.12em] text-faint">Settings · AI</span>
+            <span class="ml-auto inline-flex items-center gap-1.5 text-[10px] text-success">
+              <span class="h-1.5 w-1.5 rounded-full bg-success"></span> Reachable
+            </span>
+          </div>
+          <div class="p-3">
+            <p class="text-[10px] uppercase tracking-[0.12em] text-faint">Detected on this machine</p>
+            <ul class="mt-2 grid gap-1.5 sm:grid-cols-2">
+              {
+                providers.slice(0, 4).map((p, i) => (
+                  <li class:list={['flex items-center gap-2 rounded-md border px-2.5 py-2', i === 0 ? 'border-primary/50 bg-primary/10' : 'border-border-subtle bg-background']}>
+                    <span class="flex h-6 w-6 items-center justify-center rounded-md bg-surface-raised font-mono text-[10px] text-muted">&gt;_</span>
+                    <span class="flex min-w-0 flex-col leading-tight">
+                      <span class="truncate text-[11px] text-foreground">{p.name}</span>
+                      <span class="truncate text-[9.5px] text-faint">{p.kind}</span>
+                    </span>
+                    {i === 0 && <span class="ml-auto rounded bg-primary/20 px-1.5 text-[9px] font-medium text-primary">In use</span>}
+                  </li>
+                ))
+              }
+            </ul>
+            <p class="mt-4 text-[10px] uppercase tracking-[0.12em] text-faint">Or a provider</p>
+            <ul class="mt-2 flex flex-wrap gap-1.5">
+              {
+                providers.slice(4).map((p) => (
+                  <li class="rounded-md border border-border-subtle bg-background px-2 py-1 text-[10.5px] text-muted">
+                    {p.name} <span class="text-faint">· {p.kind}</span>
+                  </li>
+                ))
+              }
+            </ul>
+            <div class="mt-4 rounded-md border border-border-subtle bg-background p-2.5">
+              <p class="text-[10px] uppercase tracking-[0.12em] text-faint">Commit message style</p>
+              <div class="mt-1.5 flex items-center gap-2 text-[11px]">
+                <span class="rounded bg-surface-raised px-1.5 py-0.5 text-foreground">Conventional</span>
+                <span class="font-mono text-[10px] text-faint">feature/* → feat(scope):</span>
+              </div>
+            </div>
           </div>
         </div>
-        <span class="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-mono text-[11px] text-primary">
-          AI suggest
-        </span>
-      </div>
-
-      <div class="mt-5 rounded-md border border-border-subtle bg-surface">
-        <div class="flex items-center justify-between border-b border-border-subtle px-3 py-2">
-          <span class="font-mono text-[11px] text-faint">Staged changes</span>
-          <span class="font-mono text-[11px] text-success">+124 −3</span>
-        </div>
-        <pre class="whitespace-pre-wrap break-words p-4 font-mono text-[13px] leading-relaxed"><code><span class="text-muted">fix(graph): keep lane colors stable across pagination</span>
-<span class="text-muted">test(graph): lane reuse with 400-commit history</span></code></pre>
-      </div>
-
-      <div class="mt-4 rounded-md border border-primary/40 bg-primary/5">
-        <div class="flex items-center gap-2 border-b border-primary/20 px-3 py-2">
-          <span class="inline-flex h-4 w-4 items-center justify-center text-primary">
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />
-            </svg>
-          </span>
-          <span class="font-mono text-[11px] uppercase tracking-widest text-primary">Suggestion</span>
-        </div>
-        <p class="p-3 font-mono text-[13px] leading-relaxed text-foreground">
-          fix(graph): keep lane colors stable across pagination
-          <span class="block text-faint">Also add regression coverage for lane reuse with a 400-commit history.</span>
-        </p>
-        <div class="flex items-center gap-2 px-3 pb-3">
-          <span class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground">
-            Use message
-            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M5 12h14m-6-6 6 6-6 6" />
-            </svg>
-          </span>
-          <span class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted">
-            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />
-            </svg>
-            Regenerate
-          </span>
-        </div>
-      </div>
-
-      <div class="mt-6">
-        <p class="mb-3 font-mono text-xs uppercase tracking-widest text-faint">Providers</p>
-        <div class="flex flex-wrap gap-2">
-          {
-            providers.map((provider) => (
-              <span class="rounded-full border border-border bg-surface px-3 py-1.5 font-mono text-xs text-muted">
-                {provider}
-              </span>
-            ))
-          }
-        </div>
-        <p class="mt-4 text-xs leading-relaxed text-faint">
-          Keys are stored locally and sent only to the provider you chose. Local models (Ollama,
-          LM Studio) and installed AI CLIs run entirely on your machine.
-        </p>
       </div>
     </div>
   </div>
-</section>
+</Commit>
