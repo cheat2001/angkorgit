@@ -836,7 +836,10 @@ update CLAUDE.md or docs/ — never the code.
 - **User-controlled strings (paths, branch names, URLs) need a wrap or truncate
   strategy** wherever they render: dialog copy wraps via the primitives (G32),
   menu labels truncate (`max-w-64 truncate`), toasts inherit sonner's
-  `overflow-wrap: anywhere`.
+  `overflow-wrap: anywhere`. In FILE ROWS (working copy + commit details)
+  the NAME wins: name is `max-w-full shrink-0 truncate`, the dimmed dir after
+  it is `min-w-0 flex-1 truncate`, so the path gives way first and the name
+  only ellipsizes when it alone exceeds the row (owner rule 2026-09-05).
 - Sentence case for all UI text.
 
 ## 8. Hard-won gotchas (do not re-learn these)

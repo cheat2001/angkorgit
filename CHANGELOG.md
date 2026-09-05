@@ -22,6 +22,9 @@ All notable changes to AngKorGit are documented here. The format follows
   instead, because git allows one folder per branch.
 
 ### Fixed
+- File rows in the working copy and commit details keep the file name whole
+  and truncate the folder path first when space is tight. Before, both shrank
+  together and the name lost characters even when there was room for it.
 - The commit box keeps its resized height when switching repository tabs. The
   box is rebuilt while a repository loads, and the saved height was only
   applied when the text or the height changed, so a fresh box came back at the

@@ -161,10 +161,10 @@ export function CommitDetails({
           <Badge tone={meta?.tone ?? 'neutral'} className="w-5 shrink-0 justify-center px-0 font-mono">
             {meta?.mark ?? '?'}
           </Badge>
-          <span className="flex min-w-0 flex-1 items-baseline gap-1">
-            <span className="min-w-0 truncate">{basename(diff.path)}</span>
+          <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+            <span className="max-w-full shrink-0 truncate">{basename(diff.path)}</span>
             {!fileTree && dirname(diff.path) && (
-              <span className="min-w-0 truncate text-[11px] text-faint">{dirname(diff.path)}</span>
+              <span className="min-w-0 flex-1 truncate text-[11px] text-faint">{dirname(diff.path)}</span>
             )}
           </span>
           {diff.additions > 0 && <span className="shrink-0 font-mono text-[11px] text-success">+{diff.additions}</span>}

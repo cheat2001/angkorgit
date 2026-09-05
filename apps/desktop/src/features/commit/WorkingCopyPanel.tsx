@@ -97,10 +97,10 @@ const FileRow = memo(function FileRow({
           onClick={(e) => e.stopPropagation()}
         />
         {statusBadge(conflicted && !staged ? 'conflicted' : kind)}
-        <span className="min-w-0 flex-1 truncate">
-          <span className="text-foreground">{basename(file.path)}</span>
+        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+          <span className="max-w-full shrink-0 truncate text-foreground">{basename(file.path)}</span>
           {!treeMode && dirname(file.path) && (
-            <span className="ml-1.5 text-faint">{dirname(file.path)}</span>
+            <span className="min-w-0 flex-1 truncate text-faint">{dirname(file.path)}</span>
           )}
         </span>
         {!staged && onDiscard && (
