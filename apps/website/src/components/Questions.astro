@@ -3,6 +3,10 @@ import { SITE } from '../lib/site';
 
 const qa = [
   {
+    q: 'AngKorGit or Angkor Git?',
+    a: 'One word, AngKorGit. People also write Angkor Git, angkorgit or GitAngkor, and they all mean this app. angkorgit.app is the only official site, and the code lives on GitHub under cheat2001/angkorgit.',
+  },
+  {
     q: 'Is it really free?',
     a: 'Yes. MIT licensed, the whole source is on GitHub, and there is no paid tier hiding behind a feature. If it saves you time and you feel like it, there is a coffee link in the footer.',
   },
@@ -19,7 +23,19 @@ const qa = [
     a: 'Faster to open, lighter, and narrower on purpose. GitKraken took the workflow ideas further than anyone and I learned from it, but I wanted the twenty-five features that matter rather than the hundred. Fork is closer in spirit, though it is not open source and not on Linux.',
   },
 ];
+
+const faqLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: qa.map((item) => ({
+    '@type': 'Question',
+    name: item.q,
+    acceptedAnswer: { '@type': 'Answer', text: item.a },
+  })),
+};
 ---
+
+<script type="application/ld+json" is:inline set:html={JSON.stringify(faqLd)} />
 
 <section class="border-t border-border-subtle py-20 lg:py-24">
   <div class="container-site rail-offset">
