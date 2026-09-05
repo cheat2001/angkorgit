@@ -163,11 +163,11 @@ export const demoFileDiff: FileDiff = {
   deletions: 8,
   hunks: [
     {
-      header: '@@ -1,8 +1,9 @@',
+      header: '@@ -1,8 +1,12 @@',
       oldStart: 1,
       oldLines: 8,
       newStart: 1,
-      newLines: 9,
+      newLines: 12,
       lines: [
         { kind: 'context', oldLineNo: 1, newLineNo: 1, content: "import { memo } from 'react';" },
         { kind: 'deletion', oldLineNo: 2, newLineNo: null, content: "import { ROW_HEIGHT } from './constants';" },
@@ -177,9 +177,12 @@ export const demoFileDiff: FileDiff = {
         { kind: 'context', oldLineNo: 4, newLineNo: 5, content: "import { GraphRow } from './GraphRow';" },
         { kind: 'context', oldLineNo: 5, newLineNo: 6, content: '' },
         { kind: 'deletion', oldLineNo: 6, newLineNo: null, content: 'const renderRow = (row: Row) => <GraphRow key={row.oid} row={row} />;' },
-        { kind: 'addition', oldLineNo: null, newLineNo: 7, content: 'const renderRow = (item: VirtualItem, row: Row) => (' },
-        { kind: 'addition', oldLineNo: null, newLineNo: 8, content: '  <GraphRow key={row.oid} row={row} start={item.start} />' },
-        { kind: 'addition', oldLineNo: null, newLineNo: 9, content: ');' },
+        { kind: 'addition', oldLineNo: null, newLineNo: 7, content: '/**' },
+        { kind: 'addition', oldLineNo: null, newLineNo: 8, content: ' * Virtualized rows keep large graphs smooth for every export and import.' },
+        { kind: 'addition', oldLineNo: null, newLineNo: 9, content: ' */' },
+        { kind: 'addition', oldLineNo: null, newLineNo: 10, content: 'const renderRow = (item: VirtualItem, row: Row) => (' },
+        { kind: 'addition', oldLineNo: null, newLineNo: 11, content: '  <GraphRow key={row.oid} row={row} start={item.start} />' },
+        { kind: 'addition', oldLineNo: null, newLineNo: 12, content: ');' },
       ],
     },
     {

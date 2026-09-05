@@ -472,3 +472,19 @@ test('mod+f focuses the commit search box', async ({ page }) => {
   await page.keyboard.press('ControlOrMeta+f');
   await expect(search).toBeFocused();
 });
+
+test('multi-line comments in a diff stay highlighted as comments', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByText('CommitGraph.tsx').first().click();
+  const inner = page
+    .locator('section[aria-label^="Diff for"] span.font-mono')
+    .filter({ hasText: 'Virtualized rows keep large graphs smooth' })
+    .first();
+  await expect(inner).toBeVisible();
+  const html = await inner.evaluate((el) => el.innerHTML);
+  expect(html.startsWith('<span class="hljs-comment">')).toBe(true);
+  expect(html).not.toContain('hljs-keyword');
+  expect(html).not.toContain('hljs-title');
+});

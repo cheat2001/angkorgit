@@ -3,7 +3,7 @@ import type { DiffHunk, DiffLine, FileDiff } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
 import { useUi } from '@/features/ui/store';
 import { languageOf } from '@/shared/highlight';
-import { CodeLine, gutter, lineBg, pairHunkLines, wrapUnavailable, type SearchRanges } from './diffShared';
+import { CodeLine, gutter, lineBg, pairHunkLines, prepareCommentStates, wrapUnavailable, type SearchRanges } from './diffShared';
 import { flattenDiff, VirtualInlineDiff, VirtualSplitDiff, type LineMenuInfo } from './VirtualDiff';
 
 interface HunkProps {
@@ -189,6 +189,7 @@ export function DiffViewer({
   const useWord = useUi((s) => s.wordDiff);
   const wrapLines = useUi((s) => s.wrapLines);
   const language = useMemo(() => languageOf(diff.path), [diff.path]);
+  prepareCommentStates(diff, language);
   const split = diffView === 'split';
   const wrap = wrapLines && !wrapUnavailable(diff);
 
