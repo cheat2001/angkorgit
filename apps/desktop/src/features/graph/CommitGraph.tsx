@@ -20,7 +20,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { CommitRow, FLAT_GUTTER_WIDTH, ROW_HEIGHT } from './GraphRow';
+import { CommitRow, FLAT_GUTTER_WIDTH, ROW_HEIGHT, computeRefColWidth } from './GraphRow';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { useShortcuts } from '@/shared/useShortcuts';
@@ -143,6 +143,8 @@ export function CommitGraph() {
 
   const flat = Boolean(filters.search || filters.author);
   const gutterWidth = flat ? FLAT_GUTTER_WIDTH : Math.min(16 + (maxLane + 1) * 14, 200);
+  const refColWidth = useMemo(() => computeRefColWidth(commits), [commits]);
+  const filtersActive = Boolean(filters.search || filters.author || filters.branch);
 
   const moveSelection = useCallback(
     (step: 1 | -1 | 'home' | 'end') => {
@@ -321,14 +323,14 @@ export function CommitGraph() {
         <div className="ml-auto flex items-center gap-2 text-xs text-faint">
           {loading && <Spinner className="size-3.5" />}
           <span>
-            {commits.length.toLocaleString()} commit{commits.length === 1 ? '' : 's'}
-            {hasMore ? '+' : ''}
+            {commits.length.toLocaleString()}
+            {hasMore ? '+' : ''} commit{commits.length === 1 && !hasMore ? '' : 's'}
           </span>
         </div>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" role="table" aria-label="Commits">
-        <WipRow gutterWidth={gutterWidth} flat={flat} />
+        <WipRow gutterWidth={gutterWidth} flat={flat} refColWidth={refColWidth} />
         {rows.length === 0 && !loading ? (
           error ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-danger">
@@ -338,8 +340,21 @@ export function CommitGraph() {
               </Button>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-faint">
-              No commits found
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-faint">
+              <span>{filtersActive ? 'No commits match these filters' : 'No commits yet'}</span>
+              {filtersActive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearchDraft('');
+                    setAuthorDraft('');
+                    setFilters(path, { search: '', author: '', branch: '' });
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
             </div>
           )
         ) : (
@@ -371,6 +386,7 @@ export function CommitGraph() {
                     gutterWidth={gutterWidth}
                     flat={flat}
                     selected={selectedOid === commit.oid || selectedOids.includes(commit.oid)}
+                    refColWidth={refColWidth}
                     worktrees={worktreeBranches}
                     onSelect={onRowSelect}
                     onContextMenu={onContextMenu}

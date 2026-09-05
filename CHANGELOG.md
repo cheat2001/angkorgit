@@ -40,6 +40,16 @@ All notable changes to AngKorGit are documented here. The format follows
   open or closed between launches.
 
 ### Changed
+- Graph ref chips no longer get crushed to two letters. The column fits as many
+  whole labels as have room, folds the rest behind a "+n" badge with a tooltip,
+  orders the checked-out branch first, and widens a little for long branch
+  names. A separate HEAD chip only appears when HEAD is detached, since the
+  checked-out branch already carries the tick.
+- Merge commits read one shade quieter in the graph so the commits that changed
+  code stand out in merge-heavy histories.
+- Click a hash in the graph to copy it; hover a relative time for the full date.
+  The counter reads "200+ commits", and an empty filtered graph offers "Clear
+  filters".
 - The commit box can be resized: drag its top edge to give the description more
   or less room, double-click the edge to go back to automatic sizing. The height
   is remembered.

@@ -2,11 +2,19 @@ import { useMemo } from 'react';
 import { Pencil } from 'lucide-react';
 import { Badge, cn } from '@angkorgit/design-system';
 import { useRepo } from '@/features/repository/store';
-import { laneX, REF_COL_WIDTH } from './GraphRow';
+import { laneX } from './GraphRow';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 
-export function WipRow({ gutterWidth, flat }: { gutterWidth: number; flat?: boolean }) {
+export function WipRow({
+  gutterWidth,
+  flat,
+  refColWidth,
+}: {
+  gutterWidth: number;
+  flat?: boolean;
+  refColWidth: number;
+}) {
   const status = useRepo((s) => s.status);
   const conflicts = useRepo((s) => s.conflicts);
   const select = useGraph((s) => s.select);
@@ -45,7 +53,7 @@ export function WipRow({ gutterWidth, flat }: { gutterWidth: number; flat?: bool
         selectedOid === null && 'bg-primary/10',
       )}
     >
-      {!flat && <span className="h-full shrink-0" style={{ width: REF_COL_WIDTH }} />}
+      {!flat && <span className="h-full shrink-0" style={{ width: refColWidth }} />}
       <svg width={gutterWidth} height={36} className="shrink-0" aria-hidden>
         {!flat && (
           <line x1={laneX(0)} y1={18} x2={laneX(0)} y2={36} stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="3 3" />

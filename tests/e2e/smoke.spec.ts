@@ -450,7 +450,7 @@ test('a short hash prefix jumps like a full hash and unknown hex words fall back
   await expect(page.getByText('000096aa').first()).toBeVisible();
 
   await search.fill('dedede');
-  await expect(page.getByText('No commits found')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('No commits match these filters')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('Commit not found')).not.toBeVisible();
 });
 
@@ -461,7 +461,7 @@ test('searching a hash that does not exist keeps the graph and says so', async (
   await expect(search).toBeVisible({ timeout: 10_000 });
   await search.fill('deadbeef123');
   await expect(page.getByText('Commit not found')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText(/200 commits\+/)).toBeVisible();
+  await expect(page.getByText(/200\+ commits/)).toBeVisible();
 });
 
 test('mod+f focuses the commit search box', async ({ page }) => {
@@ -617,4 +617,25 @@ test('folder tree view can collapse and expand every folder at once', async ({ p
   await expect(page.getByText('ipc.ts', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Flat file list' }).click();
   await expect(page.getByRole('button', { name: /all folders$/ })).toHaveCount(0);
+});
+
+test('graph ref chips show whole labels and fold the rest behind a count', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const firstRow = page.getByRole('row').filter({ hasText: 'feat(graph): virtualize commit rows' }).first();
+  await expect(firstRow.getByText('main', { exact: true })).toBeVisible();
+  const chips = firstRow.locator('span.inline-flex');
+  const labels = await chips.allInnerTexts();
+  expect(labels.some((t) => t.trim() === 'main')).toBe(true);
+  expect(labels.some((t) => t.trim() === 'HEAD')).toBe(false);
+  for (const chip of await chips.all()) {
+    const clipped = await chip.evaluate((el) => {
+      const text = el.querySelector('span.truncate') ?? el;
+      return text.scrollWidth > text.clientWidth + 1;
+    });
+    expect(clipped).toBe(false);
+  }
+  const hash = firstRow.getByTitle('Copy full hash');
+  await expect(hash).toHaveText(/^[0-9a-f]{7}$/);
 });

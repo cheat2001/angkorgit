@@ -4,10 +4,18 @@ import { Badge, cn } from '@angkorgit/design-system';
 import { Check, Cloud, GitMerge, Monitor, Tag as TagIcon, FolderTree } from 'lucide-react';
 import type { CommitInfo } from '@angkorgit/core';
 import { Avatar } from '@/components/Avatar';
-import { timeAgo } from '@/shared/utils';
+import { toast } from 'sonner';
+import { formatDate, timeAgo } from '@/shared/utils';
 
 export const ROW_HEIGHT = 32;
 export const REF_COL_WIDTH = 150;
+const REF_COL_MIN = 120;
+const REF_COL_MAX = 240;
+const FLAT_REF_WIDTH = 224;
+const OVERFLOW_BADGE_WIDTH = 34;
+const CHAR_WIDTH = 6.4;
+const CHIP_PADDING = 18;
+const CHIP_ICON = 14;
 export const FLAT_GUTTER_WIDTH = 28;
 const LANE_WIDTH = 14;
 const NODE_RADIUS = 4;
@@ -136,26 +144,34 @@ function GraphGutter({
   );
 }
 
-interface RefGroup {
+export interface RefGroup {
   label: string;
   primary: RefInfo;
   local: boolean;
   remote: boolean;
   tag: boolean;
+  detachedHead: boolean;
 }
 
-function groupRefs(refs: RefInfo[]): RefGroup[] {
+const groupRank = (g: RefGroup) => (g.detachedHead ? 0 : g.local ? 1 : g.remote ? 2 : 3);
+
+export function groupRefs(refs: RefInfo[]): RefGroup[] {
   const out: RefGroup[] = [];
   const index = new Map<string, number>();
+  const hasLocal = refs.some((r) => r.kind === 'localBranch');
   for (const ref of refs) {
-    if (ref.kind === 'localBranch') {
+    if (ref.kind === 'head') {
+      if (!hasLocal) {
+        out.push({ label: 'HEAD', primary: ref, local: false, remote: false, tag: false, detachedHead: true });
+      }
+    } else if (ref.kind === 'localBranch') {
       const i = index.get(ref.shorthand);
       if (i !== undefined) {
         out[i].local = true;
         out[i].primary = ref;
       } else {
         index.set(ref.shorthand, out.length);
-        out.push({ label: ref.shorthand, primary: ref, local: true, remote: false, tag: false });
+        out.push({ label: ref.shorthand, primary: ref, local: true, remote: false, tag: false, detachedHead: false });
       }
     } else if (ref.kind === 'remoteBranch') {
       const base = ref.shorthand.split('/').slice(1).join('/') || ref.shorthand;
@@ -164,13 +180,47 @@ function groupRefs(refs: RefInfo[]): RefGroup[] {
         out[i].remote = true;
       } else {
         index.set(base, out.length);
-        out.push({ label: base, primary: ref, local: false, remote: true, tag: false });
+        out.push({ label: base, primary: ref, local: false, remote: true, tag: false, detachedHead: false });
       }
     } else {
-      out.push({ label: ref.shorthand, primary: ref, local: false, remote: false, tag: true });
+      out.push({ label: ref.shorthand, primary: ref, local: false, remote: false, tag: true, detachedHead: false });
     }
   }
-  return out;
+  return out.sort((a, b) => groupRank(a) - groupRank(b));
+}
+
+export function estimateChipWidth(group: RefGroup, head: boolean): number {
+  const icons = (group.local ? 1 : 0) + (group.remote ? 1 : 0) + (group.tag ? 1 : 0) + (head || group.detachedHead ? 1 : 0);
+  return Math.round(group.label.length * CHAR_WIDTH + CHIP_PADDING + icons * CHIP_ICON);
+}
+
+function fitGroups(groups: RefGroup[], available: number, isHead: boolean): RefGroup[] {
+  if (groups.length <= 1) return groups;
+  const shown: RefGroup[] = [];
+  let used = 0;
+  for (let i = 0; i < groups.length; i += 1) {
+    const width = estimateChipWidth(groups[i], isHead && shown.length === 0 && groups[i].local);
+    const remainingAfter = groups.length - (i + 1);
+    const reserve = remainingAfter > 0 ? OVERFLOW_BADGE_WIDTH : 0;
+    if (shown.length > 0 && used + 4 + width + reserve > available) break;
+    shown.push(groups[i]);
+    used += (shown.length > 1 ? 4 : 0) + width;
+  }
+  return shown;
+}
+
+export function computeRefColWidth(commits: CommitInfo[]): number {
+  let widest = 0;
+  for (const commit of commits) {
+    if (commit.refs.length === 0) continue;
+    const groups = groupRefs(commit.refs);
+    if (groups.length === 0) continue;
+    const first = estimateChipWidth(groups[0], commit.isHead && groups[0].local);
+    const width = first + (groups.length > 1 ? 4 + OVERFLOW_BADGE_WIDTH : 0) + 12;
+    if (width > widest) widest = width;
+  }
+  if (widest === 0) return REF_COL_WIDTH;
+  return Math.max(REF_COL_MIN, Math.min(REF_COL_MAX, widest));
 }
 
 function RefCell({
@@ -178,6 +228,7 @@ function RefCell({
   isHead,
   color,
   flat,
+  width,
   worktrees,
   onCheckoutRef,
   onRefMenu,
@@ -186,6 +237,7 @@ function RefCell({
   isHead: boolean;
   color: number;
   flat?: boolean;
+  width: number;
   worktrees?: ReadonlyMap<string, string>;
   onCheckoutRef: (ref: RefInfo) => void;
   onRefMenu: (event: React.MouseEvent, ref: RefInfo) => void;
@@ -193,38 +245,43 @@ function RefCell({
   const groups = groupRefs(refs);
   let headMarked = false;
   if (flat && groups.length === 0) return null;
+  const shown = fitGroups(groups, (flat ? FLAT_REF_WIDTH : width) - 8, isHead);
+  const hidden = groups.slice(shown.length);
   return (
     <span
       className={cn(
         'flex h-full shrink-0 items-center gap-1',
         flat ? 'max-w-56' : '-mr-2',
       )}
-      style={flat ? undefined : { width: REF_COL_WIDTH }}
+      style={flat ? undefined : { width }}
     >
-      {groups.slice(0, 2).map((group) => {
-        const head = isHead && group.local && !headMarked;
+      {shown.map((group) => {
+        const head = (isHead && group.local && !headMarked) || group.detachedHead;
         if (head) headMarked = true;
         const worktree = group.local ? worktrees?.get(group.label) : undefined;
         return (
           <Badge
             key={group.primary.name}
-            tone={group.tag ? 'primary' : group.local ? 'success' : 'info'}
+            tone={group.tag || group.detachedHead ? 'primary' : group.local ? 'success' : 'info'}
             className={cn(
               'min-w-0 shrink whitespace-nowrap',
               !group.tag &&
                 'cursor-pointer hover:z-20 hover:shrink-0 hover:!bg-surface-overlay hover:shadow-soft',
             )}
             title={
-              group.tag
-                ? group.label
+              group.tag || group.detachedHead
+                ? group.detachedHead
+                  ? 'HEAD is detached at this commit'
+                  : group.label
                 : `${group.label}${group.local ? ' · local' : ''}${group.remote ? ' · origin' : ''}${worktree ? ` · in worktree ${worktree}` : ''} — ${worktree ? 'double-click to switch to that worktree' : 'double-click to checkout'}, right-click for actions`
             }
             onDoubleClick={(e) => {
-              if (group.tag) return;
+              if (group.tag || group.detachedHead) return;
               e.stopPropagation();
               onCheckoutRef(group.primary);
             }}
             onContextMenu={(e) => {
+              if (group.detachedHead) return;
               e.preventDefault();
               e.stopPropagation();
               onRefMenu(e, group.primary);
@@ -239,9 +296,9 @@ function RefCell({
           </Badge>
         );
       })}
-      {groups.length > 2 && (
-        <Badge className="shrink-0" title={groups.slice(2).map((g) => g.label).join(', ')}>
-          +{groups.length - 2}
+      {hidden.length > 0 && (
+        <Badge className="shrink-0" title={hidden.map((g) => g.label).join(', ')}>
+          +{hidden.length}
         </Badge>
       )}
       {!flat && groups.length > 0 && (
@@ -260,6 +317,7 @@ interface Props {
   gutterWidth: number;
   flat?: boolean;
   selected: boolean;
+  refColWidth: number;
   worktrees?: ReadonlyMap<string, string>;
   onSelect: (oid: string, event: React.MouseEvent) => void;
   onContextMenu: (event: React.MouseEvent, commit: CommitInfo) => void;
@@ -273,18 +331,21 @@ export const CommitRow = memo(function CommitRow({
   gutterWidth,
   flat,
   selected,
+  refColWidth,
   worktrees,
   onSelect,
   onContextMenu,
   onCheckoutRef,
   onRefMenu,
 }: Props) {
+  const isMergeCommit = commit.parents.length > 1;
   const refCell = (
     <RefCell
       refs={commit.refs}
       isHead={commit.isHead}
       color={row.node.color}
       flat={flat}
+      width={refColWidth}
       worktrees={worktrees}
       onCheckoutRef={onCheckoutRef}
       onRefMenu={(e, ref) => onRefMenu(e, ref, commit)}
@@ -310,10 +371,28 @@ export const CommitRow = memo(function CommitRow({
       )}
       {flat && refCell}
       {commit.isHead && commit.refs.length === 0 && <Badge tone="primary">HEAD</Badge>}
-      {commit.parents.length > 1 && <GitMerge className="size-3.5 shrink-0 text-muted" />}
-      <span className="min-w-0 flex-1 truncate">{commit.summary || <span className="text-faint">(no message)</span>}</span>
-      <span className="w-14 shrink-0 text-right font-mono text-[11px] text-faint">{commit.shortOid.slice(0, 7)}</span>
-      <span className="w-[4.5rem] shrink-0 whitespace-nowrap text-right text-[11px] text-faint">{timeAgo(commit.author.time)}</span>
+      {isMergeCommit && <GitMerge className="size-3.5 shrink-0 text-faint" />}
+      <span className={cn('min-w-0 flex-1 truncate', isMergeCommit && !selected && 'text-muted')}>
+        {commit.summary || <span className="text-faint">(no message)</span>}
+      </span>
+      <button
+        type="button"
+        className="w-14 shrink-0 rounded px-0.5 text-right font-mono text-[11px] text-faint hover:bg-surface-raised hover:text-foreground"
+        title="Copy full hash"
+        onClick={(e) => {
+          e.stopPropagation();
+          void navigator.clipboard.writeText(commit.oid);
+          toast.success('Commit hash copied');
+        }}
+      >
+        {commit.shortOid.slice(0, 7)}
+      </button>
+      <span
+        className="w-[4.5rem] shrink-0 whitespace-nowrap text-right text-[11px] text-faint"
+        title={formatDate(commit.author.time)}
+      >
+        {timeAgo(commit.author.time)}
+      </span>
     </div>
   );
 });
