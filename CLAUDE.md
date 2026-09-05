@@ -58,9 +58,19 @@ angkorgit/
 │       ├── styles/global.css  ← tokens.css + fonts via RELATIVE import (G4)
 │       ├── lib/site.ts        ← SITE + NAV constants (repo URLs, tagline, nav anchors)
 │       ├── layouts/Base.astro ← head SEO/OG, inline theme script (no-FOUC)
-│       ├── components/        ← Header (+mobile menu), Hero (animated logo draw), Features,
-│       │                        Screenshots, Performance, AiSection, Install, OpenSource,
-│       │                        FinalCta, Footer, ThemeToggle, Logo (SVG mirror of app mark)
+│       ├── components/        ← the home page is laid out as a git history: Rail (left rail
+│       │                        whose fill follows scroll + HEAD marker, JS in the component),
+│       │                        Commit (section wrapper: rail dot + optional colored side lane),
+│       │                        HeroGraph (hand-laid commit graph that doubles as the table of
+│       │                        contents, newest on top), Scene (feature section: copy + a
+│       │                        hand-built UI fragment — MockConflicts/MockWorktrees/MockGraph/
+│       │                        MockPalette render the app's look in tokens, no screenshots),
+│       │                        Hero, Story, Size ("Native, not a browser"), SpecSheet, AiSection,
+│       │                        Install (TerminalBlock), Questions, Header (+mobile menu),
+│       │                        Footer, ThemeToggle, Splash, Logo (SVG mirror of app mark).
+│       │                        Display type is Instrument Serif (@fontsource), `.display` class.
+│       │                        Copy rules: owner voice, no download-size numbers, no
+│       │                        Cambodia/name mentions (owner request 2026-09-05)
 │       └── pages/             ← index.astro, 404.astro
 ├── packages/core/             ← @angkorgit/core — PURE TypeScript domain (no React)
 │   └── src/
