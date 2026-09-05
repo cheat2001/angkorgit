@@ -365,7 +365,7 @@ export function CommitGraph() {
 
       <div
         className={cn(
-          'flex h-6 shrink-0 select-none items-center gap-2 border-b border-border-subtle bg-surface pr-2 text-[10px] font-semibold uppercase tracking-wide text-faint',
+          'flex h-6 shrink-0 select-none items-center gap-2 border-b border-border-subtle bg-surface pr-4 text-[10px] font-semibold uppercase tracking-wide text-faint',
           graphColumns.refs || flat ? 'pl-1' : 'pl-4',
         )}
         aria-hidden
@@ -378,16 +378,23 @@ export function CommitGraph() {
         <span className="shrink-0 truncate" style={{ width: gutterWidth, marginRight: flat ? 0 : GUTTER_GAP }}>
           {flat ? '' : 'Graph'}
         </span>
-        <span className="min-w-0 flex-1 truncate">
-          {flat && graphColumns.refs ? 'Branch / tag · message' : graphColumns.message ? 'Message' : ''}
-        </span>
+        {(graphColumns.message || flat) && (
+          <span className="min-w-0 flex-1 truncate">
+            {flat && graphColumns.refs ? 'Branch / tag · message' : graphColumns.message ? 'Message' : ''}
+          </span>
+        )}
         {graphColumns.author && (
           <span className="shrink-0 truncate" style={{ width: AUTHOR_COL_WIDTH }}>
             Author
           </span>
         )}
-        {graphColumns.hash && <span className="w-14 shrink-0 text-right">Hash</span>}
-        {graphColumns.date && <span className="w-[4.5rem] shrink-0 text-right">Date</span>}
+        {graphColumns.hash && (
+          <span className={cn('w-14 shrink-0', graphColumns.message ? 'text-right' : 'text-left')}>Hash</span>
+        )}
+        {graphColumns.date && (
+          <span className={cn('w-[4.5rem] shrink-0', graphColumns.message ? 'text-right' : 'text-left')}>Date</span>
+        )}
+        {!graphColumns.message && !flat && <span className="min-w-0 flex-1" />}
       </div>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" role="table" aria-label="Commits">
         <WipRow gutterWidth={gutterWidth} flat={flat} showRefs={graphColumns.refs} />

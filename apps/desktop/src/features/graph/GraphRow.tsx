@@ -345,7 +345,7 @@ export const CommitRow = memo(function CommitRow({
       role="row"
       aria-selected={selected}
       className={cn(
-        'flex h-8 cursor-pointer select-none items-center gap-2 pr-2 text-sm transition-colors',
+        'flex h-8 cursor-pointer select-none items-center gap-2 pr-4 text-sm transition-colors',
         columns.refs || flat ? 'pl-1' : 'pl-4',
         selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
         commit.isHead && 'font-medium',
@@ -373,9 +373,7 @@ export const CommitRow = memo(function CommitRow({
             {commit.summary || <span className="text-faint">(no message)</span>}
           </span>
         </>
-      ) : (
-        <span className="min-w-0 flex-1" />
-      )}
+      ) : null}
       {columns.author && (
         <span
           className="shrink-0 truncate text-[11px] text-muted"
@@ -388,7 +386,10 @@ export const CommitRow = memo(function CommitRow({
       {columns.hash && (
       <button
         type="button"
-        className="w-14 shrink-0 rounded px-0.5 text-right font-mono text-[11px] text-faint hover:bg-surface-raised hover:text-foreground"
+        className={cn(
+          'w-14 shrink-0 rounded px-0.5 font-mono text-[11px] text-faint hover:bg-surface-raised hover:text-foreground',
+          columns.message ? 'text-right' : 'text-left',
+        )}
         title="Copy full hash"
         onClick={(e) => {
           e.stopPropagation();
@@ -401,12 +402,16 @@ export const CommitRow = memo(function CommitRow({
       )}
       {columns.date && (
       <span
-        className="w-[4.5rem] shrink-0 whitespace-nowrap text-right text-[11px] text-faint"
+        className={cn(
+          'w-[4.5rem] shrink-0 whitespace-nowrap text-[11px] text-faint',
+          columns.message ? 'text-right' : 'text-left',
+        )}
         title={formatDate(commit.author.time)}
       >
         {timeAgo(commit.author.time)}
       </span>
       )}
+      {!columns.message && <span className="min-w-0 flex-1" />}
     </div>
   );
 });

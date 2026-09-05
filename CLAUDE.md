@@ -393,7 +393,11 @@ features/
 │                           switch); the GitMerge icon belongs to the message column and
 │                           hides with it; GUTTER_GAP (10px marginRight on the graph
 │                           gutter, the WIP svg and the header cell) keeps lanes off the
-│                           message text; a static h-6 COLUMN HEADER
+│                           message text; rows, header and WIP banner end with pr-4 so
+│                           the graph never touches the inspector divider; with the
+│                           message OFF the flex-1 spacer moves to the END so author/
+│                           hash/date pack next to the graph (left-aligned) instead of
+│                           pinning to the far right — the header mirrors both rules; a static h-6 COLUMN HEADER
 │                           row sits between the filter bar and the scroll container
 │                           (outside it, so the sticky WIP banner stays first inside),
 │                           mirroring the row layout exactly — REF_COL_WIDTH with the
