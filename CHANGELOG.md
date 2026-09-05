@@ -43,9 +43,13 @@ All notable changes to AngKorGit are documented here. The format follows
 - The commit box can be resized: drag its top edge to give the description more
   or less room, double-click the edge to go back to automatic sizing. The height
   is remembered.
-- Commit details in the inspector got a clearer header: a stronger title, the
-  author with relative and full time, and ref chips that use the same icons and
-  colors as the graph.
+- Commit details in the inspector were redesigned for calm: the close button
+  moved up into the panel header next to the list and tree toggles, the title
+  stands alone, long bodies fold behind "Show more", and author, time, hash,
+  parents and refs live in one quiet card. Ref chips use the same icons and
+  colors as the graph, "Explain with AI" is a small action instead of a
+  full-width button, and the file list uses the same letter badges and plain
+  rows as the working copy instead of bordered cards.
 - The commit box has a summary line and a description area, styled like the
   commit shown in the inspector: the summary is larger and bolder, the
   description smaller. Enter in the summary moves to the description, Backspace

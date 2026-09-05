@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
-import { ChevronRight, Cloud, Copy, FileText, Maximize2, Monitor, Sparkles, Tag as TagIcon, X } from 'lucide-react';
+import { ChevronRight, Cloud, Copy, Maximize2, Monitor, Sparkles, Tag as TagIcon } from 'lucide-react';
 import type { CommitFileInfo, CommitInfo, FileDiff } from '@angkorgit/core';
 import { aiCapabilities } from '@angkorgit/core';
 import { Badge, Button, Hint, Logo, cn } from '@angkorgit/design-system';
@@ -24,12 +24,12 @@ const FILE_ROW_HEIGHT = 34;
 
 const statusMeta: Record<
   CommitFileInfo['status'],
-  { label: string; mark: string; className: string }
+  { label: string; mark: string; className: string; tone: 'info' | 'success' | 'danger' | 'primary' }
 > = {
-  modified: { label: 'modified', mark: 'M', className: 'text-info' },
-  new: { label: 'added', mark: 'A', className: 'text-success' },
-  deleted: { label: 'deleted', mark: 'D', className: 'text-danger' },
-  renamed: { label: 'renamed', mark: 'R', className: 'text-primary' },
+  modified: { label: 'modified', mark: 'M', className: 'text-info', tone: 'info' },
+  new: { label: 'added', mark: 'A', className: 'text-success', tone: 'success' },
+  deleted: { label: 'deleted', mark: 'D', className: 'text-danger', tone: 'danger' },
+  renamed: { label: 'renamed', mark: 'R', className: 'text-primary', tone: 'primary' },
 };
 
 function ChangeSummary({ diffs }: { diffs: CommitFileInfo[] }) {
@@ -127,16 +127,19 @@ export function CommitDetails({
   const aiText = useAiWork((s) => s.explains[explainKey] ?? null);
   const aiBusy = useAiWork((s) => !!s.explainBusy[explainKey]);
   const [aiExpanded, setAiExpanded] = useState(false);
+  const [bodyExpanded, setBodyExpanded] = useState(false);
+  const longBody = commit.body.split('\n').length > 8 || commit.body.length > 600;
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const renderDiffRow = (diff: CommitFileInfo, depth?: number) => {
     const active = centerDiff?.path === diff.path && centerDiff.oid === commit.oid;
+    const meta = statusMeta[diff.status];
     return (
       <Hint key={diff.path} label={diff.path} side="left" className="max-w-[34rem] font-mono">
         <button
           className={cn(
-            'mb-1 flex w-full items-center gap-2 rounded-md border border-border-subtle px-2 py-1.5 text-left text-xs transition-colors',
-            active ? 'border-primary/50 bg-primary/10' : 'bg-surface-raised/60 hover:bg-surface-raised',
+            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+            active ? 'bg-primary/10 text-foreground' : 'hover:bg-surface-raised',
           )}
           style={fileTree && depth !== undefined ? { paddingLeft: treeIndent(depth) } : undefined}
           onClick={() =>
@@ -145,24 +148,21 @@ export function CommitDetails({
               : openCenterDiff({ path: diff.path, oid: commit.oid, oldPath: diff.oldPath })
           }
         >
-          <FileText className={cn('size-3.5 shrink-0', statusMeta[diff.status]?.className ?? 'text-muted')} />
-          <span className="flex min-w-0 flex-1 items-center font-mono">
+          <Badge tone={meta?.tone ?? 'neutral'} className="w-5 shrink-0 justify-center px-0 font-mono">
+            {meta?.mark ?? '?'}
+          </Badge>
+          <span className="flex min-w-0 flex-1 items-baseline gap-1">
+            <span className="min-w-0 truncate">{basename(diff.path)}</span>
             {!fileTree && dirname(diff.path) && (
-              <span className="min-w-0 truncate text-faint">{dirname(diff.path)}/</span>
+              <span className="min-w-0 truncate text-[11px] text-faint">{dirname(diff.path)}</span>
             )}
-            <span className="max-w-full shrink-0 truncate">{basename(diff.path)}</span>
           </span>
-          <span className="shrink-0 text-success">+{diff.additions}</span>
-          <span className="shrink-0 text-danger">−{diff.deletions}</span>
-          <ChevronRight className="size-3.5 shrink-0 text-faint" />
+          {diff.additions > 0 && <span className="shrink-0 font-mono text-[11px] text-success">+{diff.additions}</span>}
+          {diff.deletions > 0 && <span className="shrink-0 font-mono text-[11px] text-danger">−{diff.deletions}</span>}
+          <ChevronRight className={cn('size-3.5 shrink-0 text-faint transition-transform', active && 'rotate-90')} />
         </button>
       </Hint>
     );
-  };
-
-  const close = () => {
-    closeCenterDiff();
-    select(null);
   };
 
   const explain = async () => {
@@ -193,66 +193,94 @@ export function CommitDetails({
 
   return (
     <div ref={scrollRef} className="flex h-full flex-col overflow-y-auto">
-      <div className="border-b border-border-subtle p-4">
-        <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">{commit.summary}</p>
-          <Hint label="Close">
-            <Button variant="ghost" size="icon-sm" aria-label="Back to working copy" onClick={close}>
-              <X className="size-3.5" />
-            </Button>
-          </Hint>
-        </div>
+      <div className="border-b border-border-subtle px-4 pb-4 pt-3">
+        <h2 className="text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
+          {commit.summary}
+        </h2>
         {commit.body && (
-          <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-muted">{commit.body}</pre>
+          <div className="relative mt-2">
+            <pre
+              className={cn(
+                'whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-muted',
+                longBody && !bodyExpanded && 'max-h-36 overflow-hidden',
+              )}
+            >
+              {commit.body}
+            </pre>
+            {longBody && !bodyExpanded && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
+            )}
+            {longBody && (
+              <button
+                type="button"
+                className="mt-1 text-[11px] font-medium text-primary hover:underline"
+                onClick={() => setBodyExpanded((v) => !v)}
+              >
+                {bodyExpanded ? 'Show less' : 'Show more'}
+              </button>
+            )}
+          </div>
         )}
-        <div className="mt-3 flex items-center gap-2.5">
-          <Avatar name={commit.author.name} email={commit.author.email} size={28} />
-          <span className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-xs font-medium text-foreground">{commit.author.name}</span>
-            <span className="truncate text-[11px] text-faint" title={formatDate(commit.author.time)}>
-              {timeAgo(commit.author.time)} · {formatDate(commit.author.time)}
-              {commit.committer.email !== commit.author.email && ` · committed by ${commit.committer.name}`}
+
+        <div className="mt-3 rounded-md border border-border-subtle bg-surface-raised/50 p-2.5">
+          <div className="flex items-center gap-2.5">
+            <Avatar name={commit.author.name} email={commit.author.email} size={28} />
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="truncate text-xs font-medium text-foreground">{commit.author.name}</span>
+              <span className="truncate text-[11px] text-faint" title={formatDate(commit.author.time)}>
+                {timeAgo(commit.author.time)} · {formatDate(commit.author.time)}
+                {commit.committer.email !== commit.author.email && ` · committed by ${commit.committer.name}`}
+              </span>
             </span>
-          </span>
+            <Hint label="Copy full hash">
+              <button
+                className="flex h-6 shrink-0 items-center gap-1 rounded-md border border-border bg-surface px-1.5 font-mono text-[11px] text-muted hover:text-foreground"
+                aria-label="Copy commit hash"
+                onClick={() => {
+                  void navigator.clipboard.writeText(commit.oid);
+                  toast.success('Commit hash copied');
+                }}
+              >
+                {commit.shortOid} <Copy className="size-2.5" />
+              </button>
+            </Hint>
+          </div>
+          {(commit.parents.length > 0 || commit.refs.length > 0) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border-subtle pt-2">
+              {commit.parents.length > 0 && (
+                <span className="text-[11px] text-faint">{commit.parents.length > 1 ? 'Parents' : 'Parent'}</span>
+              )}
+              {commit.parents.map((parent) => (
+                <button
+                  key={parent}
+                  className="flex h-5 items-center rounded border border-border-subtle bg-surface px-1.5 font-mono text-[10px] text-muted hover:text-foreground"
+                  onClick={() => select(parent)}
+                  title="Show this commit"
+                >
+                  {parent.slice(0, 7)}
+                </button>
+              ))}
+              {commit.refs.length > 0 && commit.parents.length > 0 && (
+                <span className="mx-0.5 h-3 w-px bg-border-subtle" />
+              )}
+              {commit.refs.map((ref) => (
+                <Badge
+                  key={ref.name}
+                  tone={ref.kind === 'tag' ? 'primary' : ref.kind === 'remoteBranch' ? 'info' : 'success'}
+                  className="max-w-48"
+                >
+                  {ref.kind === 'tag' && <TagIcon className="size-2.5 shrink-0" />}
+                  {ref.kind === 'remoteBranch' && <Cloud className="size-2.5 shrink-0" />}
+                  {(ref.kind === 'localBranch' || ref.kind === 'head') && <Monitor className="size-2.5 shrink-0" />}
+                  <span className="truncate">{ref.shorthand}</span>
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <Hint label="Copy full hash">
-            <button
-              className="flex h-5 items-center gap-1 rounded border border-border bg-surface-raised px-1.5 font-mono text-[10px] text-muted hover:text-foreground"
-              aria-label="Copy commit hash"
-              onClick={() => {
-                void navigator.clipboard.writeText(commit.oid);
-                toast.success('Commit hash copied');
-              }}
-            >
-              {commit.shortOid} <Copy className="size-2.5" />
-            </button>
-          </Hint>
-          {commit.parents.map((parent) => (
-            <button
-              key={parent}
-              className="flex h-5 items-center rounded border border-border-subtle px-1.5 font-mono text-[10px] text-faint hover:text-foreground"
-              onClick={() => select(parent)}
-              title={commit.parents.length > 1 ? 'Go to this parent' : 'Go to parent'}
-            >
-              ← {parent.slice(0, 7)}
-            </button>
-          ))}
-          {commit.refs.map((ref) => (
-            <Badge
-              key={ref.name}
-              tone={ref.kind === 'tag' ? 'primary' : ref.kind === 'remoteBranch' ? 'info' : 'success'}
-              className="max-w-48"
-            >
-              {ref.kind === 'tag' && <TagIcon className="size-2.5 shrink-0" />}
-              {ref.kind === 'remoteBranch' && <Cloud className="size-2.5 shrink-0" />}
-              {(ref.kind === 'localBranch' || ref.kind === 'head') && <Monitor className="size-2.5 shrink-0" />}
-              <span className="truncate">{ref.shorthand}</span>
-            </Badge>
-          ))}
-        </div>
-        <div className="mt-3">
-          <Button variant="secondary" size="sm" onClick={() => void explain()} disabled={loading}>
+
+        <div className="mt-2 flex justify-end">
+          <Button variant="ghost" size="sm" className="text-muted" onClick={() => void explain()} disabled={loading}>
             {aiBusy ? (
               <>
                 <Logo size={14} animated="loop" className="logo-draw-loop" />
@@ -267,7 +295,7 @@ export function CommitDetails({
           </Button>
         </div>
         {aiText && (
-          <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 text-xs leading-relaxed">
+          <div className="mt-1 rounded-md border border-primary/30 bg-primary/5 text-xs leading-relaxed">
             <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
               <span className="flex items-center gap-1.5 font-medium text-primary">
                 <Sparkles className="size-3.5" /> AI explanation
@@ -298,8 +326,13 @@ export function CommitDetails({
       </div>
 
       <div className="p-2">
-        <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted">
-          {loading ? 'Loading changes…' : error ? 'Changes' : <ChangeSummary diffs={diffs} />}
+        <p className="flex items-center justify-between px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted">
+          <span>
+            Files{!loading && !error && <span className="ml-1 text-faint">{diffs.length}</span>}
+          </span>
+          <span className="text-[11px] font-normal normal-case tracking-normal">
+            {loading ? 'Loading…' : error ? '' : <ChangeSummary diffs={diffs} />}
+          </span>
         </p>
         {loading ? (
           <div className="space-y-1">

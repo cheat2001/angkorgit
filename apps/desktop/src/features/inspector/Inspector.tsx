@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { CommitFileInfo, CommitInfo } from '@angkorgit/core';
-import { FolderTree, List } from 'lucide-react';
+import { FolderTree, List, X } from 'lucide-react';
 import { Hint, Button, cn } from '@angkorgit/design-system';
 import { useGraph } from '@/features/graph/store';
 import { useRepo } from '@/features/repository/store';
@@ -102,6 +102,24 @@ export function Inspector() {
               <FolderTree className="size-3.5" />
             </Button>
           </Hint>
+          {(commit || commitError) && (
+            <>
+              <span className="mx-1 h-4 w-px bg-border-subtle" />
+              <Hint label="Back to working copy">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Back to working copy"
+                  onClick={() => {
+                    useUi.getState().closeCenterDiff();
+                    useGraph.getState().select(null);
+                  }}
+                >
+                  <X className="size-3.5" />
+                </Button>
+              </Hint>
+            </>
+          )}
         </div>
       </div>
 

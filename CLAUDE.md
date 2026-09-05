@@ -650,12 +650,24 @@ features/
 │                               kinds commit/checkout/merge/cherryPick/rebase/reset/revert/
 │                               branchCreate/Delete/Rename; validation guards (repo moved,
 │                               dirty tree for hard kinds)
-├── inspector/                ← Inspector (working copy ⟷ commit details), CommitDetails
-│                               (header: semibold summary, sans body, author row with
-│                               28px avatar + name + "3d ago · full date" (+ "committed
-│                               by" when the committer differs), then hash/parent/ref
-│                               chips — ref chips reuse the GRAPH's icon+tone mapping:
-│                               tag primary+Tag, remote info+Cloud, local success+Monitor;
+├── inspector/                ← Inspector (working copy ⟷ commit details; the h-9 header
+│                               carries the label, list/tree toggles and — in commit
+│                               mode — the "Back to working copy" X, so CommitDetails
+│                               has NO close button of its own), CommitDetails (owner
+│                               asked for a calm, professional look 2026-09-05: h2
+│                               semibold summary; sans body clamped at max-h-36 with a
+│                               fade + "Show more" when > 8 lines or 600 chars; ONE meta
+│                               card (surface-raised/50) = 28px avatar + name + "3d ago ·
+│                               full date" (+ "committed by" when committer ≠ author) +
+│                               hash chip, and a second line with Parent(s) chips and ref
+│                               badges that reuse the GRAPH's icon+tone mapping — tag
+│                               primary+Tag, remote info+Cloud, local success+Monitor;
+│                               "Explain with AI" is a right-aligned ghost sm button;
+│                               file rows are PLAIN rows with the working copy's letter
+│                               Badge (M/A/D/R), name first, dimmed dir after, +/− counts,
+│                               chevron rotates when that file's diff is open — never the
+│                               old bordered-card rows; section header "FILES n" with the
+│                               per-status summary right-aligned;
 │                               Explain with AI: result cached in ai/workStore keyed
 │                               repo+oid — survives selection changes and finishes in
 │                               the background if the user navigates away; panel has a
