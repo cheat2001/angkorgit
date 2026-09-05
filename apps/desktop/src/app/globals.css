@@ -110,6 +110,12 @@ body {
   animation: none !important;
 }
 
+.reduce-motion .animate-locate {
+  animation: none !important;
+  background-color: hsl(var(--primary) / 0.1);
+  box-shadow: inset 3px 0 0 hsl(var(--primary));
+}
+
 .reduce-motion {
   scroll-behavior: auto !important;
 }

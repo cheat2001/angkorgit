@@ -375,7 +375,11 @@ features/
 │   │                           scrolls it centered — hash-like searches JUMP (4+ hex chars,
 │   │                           git's minimum abbreviation; a 4–6 char miss falls back to the
 │   │                           text filter so hex-only words like "added" still search, 7+
-│   │                           shows "Commit not found"), text searches filter; the jumped row keeps a primary-ring highlight,
+│   │                           shows "Commit not found"), text searches filter; the jumped row gets
+│   │                           `animate-locate` (preset keyframe: primary/42 glow + outer halo easing
+│   │                           to primary/10 over 1.1s) plus a lasting inset 3px primary bar —
+│   │                           `.reduce-motion .animate-locate` in globals.css skips the animation
+│   │                           and paints the settled state; the owner found the old ring boring —
 │   │                           selecting any other commit clears highlight + search box,
 │   │                           a missing hash keeps the graph and shows "Commit not
 │   │                           found" instead of filtering to empty),

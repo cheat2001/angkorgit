@@ -437,7 +437,7 @@ export function CommitGraph() {
                   key={commit.oid}
                   className={
                     jumpedOid === commit.oid
-                      ? 'rounded-md ring-1 ring-inset ring-primary/60'
+                      ? 'animate-locate rounded-md bg-primary/10 shadow-[inset_3px_0_0_hsl(var(--primary))]'
                       : undefined
                   }
                   style={{

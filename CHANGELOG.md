@@ -69,6 +69,10 @@ All notable changes to AngKorGit are documented here. The format follows
   filling the space between them.
 - Merge commits read one shade quieter in the graph so the commits that changed
   code stand out in merge-heavy histories.
+- Jumping to a commit from the search box now lands with a short settle
+  animation: the row glows in the accent color and eases into a soft tint with a
+  gold bar on its left edge, which stays until you select something else. The
+  old thin outline was easy to miss.
 - Click a hash in the graph to copy it; hover a relative time for the full date.
   The counter reads "200+ commits", and an empty filtered graph offers "Clear
   filters".

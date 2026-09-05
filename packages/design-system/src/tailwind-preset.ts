@@ -44,6 +44,11 @@ const preset: Partial<Config> = {
         soft: 'var(--shadow-soft)',
       },
       keyframes: {
+        locate: {
+          '0%': { backgroundColor: 'hsl(var(--primary) / 0.42)', boxShadow: 'inset 3px 0 0 hsl(var(--primary)), 0 0 0 6px hsl(var(--primary) / 0.25)' },
+          '60%': { backgroundColor: 'hsl(var(--primary) / 0.16)', boxShadow: 'inset 3px 0 0 hsl(var(--primary)), 0 0 0 2px hsl(var(--primary) / 0)' },
+          '100%': { backgroundColor: 'hsl(var(--primary) / 0.1)', boxShadow: 'inset 3px 0 0 hsl(var(--primary)), 0 0 0 0 hsl(var(--primary) / 0)' },
+        },
         'fade-in': {
           from: { opacity: '0' },
           to: { opacity: '1' },
@@ -58,6 +63,7 @@ const preset: Partial<Config> = {
         },
       },
       animation: {
+        locate: 'locate 1100ms cubic-bezier(0.16, 1, 0.3, 1) both',
         'fade-in': 'fade-in 150ms ease-out',
         'slide-up': 'slide-up 180ms cubic-bezier(0.16, 1, 0.3, 1)',
         'dialog-in': 'dialog-in 180ms cubic-bezier(0.16, 1, 0.3, 1)',
