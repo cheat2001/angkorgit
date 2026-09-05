@@ -14,6 +14,7 @@ import type {
   StashInfo,
   StatusSummary,
   TagInfo,
+  WorktreeInfo,
 } from '@angkorgit/core';
 
 const AUTHORS = [
@@ -85,6 +86,8 @@ export const demoRepo: RepositoryInfo = {
   isDetached: false,
   isBare: false,
   state: 'clean',
+  isWorktree: false,
+  mainPath: null,
 };
 
 export const demoRecents: RecentRepository[] = [
@@ -145,6 +148,45 @@ export const demoBranches: BranchInfo[] = [
 export const demoTags: TagInfo[] = [
   { name: 'v0.4.0', targetOid: ALL_COMMITS[2].oid, message: 'Release 0.4.0', isAnnotated: true },
   { name: 'v0.3.0', targetOid: ALL_COMMITS[40].oid, message: null, isAnnotated: false },
+];
+
+export const demoWorktrees: WorktreeInfo[] = [
+  {
+    name: 'angkorgit',
+    path: '/Users/demo/projects/angkorgit',
+    branch: 'main',
+    headOid: ALL_COMMITS[0].oid,
+    isMain: true,
+    isCurrent: true,
+    isLocked: false,
+    isDetached: false,
+    isMissing: false,
+    isDirty: null,
+  },
+  {
+    name: 'angkorgit-feature-diff-viewer',
+    path: '/Users/demo/projects/angkorgit-feature-diff-viewer',
+    branch: 'feature/diff-viewer',
+    headOid: ALL_COMMITS[7].oid,
+    isMain: false,
+    isCurrent: false,
+    isLocked: false,
+    isDetached: false,
+    isMissing: false,
+    isDirty: true,
+  },
+  {
+    name: 'angkorgit-fix-stash-race',
+    path: '/Users/demo/projects/angkorgit-fix-stash-race',
+    branch: 'fix/stash-race',
+    headOid: ALL_COMMITS[12].oid,
+    isMain: false,
+    isCurrent: false,
+    isLocked: false,
+    isDetached: false,
+    isMissing: true,
+    isDirty: null,
+  },
 ];
 
 export const demoStashes: StashInfo[] = [

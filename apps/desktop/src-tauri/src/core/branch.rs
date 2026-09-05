@@ -97,10 +97,21 @@ pub fn checkout_branch(path: &str, name: &str) -> AppResult<()> {
             let mut local = repo.branch(local_name_of(name), &commit, false)?;
             local.set_upstream(Some(name))?;
         }
+        refuse_if_checked_out_elsewhere(&repo, local_name_of(name))?;
         return do_checkout(&repo, &format!("refs/heads/{}", local_name_of(name)));
     }
 
+    refuse_if_checked_out_elsewhere(&repo, name)?;
     do_checkout(&repo, &format!("refs/heads/{name}"))
+}
+
+fn refuse_if_checked_out_elsewhere(repo: &Repository, branch: &str) -> AppResult<()> {
+    match super::worktree::checked_out_elsewhere(repo, branch) {
+        Some(location) => Err(AppError::other(format!(
+            "'{branch}' is already checked out in the worktree at {location}. Switch to that worktree to work on it, or check out a different branch here."
+        ))),
+        None => Ok(()),
+    }
 }
 
 fn local_name_of(remote_branch: &str) -> &str {

@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import type { GraphRow as GraphRowData, RefInfo } from '@angkorgit/core';
 import { Badge, cn } from '@angkorgit/design-system';
-import { Check, Cloud, GitMerge, Monitor, Tag as TagIcon } from 'lucide-react';
+import { Check, Cloud, GitMerge, Monitor, Tag as TagIcon, FolderTree } from 'lucide-react';
 import type { CommitInfo } from '@angkorgit/core';
 import { Avatar } from '@/components/Avatar';
 import { timeAgo } from '@/shared/utils';
@@ -178,6 +178,7 @@ function RefCell({
   isHead,
   color,
   flat,
+  worktrees,
   onCheckoutRef,
   onRefMenu,
 }: {
@@ -185,6 +186,7 @@ function RefCell({
   isHead: boolean;
   color: number;
   flat?: boolean;
+  worktrees?: ReadonlyMap<string, string>;
   onCheckoutRef: (ref: RefInfo) => void;
   onRefMenu: (event: React.MouseEvent, ref: RefInfo) => void;
 }) {
@@ -202,6 +204,7 @@ function RefCell({
       {groups.slice(0, 2).map((group) => {
         const head = isHead && group.local && !headMarked;
         if (head) headMarked = true;
+        const worktree = group.local ? worktrees?.get(group.label) : undefined;
         return (
           <Badge
             key={group.primary.name}
@@ -214,7 +217,7 @@ function RefCell({
             title={
               group.tag
                 ? group.label
-                : `${group.label}${group.local ? ' · local' : ''}${group.remote ? ' · origin' : ''} — double-click to checkout, right-click for actions`
+                : `${group.label}${group.local ? ' · local' : ''}${group.remote ? ' · origin' : ''}${worktree ? ` · in worktree ${worktree}` : ''} — ${worktree ? 'double-click to switch to that worktree' : 'double-click to checkout'}, right-click for actions`
             }
             onDoubleClick={(e) => {
               if (group.tag) return;
@@ -230,7 +233,8 @@ function RefCell({
             {head && <Check className="size-2.5 shrink-0" />}
             {group.tag && <TagIcon className="size-2.5 shrink-0" />}
             <span className="truncate">{group.label}</span>
-            {group.local && <Monitor className="size-2.5 shrink-0" />}
+            {group.local && !worktree && <Monitor className="size-2.5 shrink-0" />}
+            {worktree && <FolderTree className="size-2.5 shrink-0" />}
             {group.remote && <Cloud className="size-2.5 shrink-0" />}
           </Badge>
         );
@@ -256,6 +260,7 @@ interface Props {
   gutterWidth: number;
   flat?: boolean;
   selected: boolean;
+  worktrees?: ReadonlyMap<string, string>;
   onSelect: (oid: string, event: React.MouseEvent) => void;
   onContextMenu: (event: React.MouseEvent, commit: CommitInfo) => void;
   onCheckoutRef: (ref: RefInfo) => void;
@@ -268,6 +273,7 @@ export const CommitRow = memo(function CommitRow({
   gutterWidth,
   flat,
   selected,
+  worktrees,
   onSelect,
   onContextMenu,
   onCheckoutRef,
@@ -279,6 +285,7 @@ export const CommitRow = memo(function CommitRow({
       isHead={commit.isHead}
       color={row.node.color}
       flat={flat}
+      worktrees={worktrees}
       onCheckoutRef={onCheckoutRef}
       onRefMenu={(e, ref) => onRefMenu(e, ref, commit)}
     />

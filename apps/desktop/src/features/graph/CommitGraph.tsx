@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
-import { ArrowDownToLine, ArrowUpFromLine, Check, Combine, Copy, Filter, GitBranchPlus, GitMerge, ListOrdered, ListRestart, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Check, Combine, Copy, Filter, FolderTree, GitBranchPlus, GitMerge, ListOrdered, ListRestart, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
 import type { CommitInfo, RefInfo } from '@angkorgit/core';
 import {
   Button,
@@ -43,6 +43,7 @@ interface RefMenuState {
 export function CommitGraph() {
   const repo = useRepo((s) => s.repo);
   const refresh = useRepo((s) => s.refresh);
+  const worktrees = useRepo((s) => s.worktrees);
   const { rows, commits, maxLane, hasMore, loading, error, filters, selectedOid, selectedOids, pendingScrollIndex, loadMore, reload, setFilters, select, toggleSelect, rangeSelect, jumpTo, clearPendingScroll } =
     useGraph();
   const openDialog = useUi((s) => s.openDialog);
@@ -59,6 +60,12 @@ export function CommitGraph() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const path = repo?.path ?? '';
+
+  const worktreeBranches = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const wt of worktrees) if (wt.branch && !wt.isCurrent) map.set(wt.branch, wt.name);
+    return map;
+  }, [worktrees]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -250,11 +257,21 @@ export function CommitGraph() {
 
   const checkoutRef = useCallback(
     (ref: RefInfo) => {
+      const held = ref.kind === 'localBranch' ? worktrees.find((w) => w.branch === ref.shorthand && !w.isCurrent) : undefined;
+      if (held && !held.isMissing) {
+        void useRepo
+          .getState()
+          .open(held.path)
+          .catch((error) =>
+            toast.error(`Could not open ${held.name}: ${(error as { message?: string }).message ?? error}`),
+          );
+        return;
+      }
       void act(`Checkout ${ref.shorthand}`, () => ipc.checkout(path, ref.shorthand), {
         kind: 'checkout',
       });
     },
-    [act, path],
+    [act, path, worktrees],
   );
 
   const onRefMenu = useCallback((event: React.MouseEvent, ref: RefInfo) => {
@@ -354,6 +371,7 @@ export function CommitGraph() {
                     gutterWidth={gutterWidth}
                     flat={flat}
                     selected={selectedOid === commit.oid || selectedOids.includes(commit.oid)}
+                    worktrees={worktreeBranches}
                     onSelect={onRowSelect}
                     onContextMenu={onContextMenu}
                     onCheckoutRef={checkoutRef}
@@ -459,6 +477,9 @@ export function CommitGraph() {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openDialog('createTag', menu.commit.oid)}>
               <TagIcon /> Create tag here…
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openDialog('createWorktree', { oid: menu.commit.oid })}>
+              <FolderTree /> New worktree from here…
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             {pickSelection ? (

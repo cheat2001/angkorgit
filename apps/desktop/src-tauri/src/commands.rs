@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter, State};
 
 use crate::core::types::*;
-use crate::core::{branch, commit, conflict, diff, history, misc, remote, repo, stage};
+use crate::core::{branch, commit, conflict, diff, history, misc, remote, repo, stage, worktree};
 use crate::error::AppResult;
 use crate::terminal::TerminalState;
 
@@ -516,6 +516,26 @@ pub async fn submodule_list(path: String) -> AppResult<Vec<SubmoduleInfo>> {
 #[tauri::command]
 pub async fn submodule_update(path: String, name: String) -> AppResult<()> {
     blocking(move || misc::submodule_update(&path, &name)).await
+}
+
+#[tauri::command]
+pub async fn worktree_list(path: String) -> AppResult<Vec<WorktreeInfo>> {
+    blocking(move || worktree::list(&path)).await
+}
+
+#[tauri::command]
+pub async fn worktree_add(path: String, request: WorktreeAddRequest) -> AppResult<String> {
+    blocking(move || worktree::add(&path, &request)).await
+}
+
+#[tauri::command]
+pub async fn worktree_remove(path: String, name: String, force: bool) -> AppResult<()> {
+    blocking(move || worktree::remove(&path, &name, force)).await
+}
+
+#[tauri::command]
+pub async fn worktree_prune(path: String) -> AppResult<Vec<String>> {
+    blocking(move || worktree::prune(&path)).await
 }
 
 #[tauri::command]

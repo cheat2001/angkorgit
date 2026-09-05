@@ -36,6 +36,11 @@ pub mod test_api {
     };
     pub use crate::core::types::HistoryQuery;
     pub use crate::core::types::RebaseTodoEntry;
+    pub use crate::core::types::WorktreeAddRequest;
+    pub use crate::core::worktree::{
+        add as worktree_add, list as worktree_list, prune as worktree_prune,
+        remove as worktree_remove,
+    };
 }
 
 pub fn run() {
@@ -125,6 +130,10 @@ pub fn run() {
             commands::tag_delete,
             commands::submodule_list,
             commands::submodule_update,
+            commands::worktree_list,
+            commands::worktree_add,
+            commands::worktree_remove,
+            commands::worktree_prune,
             commands::diff_file,
             commands::diff_commit,
             commands::diff_commit_files,

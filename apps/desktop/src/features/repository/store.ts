@@ -8,6 +8,7 @@ import type {
   StatusSummary,
   SubmoduleInfo,
   TagInfo,
+  WorktreeInfo,
 } from '@angkorgit/core';
 import { ipc } from '@/core/ipc';
 
@@ -19,6 +20,7 @@ interface RepoState {
   stashes: StashInfo[];
   remotes: RemoteInfo[];
   submodules: SubmoduleInfo[];
+  worktrees: WorktreeInfo[];
   conflicts: string[];
   recents: RecentRepository[];
   busy: string | null;
@@ -47,6 +49,7 @@ export const useRepo = create<RepoState>((set, get) => ({
   stashes: [],
   remotes: [],
   submodules: [],
+  worktrees: [],
   conflicts: [],
   recents: [],
   busy: null,
@@ -83,6 +86,7 @@ export const useRepo = create<RepoState>((set, get) => ({
         stashes: [],
         remotes: [],
         submodules: [],
+        worktrees: [],
         conflicts: [],
       });
     } else {
@@ -94,9 +98,10 @@ export const useRepo = create<RepoState>((set, get) => ({
         if (seq === openSeq && get().repo?.path === repo.path) set({ profileId });
       })
       .catch(() => undefined);
-    void import('@/features/ui/store').then(({ useUi }) =>
-      useUi.getState().addRepoTab(repo.path),
-    );
+    void import('@/features/ui/store').then(({ useUi }) => {
+      useUi.getState().addRepoTab(repo.path);
+      useUi.getState().markWorktreeTab(repo.path, repo.isWorktree);
+    });
     try {
       await get().refresh();
     } finally {
@@ -115,6 +120,7 @@ export const useRepo = create<RepoState>((set, get) => ({
       stashes: [],
       remotes: [],
       submodules: [],
+      worktrees: [],
       conflicts: [],
       opening: null,
       refreshing: false,
@@ -127,7 +133,7 @@ export const useRepo = create<RepoState>((set, get) => ({
     const path = repo.path;
     const seq = ++fullSeq;
     const statusEpoch = ++statusSeq;
-    const [info, status, branches, tags, stashes, remotes, submodules, conflicts] =
+    const [info, status, branches, tags, stashes, remotes, submodules, conflicts, worktrees] =
       await Promise.all([
         ipc.repoInfo(path),
         ipc.status(path),
@@ -137,12 +143,13 @@ export const useRepo = create<RepoState>((set, get) => ({
         ipc.remotes(path),
         ipc.submodules(path),
         ipc.conflicts(path),
+        ipc.worktrees(path).catch(() => [] as WorktreeInfo[]),
       ]);
     if (get().repo?.path !== path || seq !== fullSeq) return;
     if (statusEpoch === statusSeq) {
-      set({ repo: info, status, branches, tags, stashes, remotes, submodules, conflicts });
+      set({ repo: info, status, branches, tags, stashes, remotes, submodules, worktrees, conflicts });
     } else {
-      set({ repo: info, branches, tags, stashes, remotes, submodules });
+      set({ repo: info, branches, tags, stashes, remotes, submodules, worktrees });
     }
   },
 

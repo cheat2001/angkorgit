@@ -7,6 +7,28 @@ export interface RepositoryInfo {
   isDetached: boolean;
   isBare: boolean;
   state: RepoState;
+  isWorktree: boolean;
+  mainPath: string | null;
+}
+
+export interface WorktreeInfo {
+  name: string;
+  path: string;
+  branch: string | null;
+  headOid: string | null;
+  isMain: boolean;
+  isCurrent: boolean;
+  isLocked: boolean;
+  isDetached: boolean;
+  isMissing: boolean;
+  isDirty: boolean | null;
+}
+
+export interface WorktreeAddRequest {
+  directory: string;
+  branch: string;
+  createBranch: boolean;
+  base?: string | null;
 }
 
 export type RepoState =

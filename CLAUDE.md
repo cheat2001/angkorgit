@@ -261,6 +261,21 @@ core/
 │                       from the keyring async; old plaintext localStorage keys are
 │                       migrated + scrubbed on first rehydrate
 ├── misc.rs           ← stash (list/create/apply/pop/drop), tags, submodules
+├── worktree.rs       ← linked worktrees over libgit2's worktree API: list (main first,
+│                       then every registered worktree; is_current compares CANONICAL
+│                       paths, is_missing when the folder is gone, is_dirty is None for
+│                       the current one — the UI already holds its status), add
+│                       (existing local branch, remote → local tracking branch, or a new
+│                       branch from a base rev; refuses a branch checked out anywhere
+│                       else with a message naming that folder; worktree NAME is a
+│                       sanitized, de-duplicated basename of the target folder), remove
+│                       (refuses dirty/locked unless force; prune with working_tree so
+│                       the folder goes too), prune (only entries whose folder is gone),
+│                       checked_out_elsewhere (branch::checkout_branch guard — libgit2
+│                       happily checks out a branch another worktree holds; git CLI
+│                       refuses), fingerprint_parts (worktree name/path/HEAD folded into
+│                       repo::ref_fingerprint so add/remove/checkout in a sibling
+│                       worktree trigger a full refresh; see G34)
 ├── diff.rs           ← FileDiff w/ hunks+lines, contextLines param (huge = whole-file view),
 │                       commit_diff (first-parent, rename detection), commit_files (metadata
 │                       only: per-file status + line counts via Patch::line_stats, NO hunk
@@ -335,7 +350,9 @@ shared/                       ← useShortcuts (mod-combos, skipInInput; an Esca
                                 also preventDefault onCloseAutoFocus — the trigger is an
                                 invisible positioning span, and refocusing it would clear
                                 the just-restored selection), highlight.ts
-                                (hljs lib/core + languageOf), utils (timeAgo, modKey…)
+                                (hljs lib/core + languageOf; highlightLineState carries
+                                BLOCK-COMMENT state across lines — see G35), utils
+                                (timeAgo, modKey…)
 features/
 ├── repository/               ← store (repo/status/branches/tags/stashes/remotes/submodules/
 │   │                           conflicts/recents/profileId — the repo's assigned profile,
@@ -529,7 +546,51 @@ features/
 │                               with a baseTouched ref (the open-effect closure sees a
 │                               stale empty baseOptions when branches load late);
 │                               success toast carries an Open action)
-├── sidebar/Sidebar.tsx       ← PULL REQUESTS section (shown when the first remote parses
+├── worktrees/CreateWorktreeDialog ← ui dialog kind 'createWorktree' with a
+│                               CreateWorktreePreset {branch?, oid?} context: "New
+│                               branch" (default; base = preset oid or HEAD) / "Existing
+│                               branch" tabs (Select lists locals not held by any
+│                               worktree and remotes without a local counterpart),
+│                               Folder input pre-filled via core suggestWorktreePath
+│                               (settings.worktreeRoot, else the main repo's parent,
+│                               + `<repo>-<branch-slug>`) and recomputed as the branch
+│                               changes until the user edits it (directoryTouched ref);
+│                               Browse picks the PARENT and re-suggests; on success the
+│                               chosen parent is remembered, and "Open it in a new tab"
+│                               (default on) opens the worktree through useRepo.open so
+│                               it becomes a normal repo tab
+├── sidebar/Sidebar.tsx       ← WORKTREES section (always shown, right under Branches:
+│                               count badge, "+" opens the dialog, an Eraser prune
+│                               action appears when any folder is missing; with a single
+│                               working tree the body is a dashed EMPTY-STATE CARD (gold
+│                               FolderTree tile, "Two branches, two folders", one-line
+│                               body, full-width "New worktree" button — the owner found
+│                               the earlier prose hint boring), otherwise
+│                               two-line rows — name + Home icon for the main worktree /
+│                               Lock / danger triangle for missing / brand-gold dot for
+│                               uncommitted changes, branch or `detached @ oid`
+│                               subtitle — HeadMark tick on the CURRENT one; click or
+│                               Enter switches tabs via useRepo.open, menu: switch /
+│                               Reveal in Finder / Copy path / Remove… (confirm with the
+│                               path panel; dirty → "Delete changes and remove" passes
+│                               force; removing the CURRENT worktree first opens the
+│                               main one, closes the tab + kills its terminal session,
+│                               then removes) or "Forget missing worktree"); branch
+│                               rows whose branch lives in ANOTHER worktree carry a
+│                               FolderTree marker, double-click switches to that
+│                               worktree instead of checking out, and their menu swaps
+│                               Checkout for "Switch to worktree <name>" — every other
+│                               non-HEAD branch gets "Open in new worktree…"; the same
+│                               held-branch map reaches the graph (CommitGraph passes
+│                               worktreeBranches to CommitRow → RefCell swaps the local
+│                               Monitor glyph for FolderTree and double-click on that
+│                               chip switches to the worktree) and the tab strip
+│                               (ui.worktreeTabs, persisted, marked by useRepo.open
+│                               from RepositoryInfo.isWorktree — a FolderTree glyph
+│                               before the tab name); the create toast carries a
+│                               description reminding that ignored files such as
+│                               node_modules are not copied;
+│                               PULL REQUESTS section (shown when the first remote parses
 │                               to a known forge; count badge, refresh + create actions,
 │                               connect-account hint that opens Settings, rows with draft
 │                               badge and a menu: checkout via provider.checkoutSpec →
@@ -552,7 +613,14 @@ features/
 │                               the background if the user navigates away; panel has a
 │                               full-view AiResultDialog behind a Maximize2 button and
 │                               renders through AiText)
-├── terminal/TerminalPanel    ← xterm.js ↔ PTY events; sessions are PER-REPO and
+├── terminal/TerminalPanel    ← xterm.js ↔ PTY events; terminal/theme.ts builds the
+│                               xterm ITheme from the design tokens at runtime
+│                               (getComputedStyle → HSL triplets → hex, ANSI palette
+│                               mapped to danger/success/info/graph-5/6/7, cursor +
+│                               selection = --primary so accents follow) and the panel
+│                               re-applies it to EVERY live session when settings
+│                               theme/accent change — never hardcode terminal hex;
+│                               sessions are PER-REPO and
 │                               persistent: a module-level Map keyed by repo path holds
 │                               each xterm + its DOM container, unmount only detaches
 │                               (container.remove()), remount re-appends — scrollback and
@@ -956,14 +1024,64 @@ update CLAUDE.md or docs/ — never the code.
   BEFORE anything moves — index and HEAD stay untouched, matching git CLI's
   block-the-commit behavior; never fall back to committing unsigned.
 
+- **G34 — libgit2 worktrees: the traps that shaped `core/worktree.rs`**: (1) a
+  linked worktree's `repo.path()` is `<main>/.git/worktrees/<name>` and its
+  `commondir()` is the main `.git` — open the MAIN repo via
+  `Repository::open(commondir)` before listing/adding/removing, and never trust
+  `repo.path()` to be `<workdir>/.git`. (2) `git_worktree_add` creates the target
+  folder with `mkdir EXCL` and does NOT create parents, so the engine pre-creates
+  the parent and turns "folder exists" into a plain message. (3) libgit2 does
+  NOT stop a checkout of a branch another worktree has checked out (git CLI does);
+  `branch::checkout_branch` runs `worktree::checked_out_elsewhere` first, and
+  `worktree::add` does the same before touching disk. (4) `Worktree::prune` needs
+  `valid(true)` to remove a VALID worktree and `working_tree(true)` to delete
+  the folder — without the flag only the `.git/worktrees/<name>` entry goes and
+  the folder stays as an orphan; pass `working_tree` only when the folder still
+  exists (rmdir on a missing path errors). (5) A missing worktree cannot be
+  opened, so its branch is read from `.git/worktrees/<name>/HEAD` by hand. (6)
+  The watcher watches the WORKDIR recursively, so a linked worktree never saw
+  its own index/HEAD (they live under the main `.git`) — `watcher.rs` now watches
+  the extra gitdir roots and filters them with the same metadata rules, and
+  `worktrees/*/HEAD|gitdir` under the main `.git` count as relevant so the main
+  tab notices a sibling worktree's checkout; `ref_fingerprint` folds worktree
+  name/path/HEAD in so that change becomes a FULL refresh (the worktree list is
+  loaded by `refresh`, not `refreshStatus`). (7) macOS temp paths differ from
+  their canonical form (`/var` vs `/private/var`), so `is_current` compares
+  canonicalized paths — tests compare canonicalized `main_path` for the same
+  reason. Frontend invariant: a worktree opened in the app is just another repo
+  tab (same store, watcher, terminal session, drafts keyed by its own path), and
+  `RepositoryInfo.isWorktree/mainPath` is the only thing that tells it apart.
+
+- **G35 — diff highlighting is PER LINE, so multi-line comments need carried
+  state**: hljs is run on each diff line alone (cache-friendly, virtualizer-
+  friendly), which rendered the inner lines of a `/** … */` block as code (issue
+  seen on a TS enum's JSDoc). hljs 11 dropped the public `continuation`
+  parameter, so `highlightLineState(code, lang, startsInComment)` fakes it:
+  when a line starts inside a block comment it highlights `opener + code`
+  (`/*` or `<!--` per language, BLOCK_COMMENT_OPENERS) and strips the opener's
+  escaped text from the first span; whether a line ENDS inside a comment comes
+  from the result's `_top` mode chain (walk `parent`s for scope 'comment') and
+  the mode's `endRe` must NOT match the empty string — that is what separates
+  `/* */` from `//` (whose end is `$`), and it also keeps TS's JSDoc mode
+  (`/**` begin) in scope, which an "opener matches beginRe" check missed.
+  `diffShared.prepareCommentStates(diff, language)` (called from DiffViewer's
+  render, memoised per diff in a WeakMap, capped at 8000 lines) walks each hunk
+  with SEPARATE old/new running states (deletions advance old, additions new,
+  context both) and stores per-DiffLine flags in a WeakMap that CodeLine and the
+  word-diff segment renderer read; state resets at every hunk boundary, so a
+  hunk that starts mid-comment still misrenders unless whole-file view is on.
+  Languages without a block opener (python, yaml, bash, json, markdown, ruby)
+  ignore the flag. Unit tests: `tests/unit/highlight.test.ts` (vitest aliases
+  `@/shared/highlight` and `highlight.js` to the desktop package for this).
+
 ## 9. Testing map
 
 | Suite | Location | Coverage |
 | --- | --- | --- |
-| Rust integration (51) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick (plain keeps the message verbatim; record-origin output byte-equal to `git cherry-pick -x` for plain and trailer-block messages; many: in-order with per-commit origin lines, first conflict stops the run with progress counts), revert, reset (+ unknown-mode error), history pagination with and without filters, history position lookup by full + short hash, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop, commit signing (SSH sign verified via `git verify-commit`, unsigned without config, amend re-signs, merge commit signed, failure blocks the commit and leaves HEAD/index untouched), PR checkout (fork-style refs/pull fetch creates + updates the local branch and re-runs cleanly, diverged local branch refused with HEAD untouched, same-repo tracking checkout sets the upstream), ref fingerprint (tracks refs/HEAD, ignores plain file edits), commit file lists (per-file counts without hunks), single-file commit diff scoped by pathspec |
-| Rust module (48) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (6), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/core/sign.rs` (7), `src/forge.rs` (6), `src/proc.rs` (1) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim, io NotFound → not_found while other io errors stay io · forge proxy: api-subdomain host allowlist (dot-anchored), per-provider auth headers, bitbucket email requirement, unknown provider rejected · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · signing config: off by default, ssh setup read from git config, empty-string values read as unset, ssh-without-key and x509 are clear errors, openpgp falls back to the committer identity, literal-key detection, ~ expansion · proc: no bare `Command::new` anywhere outside proc.rs (G31) |
-| Unit (130) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), aiProviders (empty/whitespace/missing content rejected for openai-compatible + ollama, HTTP status+body surfaced, real content passes), aiCapabilities (review conventions: absent by default, general-only, general+project order with precedence note, whitespace = absent, clipping), aiTextSegments (token parse: adjacent tokens, unclosed/inner-asterisk/multi-line markers stay literal, ** inside backticks is code), reviewSignature (staged-only, order-insensitive, unstaged-edit + set changes alter it, newline filenames don't collide, hashText determinism), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null), aiModels (per-provider list endpoints/headers incl. Groq-style base URLs, generateContent filtering for Gemini, dedupe/sort, invalid-JSON + HTTP-status errors, cli → empty without a request), forge (parseForgeRemote for all three forges + rejects, provider creation gating, github/gitlab/bitbucket adapters: request URLs, field mapping incl. fork + draft detection, create payloads, error-message surfacing incl. github field-level validation entries without a message, checkoutSpec shapes incl. bitbucket fork → null, pickForgeRemote upstream-first ordering, gitlab self-hosted https→http transport fallback — GET-only (a retried POST could file a duplicate MR), never for gitlab.com or api-level errors, working scheme remembered per host and safe under concurrent fallbacks, reviewer candidates per forge + reviewer ids embedded/requested on create incl. github follow-up failure tolerance) |
-| E2E (25) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, cherry-pick dialog with the source-reference checkbox on by default, multi-select cherry-pick listing both commits and confirming, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop), long path stays inside the discard confirm dialog, commit action buttons stay inside a narrow working copy panel (the row wraps), sidebar branch names align with and without the HEAD tick (measured left offsets), hovering a working-copy file reveals its full path, opening a diff folds the sidebar away and the toggle brings back the graph, avatars stay visible after a diff open/close round-trip (stubbed Gravatar), diff text selection survives the right-click copy menu and Esc closes only the menu, sidebar lists the demo pull requests and the create dialog opens, searching a commit hash jumps to it in the full graph and clears on selecting another commit, a short hash prefix jumps too while an unknown hex word falls back to filtering, a missing hash keeps the graph with a not-found note, mod+f focuses the commit search — all on demo mode |
+| Rust integration (59) | `apps/desktop/src-tauri/tests/git_engine.rs` | stage/commit/history, amend, branch/merge(ff+normal+conflict+message), branch-over-tag ref resolution (merge/rebase/history filter), ff-merge preserving uncommitted changes, drag-merge sequence (checkout target → merge source), no-ff merge commit when ff possible, can-fast-forward only when strictly behind, merge message available only during conflicted merge, interactive rebase (reorder/drop + range listing, squash/reword, conflict aborts untouched, invalid-plan rejection), file history lists only touching commits + paginates with skip, conflict resolve, stash, tags, cherry-pick (plain keeps the message verbatim; record-origin output byte-equal to `git cherry-pick -x` for plain and trailer-block messages; many: in-order with per-commit origin lines, first conflict stops the run with progress counts), revert, reset (+ unknown-mode error), history pagination with and without filters, history position lookup by full + short hash, broken-symlink staging (unix), diff hunks + whole-file context, unstage_all/discard_all, line+hunk ops on files without trailing newline, git-CLI interop, commit signing (SSH sign verified via `git verify-commit`, unsigned without config, amend re-signs, merge commit signed, failure blocks the commit and leaves HEAD/index untouched), PR checkout (fork-style refs/pull fetch creates + updates the local branch and re-runs cleanly, diverged local branch refused with HEAD untouched, same-repo tracking checkout sets the upstream), ref fingerprint (tracks refs/HEAD, ignores plain file edits), commit file lists (per-file counts without hunks), single-file commit diff scoped by pathspec, worktrees (add lists + checks out the branch and reports is_worktree/main_path from inside the linked folder, new branch from a base commit + duplicate refused, branch held elsewhere refused, checkout of a held branch refused with HEAD untouched, dirty remove refused unless forced, prune of a deleted folder, ref fingerprint changes on add, `git worktree list --porcelain` reports the engine-created worktree and `git status` runs clean inside it) |
+| Rust module (52) | `apps/desktop/src-tauri/src/ai_cli.rs` (6), `src/error.rs` (6), `src/core/remote.rs` (15), `src/core/accounts.rs` (7), `src/core/sign.rs` (7), `src/forge.rs` (6), `src/proc.rs` (1), `src/watcher.rs` (4) | AI-CLI runner: program allowlist, stdout capture via fake agent script, {OUTPUT_FILE} substitution, kill-on-timeout · error mapping: HTTP status extraction from libgit2 messages, 401/402/403 explanations, unmapped codes kept verbatim, io NotFound → not_found while other io errors stay io · forge proxy: api-subdomain host allowlist (dot-anchored), per-provider auth headers, bitbucket email requirement, unknown provider rejected · SSH key resolution: `~` expansion, configured key ordered ahead of defaults, dedupe when the configured key IS a default, blank config ignored, generation never targeting an existing key · push refspec shapes (plain/force/tags never forced) · repo account-binding parse (valid/malformed) · accounts: upsert keeps both same-host accounts + default flags, one default per host, preferred-before-default candidate order, port-loose host match, ssh URLs ignored · signing config: off by default, ssh setup read from git config, empty-string values read as unset, ssh-without-key and x509 are clear errors, openpgp falls back to the committer identity, literal-key detection, ~ expansion · proc: no bare `Command::new` anywhere outside proc.rs (G31) · watcher: metadata filter unchanged for main repos, `worktrees/*/HEAD|gitdir|locked` relevant while `worktrees/*/index` is noise, a linked worktree watches its own gitdir + the shared commondir, main repos need no extra roots |
+| Unit (137) | `tests/unit/*.test.ts` | GraphLayout (incl. pagination stability, lane reuse), wordDiff (round-trip), conflict parse/serialize (diff3 labels, CRLF, bare markers, 8+-char content lines, close-without-separator — all lossless), cliAgents (per-agent argv/stdin shape, ANSI/OSC cleaning, output-file preference, error surfacing), aiProviders (empty/whitespace/missing content rejected for openai-compatible + ollama, HTTP status+body surfaced, real content passes), aiCapabilities (review conventions: absent by default, general-only, general+project order with precedence note, whitespace = absent, clipping), aiTextSegments (token parse: adjacent tokens, unclosed/inner-asterisk/multi-line markers stay literal, ** inside backticks is code), reviewSignature (staged-only, order-insensitive, unstaged-edit + set changes alter it, newline filenames don't collide, hashText determinism), commitStyle (prefix rule matching/tokens/ticket-fallthrough, `$`-sequence literalness, preset instructions, post-generation prefix enforcement), pullRequestUrl (https/scp/ssh remotes, non-standard ports kept, http preserved, ssh port dropped, Bitbucket Server /scm/ shape, .git-behind-slash strip, unknown forge → null), aiModels (per-provider list endpoints/headers incl. Groq-style base URLs, generateContent filtering for Gemini, dedupe/sort, invalid-JSON + HTTP-status errors, cli → empty without a request), forge (parseForgeRemote for all three forges + rejects, provider creation gating, github/gitlab/bitbucket adapters: request URLs, field mapping incl. fork + draft detection, create payloads, error-message surfacing incl. github field-level validation entries without a message, checkoutSpec shapes incl. bitbucket fork → null, pickForgeRemote upstream-first ordering, gitlab self-hosted https→http transport fallback — GET-only (a retried POST could file a duplicate MR), never for gitlab.com or api-level errors, working scheme remembered per host and safe under concurrent fallbacks, reviewer candidates per forge + reviewer ids embedded/requested on create incl. github follow-up failure tolerance), worktree (folder-name slug from repo + branch, sibling-path suggestion incl. Windows separators, parentDirectory) |
+| E2E (27) | `tests/e2e/smoke.spec.ts` | splash→welcome, open repo, graph, inspector, palette, search, conflict resolver line picks, single-conflict nav + per-conflict take-all, per-block conflict hand edit, interactive rebase dialog + multi-select squash, cherry-pick dialog with the source-reference checkbox on by default, multi-select cherry-pick listing both commits and confirming, diff auto-jump lands at the first change with no scroll animation (frame-traced scrollTop), long path stays inside the discard confirm dialog, commit action buttons stay inside a narrow working copy panel (the row wraps), sidebar branch names align with and without the HEAD tick (measured left offsets), hovering a working-copy file reveals its full path, opening a diff folds the sidebar away and the toggle brings back the graph, avatars stay visible after a diff open/close round-trip (stubbed Gravatar), diff text selection survives the right-click copy menu and Esc closes only the menu, sidebar lists the demo pull requests and the create dialog opens, searching a commit hash jumps to it in the full graph and clears on selecting another commit, a short hash prefix jumps too while an unknown hex word falls back to filtering, a missing hash keeps the graph with a not-found note, mod+f focuses the commit search, sidebar lists the demo worktrees (incl. a missing-folder row) and the new-worktree dialog re-suggests the folder as the branch name is typed, the inner line of a JSDoc block in the demo CommitGraph.tsx diff renders as one hljs-comment span (guards the DiffViewer → prepareCommentStates wiring, which the unit tests cannot see) — all on demo mode |
 
 ## 9.5 Open-source & community files
 

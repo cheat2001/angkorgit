@@ -473,6 +473,25 @@ test('mod+f focuses the commit search box', async ({ page }) => {
   await expect(search).toBeFocused();
 });
 
+test('sidebar lists the demo worktrees and the new worktree dialog opens', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Worktrees', { exact: true })).toBeVisible();
+  await expect(page.getByText('angkorgit-feature-diff-viewer')).toBeVisible();
+  await expect(page.getByText('folder missing')).toBeVisible();
+  await page.getByRole('button', { name: 'New worktree' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('New worktree')).toBeVisible();
+  await expect(dialog.getByPlaceholder('/path/to/new-folder')).toHaveValue(
+    '/Users/demo/projects/angkorgit-new',
+  );
+  await dialog.getByPlaceholder('feature/parallel-task').fill('feature/parallel agents');
+  await expect(dialog.getByPlaceholder('/path/to/new-folder')).toHaveValue(
+    '/Users/demo/projects/angkorgit-feature-parallel-agents',
+  );
+});
+
 test('multi-line comments in a diff stay highlighted as comments', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();

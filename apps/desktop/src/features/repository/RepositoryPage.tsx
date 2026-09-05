@@ -27,6 +27,7 @@ import { SettingsDialog } from '@/features/settings/SettingsDialog';
 import { RepoDialogs } from './RepoDialogs';
 import { CloneDialog } from './CloneDialog';
 import { CreatePrDialog } from '@/features/forge/CreatePrDialog';
+import { CreateWorktreeDialog } from '@/features/worktrees/CreateWorktreeDialog';
 import { useForge } from '@/features/forge/store';
 import { useShortcuts } from '@/shared/useShortcuts';
 import { useUndo } from '@/features/history/undoStore';
@@ -339,6 +340,7 @@ export function RepositoryPage() {
       <SettingsDialog />
       <RepoDialogs onDone={refreshAll} />
       <CreatePrDialog />
+      <CreateWorktreeDialog />
       <InteractiveRebaseDialog />
       <CloneDialog onCloned={() => void refreshAll()} />
       {conflictFile && (

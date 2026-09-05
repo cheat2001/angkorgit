@@ -11,3 +11,4 @@ pub mod repo;
 pub mod sign;
 pub mod stage;
 pub mod types;
+pub mod worktree;

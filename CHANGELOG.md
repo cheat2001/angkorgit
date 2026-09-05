@@ -6,6 +6,37 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Worktrees** — a Worktrees section in the sidebar lists every working tree of
+  the repository (main first, then linked ones) with its branch, an
+  uncommitted-changes dot, a lock mark and a warning when the folder is gone.
+  Click a row to open that worktree as its own tab with its own graph, working
+  copy and terminal. "New worktree…" (sidebar, command palette, a branch's menu
+  as "Open in new worktree…", or a commit's menu as "New worktree from here…")
+  creates a folder next to the repository, named `<repo>-<branch>`, on a new
+  branch or an existing one, and opens it. Removing a worktree confirms first,
+  refuses a dirty folder unless you opt into deleting the changes, and a prune
+  action forgets entries whose folder was deleted outside the app. Branches that
+  are checked out in another worktree show a marker in the Branches list;
+  double-clicking or choosing Checkout on them switches to that worktree
+  instead, because git allows one folder per branch.
+
+### Fixed
+- Multi-line comments in diffs are highlighted as comments all the way through.
+  The inner lines of a `/** … */` block (and `<!-- … -->` in HTML) used to render
+  as code because each line was highlighted on its own.
+- The terminal panel follows the app theme and accent. It used to be a fixed
+  navy background whatever theme was active; it now takes its background,
+  text, cursor, selection and ANSI colors from the design tokens and updates
+  live when the theme changes.
+
+### Changed
+- Checking out a branch that another worktree holds is refused with a message
+  naming that folder, matching the git CLI (libgit2 alone allowed it).
+- The file watcher follows a linked worktree's own HEAD and index and the shared
+  refs, so a worktree tab refreshes on commits made from a terminal or an AI
+  agent running in that folder.
+
 ## [0.9.0] — 2026-09-02
 
 The backport release. Cherry-picking grew up: pick one commit or a whole

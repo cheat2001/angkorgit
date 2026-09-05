@@ -20,6 +20,8 @@ import type {
   StatusSummary,
   SubmoduleInfo,
   TagInfo,
+  WorktreeAddRequest,
+  WorktreeInfo,
 } from '@angkorgit/core';
 let demo = null as unknown as typeof import('./demo');
 
@@ -434,6 +436,26 @@ export const ipc = {
   async submoduleUpdate(path: string, name: string): Promise<void> {
     if (!isTauri()) return;
     return invoke('submodule_update', { path, name });
+  },
+
+  async worktrees(path: string): Promise<WorktreeInfo[]> {
+    if (!isTauri()) return demo.demoWorktrees;
+    return invoke('worktree_list', { path });
+  },
+  async worktreeAdd(path: string, request: WorktreeAddRequest): Promise<string> {
+    if (!isTauri()) {
+      await delay(300);
+      return request.directory;
+    }
+    return invoke('worktree_add', { path, request });
+  },
+  async worktreeRemove(path: string, name: string, force: boolean): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('worktree_remove', { path, name, force });
+  },
+  async worktreePrune(path: string): Promise<string[]> {
+    if (!isTauri()) return demo.demoWorktrees.filter((w) => w.isMissing).map((w) => w.name);
+    return invoke('worktree_prune', { path });
   },
 
   async diffFile(path: string, file: string, staged: boolean, contextLines?: number): Promise<FileDiff> {

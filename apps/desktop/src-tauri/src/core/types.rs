@@ -10,6 +10,33 @@ pub struct RepositoryInfo {
     pub is_detached: bool,
     pub is_bare: bool,
     pub state: String,
+    pub is_worktree: bool,
+    pub main_path: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInfo {
+    pub name: String,
+    pub path: String,
+    pub branch: Option<String>,
+    pub head_oid: Option<String>,
+    pub is_main: bool,
+    pub is_current: bool,
+    pub is_locked: bool,
+    pub is_detached: bool,
+    pub is_missing: bool,
+    pub is_dirty: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeAddRequest {
+    pub directory: String,
+    pub branch: String,
+    pub create_branch: bool,
+    #[serde(default)]
+    pub base: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

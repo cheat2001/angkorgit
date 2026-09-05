@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, X } from 'lucide-react';
+import { FolderTree, Plus, X } from 'lucide-react';
 import { Button, Hint, cn } from '@angkorgit/design-system';
 import { pickDirectory } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
@@ -10,6 +10,7 @@ import { useUi } from '@/features/ui/store';
 export function RepoTabs() {
   const repo = useRepo((s) => s.repo);
   const tabs = useUi((s) => s.repoTabs);
+  const worktreeTabs = useUi((s) => s.worktreeTabs);
   const [draggingTab, setDraggingTab] = useState<string | null>(null);
   const [dropTab, setDropTab] = useState<string | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
@@ -81,7 +82,7 @@ export function RepoTabs() {
               role="tab"
               aria-selected={active}
               data-tab-path={path}
-              title={path}
+              title={worktreeTabs.includes(path) ? `${path} (worktree)` : path}
               draggable
               onDragStart={(e) => {
                 setDraggingTab(path);
@@ -120,6 +121,12 @@ export function RepoTabs() {
                 dropTab === path && 'ring-1 ring-inset ring-primary/60',
               )}
             >
+              {worktreeTabs.includes(path) && (
+                <FolderTree
+                  className={cn('size-3 shrink-0', active ? 'text-primary' : 'text-faint')}
+                  aria-label="Worktree"
+                />
+              )}
               <span className="min-w-0 truncate">{label(path)}</span>
               <button
                 type="button"

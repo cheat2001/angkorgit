@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
 import {
+  AlertTriangle,
   Archive,
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -10,15 +11,19 @@ import {
   ChevronRight,
   Cloud,
   Copy,
+  Eraser,
   Folder,
   FolderGit2,
   FolderOpen,
+  FolderTree,
   GitBranch,
   FastForward,
   GitMerge,
   GitPullRequest,
+  Home,
   MoveRight,
   ListRestart,
+  Lock,
   MoreHorizontal,
   GitBranchPlus,
   Pencil,
@@ -59,8 +64,9 @@ import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import { useForge } from '@/features/forge/store';
 import { useSettings } from '@/features/settings/store';
 import { forgeNoun, pullRequestCheckoutSpec } from '@angkorgit/core';
-import type { BranchInfo, PullRequestInfo, RemoteInfo, SubmoduleInfo } from '@angkorgit/core';
-import { capCount } from '@/shared/utils';
+import type { BranchInfo, PullRequestInfo, RemoteInfo, SubmoduleInfo, WorktreeInfo } from '@angkorgit/core';
+import { capCount, isMac } from '@/shared/utils';
+import { killTerminalSession } from '@/features/terminal/sessions';
 
 interface BranchTreeNode {
   key: string;
@@ -173,6 +179,8 @@ export function Sidebar() {
   const stashes = useRepo((s) => s.stashes);
   const remotes = useRepo((s) => s.remotes);
   const submodules = useRepo((s) => s.submodules);
+  const worktrees = useRepo((s) => s.worktrees);
+  const status = useRepo((s) => s.status);
   const refresh = useRepo((s) => s.refresh);
   const repoRefreshing = useRepo((s) => s.refreshing);
   const graphReload = useGraph((s) => s.reload);
@@ -191,6 +199,7 @@ export function Sidebar() {
   const [branchMenu, setBranchMenu] = useState<{ x: number; y: number; branch: BranchInfo } | null>(null);
   const [subMenu, setSubMenu] = useState<{ x: number; y: number; sub: SubmoduleInfo } | null>(null);
   const [remoteMenu, setRemoteMenu] = useState<{ x: number; y: number; remote: RemoteInfo } | null>(null);
+  const [worktreeMenu, setWorktreeMenu] = useState<{ x: number; y: number; worktree: WorktreeInfo } | null>(null);
   const [editRemote, setEditRemote] = useState<{ original: string; name: string; url: string } | null>(null);
   const [savingRemote, setSavingRemote] = useState(false);
 
@@ -206,6 +215,23 @@ export function Sidebar() {
   };
 
   const path = repo?.path ?? '';
+
+  const heldBy = useMemo(() => {
+    const map = new Map<string, WorktreeInfo>();
+    for (const wt of worktrees) if (wt.branch && !wt.isCurrent) map.set(wt.branch, wt);
+    return map;
+  }, [worktrees]);
+  const worktreeDirty = (wt: WorktreeInfo) =>
+    wt.isCurrent ? (status?.files.length ?? 0) > 0 : wt.isDirty === true;
+  const openWorktree = (wt: WorktreeInfo) => {
+    if (wt.isCurrent || wt.isMissing) return;
+    void useRepo
+      .getState()
+      .open(wt.path)
+      .catch((error) =>
+        toast.error(`Could not open ${wt.name}: ${(error as { message?: string }).message ?? error}`),
+      );
+  };
 
   const refreshAll = async () => {
     await refresh();
@@ -232,6 +258,48 @@ export function Sidebar() {
       await refreshAll();
     } catch (error) {
       toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
+    }
+  };
+
+  const removeWorktree = async (wt: WorktreeInfo) => {
+    if (wt.isMain) return;
+    if (wt.isMissing) {
+      await act(`Forget ${wt.name}`, () => ipc.worktreeRemove(path, wt.name, false));
+      return;
+    }
+    const dirty = worktreeDirty(wt);
+    const branchNote = wt.branch ? ` The branch ${wt.branch} and its commits stay in the repository.` : ' Commits stay in the repository.';
+    const ok = await confirmDialog({
+      title: `Remove worktree "${wt.name}"?`,
+      description: dirty
+        ? `This folder has uncommitted changes. Removing it deletes the folder and everything in it.${branchNote}`
+        : `The folder is deleted.${branchNote}`,
+      path: wt.path,
+      confirmLabel: dirty ? 'Delete changes and remove' : 'Remove worktree',
+      destructive: true,
+    });
+    if (!ok) return;
+    if (!wt.isCurrent) {
+      await act(`Remove worktree ${wt.name}`, () => ipc.worktreeRemove(path, wt.name, dirty));
+      return;
+    }
+    const main = worktrees.find((w) => w.isMain);
+    if (!main) return;
+    try {
+      await useRepo.getState().open(main.path);
+    } catch (error) {
+      toast.error(`Could not switch to ${main.name}: ${(error as { message?: string }).message ?? error}`);
+      return;
+    }
+    useUi.getState().closeRepoTab(wt.path);
+    killTerminalSession(wt.path);
+    try {
+      await ipc.worktreeRemove(main.path, wt.name, dirty);
+      toast.success(`Removed worktree ${wt.name}`);
+      await useRepo.getState().refresh();
+      await graphReload(main.path);
+    } catch (error) {
+      toast.error(`Remove worktree failed: ${(error as { message?: string }).message ?? error}`);
     }
   };
 
@@ -308,6 +376,13 @@ export function Sidebar() {
     [branches, q],
   );
   const filteredTags = useMemo(() => tags.filter((t) => !q || t.name.toLowerCase().includes(q)), [tags, q]);
+  const filteredWorktrees = useMemo(
+    () =>
+      worktrees.filter(
+        (w) => !q || w.name.toLowerCase().includes(q) || (w.branch ?? '').toLowerCase().includes(q),
+      ),
+    [worktrees, q],
+  );
   const filteredPrs = useMemo(
     () =>
       forgePrs.filter(
@@ -360,6 +435,76 @@ export function Sidebar() {
     });
 
   if (!repo) return null;
+
+  const branchMenuLocalName = branchMenu
+    ? branchMenu.branch.isRemote
+      ? branchMenu.branch.name.split('/').slice(1).join('/')
+      : branchMenu.branch.name
+    : '';
+  const branchMenuHeld = branchMenu ? heldBy.get(branchMenuLocalName) : undefined;
+
+  const renderWorktree = (wt: WorktreeInfo) => {
+    const dirty = worktreeDirty(wt);
+    const subtitle = wt.isMissing
+      ? 'folder missing'
+      : wt.isDetached
+        ? `detached @ ${wt.headOid?.slice(0, 8) ?? '?'}`
+        : wt.branch ?? 'no branch';
+    return (
+      <div
+        key={wt.path}
+        role="button"
+        tabIndex={0}
+        onClick={() => openWorktree(wt)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') openWorktree(wt);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setWorktreeMenu({ x: e.clientX, y: e.clientY, worktree: wt });
+        }}
+        className={cn(
+          'group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised',
+          wt.isCurrent ? 'cursor-default text-primary' : wt.isMissing ? 'cursor-default text-muted' : 'cursor-pointer',
+        )}
+        title={
+          wt.isMissing
+            ? `${wt.path} — this folder no longer exists`
+            : wt.isCurrent
+              ? `${wt.path} — open in this tab`
+              : `${wt.path} — click to switch to this worktree`
+        }
+      >
+        <HeadMark active={wt.isCurrent} />
+        <span className="flex min-w-0 flex-1 flex-col leading-tight">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 truncate">{wt.name}</span>
+            {wt.isMain && <Home className="size-3 shrink-0 text-faint" aria-label="Main worktree" />}
+            {wt.isLocked && <Lock className="size-3 shrink-0 text-faint" aria-label="Locked" />}
+            {wt.isMissing ? (
+              <AlertTriangle className="size-3 shrink-0 text-danger" aria-label="Folder missing" />
+            ) : dirty ? (
+              <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-label="Uncommitted changes" />
+            ) : null}
+          </span>
+          <span className="truncate font-mono text-[10px] text-faint">{subtitle}</span>
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+          aria-label={`${wt.name} actions`}
+          onClick={(e) => {
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            setWorktreeMenu({ x: rect.left, y: rect.bottom + 4, worktree: wt });
+          }}
+        >
+          <MoreHorizontal className="size-3.5" />
+        </Button>
+      </div>
+    );
+  };
 
   const renderLocalBranch = (branch: BranchInfo, label: string, depth: number) => (
     <div
@@ -417,12 +562,26 @@ export function Sidebar() {
     >
       <button
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
-        onDoubleClick={() => void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' })}
+        onDoubleClick={() => {
+          const held = heldBy.get(branch.name);
+          if (held) openWorktree(held);
+          else void act(`Checkout ${branch.name}`, () => ipc.checkout(path, branch.name), { kind: 'checkout' });
+        }}
         onClick={() => setFilters(path, { branch: filters.branch === branch.name ? '' : branch.name })}
-        title={`${branch.name} — click to filter graph, double-click to checkout`}
+        title={
+          heldBy.has(branch.name)
+            ? `${branch.name} — checked out in worktree ${heldBy.get(branch.name)?.name}; double-click to switch there`
+            : `${branch.name} — click to filter graph, double-click to checkout`
+        }
       >
         <HeadMark active={branch.isHead} />
         <span className="min-w-0 truncate">{label}</span>
+        {heldBy.has(branch.name) && (
+          <FolderTree
+            className="size-3 shrink-0 text-faint"
+            aria-label={`Checked out in worktree ${heldBy.get(branch.name)?.name}`}
+          />
+        )}
         {branch.ahead > 0 && <Badge tone="primary">↑{capCount(branch.ahead)}</Badge>}
         {branch.behind > 0 && <Badge tone="info">↓{capCount(branch.behind)}</Badge>}
       </button>
@@ -563,6 +722,68 @@ export function Sidebar() {
             <div className="px-2 py-1 pl-7 text-xs text-faint">+{locals.length - FLAT_FILTER_CAP} more…</div>
           )}
           {noFilterMatches && <div className="px-2 py-1 pl-7 text-xs text-faint">No refs match the filter.</div>}
+        </Section>
+
+        <Section
+          icon={<FolderTree className="size-3.5" />}
+          title="Worktrees"
+          count={worktrees.length}
+          action={
+            <span className="flex items-center">
+              {worktrees.some((w) => w.isMissing) && (
+                <Hint label="Forget worktrees whose folder is gone">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Prune missing worktrees"
+                    onClick={() => void act('Prune worktrees', () => ipc.worktreePrune(path))}
+                  >
+                    <Eraser className="size-3.5" />
+                  </Button>
+                </Hint>
+              )}
+              <Hint label="New worktree">
+                <Button variant="ghost" size="icon-sm" aria-label="New worktree" onClick={() => openDialog('createWorktree')}>
+                  <Plus className="size-3.5" />
+                </Button>
+              </Hint>
+            </span>
+          }
+        >
+          {repoRefreshing && worktrees.length === 0 && (
+            <div className="flex flex-col gap-1.5 py-1 pl-7 pr-3">
+              {[0, 1].map((i) => (
+                <div key={i} className="h-4 animate-pulse rounded bg-surface-raised" />
+              ))}
+            </div>
+          )}
+          {!repoRefreshing && worktrees.length <= 1 && (
+            <div className="mx-1 mb-1 mt-0.5 flex flex-col gap-2 rounded-lg border border-dashed border-border-subtle bg-surface-raised/40 p-3">
+              <div className="flex items-start gap-2.5">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+                  <FolderTree className="size-3.5" />
+                </span>
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-xs font-medium text-foreground">Two branches, two folders</span>
+                  <span className="text-[11px] leading-relaxed text-muted">
+                    Fix a bug or run an agent beside your work. No stashing.
+                  </span>
+                </span>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full justify-center"
+                onClick={() => openDialog('createWorktree')}
+              >
+                <Plus className="size-3.5" /> New worktree
+              </Button>
+            </div>
+          )}
+          {worktrees.length > 1 && filteredWorktrees.map(renderWorktree)}
+          {worktrees.length > 1 && q && filteredWorktrees.length === 0 && (
+            <div className="px-2 py-1 pl-7 text-xs text-faint">No worktrees match the filter.</div>
+          )}
         </Section>
 
         {forgeRemote && showPullRequests && forgeRepoPath === repo.path && (
@@ -874,6 +1095,53 @@ export function Sidebar() {
         </DropdownMenu>
       )}
 
+      {worktreeMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setWorktreeMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: worktreeMenu.x, top: worktreeMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            <DropdownMenuLabel className="max-w-72 truncate font-mono">{worktreeMenu.worktree.path}</DropdownMenuLabel>
+            <DropdownMenuItem
+              disabled={worktreeMenu.worktree.isCurrent || worktreeMenu.worktree.isMissing}
+              onClick={() => openWorktree(worktreeMenu.worktree)}
+            >
+              <FolderTree /> {worktreeMenu.worktree.isCurrent ? 'Open in this tab' : 'Switch to this worktree'}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={worktreeMenu.worktree.isMissing}
+              onClick={() => void ipc.revealPath(worktreeMenu.worktree.path)}
+            >
+              <FolderOpen /> {isMac ? 'Reveal in Finder' : 'Show in file manager'}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                void navigator.clipboard.writeText(worktreeMenu.worktree.path);
+                toast.success('Path copied');
+              }}
+            >
+              <Copy /> Copy path
+            </DropdownMenuItem>
+            {!worktreeMenu.worktree.isMain && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem destructive onClick={() => void removeWorktree(worktreeMenu.worktree)}>
+                  {worktreeMenu.worktree.isMissing ? (
+                    <>
+                      <Eraser /> Forget missing worktree
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 /> Remove worktree…
+                    </>
+                  )}
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
       {remoteMenu && (
         <DropdownMenu open onOpenChange={(o) => !o && setRemoteMenu(null)}>
           <DropdownMenuTrigger asChild>
@@ -972,16 +1240,27 @@ export function Sidebar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="bottom">
             <DropdownMenuLabel className="max-w-64 truncate font-mono">{branchMenu.branch.name}</DropdownMenuLabel>
-            <DropdownMenuItem
-              disabled={branchMenu.branch.isHead}
-              onClick={() =>
-                void act(`Checkout ${branchMenu.branch.name}`, () => ipc.checkout(path, branchMenu.branch.name), {
-                  kind: 'checkout',
-                })
-              }
-            >
-              <Check /> Checkout
-            </DropdownMenuItem>
+            {branchMenuHeld ? (
+              <DropdownMenuItem onClick={() => openWorktree(branchMenuHeld)}>
+                <FolderTree /> Switch to worktree {branchMenuHeld.name}
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                disabled={branchMenu.branch.isHead}
+                onClick={() =>
+                  void act(`Checkout ${branchMenu.branch.name}`, () => ipc.checkout(path, branchMenu.branch.name), {
+                    kind: 'checkout',
+                  })
+                }
+              >
+                <Check /> Checkout
+              </DropdownMenuItem>
+            )}
+            {!branchMenu.branch.isHead && !branchMenuHeld && (
+              <DropdownMenuItem onClick={() => openDialog('createWorktree', { branch: branchMenu.branch.name })}>
+                <FolderTree /> Open in new worktree…
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               disabled={branchMenu.branch.isHead}
               onClick={() =>

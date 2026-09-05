@@ -62,6 +62,7 @@ pub fn info(path: &str) -> AppResult<RepositoryInfo> {
         }
         Err(_) => (None, None, false), // unborn HEAD (fresh repo)
     };
+    let is_worktree = repo.is_worktree();
     Ok(RepositoryInfo {
         path: path.to_string(),
         name: repo_name(path),
@@ -70,6 +71,12 @@ pub fn info(path: &str) -> AppResult<RepositoryInfo> {
         is_detached,
         is_bare: repo.is_bare(),
         state: state_name(repo.state()).to_string(),
+        is_worktree,
+        main_path: if is_worktree {
+            super::worktree::main_workdir(&repo)
+        } else {
+            None
+        },
     })
 }
 
@@ -193,6 +200,7 @@ pub fn ref_fingerprint(path: &str) -> AppResult<String> {
             .unwrap_or_default();
         parts.push(format!("{name}:{target}"));
     }
+    parts.extend(super::worktree::fingerprint_parts(&repo));
     parts.sort();
     Ok(parts.join("\n"))
 }

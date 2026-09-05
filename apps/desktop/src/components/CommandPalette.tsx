@@ -12,6 +12,7 @@ import {
   FileClock,
   FolderGit2,
   FolderOpen,
+  FolderTree,
   GitBranchPlus,
   GitPullRequest,
   History,
@@ -45,6 +46,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
   const branches = useRepo((s) => s.branches);
   const remotes = useRepo((s) => s.remotes);
   const recents = useRepo((s) => s.recents);
+  const worktrees = useRepo((s) => s.worktrees);
   const open = useRepo((s) => s.open);
   const paletteOpen = useUi((s) => s.paletteOpen);
   const setPaletteOpen = useUi((s) => s.setPaletteOpen);
@@ -300,6 +302,14 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             }}
           />
           <PaletteItem
+            icon={<FolderTree />}
+            label="New worktree…"
+            onSelect={() => {
+              close();
+              openDialog('createWorktree');
+            }}
+          />
+          <PaletteItem
             icon={<TagIcon />}
             label="Create tag…"
             onSelect={() => {
@@ -365,6 +375,26 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             }}
           />
         </Command.Group>
+
+        {worktrees.some((w) => !w.isCurrent && !w.isMissing) && (
+          <Command.Group heading="Switch worktree">
+            {worktrees
+              .filter((w) => !w.isCurrent && !w.isMissing)
+              .map((w) => (
+                <PaletteItem
+                  key={w.path}
+                  icon={<FolderTree />}
+                  label={`${w.name}${w.branch ? ` · ${w.branch}` : ''}`}
+                  onSelect={() => {
+                    close();
+                    void open(w.path).catch((error) =>
+                      toast.error(`Could not open worktree: ${(error as { message?: string }).message ?? error}`),
+                    );
+                  }}
+                />
+              ))}
+          </Command.Group>
+        )}
 
         {otherRepos.length > 0 && (
           <Command.Group heading="Switch repository">

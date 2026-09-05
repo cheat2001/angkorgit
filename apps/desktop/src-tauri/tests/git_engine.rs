@@ -1536,3 +1536,249 @@ fn commit_file_diff_scopes_hunks_to_one_file() {
     let untouched = core::commit_file_diff(repo.path(), &oid, "z.txt", None, 3).unwrap();
     assert!(untouched.hunks.is_empty());
 }
+
+struct CleanupDir(PathBuf);
+
+impl Drop for CleanupDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn worktree_target(repo: &TempRepo, suffix: &str) -> (PathBuf, CleanupDir) {
+    let name = repo.dir.file_name().unwrap().to_string_lossy().to_string();
+    let dir = std::env::temp_dir().join(format!("{name}-{suffix}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    (dir.clone(), CleanupDir(dir))
+}
+
+fn canonical(path: &str) -> PathBuf {
+    std::fs::canonicalize(path).unwrap()
+}
+
+fn add_worktree(repo: &TempRepo, dir: &std::path::Path, branch: &str, create: bool) -> String {
+    core::worktree_add(
+        repo.path(),
+        &core::WorktreeAddRequest {
+            directory: dir.to_string_lossy().to_string(),
+            branch: branch.to_string(),
+            create_branch: create,
+            base: None,
+        },
+    )
+    .unwrap()
+}
+
+#[test]
+fn worktree_add_lists_and_checks_out_the_branch() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, false).unwrap();
+    let (dir, _cleanup) = worktree_target(&repo, "feature");
+
+    let created = add_worktree(&repo, &dir, "feature", false);
+    assert_eq!(canonical(&created), canonical(dir.to_str().unwrap()));
+    assert!(dir.join("a.txt").exists());
+
+    let list = core::worktree_list(repo.path()).unwrap();
+    assert_eq!(list.len(), 2);
+    assert!(list[0].is_main);
+    assert!(list[0].is_current);
+    assert_eq!(list[0].branch.as_deref(), Some("master"));
+    let linked = &list[1];
+    assert!(!linked.is_main);
+    assert!(!linked.is_current);
+    assert_eq!(linked.branch.as_deref(), Some("feature"));
+    assert_eq!(linked.is_dirty, Some(false));
+    assert!(!linked.is_missing);
+
+    let info = core::repo_info(&created).unwrap();
+    assert!(info.is_worktree);
+    assert_eq!(info.head_branch.as_deref(), Some("feature"));
+    assert_eq!(
+        canonical(info.main_path.as_deref().unwrap()),
+        canonical(repo.path())
+    );
+
+    let from_linked = core::worktree_list(&created).unwrap();
+    assert_eq!(from_linked.len(), 2);
+    assert!(from_linked[0].is_main && !from_linked[0].is_current);
+    assert!(from_linked[1].is_current);
+}
+
+#[test]
+fn worktree_add_can_create_a_branch_from_a_base_commit() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let first = commit_all(&repo, "first");
+    repo.write("a.txt", "two\n");
+    commit_all(&repo, "second");
+    let (dir, _cleanup) = worktree_target(&repo, "hotfix");
+
+    let created = core::worktree_add(
+        repo.path(),
+        &core::WorktreeAddRequest {
+            directory: dir.to_string_lossy().to_string(),
+            branch: "hotfix/one".to_string(),
+            create_branch: true,
+            base: Some(first.clone()),
+        },
+    )
+    .unwrap();
+    let info = core::repo_info(&created).unwrap();
+    assert_eq!(info.head_branch.as_deref(), Some("hotfix/one"));
+    assert_eq!(info.head_oid.as_deref(), Some(first.as_str()));
+    assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\n");
+
+    let duplicate = core::worktree_add(
+        repo.path(),
+        &core::WorktreeAddRequest {
+            directory: dir.to_string_lossy().to_string(),
+            branch: "hotfix/one".to_string(),
+            create_branch: true,
+            base: None,
+        },
+    );
+    assert!(duplicate.is_err());
+}
+
+#[test]
+fn worktree_add_refuses_a_branch_checked_out_elsewhere() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    let (dir, _cleanup) = worktree_target(&repo, "dup");
+
+    let err = core::worktree_add(
+        repo.path(),
+        &core::WorktreeAddRequest {
+            directory: dir.to_string_lossy().to_string(),
+            branch: "master".to_string(),
+            create_branch: false,
+            base: None,
+        },
+    )
+    .expect_err("adding a worktree for the checked-out branch must fail");
+    assert!(err.to_string().contains("already checked out"), "{err}");
+    assert!(!dir.exists());
+}
+
+#[test]
+fn checkout_refuses_a_branch_held_by_another_worktree() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, false).unwrap();
+    let (dir, _cleanup) = worktree_target(&repo, "held");
+    add_worktree(&repo, &dir, "feature", false);
+
+    let err = core::checkout_branch(repo.path(), "feature")
+        .expect_err("checkout must refuse a branch checked out in a worktree");
+    assert!(err.to_string().contains("worktree"), "{err}");
+    assert_eq!(
+        core::repo_info(repo.path()).unwrap().head_branch.as_deref(),
+        Some("master")
+    );
+
+    core::branch_create(repo.path(), "free", None, false).unwrap();
+    core::checkout_branch(repo.path(), "free").unwrap();
+}
+
+#[test]
+fn worktree_remove_refuses_dirty_trees_unless_forced() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, false).unwrap();
+    let (dir, _cleanup) = worktree_target(&repo, "dirty");
+    add_worktree(&repo, &dir, "feature", false);
+    let name = core::worktree_list(repo.path()).unwrap()[1].name.clone();
+
+    std::fs::write(dir.join("wip.txt"), "unsaved\n").unwrap();
+    assert_eq!(
+        core::worktree_list(repo.path()).unwrap()[1].is_dirty,
+        Some(true)
+    );
+    let err = core::worktree_remove(repo.path(), &name, false)
+        .expect_err("dirty worktree must not be removed");
+    assert!(err.to_string().contains("uncommitted"), "{err}");
+    assert!(dir.exists());
+
+    core::worktree_remove(repo.path(), &name, true).unwrap();
+    assert!(!dir.exists());
+    assert_eq!(core::worktree_list(repo.path()).unwrap().len(), 1);
+    assert!(
+        core::repo_info(repo.path()).unwrap().head_branch.is_some(),
+        "main repo stays intact"
+    );
+}
+
+#[test]
+fn worktree_prune_drops_folders_deleted_outside_the_app() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, false).unwrap();
+    let (dir, _cleanup) = worktree_target(&repo, "gone");
+    add_worktree(&repo, &dir, "feature", false);
+
+    std::fs::remove_dir_all(&dir).unwrap();
+    let list = core::worktree_list(repo.path()).unwrap();
+    assert_eq!(list.len(), 2);
+    assert!(list[1].is_missing);
+    assert_eq!(list[1].branch.as_deref(), Some("feature"));
+
+    let pruned = core::worktree_prune(repo.path()).unwrap();
+    assert_eq!(pruned, vec![list[1].name.clone()]);
+    assert_eq!(core::worktree_list(repo.path()).unwrap().len(), 1);
+    assert!(core::worktree_prune(repo.path()).unwrap().is_empty());
+}
+
+#[test]
+fn ref_fingerprint_changes_when_a_worktree_is_added() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, false).unwrap();
+    let before = core::ref_fingerprint(repo.path()).unwrap();
+    let (dir, _cleanup) = worktree_target(&repo, "fp");
+    add_worktree(&repo, &dir, "feature", false);
+    let after = core::ref_fingerprint(repo.path()).unwrap();
+    assert_ne!(before, after);
+}
+
+#[test]
+fn git_cli_recognizes_worktrees_created_by_the_engine() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, false).unwrap();
+    let (dir, _cleanup) = worktree_target(&repo, "cli");
+    let created = add_worktree(&repo, &dir, "feature", false);
+
+    let output = Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+    let listing = String::from_utf8_lossy(&output.stdout);
+    let canonical_created = canonical(&created);
+    let listed = listing
+        .lines()
+        .filter_map(|line| line.strip_prefix("worktree "))
+        .any(|p| std::fs::canonicalize(p).ok().as_deref() == Some(canonical_created.as_path()));
+    assert!(
+        listed,
+        "git worktree list did not report the new worktree:\n{listing}"
+    );
+    assert!(listing.contains("branch refs/heads/feature"), "{listing}");
+
+    let status = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&created)
+        .output()
+        .unwrap();
+    assert!(status.status.success());
+    assert!(String::from_utf8_lossy(&status.stdout).trim().is_empty());
+}

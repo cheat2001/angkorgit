@@ -112,6 +112,7 @@ function RepoSwitcher() {
             </span>
             <span className="block font-mono text-[10px] text-faint">
               {repo.isDetached ? 'detached HEAD' : repo.headBranch ?? 'no branch'}
+              {repo.isWorktree ? ' · worktree' : ''}
               {assignedProfile ? ` · ${assignedProfile.label}` : ''}
             </span>
           </span>

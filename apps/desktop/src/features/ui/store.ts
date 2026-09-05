@@ -13,6 +13,7 @@ export type DialogKind =
   | 'interactiveRebase'
   | 'createPullRequest'
   | 'cherryPick'
+  | 'createWorktree'
   | null;
 
 export interface CenterDiffTarget {
@@ -32,7 +33,17 @@ export interface CherryPickPreset {
   oids: string[];
 }
 
-export type DialogContext = string | InteractiveRebasePreset | CherryPickPreset | null;
+export interface CreateWorktreePreset {
+  branch?: string;
+  oid?: string;
+}
+
+export type DialogContext =
+  | string
+  | InteractiveRebasePreset
+  | CherryPickPreset
+  | CreateWorktreePreset
+  | null;
 
 interface UiState {
   sidebarOpen: boolean;
@@ -51,6 +62,7 @@ interface UiState {
   centerFileHistory: string | null;
   conflictFile: string | null;
   repoTabs: string[];
+  worktreeTabs: string[];
   fileTree: boolean;
 
   toggleSidebar: () => void;
@@ -73,6 +85,7 @@ interface UiState {
   addRepoTab: (path: string) => void;
   closeRepoTab: (path: string) => void;
   moveRepoTab: (from: string, to: string) => void;
+  markWorktreeTab: (path: string, isWorktree: boolean) => void;
   setFileTree: (on: boolean) => void;
 }
 
@@ -112,6 +125,7 @@ export const useUi = create<UiState>()(
   centerFileHistory: null,
   conflictFile: null,
   repoTabs: [],
+  worktreeTabs: [],
   fileTree: false,
 
   toggleSidebar: () =>
@@ -145,7 +159,11 @@ export const useUi = create<UiState>()(
   openConflict: (conflictFile) => set({ conflictFile }),
   addRepoTab: (path) =>
     set((s) => (s.repoTabs.includes(path) ? s : { repoTabs: [...s.repoTabs, path] })),
-  closeRepoTab: (path) => set((s) => ({ repoTabs: s.repoTabs.filter((t) => t !== path) })),
+  closeRepoTab: (path) =>
+    set((s) => ({
+      repoTabs: s.repoTabs.filter((t) => t !== path),
+      worktreeTabs: s.worktreeTabs.filter((t) => t !== path),
+    })),
   moveRepoTab: (from, to) =>
     set((s) => {
       const fromIdx = s.repoTabs.indexOf(from);
@@ -155,6 +173,14 @@ export const useUi = create<UiState>()(
       repoTabs.splice(fromIdx, 1);
       repoTabs.splice(toIdx, 0, from);
       return { repoTabs };
+    }),
+  markWorktreeTab: (path, isWorktree) =>
+    set((s) => {
+      const has = s.worktreeTabs.includes(path);
+      if (has === isWorktree) return s;
+      return {
+        worktreeTabs: isWorktree ? [...s.worktreeTabs, path] : s.worktreeTabs.filter((t) => t !== path),
+      };
     }),
   setFileTree: (fileTree) => set({ fileTree }),
     }),
@@ -167,6 +193,7 @@ export const useUi = create<UiState>()(
         fullFileDiff: state.fullFileDiff,
         wrapLines: state.wrapLines,
         repoTabs: state.repoTabs,
+        worktreeTabs: state.worktreeTabs,
         fileTree: state.fileTree,
       }),
     },

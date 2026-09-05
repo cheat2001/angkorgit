@@ -1,4 +1,5 @@
 export * from './git/types';
+export * from './git/worktree';
 export * from './graph/layout';
 export * from './diff/wordDiff';
 export * from './conflicts/parse';
