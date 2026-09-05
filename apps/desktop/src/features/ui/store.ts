@@ -64,6 +64,8 @@ interface UiState {
   repoTabs: string[];
   worktreeTabs: string[];
   fileTree: boolean;
+  sidebarSections: Record<string, boolean>;
+  sidebarCollapseEpoch: number;
 
   toggleSidebar: () => void;
   toggleTerminal: () => void;
@@ -86,6 +88,8 @@ interface UiState {
   closeRepoTab: (path: string) => void;
   moveRepoTab: (from: string, to: string) => void;
   markWorktreeTab: (path: string, isWorktree: boolean) => void;
+  setSidebarSection: (id: string, open: boolean) => void;
+  collapseSidebarSections: (ids: readonly string[]) => void;
   setFileTree: (on: boolean) => void;
 }
 
@@ -127,6 +131,8 @@ export const useUi = create<UiState>()(
   repoTabs: [],
   worktreeTabs: [],
   fileTree: false,
+  sidebarSections: {},
+  sidebarCollapseEpoch: 0,
 
   toggleSidebar: () =>
     set((s) =>
@@ -182,6 +188,13 @@ export const useUi = create<UiState>()(
         worktreeTabs: isWorktree ? [...s.worktreeTabs, path] : s.worktreeTabs.filter((t) => t !== path),
       };
     }),
+  setSidebarSection: (id, open) =>
+    set((s) => (s.sidebarSections[id] === open ? s : { sidebarSections: { ...s.sidebarSections, [id]: open } })),
+  collapseSidebarSections: (ids) =>
+    set((s) => ({
+      sidebarSections: { ...s.sidebarSections, ...Object.fromEntries(ids.map((id) => [id, false])) },
+      sidebarCollapseEpoch: s.sidebarCollapseEpoch + 1,
+    })),
   setFileTree: (fileTree) => set({ fileTree }),
     }),
     {
@@ -195,6 +208,7 @@ export const useUi = create<UiState>()(
         repoTabs: state.repoTabs,
         worktreeTabs: state.worktreeTabs,
         fileTree: state.fileTree,
+        sidebarSections: state.sidebarSections,
       }),
     },
   ),

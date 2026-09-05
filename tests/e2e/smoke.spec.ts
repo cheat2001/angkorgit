@@ -507,3 +507,21 @@ test('multi-line comments in a diff stay highlighted as comments', async ({ page
   expect(html).not.toContain('hljs-keyword');
   expect(html).not.toContain('hljs-title');
 });
+
+test('collapse all folds every sidebar section and branch folder', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: /^feature 1$/ }).click();
+  await expect(page.getByText('diff-viewer', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /^Remotes/ }).click();
+  await expect(page.getByRole('button', { name: /^Remotes/ })).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('button', { name: 'Collapse all sections' }).click();
+  for (const name of [/^Branches/, /^Worktrees/, /^Remotes/, /^Tags/, /^Stashes/]) {
+    await expect(page.getByRole('button', { name })).toHaveAttribute('aria-expanded', 'false');
+  }
+  await expect(page.getByText('develop', { exact: true })).toBeHidden();
+  await page.getByRole('button', { name: /^Branches/ }).click();
+  await expect(page.getByText('develop', { exact: true })).toBeVisible();
+  await expect(page.getByText('diff-viewer', { exact: true })).toBeHidden();
+});

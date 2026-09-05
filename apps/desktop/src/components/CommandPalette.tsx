@@ -8,6 +8,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Check,
+  ChevronsDownUp,
   Download,
   FileClock,
   FolderGit2,
@@ -35,6 +36,7 @@ import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
 import { abortMergeFlow } from '@/features/repository/merge';
 import { sidebarVisible, useUi } from '@/features/ui/store';
+import { SIDEBAR_SECTIONS } from '@/features/sidebar/Sidebar';
 import { themeBase, useSettings } from '@/features/settings/store';
 import { useUndo } from '@/features/history/undoStore';
 import { useForge } from '@/features/forge/store';
@@ -451,6 +453,14 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             onSelect={() => {
               close();
               toggleSidebar();
+            }}
+          />
+          <PaletteItem
+            icon={<ChevronsDownUp />}
+            label="Collapse sidebar sections"
+            onSelect={() => {
+              close();
+              useUi.getState().collapseSidebarSections(SIDEBAR_SECTIONS);
             }}
           />
           <PaletteItem

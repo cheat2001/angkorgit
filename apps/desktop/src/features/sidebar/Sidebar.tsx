@@ -9,6 +9,7 @@ import {
   Boxes,
   Check,
   ChevronRight,
+  ChevronsDownUp,
   Cloud,
   Copy,
   Eraser,
@@ -136,29 +137,40 @@ const outcomeOk = (result: unknown) => {
 
 const FLAT_FILTER_CAP = 300;
 
+export const SIDEBAR_SECTIONS = [
+  'branches',
+  'worktrees',
+  'pullRequests',
+  'remotes',
+  'tags',
+  'stashes',
+  'submodules',
+] as const;
+
 function Section({
   icon,
   title,
   count,
   children,
-  defaultOpen = true,
+  open,
+  onToggle,
   action,
 }: {
   icon: React.ReactNode;
   title: string;
   count: number;
   children: React.ReactNode;
-  defaultOpen?: boolean;
+  open: boolean;
+  onToggle: () => void;
   action?: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="mb-1">
       <div className="group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted hover:bg-surface-raised">
         <button
           className="flex min-w-0 flex-1 items-center gap-1.5"
           aria-expanded={open}
-          onClick={() => setOpen(!open)}
+          onClick={onToggle}
         >
           <ChevronRight className={cn('size-3.5 shrink-0 transition-transform duration-150', open && 'rotate-90')} />
           {icon}
@@ -187,6 +199,23 @@ export function Sidebar() {
   const setFilters = useGraph((s) => s.setFilters);
   const filters = useGraph((s) => s.filters);
   const openDialog = useUi((s) => s.openDialog);
+  const sidebarSections = useUi((s) => s.sidebarSections);
+  const setSidebarSection = useUi((s) => s.setSidebarSection);
+  const collapseEpoch = useUi((s) => s.sidebarCollapseEpoch);
+  const sectionDefaults: Record<(typeof SIDEBAR_SECTIONS)[number], boolean> = {
+    branches: true,
+    worktrees: true,
+    pullRequests: true,
+    remotes: false,
+    tags: false,
+    stashes: stashes.length > 0,
+    submodules: false,
+  };
+  const sectionOpen = (id: (typeof SIDEBAR_SECTIONS)[number]) => sidebarSections[id] ?? sectionDefaults[id];
+  const section = (id: (typeof SIDEBAR_SECTIONS)[number]) => ({
+    open: sectionOpen(id),
+    onToggle: () => setSidebarSection(id, !sectionOpen(id)),
+  });
   const [query, setQuery] = useState('');
   const [filterQuery, setFilterQuery] = useState('');
   useEffect(() => {
@@ -429,6 +458,14 @@ export function Sidebar() {
       );
     }
   }, [branches]);
+  useEffect(() => {
+    if (collapseEpoch > 0) setExpandedFolders(new Set());
+  }, [collapseEpoch]);
+  const anySectionOpen = SIDEBAR_SECTIONS.some(sectionOpen);
+  const collapseAll = () => {
+    useUi.getState().collapseSidebarSections(SIDEBAR_SECTIONS);
+    setExpandedFolders(new Set());
+  };
   const toggleFolder = (folderPath: string) =>
     setExpandedFolders((prev) => {
       const next = new Set(prev);
@@ -751,8 +788,8 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full flex-col bg-surface" aria-label="Branches and refs">
-      <div className="p-2">
-        <div className="relative">
+      <div className="flex items-center gap-1 p-2">
+        <div className="relative min-w-0 flex-1">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
           <Input
             value={query}
@@ -761,10 +798,23 @@ export function Sidebar() {
             className="h-7 border-transparent bg-surface-raised pl-8 text-xs"
           />
         </div>
+        <Hint label="Collapse all sections">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 text-faint hover:text-foreground"
+            aria-label="Collapse all sections"
+            disabled={!anySectionOpen && expandedFolders.size === 0}
+            onClick={collapseAll}
+          >
+            <ChevronsDownUp className="size-3.5" />
+          </Button>
+        </Hint>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         <Section
+          {...section('branches')}
           icon={<GitBranch className="size-3.5" />}
           title="Branches"
           count={locals.length}
@@ -793,6 +843,7 @@ export function Sidebar() {
         </Section>
 
         <Section
+          {...section('worktrees')}
           icon={<FolderTree className="size-3.5" />}
           title="Worktrees"
           count={worktrees.length}
@@ -856,6 +907,7 @@ export function Sidebar() {
 
         {forgeRemote && showPullRequests && forgeRepoPath === repo.path && (
           <Section
+            {...section('pullRequests')}
             icon={<GitPullRequest className="size-3.5" />}
             title={forgeNoun(forgeRemote.kind, { plural: true, capitalize: true })}
             count={filteredPrs.length}
@@ -947,7 +999,7 @@ export function Sidebar() {
           </Section>
         )}
 
-        <Section icon={<Cloud className="size-3.5" />} title="Remotes" count={remoteBranches.length} defaultOpen={false}>
+        <Section {...section('remotes')} icon={<Cloud className="size-3.5" />} title="Remotes" count={remoteBranches.length}>
           {remotes.length === 0 && !hasRemoteBranches && !repoRefreshing && (
             <div className="px-2 py-1 pl-7 text-xs text-faint">No remotes yet.</div>
           )}
@@ -967,7 +1019,7 @@ export function Sidebar() {
           icon={<TagIcon className="size-3.5" />}
           title="Tags"
           count={filteredTags.length}
-          defaultOpen={false}
+          {...section('tags')}
           action={
             <Hint label="New tag">
               <Button variant="ghost" size="icon-sm" aria-label="New tag" onClick={() => openDialog('createTag')}>
@@ -1016,7 +1068,7 @@ export function Sidebar() {
           icon={<Archive className="size-3.5" />}
           title="Stashes"
           count={stashes.length}
-          defaultOpen={stashes.length > 0}
+          {...section('stashes')}
           action={
             <Hint label="New stash">
               <Button variant="ghost" size="icon-sm" aria-label="New stash" onClick={() => openDialog('createStash')}>
@@ -1059,7 +1111,7 @@ export function Sidebar() {
         </Section>
 
         {submodules.length > 0 && (
-          <Section icon={<Boxes className="size-3.5" />} title="Submodules" count={submodules.length} defaultOpen={false}>
+          <Section {...section('submodules')} icon={<Boxes className="size-3.5" />} title="Submodules" count={submodules.length}>
             {submodules.map((sub) => (
               <div
                 key={sub.name}

@@ -30,6 +30,12 @@ All notable changes to AngKorGit are documented here. The format follows
   text, cursor, selection and ANSI colors from the design tokens and updates
   live when the theme changes.
 
+### Added
+- **Collapse all** in the sidebar: a button beside the ref filter (and a
+  "Collapse sidebar sections" palette command) folds every section and every
+  branch folder in one click. Sections now also remember whether you left them
+  open or closed between launches.
+
 ### Changed
 - Every sidebar row answers both the hover menu button and right-click with the
   same actions: stashes (Apply, Pop, Delete), tags (Checkout, Push, Delete),
