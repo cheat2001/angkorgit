@@ -1479,7 +1479,9 @@ plugin can be added), and the Homebrew cask.
 2. Provider avatars via connected accounts (GitLab self-hosted `/api/v4/avatar`, GitHub API)
    layered over Gravatar.
 3. File-tree view for the working copy (deep C# paths); prev/next-file arrows in DiffPanel.
-4. Blame (file history shipped; annotate view remains). 5. Worktrees.
+4. Blame (file history shipped; annotate view remains). 5. Worktree follow-ups: start an
+   installed AI CLI inside a worktree, per-repo post-create setup command, merged badge with
+   one-step cleanup (worktrees themselves shipped in 0.10.0).
 7. Forge integrations, remaining scope (PR list/checkout/create + reviewer selection
    shipped in 0.7.0 in `packages/core/src/forge` — NOT a separate
    `packages/forge` package, it mirrors where the ai/ adapters live): possible later

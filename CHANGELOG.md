@@ -6,187 +6,110 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
-### Added
-- **Worktrees** — a Worktrees section in the sidebar lists every working tree of
-  the repository (main first, then linked ones) with its branch, an
-  uncommitted-changes dot, a lock mark and a warning when the folder is gone.
-  Click a row to open that worktree as its own tab with its own graph, working
-  copy and terminal. "New worktree…" (sidebar, command palette, a branch's menu
-  as "Open in new worktree…", or a commit's menu as "New worktree from here…")
-  creates a folder next to the repository, named `<repo>-<branch>`, on a new
-  branch or an existing one, and opens it. Removing a worktree confirms first,
-  refuses a dirty folder unless you opt into deleting the changes, and a prune
-  action forgets entries whose folder was deleted outside the app. Branches that
-  are checked out in another worktree show a marker in the Branches list;
-  double-clicking or choosing Checkout on them switches to that worktree
-  instead, because git allows one folder per branch.
+## [0.10.0] — 2026-09-05
 
-### Fixed
-- File rows in the working copy and commit details keep the file name whole
-  and truncate the folder path first when space is tight. Before, both shrank
-  together and the name lost characters even when there was room for it.
-- The commit box keeps its resized height when switching repository tabs. The
-  box is rebuilt while a repository loads, and the saved height was only
-  applied when the text or the height changed, so a fresh box came back at the
-  default size.
-- The inspector keeps one width. Opening a diff (which folds the sidebar away)
-  used to switch the layout to a second remembered set of panel sizes, so the
-  right column jumped to a different width and remembered it separately.
-- A `/*` glued to a word, such as the JSX text `feature/*`, no longer turns the
-  rest of a diff into a comment. Only openers that follow whitespace or
-  punctuation carry a block comment to the next line.
-- Multi-line comments in diffs are highlighted as comments all the way through.
-  The inner lines of a `/** … */` block (and `<!-- … -->` in HTML) used to render
-  as code because each line was highlighted on its own.
-- The terminal panel follows the app theme and accent. It used to be a fixed
-  navy background whatever theme was active; it now takes its background,
-  text, cursor, selection and ANSI colors from the design tokens and updates
-  live when the theme changes.
+The parallel-work release. Worktrees arrive as a first-class feature, so two
+branches can live in two folders with their own graph, working copy and
+terminal, and an AI agent can work in one while you keep going in the other.
+Around it, a long polish pass: a calmer conflict resolver with line numbers
+and in-place editing, an accordion sidebar with real empty states, graph
+display options, a redesigned Settings, a commit box with summary and
+description, and a welcome page that behaves like the rest of the app.
 
 ### Added
-- **One control per side in the resolver.** Each side of a conflict has a
-  single checkbox, centered on the block, that takes or releases all of its
-  lines. Individual lines show a small plus on hover; click it, or the line, to
-  take just that line, and a tick marks lines already taken. The "Take all A /
-  Take all B" row is gone; the block header is now just "Conflict n" and the AI
-  button.
-- **Editing the Result feels like an editor.** Clicking a block no longer swaps
-  in a boxed text field. The lines stay in place, the caret lands on the line
-  you clicked, line numbers keep counting while you type, and a slim gold bar
-  in the gutter is the only sign that the block is being edited. Blur keeps
-  the edit, Escape reverts, ⌘⏎ finishes, exactly as before.
-- **Conflict resolver, calmer.** Color is now an accent rather than a wash:
-  the A and B panes lose their full tint in favor of a thin colored edge, only
-  picked lines are lightly tinted, the take-all row is quiet text headed by
-  "Conflict n", the AI button is a normal small button at the end of that row,
-  and Result lines mark their source with a slim colored bar instead of bold
-  letters.
-- **Conflict resolver chrome.** The header shows the file name with its folder
-  dimmed, a progress bar for resolved conflicts, and a merge icon tile; the A and
-  B pane headers carry their colors as a top edge and say which is current and
-  which is incoming; each conflict block is numbered; block borders are softer
-  so the active one stands out; the bottom pane is labeled Result.
-- **Line numbers in the conflict resolver.** The A pane, the B pane and the
-  Result each carry a line-number gutter, with the pick checkbox first, then
-  the number, then the code, so text rows and conflict rows line up. The
-  "Conflict n of m" navigation moved from a floating pill into the Result
-  header, so it no longer covers the last visible line of the panes. A and B count through their own
-  version of the file, so a line in a conflict block shows where it sits in
-  that branch, and the Result counts the file you are about to write, updating
-  as you pick lines or edit a block.
-- **Conflicts in the working copy** are their own section above Changes, in
-  the same style as Changes and Staged: a red "Conflicts n" header with a
-  Resolve action, a one-line hint, and one row per file with the file name
-  first and its folder dimmed. Conflicted files no longer appear a second time
-  in the Changes list, and the resolver opens as a solid editor surface instead
-  of a translucent overlay.
-- **Welcome page.** Recent repositories are rows with an icon (a worktree gets
-  its own glyph), a home-relative path, the time, and a menu with Open, Reveal
-  in Finder, Copy path and Remove, also on right-click. A repository whose
-  folder was moved or deleted is dimmed and marked "folder missing" instead of
-  failing with an error when clicked. The search box has focus on arrival and
-  the arrow keys and Enter open a repository without the mouse. A fresh install
-  gets a proper empty state with Open and Clone, and the version with a "Check
-  for updates" link sits in the footer.
-- **Sidebar empty states.** Tags, Stashes and Remotes use the same small card
-  as Worktrees when they have nothing to show, with the relevant action.
+- **Worktrees.** A Worktrees section in the sidebar lists every working tree of
+  the repository, main first, with its branch, an uncommitted-changes dot, a
+  lock mark and a warning when the folder is gone. Click a row to open that
+  worktree as its own tab. "New worktree…" (sidebar, command palette, a branch's
+  "Open in new worktree…" or a commit's "New worktree from here…") creates a
+  sibling folder named `<repo>-<branch>` on a new or existing branch and opens
+  it. Removing confirms first, refuses a dirty folder unless you opt into
+  deleting the changes, and a prune action forgets entries whose folder was
+  deleted outside the app. Branches checked out in another worktree carry a
+  marker in the Branches list and in the graph; checking them out switches to
+  that worktree instead, because git allows one folder per branch.
 - **Accordion sidebar.** Open sections take the room and scroll inside
   themselves, collapsed sections stay visible as slim headers pinned above or
-  below, and short sections only take the rows they need. Expand Branches alone
-  and the other headers line up at the bottom; open two sections and they share
-  the height.
-- **Collapse all** in the sidebar: a button beside the ref filter (and a
-  "Collapse sidebar sections" palette command) folds every section and every
-  branch folder in one click. Sections now also remember whether you left them
-  open or closed between launches.
+  below, and short sections only take the rows they need. A collapse-all
+  button beside the ref filter (and a palette command) folds everything, and
+  sections remember whether you left them open.
+- **Sidebar empty states.** Worktrees, Tags, Stashes and Remotes show a small
+  card with one line and the relevant action instead of grey text.
+- **Graph display options.** A menu in the graph header toggles branches and
+  tags, commit message, an author name column, hash and date, remembered
+  across launches, and a slim header row names each column.
+- **Line numbers in the conflict resolver.** The A pane, the B pane and the
+  Result each carry a gutter. A and B count through their own version of the
+  file; the Result counts the file you are about to write and follows your
+  picks and edits.
+- **Commit box with summary and description.** Two fields in one group, styled
+  like the commit shown in the inspector: Enter moves from the summary to the
+  description, Backspace in an empty description goes back, ⌘⏎ commits from
+  either, and the 50/72 counter sits on the summary line. The box is
+  resizable from its top edge and remembers its height. Under the hood it is
+  still one message, so drafts and generated messages keep working.
+- **Welcome page.** Recent repositories are rows with an icon, a home-relative
+  path, the time, and a menu with Open, Reveal in Finder, Copy path and Remove.
+  Moved or deleted folders are marked "folder missing" instead of failing. The
+  search box has focus on arrival and the arrow keys and Enter open a
+  repository. A fresh install gets an empty state with Open and Clone, and the
+  version with a "Check for updates" link sits in the footer.
+- Click a hash in the graph to copy it; hover a relative time for the full
+  date. An empty filtered graph offers "Clear filters".
 
 ### Changed
-- **Settings, every tab.** Authentication: accounts are readable cards
-  ("username @ host", status, when last checked) with a menu for make default,
-  reconnect and a confirmed remove; connecting an account is a labeled form
-  behind an "Add account" button, with the token page linked right from the
-  Token field; the credential-helper switch moved out of the SSH card into its
-  own row, since it concerns HTTPS accounts. Appearance: the zoom stepper sits
-  on its title row. AI: the provider picker sits on its title row and the
-  optional fields say so in a hint instead of a long label; Test connection
-  reports Reachable or Not reachable inline instead of only in a toast, and
-  the status resets when you change the provider, key or URL; detected CLI
-  agents are cards with an "In use" badge, a skeleton while scanning and a
-  proper empty state; branch prefix rules are a small table with column
-  labels, an empty hint, and the live preview highlighted. The card, field,
-  row and empty-state primitives are shared by every tab.
-- **Settings, Git tab redesigned.** Toggles and pickers (auto fetch, pull
-  requests, reduce motion) sit on the same line as their title instead of
-  below a paragraph. The identity card says which scope it writes to and shows
-  which profile it matches. Profiles are cards with an avatar, an "In use"
-  badge, a clear Use button, and a menu for removal with a confirm; the
-  linked accounts are a tidy list inside each profile, one row per account with
-  a provider icon, "username @ host" and a link switch, headed by how many are
-  linked; adding a profile opens a labeled three-field form
-  instead of a row of bare placeholders; and an empty list explains what
-  profiles do.
-- Graph ref chips no longer get crushed to two letters. Inside the same fixed
-  column, the graph shows as many whole labels as fit and folds the rest behind
-  a "+n" badge with a tooltip, ordering the checked-out branch first. A separate
-  HEAD chip only appears when HEAD is detached, since the checked-out branch
-  already carries the tick.
-- **Graph display options**: a menu in the graph header toggles branches and
-  tags, commit message, an author name column, hash and date on or off,
-  remembered across launches. Avatars on the commit nodes always stay.
-- **Graph column headers**: a slim row above the graph names each column
-  (Branch / tag, Graph, Message, Hash, Date) and follows the display toggles.
-- Graph lanes are spaced wider (20px instead of 14px) so parallel branches and
-  merge curves stop crowding each other, and the graph keeps a clear gap before
-  the message column. On very busy histories the lanes compress evenly so the
-  graph column never grows past a fixed width and the message column stays
-  close to the graph.
-- Commit nodes got a double ring: a thin gap in the page color and then the
-  lane color around the avatar, so nodes read as distinct markers on top of the
-  lines even where several lanes cross. A soft band in the lane color now trails
-  from each node toward the message column, tying the commit to its text and
-  filling the space between them.
-- Merge commits read one shade quieter in the graph so the commits that changed
-  code stand out in merge-heavy histories.
-- Jumping to a commit from the search box now lands with a short settle
-  animation: the row glows in the accent color and eases into a soft tint with a
-  gold bar on its left edge, which stays until you select something else. The
-  old thin outline was easy to miss.
-- Click a hash in the graph to copy it; hover a relative time for the full date.
-  The counter reads "200+ commits", and an empty filtered graph offers "Clear
-  filters".
-- The commit box can be resized: drag its top edge to give the description more
-  or less room, double-click the edge to go back to automatic sizing. The height
-  is remembered.
-- Commit details in the inspector were redesigned for calm: the close button
-  moved up into the panel header next to the list and tree toggles, the title
-  stands alone, long bodies clamp at eight lines behind a "Show full message" toggle, and author, time, hash,
-  parents and refs live in one quiet card. Ref chips use the same icons and
-  colors as the graph, "Explain with AI" is a small action instead of a
-  full-width button, and the file list uses the same letter badges and plain
-  rows as the working copy instead of bordered cards.
-- The commit box has a summary line and a description area, styled like the
-  commit shown in the inspector: the summary is larger and bolder, the
-  description smaller. Enter in the summary moves to the description, Backspace
-  in an empty description goes back, ⌘⏎ commits from either, and the 50/72
-  counter sits on the summary line. Under the hood it is still one message, so
-  drafts, AI-generated messages and merge messages keep working.
-- Folder tree view gained a fold button in each list's own header row (Changes,
-  Staged, and a commit's Files) that collapses every folder in that list, or
-  expands them all when they are collapsed.
-- Every sidebar row answers both the hover menu button and right-click with the
-  same actions: stashes (Apply, Pop, Delete), tags (Checkout, Push, Delete),
-  pull requests (Checkout, Open in browser, Copy URL) and submodules (Open,
-  Update, Copy path). Clicking a tag shows its commit in the graph, like a
-  stash. Before, tags and pull requests had no right-click, stashes had no
-  right-click, and submodules showed two bare icons instead of a menu.
-- In the Remotes section each remote's folder row (origin, upstream…) now carries
-  the remote actions: hover for the menu button or right-click to fetch, edit or
-  remove it. The separate list of remotes under the branch tree is gone.
+- **Conflict resolver.** Color is an accent, not a wash: thin colored edges
+  instead of tinted panes, tint only on picked lines, a slim colored bar
+  instead of bold letters in the Result. Each side of a conflict has one
+  checkbox on its middle line that takes the whole side; other lines show a
+  plus on hover and a tick once taken. Editing the Result happens in place,
+  with the caret on the line you clicked and the line numbers following. The
+  header shows the file with a progress bar, the A and B headers say current
+  and incoming, blocks are numbered, the conflict navigation sits in the
+  Result header, and the resolver opens as a solid editor surface.
+- **Conflicts in the working copy** are their own section above Changes, in
+  the same style as Changes and Staged, and conflicted files no longer appear
+  a second time in the Changes list.
+- **Settings.** Single controls sit on their title row. Profiles are cards with
+  an avatar, an "In use" badge, a Use button, a confirmed remove, and a tidy
+  list of linked accounts with a switch per account; adding a profile is a
+  labeled form. Accounts are readable cards with a menu and a labeled connect
+  form behind an "Add account" button; the credential-helper switch has its own
+  row. The AI tab reports Reachable or Not reachable beside Test connection,
+  shows detected CLI agents as cards, and lays prefix rules out as a small
+  table. The card, field, row and empty-state primitives are shared by every
+  tab.
+- **Commit details** in the inspector: the close button moved into the panel
+  header, long bodies fold behind "Show full message", author, time, hash,
+  parents and refs share one card with the graph's ref icons, and the file list
+  uses the working copy's letter badges and plain rows. Tree view has a fold
+  button in each list's own header.
+- **Graph.** Ref chips show whole labels inside a fixed column and fold the
+  rest behind "+n"; a HEAD chip appears only when detached. Lanes are wider
+  and compress evenly on busy histories so the graph column never grows past a
+  fixed width. Commit nodes have a double ring and a soft lane-colored band
+  toward the message. Merge commits read one shade quieter. Jumping to a
+  commit lands with a short settle animation and a gold edge.
+- **Every sidebar row** answers both the hover menu button and right-click
+  with the same actions, including stashes, tags, pull requests and
+  submodules. Each remote's folder row carries the remote actions; the
+  separate list of remotes is gone.
+- File rows in the working copy and commit details keep the file name whole
+  and truncate the folder path first.
 - Checking out a branch that another worktree holds is refused with a message
-  naming that folder, matching the git CLI (libgit2 alone allowed it).
-- The file watcher follows a linked worktree's own HEAD and index and the shared
-  refs, so a worktree tab refreshes on commits made from a terminal or an AI
-  agent running in that folder.
+  naming that folder, matching the git CLI.
+
+### Fixed
+- Multi-line comments in diffs are highlighted as comments all the way
+  through, and a `/*` glued to a word, such as the JSX text `feature/*`, no
+  longer turns the rest of a diff into a comment.
+- The terminal panel follows the app theme and accent instead of a fixed navy
+  background, and updates live when the theme changes.
+- The inspector keeps one width when a diff folds the sidebar away.
+- The commit box keeps its resized height when switching repository tabs.
+- The file watcher follows a linked worktree's own HEAD and index and the
+  shared refs, so a worktree tab refreshes on commits made from a terminal or
+  an AI agent in that folder.
 
 ## [0.9.0] — 2026-09-02
 
@@ -1039,7 +962,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/cheat2001/angkorgit/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/cheat2001/angkorgit/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/cheat2001/angkorgit/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/cheat2001/angkorgit/compare/v0.6.6...v0.7.0

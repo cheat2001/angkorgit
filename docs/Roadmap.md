@@ -1,21 +1,23 @@
 # Roadmap
 
-Updated for v0.9.0 (September 2026). [CHANGELOG.md](../CHANGELOG.md) is the
+Updated for v0.10.0 (September 2026). [CHANGELOG.md](../CHANGELOG.md) is the
 authoritative record of what shipped in each release; this file tracks
 direction.
 
-## Shipped (0.1.0 → 0.9.0)
+## Shipped (0.1.0 → 0.10.0)
 
 - [x] Repository: open, clone (with progress), recents, search, repository tabs (drag to reorder)
 - [x] Commit: stage files, hunks, and individual lines; unstage, commit, amend; per-repo commit drafts
 - [x] History: virtualized animated graph, search, author/branch filters, refs/tags/HEAD/merges, file history
 - [x] Branch: create, delete, rename, checkout (incl. remote), merge, rebase (+continue/abort), interactive rebase (reorder/reword/squash/fixup/drop), cherry-pick (single or multi-commit, optional "(cherry picked from commit …)" reference), reset (soft/mixed/hard) — explicit merges always record a merge commit; abort merge from the commit box
 - [x] Remote: fetch, pull, push, force push, push/fetch tags, background auto fetch
-- [x] Conflicts: visual resolver — aligned A/B panes, per-line and per-side picks, a clean Output pane with direct click-to-edit results, GitKraken-style conflict navigation, AI explanations
+- [x] Conflicts: visual resolver — aligned A/B panes with line numbers, one take-all checkbox per side plus hover-to-pick lines, a Result pane with in-place editing and its own line numbers, conflict navigation, AI explanations
+- [x] Worktrees: sidebar section with branch/dirty/missing state, open any worktree as its own tab, create from a branch or commit into a sibling folder, safe remove and prune, branches held elsewhere marked in the sidebar and graph
 - [x] Stash: create, apply, pop, drop · Tags: create (annotated/lightweight), delete, checkout · Submodules: list & update
 - [x] Built-in PTY terminal at repo root; built-in file editor
 - [x] Diff: inline & side-by-side, syntax highlight, word diff, image diff, find in diff (⌘F), minimap, previous/next change and file navigation (N/P, [/]), opens directly at the first change (no scroll animation)
-- [x] Settings: sixteen themes (Angkor Dusk default) with accents & zoom, identity profiles (repo-local), SSH key management & generation, hosting accounts with verified tokens, AI providers & commit style, keyboard reference
+- [x] Settings: sixteen themes (Angkor Dusk default) with accents & zoom, identity profiles (repo-local) with linked accounts, SSH key management & generation, hosting accounts with verified tokens, AI providers & commit style, keyboard reference
+- [x] Sidebar: accordion sections with pinned headers and collapse-all, row menus on hover and right-click everywhere, empty-state cards; graph display options and column headers; welcome page with keyboard navigation and missing-folder detection
 - [x] AI: provider-agnostic (OpenAI, Anthropic, Gemini, Ollama, LM Studio) plus installed AI CLIs (Claude Code, Codex, Gemini CLI, OpenCode, Antigravity) — commit messages, diff/conflict explanations, PR descriptions, staged-change review with team conventions (global + per-repo `.angkorgit/review.md`), background execution with stop, full-size reading views
 - [x] Undo/redo for recent operations; drag-and-drop merge/rebase
 - [x] Auto-update: pull-based from GitHub releases, signature-verified
@@ -27,7 +29,7 @@ direction.
 ## Next
 
 - [ ] Blame view
-- [ ] Worktrees
+- [ ] Worktrees: start an installed AI CLI inside a worktree from its row, a per-repo post-create setup command, merged badge with one-step cleanup
 - [ ] Provider avatars via connected accounts, layered over Gravatar
 
 ## Later — Connected (architecture in place, see Architecture.md)
@@ -38,7 +40,6 @@ direction.
 
 ## Later — Power
 
-- [ ] Worktree management
 - [ ] Plugin host (palette commands, sidebar sections, inspector tabs)
 - [ ] Multi-repo workspaces
 - [ ] Performance: commit-graph file support for instant cold opens
