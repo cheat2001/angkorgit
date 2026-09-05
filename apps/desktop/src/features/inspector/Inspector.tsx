@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { CommitFileInfo, CommitInfo } from '@angkorgit/core';
-import { ChevronsDownUp, ChevronsUpDown, FolderTree, List, X } from 'lucide-react';
+import { FolderTree, List, X } from 'lucide-react';
 import { Hint, Button, cn } from '@angkorgit/design-system';
 import { useGraph } from '@/features/graph/store';
 import { useRepo } from '@/features/repository/store';
@@ -102,31 +102,6 @@ export function Inspector() {
               <FolderTree className="size-3.5" />
             </Button>
           </Hint>
-          {fileTree && (
-            <>
-              <span className="mx-1 h-4 w-px bg-border-subtle" />
-              <Hint label="Expand all folders">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Expand all folders"
-                  onClick={() => useUi.getState().foldFileTree('expand')}
-                >
-                  <ChevronsUpDown className="size-3.5" />
-                </Button>
-              </Hint>
-              <Hint label="Collapse all folders">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Collapse all folders"
-                  onClick={() => useUi.getState().foldFileTree('collapse')}
-                >
-                  <ChevronsDownUp className="size-3.5" />
-                </Button>
-              </Hint>
-            </>
-          )}
           {(commit || commitError) && (
             <>
               <span className="mx-1 h-4 w-px bg-border-subtle" />

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Folder } from 'lucide-react';
-import { cn } from '@angkorgit/design-system';
-import { useUi } from '@/features/ui/store';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Folder } from 'lucide-react';
+import { Button, Hint, cn } from '@angkorgit/design-system';
 
 interface TreeFolder<T> {
   name: string;
@@ -115,6 +114,45 @@ function folderPaths<T>(folder: TreeFolder<T>, into: string[] = []): string[] {
   return into;
 }
 
+export interface FileTreeFold {
+  epoch: number;
+  mode: 'collapse' | 'expand';
+}
+
+export interface FileTreeFoldState {
+  hasFolders: boolean;
+  allCollapsed: boolean;
+}
+
+export const INITIAL_FOLD: FileTreeFold = { epoch: 0, mode: 'expand' };
+
+export function nextFold(fold: FileTreeFold, mode: FileTreeFold['mode']): FileTreeFold {
+  return { epoch: fold.epoch + 1, mode };
+}
+
+export function FileTreeFoldButton({
+  state,
+  onFold,
+}: {
+  state: FileTreeFoldState | null;
+  onFold: (mode: FileTreeFold['mode']) => void;
+}) {
+  if (!state?.hasFolders) return null;
+  const label = state.allCollapsed ? 'Expand all folders' : 'Collapse all folders';
+  return (
+    <Hint label={label}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={label}
+        onClick={() => onFold(state.allCollapsed ? 'expand' : 'collapse')}
+      >
+        {state.allCollapsed ? <ChevronsUpDown className="size-3.5" /> : <ChevronsDownUp className="size-3.5" />}
+      </Button>
+    </Hint>
+  );
+}
+
 export function treeIndent(depth: number): number {
   return 8 + depth * 14 + 14;
 }
@@ -123,18 +161,31 @@ export function FileTree<T>({
   items,
   pathOf,
   renderFile,
+  fold,
+  onFoldState,
 }: {
   items: T[];
   pathOf: (item: T) => string;
   renderFile: (item: T, depth: number) => React.ReactNode;
+  fold?: FileTreeFold;
+  onFoldState?: (state: FileTreeFoldState) => void;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const root = useMemo(() => buildFileTree(items, pathOf), [items, pathOf]);
-  const fold = useUi((s) => s.fileTreeFold);
+  const paths = useMemo(() => folderPaths(root), [root]);
   useEffect(() => {
-    if (fold.epoch === 0) return;
-    setCollapsed(fold.mode === 'collapse' ? new Set(folderPaths(root)) : new Set());
-  }, [fold, root]);
+    if (!fold || fold.epoch === 0) return;
+    setCollapsed(fold.mode === 'collapse' ? new Set(paths) : new Set());
+  }, [fold, paths]);
+  const report = useRef(onFoldState);
+  report.current = onFoldState;
+  useEffect(() => {
+    report.current?.({
+      hasFolders: paths.length > 0,
+      allCollapsed: paths.length > 0 && paths.every((p) => collapsed.has(p)),
+    });
+  }, [paths, collapsed]);
+  useEffect(() => () => report.current?.({ hasFolders: false, allCollapsed: false }), []);
   const onToggle = (path: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);

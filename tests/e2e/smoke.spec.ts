@@ -610,10 +610,11 @@ test('folder tree view can collapse and expand every folder at once', async ({ p
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: 'Folder tree' }).click();
   await expect(page.getByText('ipc.ts', { exact: true }).first()).toBeVisible();
-  await page.getByRole('button', { name: 'Collapse all folders' }).click();
+  const changesHeader = page.locator('div', { has: page.getByText(/^Changes/) }).filter({ has: page.getByRole('button', { name: 'Stage all' }) }).last();
+  await changesHeader.getByRole('button', { name: 'Collapse all folders' }).click();
   await expect(page.getByText('ipc.ts', { exact: true })).toBeHidden();
-  await page.getByRole('button', { name: 'Expand all folders' }).click();
+  await changesHeader.getByRole('button', { name: 'Expand all folders' }).click();
   await expect(page.getByText('ipc.ts', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Flat file list' }).click();
-  await expect(page.getByRole('button', { name: 'Collapse all folders' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /all folders$/ })).toHaveCount(0);
 });

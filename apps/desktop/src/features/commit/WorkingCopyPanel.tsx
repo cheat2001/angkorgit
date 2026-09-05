@@ -34,7 +34,7 @@ import { useUndo } from '@/features/history/undoStore';
 import { abortMergeFlow } from '@/features/repository/merge';
 import { useCommitDraft } from './draftStore';
 import { confirmDialog } from '@/components/confirm';
-import { FileTree, treeIndent as sharedTreeIndent } from '@/components/FileTree';
+import { FileTree, treeIndent as sharedTreeIndent, FileTreeFoldButton, INITIAL_FOLD, nextFold, type FileTreeFold, type FileTreeFoldState } from '@/components/FileTree';
 import { basename, dirname } from '@/shared/utils';
 
 function statusBadge(kind: string | null) {
@@ -215,6 +215,10 @@ export function WorkingCopyPanel() {
   const setSummary = (text: string) => setMessage(joinCommitMessage(text, body));
   const setBody = (text: string) => setMessage(joinCommitMessage(summary, text));
   const summaryRef = useRef<HTMLInputElement>(null);
+  const [unstagedFold, setUnstagedFold] = useState<FileTreeFold>(INITIAL_FOLD);
+  const [unstagedFoldState, setUnstagedFoldState] = useState<FileTreeFoldState | null>(null);
+  const [stagedFold, setStagedFold] = useState<FileTreeFold>(INITIAL_FOLD);
+  const [stagedFoldState, setStagedFoldState] = useState<FileTreeFoldState | null>(null);
   const commitBoxHeight = useUi((s) => s.commitBoxHeight);
   const [resizing, setResizing] = useState(false);
   const startResize = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -693,6 +697,12 @@ export function WorkingCopyPanel() {
           </span>
           {unstagedFiles.length > 0 && (
             <span className="flex items-center">
+              {fileTree && (
+                <FileTreeFoldButton
+                  state={unstagedFoldState}
+                  onFold={(mode) => setUnstagedFold((f) => nextFold(f, mode))}
+                />
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -719,7 +729,13 @@ export function WorkingCopyPanel() {
         </div>
         {unstagedFiles.length === 0 && <p className="px-2 pb-2 text-xs text-faint">Working tree clean.</p>}
         {fileTree ? (
-          <FileTree items={unstagedFiles} pathOf={fileStatusPath} renderFile={renderUnstaged} />
+          <FileTree
+            items={unstagedFiles}
+            pathOf={fileStatusPath}
+            renderFile={renderUnstaged}
+            fold={unstagedFold}
+            onFoldState={setUnstagedFoldState}
+          />
         ) : (
           <VirtualFileList
             files={unstagedFiles}
@@ -733,14 +749,28 @@ export function WorkingCopyPanel() {
             Staged <span className="text-faint">{stagedFiles.length}</span>
           </span>
           {stagedFiles.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => void run(() => ipc.unstageAll(path), 'Unstage all failed')}>
-              <Minus className="size-3" /> Unstage all
-            </Button>
+            <span className="flex items-center">
+              {fileTree && (
+                <FileTreeFoldButton
+                  state={stagedFoldState}
+                  onFold={(mode) => setStagedFold((f) => nextFold(f, mode))}
+                />
+              )}
+              <Button variant="ghost" size="sm" onClick={() => void run(() => ipc.unstageAll(path), 'Unstage all failed')}>
+                <Minus className="size-3" /> Unstage all
+              </Button>
+            </span>
           )}
         </div>
         {stagedFiles.length === 0 && <p className="px-2 pb-2 text-xs text-faint">Nothing staged yet.</p>}
         {fileTree ? (
-          <FileTree items={stagedFiles} pathOf={fileStatusPath} renderFile={renderStaged} />
+          <FileTree
+            items={stagedFiles}
+            pathOf={fileStatusPath}
+            renderFile={renderStaged}
+            fold={stagedFold}
+            onFoldState={setStagedFoldState}
+          />
         ) : (
           <VirtualFileList
             files={stagedFiles}

@@ -67,7 +67,6 @@ interface UiState {
   sidebarSections: Record<string, boolean>;
   sidebarCollapseEpoch: number;
   commitBoxHeight: number | null;
-  fileTreeFold: { epoch: number; mode: 'collapse' | 'expand' };
 
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -94,7 +93,6 @@ interface UiState {
   setSidebarSection: (id: string, open: boolean) => void;
   collapseSidebarSections: (ids: readonly string[]) => void;
   setCommitBoxHeight: (height: number | null) => void;
-  foldFileTree: (mode: 'collapse' | 'expand') => void;
   setFileTree: (on: boolean) => void;
 }
 
@@ -139,7 +137,6 @@ export const useUi = create<UiState>()(
   sidebarSections: {},
   sidebarCollapseEpoch: 0,
   commitBoxHeight: null,
-  fileTreeFold: { epoch: 0, mode: 'expand' },
 
   toggleSidebar: () =>
     set((s) =>
@@ -204,7 +201,6 @@ export const useUi = create<UiState>()(
       sidebarCollapseEpoch: s.sidebarCollapseEpoch + 1,
     })),
   setCommitBoxHeight: (commitBoxHeight) => set({ commitBoxHeight }),
-  foldFileTree: (mode) => set((s) => ({ fileTreeFold: { epoch: s.fileTreeFold.epoch + 1, mode } })),
   setFileTree: (fileTree) => set({ fileTree }),
     }),
     {

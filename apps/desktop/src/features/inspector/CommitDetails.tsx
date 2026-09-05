@@ -14,7 +14,15 @@ import { AiText } from '@/features/ai/AiText';
 import { AiResultDialog } from '@/features/ai/AiResultDialog';
 import { explainKeyFor, useAiWork } from '@/features/ai/workStore';
 import { Avatar } from '@/components/Avatar';
-import { FileTree, treeIndent } from '@/components/FileTree';
+import {
+  FileTree,
+  FileTreeFoldButton,
+  INITIAL_FOLD,
+  nextFold,
+  treeIndent,
+  type FileTreeFold,
+  type FileTreeFoldState,
+} from '@/components/FileTree';
 import { basename, dirname, formatDate, timeAgo } from '@/shared/utils';
 
 const diffPath = (diff: CommitFileInfo) => diff.path;
@@ -128,6 +136,8 @@ export function CommitDetails({
   const aiBusy = useAiWork((s) => !!s.explainBusy[explainKey]);
   const [aiExpanded, setAiExpanded] = useState(false);
   const [bodyExpanded, setBodyExpanded] = useState(false);
+  const [fold, setFold] = useState<FileTreeFold>(INITIAL_FOLD);
+  const [foldState, setFoldState] = useState<FileTreeFoldState | null>(null);
   const longBody = commit.body.split('\n').length > 8 || commit.body.length > 600;
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -328,8 +338,11 @@ export function CommitDetails({
           <span>
             Files{!loading && !error && <span className="ml-1 text-faint">{diffs.length}</span>}
           </span>
-          <span className="text-[11px] font-normal normal-case tracking-normal">
+          <span className="flex items-center gap-1 text-[11px] font-normal normal-case tracking-normal">
             {loading ? 'Loading…' : error ? '' : <ChangeSummary diffs={diffs} />}
+            {fileTree && !loading && !error && (
+              <FileTreeFoldButton state={foldState} onFold={(mode) => setFold((f) => nextFold(f, mode))} />
+            )}
           </span>
         </p>
         {loading ? (
@@ -348,7 +361,7 @@ export function CommitDetails({
             </Button>
           </div>
         ) : fileTree ? (
-          <FileTree items={diffs} pathOf={diffPath} renderFile={renderDiffRow} />
+          <FileTree items={diffs} pathOf={diffPath} renderFile={renderDiffRow} fold={fold} onFoldState={setFoldState} />
         ) : diffs.length > VIRTUAL_FILE_THRESHOLD ? (
           <VirtualFileRows diffs={diffs} scrollRef={scrollRef} renderRow={renderDiffRow} />
         ) : (

@@ -56,8 +56,9 @@ All notable changes to AngKorGit are documented here. The format follows
   in an empty description goes back, ⌘⏎ commits from either, and the 50/72
   counter sits on the summary line. Under the hood it is still one message, so
   drafts, AI-generated messages and merge messages keep working.
-- Folder tree view in the inspector gained expand-all and collapse-all buttons
-  in the panel header, for both the working copy and commit details.
+- Folder tree view gained a fold button in each list's own header row (Changes,
+  Staged, and a commit's Files) that collapses every folder in that list, or
+  expands them all when they are collapsed.
 - Every sidebar row answers both the hover menu button and right-click with the
   same actions: stashes (Apply, Pop, Delete), tags (Checkout, Push, Delete),
   pull requests (Checkout, Open in browser, Copy URL) and submodules (Open,
