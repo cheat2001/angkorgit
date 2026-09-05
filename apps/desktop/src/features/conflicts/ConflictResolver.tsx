@@ -144,9 +144,12 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const [editingBlock, setEditingBlock] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [lastTouched, setLastTouched] = useState<number | null>(null);
-  const editSessionRef = useRef<{ block: number; before: string | undefined; focused: boolean } | null>(
-    null,
-  );
+  const editSessionRef = useRef<{
+    block: number;
+    before: string | undefined;
+    focused: boolean;
+    caretLine: number;
+  } | null>(null);
   const blockRefs = useRef(new Map<number, HTMLDivElement>());
   const outputBlockRefs = useRef(new Map<number, HTMLDivElement>());
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -435,7 +438,13 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     setEditingBlock(null);
   };
 
-  const startEdit = (index: number) => {
+  const lineFromEvent = (e: React.MouseEvent): number => {
+    const row = (e.target as HTMLElement).closest('[data-line]');
+    const value = row?.getAttribute('data-line');
+    return value ? Number(value) : 0;
+  };
+
+  const startEdit = (index: number, caretLine = 0) => {
     if (!blocks) return;
     const block = blocks[index] as ConflictBlock;
     const edit = blockEdits.get(index);
@@ -446,7 +455,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
         : blockPicks.length > 0
           ? pickedLines(block, blockPicks).map(stripCr).join('\n')
           : [...block.current, ...block.incoming].map(stripCr).join('\n');
-    editSessionRef.current = { block: index, before: edit, focused: false };
+    editSessionRef.current = { block: index, before: edit, focused: false, caretLine };
     setEditDraft(initial);
     setEditingBlock(index);
     const at = conflictIndices.indexOf(index);
@@ -611,7 +620,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       )}
       onMouseDown={(e) => {
         e.preventDefault();
-        startEdit(index);
+        startEdit(index, lineFromEvent(e));
       }}
     >
       <LineNo n={null} />
@@ -631,14 +640,31 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     </div>
   );
 
-  const renderBlockEditor = (index: number) => (
-    <div className="border-y border-primary/40 bg-primary/5">
+  const renderBlockEditor = (index: number) => {
+    const draftLines = editDraft.split('\n');
+    const start = outputStarts.get(index) ?? 1;
+    return (
+    <div className="flex items-start px-2">
+      <div className="flex shrink-0 flex-col" aria-hidden>
+        {draftLines.map((_, li) => (
+          <div key={li} className="flex items-start gap-2">
+            <LineNo n={start + li} />
+            <span className="flex w-4 shrink-0 justify-center pt-1.5">
+              <span className="h-2.5 w-0.5 rounded-full bg-primary" />
+            </span>
+          </div>
+        ))}
+      </div>
       <textarea
         ref={(el) => {
           const session = editSessionRef.current;
           if (el && session && session.block === index && !session.focused) {
             session.focused = true;
             el.focus();
+            const lines = el.value.split('\n');
+            const line = Math.min(session.caretLine, lines.length - 1);
+            const offset = lines.slice(0, line).reduce((sum, text) => sum + text.length + 1, 0);
+            el.setSelectionRange(offset, offset);
           }
         }}
         value={editDraft}
@@ -661,23 +687,25 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
           }
         }}
         spellCheck={false}
-        rows={Math.min(Math.max(editDraft.split('\n').length + 1, 2), 16)}
+        rows={Math.max(draftLines.length, 1)}
         aria-label="Hand-edited result for this conflict"
         className={cn(
-          'w-full resize-none bg-transparent px-3 py-1 font-mono text-xs leading-5 text-foreground',
+          'ml-2 min-w-0 flex-1 resize-none overflow-hidden bg-transparent p-0 font-mono text-xs leading-5 text-foreground',
           'focus:outline-none',
         )}
       />
     </div>
-  );
+    );
+  };
 
   const renderUnresolvedLine = (index: number, text: string, lineNo: number | null = null) => (
     <div
+      data-line={lineNo === null ? 0 : lineNo - (outputStarts.get(index) ?? 1)}
       className="flex cursor-text items-start gap-2 border-l-2 border-danger bg-danger/5 px-2 transition-colors hover:bg-danger/10"
       title="Unresolved conflict — click to edit the result, or pick lines above"
       onMouseDown={(e) => {
         e.preventDefault();
-        startEdit(index);
+        startEdit(index, lineFromEvent(e));
       }}
     >
       <LineNo n={lineNo} />
@@ -1202,10 +1230,11 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             renderDeletedRow(row.block, row.side)
                           ) : row.kind === 'edited' ? (
                             <div
+                              data-line={row.lineNo - (outputStarts.get(row.block) ?? 1)}
                               className="group relative flex cursor-text items-start gap-2 bg-primary/5 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
                               onMouseDown={(e) => {
         e.preventDefault();
-        startEdit(row.block);
+        startEdit(row.block, lineFromEvent(e));
       }}
                             >
                               <LineNo n={row.lineNo} />
@@ -1219,13 +1248,14 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             </div>
                           ) : (
                             <div
+                              data-line={row.lineNo - (outputStarts.get(row.block) ?? 1)}
                               className={cn(
                                 'flex cursor-text items-start gap-2 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40',
                                 row.side === 'current' ? 'bg-info/5' : 'bg-success/5',
                               )}
                               onMouseDown={(e) => {
         e.preventDefault();
-        startEdit(row.block);
+        startEdit(row.block, lineFromEvent(e));
       }}
                             >
                               <LineNo n={row.lineNo} />
@@ -1282,11 +1312,11 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                           className="group relative cursor-text transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
                           onMouseDown={(e) => {
         e.preventDefault();
-        startEdit(index);
+        startEdit(index, lineFromEvent(e));
       }}
                         >
                           {edit.split('\n').map((line, li) => (
-                            <div key={li} className="flex items-start gap-2 bg-primary/5 px-2">
+                            <div key={li} data-line={li} className="flex items-start gap-2 bg-primary/5 px-2">
                               <LineNo n={(outputStarts.get(index) ?? 1) + li} />
                               <span className="flex w-4 shrink-0 items-center justify-center leading-5">
                                 <Pencil className="size-3 text-primary" />
@@ -1324,7 +1354,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                         className="cursor-text transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
                         onMouseDown={(e) => {
         e.preventDefault();
-        startEdit(index);
+        startEdit(index, lineFromEvent(e));
       }}
                       >
                         {blockPicks
@@ -1332,6 +1362,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                           .map((p, pi) => (
                             <div
                               key={pi}
+                              data-line={pi}
                               className={cn(
                                 'flex items-start gap-2 px-2',
                                 p.side === 'current' ? 'bg-info/5' : 'bg-success/5',

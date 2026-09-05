@@ -44,6 +44,11 @@ All notable changes to AngKorGit are documented here. The format follows
   live when the theme changes.
 
 ### Added
+- **Editing the Result feels like an editor.** Clicking a block no longer swaps
+  in a boxed text field. The lines stay in place, the caret lands on the line
+  you clicked, line numbers keep counting while you type, and a slim gold bar
+  in the gutter is the only sign that the block is being edited. Blur keeps
+  the edit, Escape reverts, ⌘⏎ finishes, exactly as before.
 - **Conflict resolver, calmer.** Color is now an accent rather than a wash:
   the A and B panes lose their full tint in favor of a thin colored edge, only
   picked lines are lightly tinted, the take-all row is quiet text headed by

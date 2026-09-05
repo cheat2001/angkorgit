@@ -607,7 +607,16 @@ features/
 │                               editing in the Output (blockEdits map: mousedown+
 │                               preventDefault on any block — resolved prefills picks,
 │                               unresolved prefills A+B lines — opens its inline
-│                               editor and scrolls the top panes there; preventDefault
+│                               editor and scrolls the top panes there — the editor is
+│                               SEAMLESS (owner: no "message box"): a flex row of a live
+│                               gutter column (LineNo per draft line + a slim primary bar
+│                               in the w-4 slot) and a borderless, transparent,
+│                               overflow-hidden textarea with rows = draft line count, so
+│                               it is indistinguishable from the rows around it; every
+│                               result row carries data-line (offset within its block) and
+│                               lineFromEvent(e) feeds startEdit(index, caretLine) so the
+│                               ref callback places the caret on the clicked line via
+│                               setSelectionRange after focusing; preventDefault
 │                               is LOAD-BEARING: the browser's post-mousedown focus
 │                               default would blur+close the just-focused textarea;
 │                               NO pencil edit buttons, hover RotateCcw discards; the
