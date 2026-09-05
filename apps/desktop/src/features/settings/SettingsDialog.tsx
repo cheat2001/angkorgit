@@ -648,19 +648,15 @@ export function SettingsDialog() {
     }
   };
 
-  const setProfileHostAccount = (profile: IdentityProfile, host: string, username: string | null) => {
+  const setAccountLinked = (profile: IdentityProfile, account: HostingAccount, linked: boolean) => {
     const accounts = { ...(profile.accounts ?? {}) };
-    if (username === null) delete accounts[host];
-    else accounts[host] = username;
+    if (linked) accounts[account.host] = account.username;
+    else if (accounts[account.host] === account.username) delete accounts[account.host];
     settings.updateProfile(profile.id, { accounts });
   };
-  const accountsByHost = hostAccounts.reduce<Record<string, HostingAccount[]>>((acc, account) => {
-    (acc[account.host] ??= []).push(account);
-    return acc;
-  }, {});
-  const accountHosts = Object.keys(accountsByHost).sort();
-  const showHostAccounts = hostAccounts.length >= 2;
-  const anyHostChoice = accountHosts.some((host) => accountsByHost[host].length > 1);
+  const sortedAccounts = [...hostAccounts].sort(
+    (a, b) => a.host.localeCompare(b.host) || a.username.localeCompare(b.username),
+  );
 
   const addProfile = () => {
     if (!profileLabel.trim() || !profileName.trim() || !profileEmail.trim()) return;
@@ -943,11 +939,7 @@ export function SettingsDialog() {
 
                   <SettingCard
                     title="Profiles"
-                    description={
-                      anyHostChoice
-                        ? 'Work and personal identities, each with the account it should use on hosts where you have several. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository.'
-                        : 'Work and personal identities. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository. Each host has one account, so every profile pushes with it.'
-                    }
+                    description="Work and personal identities, each with the hosting accounts linked to it. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository."
                     action={
                       !addingProfile && settings.profiles.length > 0 ? (
                         <Button variant="secondary" size="sm" onClick={() => setAddingProfile(true)}>
@@ -1003,50 +995,49 @@ export function SettingsDialog() {
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
-                            {showHostAccounts && (
+                            {sortedAccounts.length > 0 && (
                               <div className="mt-3 flex flex-col gap-1.5 border-t border-border-subtle pt-2.5">
-                                <span className="text-[11px] font-medium text-faint">
-                                  {anyHostChoice ? 'Account to use per host' : 'Pushes with'}
-                                </span>
-                                {accountHosts.map((host) => {
-                                  const options = accountsByHost[host];
-                                  const fallback = options.find((a) => a.isDefault) ?? options[0];
-                                  const chosen = profile.accounts?.[host];
-                                  const value = chosen && options.some((a) => a.username === chosen) ? chosen : '__default';
-                                  return (
-                                    <div key={host} className="flex items-center gap-2">
-                                      <span className="flex size-6 shrink-0 items-center justify-center rounded bg-surface text-muted [&_svg]:size-3.5">
-                                        {providerIcon(options[0].provider)}
-                                      </span>
-                                      <span className="min-w-0 flex-1 truncate text-xs text-foreground">{host}</span>
-                                      {options.length === 1 ? (
-                                        <span className="flex h-7 items-center gap-1 rounded-md border border-border-subtle bg-surface px-2 text-xs text-muted">
-                                          <Check className="size-3 text-success" />
-                                          {options[0].username}
-                                        </span>
-                                      ) : (
-                                      <Select
-                                        value={value}
-                                        onValueChange={(v) => setProfileHostAccount(profile, host, v === '__default' ? null : v)}
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <span className="text-[11px] font-medium text-faint">
+                                    Linked accounts
+                                    <span className="font-normal">
+                                      {' '}· {sortedAccounts.filter((a) => profile.accounts?.[a.host] === a.username).length} of{' '}
+                                      {sortedAccounts.length}
+                                    </span>
+                                  </span>
+                                  <span className="text-[11px] text-faint">Tried first for their host</span>
+                                </div>
+                                <div className="flex flex-col divide-y divide-border-subtle rounded-md border border-border-subtle bg-surface">
+                                  {sortedAccounts.map((account) => {
+                                    const linked = profile.accounts?.[account.host] === account.username;
+                                    return (
+                                      <label
+                                        key={`${account.host}:${account.username}`}
+                                        className="flex cursor-pointer items-center gap-2.5 px-2.5 py-1.5"
                                       >
-                                        <SelectTrigger className="h-7 w-52 text-xs" aria-label={`Account for ${host} in ${profile.label}`}>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="__default">
-                                            Host default <span className="text-faint">· {fallback.username}</span>
-                                          </SelectItem>
-                                          {options.map((account) => (
-                                            <SelectItem key={account.username} value={account.username}>
-                                              {account.username}
-                                            </SelectItem>
-                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                      )}
-                                    </div>
-                                  );
-                                })}
+                                        <span
+                                          className={cn(
+                                            'flex size-6 shrink-0 items-center justify-center rounded [&_svg]:size-3.5',
+                                            linked ? 'bg-primary/15 text-primary' : 'bg-surface-raised text-muted',
+                                          )}
+                                        >
+                                          {providerIcon(account.provider)}
+                                        </span>
+                                        <span className="flex min-w-0 flex-1 items-baseline gap-1.5 text-xs">
+                                          <span className={cn('truncate font-medium', linked ? 'text-foreground' : 'text-muted')}>
+                                            {account.username}
+                                          </span>
+                                          <span className="min-w-0 truncate text-faint">@ {account.host}</span>
+                                        </span>
+                                        <Switch
+                                          checked={linked}
+                                          aria-label={`Link ${account.username} on ${account.host} to ${profile.label}`}
+                                          onCheckedChange={(on) => setAccountLinked(profile, account, on === true)}
+                                        />
+                                      </label>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             )}
                           </div>

@@ -66,9 +66,9 @@ All notable changes to AngKorGit are documented here. The format follows
   below a paragraph. The identity card says which scope it writes to and shows
   which profile it matches. Profiles are cards with an avatar, an "In use"
   badge, a clear Use button, and a menu for removal with a confirm; the
-  account link is one line per host once you have two or more accounts: a
-  picker between the host default and each account where a host has several,
-  and the single account shown as plain text where it has one; adding a profile opens a labeled three-field form
+  linked accounts are a tidy list inside each profile, one row per account with
+  a provider icon, "username @ host" and a link switch, headed by how many are
+  linked; adding a profile opens a labeled three-field form
   instead of a row of bare placeholders; and an empty list explains what
   profiles do.
 - Graph ref chips no longer get crushed to two letters. Inside the same fixed

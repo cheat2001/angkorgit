@@ -804,15 +804,17 @@ features/
 │                               for a clean redesign 2026-09-05: each profile is a card
 │                               with Avatar + label + "In use" Badge + secondary Use
 │                               button + "…" menu whose Remove goes through confirmDialog;
-│                               account linking is a per-host list shown once there are
-│                               ≥2 accounts IN TOTAL (owner with GitHub + GitLab expected
-│                               to see it): one row per host (provider icon tile, host),
-│                               a Select with "Host default · <name>" = unlink + each
-│                               username where the host has ≥2 accounts, and a static
-│                               ticked username where it has one; header reads "Account
-│                               to use per host" or "Pushes with" accordingly; hidden
-│                               entirely with 0–1 accounts (the earlier chip row was
-│                               rejected as messy); setProfileHostAccount writes/deletes
+│                               account linking keeps the ORIGINAL semantics
+│                               (profile.accounts[host] = username means linked; linking
+│                               another account on the same host replaces it; unlinked
+│                               hosts use the host default) and is rendered as a "Linked
+│                               accounts · n of m" list: one row per account (provider
+│                               icon tile tinted when linked, `username @ host`, a Switch
+│                               with an aria-label) inside a bordered divide-y box, shown
+│                               whenever ≥1 account exists — never hidden. A per-host
+│                               Select and a "-" no-account engine binding were both
+│                               built and REJECTED (owner: keep the old logic, change
+│                               only UI/UX); setAccountLinked writes/deletes
 │                               profile.accounts[host]; providerIcon is exported from
 │                               AccountsTab for this;
 │                               "New profile" header button (or the empty-state card's
