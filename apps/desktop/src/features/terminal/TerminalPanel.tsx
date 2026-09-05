@@ -6,13 +6,10 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { ipc, isTauri, listen } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
+import { useSettings } from '@/features/settings/store';
 import { useUi } from '@/features/ui/store';
 import { killTerminalSession, sessions, type TerminalSession } from './sessions';
-
-const terminalTheme = () =>
-  document.documentElement.classList.contains('dark')
-    ? { background: '#0D1220', foreground: '#E2E6EF', cursor: '#D97706' }
-    : { background: '#FFFFFF', foreground: '#1A2233', cursor: '#D97706' };
+import { terminalThemeFromTokens } from './theme';
 
 function newSession(): TerminalSession {
   const container = document.createElement('div');
@@ -23,7 +20,7 @@ function newSession(): TerminalSession {
     fontSize: 12,
     cursorBlink: true,
     scrollback: 5000,
-    theme: terminalTheme(),
+    theme: terminalThemeFromTokens(),
   });
   const fit = new FitAddon();
   terminal.loadAddon(fit);
@@ -90,7 +87,14 @@ function spawnShell(session: TerminalSession, repoPath: string): void {
 export function TerminalPanel() {
   const repoPath = useRepo((s) => s.repo?.path ?? null);
   const toggleTerminal = useUi((s) => s.toggleTerminal);
+  const theme = useSettings((s) => s.theme);
+  const accent = useSettings((s) => s.accent);
   const hostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const next = terminalThemeFromTokens();
+    for (const session of sessions.values()) session.terminal.options.theme = next;
+  }, [theme, accent]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -112,7 +116,7 @@ export function TerminalPanel() {
       session.fit.fit();
       spawnShell(session, repoPath);
     } else {
-      session.terminal.options.theme = terminalTheme();
+      session.terminal.options.theme = terminalThemeFromTokens();
       session.fit.fit();
       session.terminal.focus();
     }
