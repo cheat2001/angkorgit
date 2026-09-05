@@ -165,8 +165,8 @@ function Section({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-1">
-      <div className="group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted hover:bg-surface-raised">
+    <div className={cn('flex flex-col', open ? 'min-h-[5.5rem] shrink' : 'shrink-0')}>
+      <div className="group flex w-full shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted hover:bg-surface-raised">
         <button
           className="flex min-w-0 flex-1 items-center gap-1.5"
           aria-expanded={open}
@@ -179,7 +179,7 @@ function Section({
         </button>
         {action && <span className="opacity-0 transition-opacity group-hover:opacity-100">{action}</span>}
       </div>
-      {open && <div className="mt-0.5">{children}</div>}
+      {open && <div className="mt-0.5 min-h-0 flex-1 overflow-y-auto pb-1">{children}</div>}
     </div>
   );
 }
@@ -462,6 +462,19 @@ export function Sidebar() {
     if (collapseEpoch > 0) setExpandedFolders(new Set());
   }, [collapseEpoch]);
   const anySectionOpen = SIDEBAR_SECTIONS.some(sectionOpen);
+  const showPullRequestSection = Boolean(forgeRemote && showPullRequests && forgeRepoPath === repo?.path);
+  const visibleSections: (typeof SIDEBAR_SECTIONS)[number][] = [
+    'branches',
+    'worktrees',
+    ...(showPullRequestSection ? (['pullRequests'] as const) : []),
+    'remotes',
+    'tags',
+    'stashes',
+    ...(submodules.length > 0 ? (['submodules'] as const) : []),
+  ];
+  const lastOpenSection = [...visibleSections].reverse().find(sectionOpen) ?? null;
+  const spacerAfter = (id: (typeof SIDEBAR_SECTIONS)[number]) =>
+    lastOpenSection === id ? <div key={`spacer:${id}`} className="min-h-0 flex-1" /> : null;
   const collapseAll = () => {
     useUi.getState().collapseSidebarSections(SIDEBAR_SECTIONS);
     setExpandedFolders(new Set());
@@ -812,7 +825,7 @@ export function Sidebar() {
         </Hint>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
         <Section
           {...section('branches')}
           icon={<GitBranch className="size-3.5" />}
@@ -841,6 +854,7 @@ export function Sidebar() {
           )}
           {noFilterMatches && <div className="px-2 py-1 pl-7 text-xs text-faint">No refs match the filter.</div>}
         </Section>
+        {spacerAfter('branches')}
 
         <Section
           {...section('worktrees')}
@@ -904,8 +918,10 @@ export function Sidebar() {
             <div className="px-2 py-1 pl-7 text-xs text-faint">No worktrees match the filter.</div>
           )}
         </Section>
+        {spacerAfter('worktrees')}
 
-        {forgeRemote && showPullRequests && forgeRepoPath === repo.path && (
+        {showPullRequestSection && forgeRemote && (
+          <>
           <Section
             {...section('pullRequests')}
             icon={<GitPullRequest className="size-3.5" />}
@@ -997,6 +1013,8 @@ export function Sidebar() {
               </div>
             ))}
           </Section>
+          {spacerAfter('pullRequests')}
+          </>
         )}
 
         <Section {...section('remotes')} icon={<Cloud className="size-3.5" />} title="Remotes" count={remoteBranches.length}>
@@ -1014,6 +1032,7 @@ export function Sidebar() {
               .filter((r) => !remoteTree.some((node) => !node.branch && node.key === r.name))
               .map(renderBranchlessRemote)}
         </Section>
+        {spacerAfter('remotes')}
 
         <Section
           icon={<TagIcon className="size-3.5" />}
@@ -1063,6 +1082,7 @@ export function Sidebar() {
             </div>
           ))}
         </Section>
+        {spacerAfter('tags')}
 
         <Section
           icon={<Archive className="size-3.5" />}
@@ -1109,8 +1129,10 @@ export function Sidebar() {
             </div>
           ))}
         </Section>
+        {spacerAfter('stashes')}
 
         {submodules.length > 0 && (
+          <>
           <Section {...section('submodules')} icon={<Boxes className="size-3.5" />} title="Submodules" count={submodules.length}>
             {submodules.map((sub) => (
               <div
@@ -1140,6 +1162,8 @@ export function Sidebar() {
               </div>
             ))}
           </Section>
+          {spacerAfter('submodules')}
+          </>
         )}
       </div>
 

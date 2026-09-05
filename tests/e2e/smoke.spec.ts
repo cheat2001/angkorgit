@@ -652,3 +652,27 @@ test('graph display menu hides and restores the hash column', async ({ page }) =
   await page.getByRole('menuitemcheckbox', { name: 'Hash' }).click();
   await expect(page.getByTitle('Copy full hash').first()).toBeVisible();
 });
+
+test('sidebar sections behave as an accordion with collapsed headers pinned', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Collapse all sections' }).click();
+  await page.getByRole('button', { name: /^Branches/ }).click();
+  const aside = page.getByRole('complementary', { name: 'Branches and refs' });
+  const asideBox = await aside.boundingBox();
+  const tagsBox = await page.getByRole('button', { name: /^Tags/ }).boundingBox();
+  const stashesBox = await page.getByRole('button', { name: /^Stashes/ }).boundingBox();
+  if (!asideBox || !tagsBox || !stashesBox) throw new Error('sidebar geometry missing');
+  expect(stashesBox.y + stashesBox.height).toBeGreaterThan(asideBox.y + asideBox.height - 90);
+  expect(tagsBox.y).toBeLessThan(stashesBox.y);
+  const developBox = await page.getByText('develop', { exact: true }).boundingBox();
+  if (!developBox) throw new Error('branch row missing');
+  expect(developBox.y).toBeLessThan(tagsBox.y);
+  await page.getByRole('button', { name: /^Tags/ }).click();
+  await expect(aside.getByText('v0.4.0', { exact: true })).toBeVisible();
+  const tagsAfter = await page.getByRole('button', { name: /^Tags/ }).boundingBox();
+  if (!tagsAfter) throw new Error('tags header missing');
+  expect(tagsAfter.y).toBeLessThan(tagsBox.y);
+});

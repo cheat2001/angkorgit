@@ -44,6 +44,11 @@ All notable changes to AngKorGit are documented here. The format follows
   live when the theme changes.
 
 ### Added
+- **Accordion sidebar.** Open sections take the room and scroll inside
+  themselves, collapsed sections stay visible as slim headers pinned above or
+  below, and short sections only take the rows they need. Expand Branches alone
+  and the other headers line up at the bottom; open two sections and they share
+  the height.
 - **Collapse all** in the sidebar: a button beside the ref filter (and a
   "Collapse sidebar sections" palette command) folds every section and every
   branch folder in one click. Sections now also remember whether you left them
