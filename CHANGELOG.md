@@ -40,11 +40,14 @@ All notable changes to AngKorGit are documented here. The format follows
   open or closed between launches.
 
 ### Changed
-- Graph ref chips no longer get crushed to two letters. The column fits as many
-  whole labels as have room, folds the rest behind a "+n" badge with a tooltip,
-  orders the checked-out branch first, and widens a little for long branch
-  names. A separate HEAD chip only appears when HEAD is detached, since the
-  checked-out branch already carries the tick.
+- Graph ref chips no longer get crushed to two letters. Inside the same fixed
+  column, the graph shows as many whole labels as fit and folds the rest behind
+  a "+n" badge with a tooltip, ordering the checked-out branch first. A separate
+  HEAD chip only appears when HEAD is detached, since the checked-out branch
+  already carries the tick.
+- **Graph display options**: a menu in the graph header toggles branches and
+  tags, author avatars, hash and date on or off, remembered across launches.
+  With avatars off, commits render as plain colored nodes.
 - Merge commits read one shade quieter in the graph so the commits that changed
   code stand out in merge-heavy histories.
 - Click a hash in the graph to copy it; hover a relative time for the full date.

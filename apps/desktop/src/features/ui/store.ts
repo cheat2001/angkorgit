@@ -3,6 +3,15 @@ import { persist } from 'zustand/middleware';
 
 export type DiffViewMode = 'inline' | 'split';
 
+export interface GraphColumns {
+  refs: boolean;
+  author: boolean;
+  hash: boolean;
+  date: boolean;
+}
+
+export const DEFAULT_GRAPH_COLUMNS: GraphColumns = { refs: true, author: true, hash: true, date: true };
+
 export type DialogKind =
   | 'clone'
   | 'createBranch'
@@ -67,6 +76,7 @@ interface UiState {
   sidebarSections: Record<string, boolean>;
   sidebarCollapseEpoch: number;
   commitBoxHeight: number | null;
+  graphColumns: GraphColumns;
 
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -93,6 +103,7 @@ interface UiState {
   setSidebarSection: (id: string, open: boolean) => void;
   collapseSidebarSections: (ids: readonly string[]) => void;
   setCommitBoxHeight: (height: number | null) => void;
+  setGraphColumn: (column: keyof GraphColumns, on: boolean) => void;
   setFileTree: (on: boolean) => void;
 }
 
@@ -137,6 +148,7 @@ export const useUi = create<UiState>()(
   sidebarSections: {},
   sidebarCollapseEpoch: 0,
   commitBoxHeight: null,
+  graphColumns: DEFAULT_GRAPH_COLUMNS,
 
   toggleSidebar: () =>
     set((s) =>
@@ -201,6 +213,8 @@ export const useUi = create<UiState>()(
       sidebarCollapseEpoch: s.sidebarCollapseEpoch + 1,
     })),
   setCommitBoxHeight: (commitBoxHeight) => set({ commitBoxHeight }),
+  setGraphColumn: (column, on) =>
+    set((s) => ({ graphColumns: { ...s.graphColumns, [column]: on } })),
   setFileTree: (fileTree) => set({ fileTree }),
     }),
     {
@@ -216,6 +230,7 @@ export const useUi = create<UiState>()(
         fileTree: state.fileTree,
         sidebarSections: state.sidebarSections,
         commitBoxHeight: state.commitBoxHeight,
+        graphColumns: state.graphColumns,
       }),
     },
   ),

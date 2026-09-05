@@ -2,16 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
-import { ArrowDownToLine, ArrowUpFromLine, Check, Combine, Copy, Filter, FolderTree, GitBranchPlus, GitMerge, ListOrdered, ListRestart, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Check, Combine, Copy, Filter, FolderTree, GitBranchPlus, Settings2, GitMerge, ListOrdered, ListRestart, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
 import type { CommitInfo, RefInfo } from '@angkorgit/core';
 import {
   Button,
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Hint,
   Input,
   Spinner,
 } from '@angkorgit/design-system';
@@ -20,7 +22,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { CommitRow, FLAT_GUTTER_WIDTH, ROW_HEIGHT, computeRefColWidth } from './GraphRow';
+import { CommitRow, FLAT_GUTTER_WIDTH, ROW_HEIGHT } from './GraphRow';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { useShortcuts } from '@/shared/useShortcuts';
@@ -47,6 +49,8 @@ export function CommitGraph() {
   const { rows, commits, maxLane, hasMore, loading, error, filters, selectedOid, selectedOids, pendingScrollIndex, loadMore, reload, setFilters, select, toggleSelect, rangeSelect, jumpTo, clearPendingScroll } =
     useGraph();
   const openDialog = useUi((s) => s.openDialog);
+  const graphColumns = useUi((s) => s.graphColumns);
+  const setGraphColumn = useUi((s) => s.setGraphColumn);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [refMenu, setRefMenu] = useState<RefMenuState | null>(null);
@@ -143,7 +147,6 @@ export function CommitGraph() {
 
   const flat = Boolean(filters.search || filters.author);
   const gutterWidth = flat ? FLAT_GUTTER_WIDTH : Math.min(16 + (maxLane + 1) * 14, 200);
-  const refColWidth = useMemo(() => computeRefColWidth(commits), [commits]);
   const filtersActive = Boolean(filters.search || filters.author || filters.branch);
 
   const moveSelection = useCallback(
@@ -326,11 +329,40 @@ export function CommitGraph() {
             {commits.length.toLocaleString()}
             {hasMore ? '+' : ''} commit{commits.length === 1 && !hasMore ? '' : 's'}
           </span>
+          <DropdownMenu>
+            <Hint label="Graph display">
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Graph display options">
+                  <Settings2 className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+            </Hint>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Show in graph</DropdownMenuLabel>
+              {(
+                [
+                  ['refs', 'Branches and tags'],
+                  ['author', 'Author avatars'],
+                  ['hash', 'Hash'],
+                  ['date', 'Date'],
+                ] as const
+              ).map(([key, label]) => (
+                <DropdownMenuCheckboxItem
+                  key={key}
+                  checked={graphColumns[key]}
+                  onSelect={(e) => e.preventDefault()}
+                  onCheckedChange={(checked) => setGraphColumn(key, checked === true)}
+                >
+                  {label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" role="table" aria-label="Commits">
-        <WipRow gutterWidth={gutterWidth} flat={flat} refColWidth={refColWidth} />
+        <WipRow gutterWidth={gutterWidth} flat={flat} showRefs={graphColumns.refs} />
         {rows.length === 0 && !loading ? (
           error ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-danger">
@@ -386,7 +418,7 @@ export function CommitGraph() {
                     gutterWidth={gutterWidth}
                     flat={flat}
                     selected={selectedOid === commit.oid || selectedOids.includes(commit.oid)}
-                    refColWidth={refColWidth}
+                    columns={graphColumns}
                     worktrees={worktreeBranches}
                     onSelect={onRowSelect}
                     onContextMenu={onContextMenu}

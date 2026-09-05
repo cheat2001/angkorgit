@@ -544,16 +544,16 @@ test('opening a diff keeps the inspector at the same width', async ({ page }) =>
   const inspectorBefore = (await inspector.boundingBox())?.width ?? 0;
   expect(sidebarBefore).toBeGreaterThan(200);
 
+  const widthOf = async (locator: typeof sidebar) => (await locator.boundingBox())?.width ?? 0;
   await page.getByText('CommitGraph.tsx').first().click();
   await expect(page.locator('section[aria-label^="Diff for"]')).toBeVisible();
-  expect((await sidebar.boundingBox())?.width ?? 0).toBeLessThan(2);
-  const inspectorDuring = (await inspector.boundingBox())?.width ?? 0;
-  expect(Math.abs(inspectorDuring - inspectorBefore)).toBeLessThan(2);
+  await expect.poll(() => widthOf(sidebar)).toBeLessThan(2);
+  await expect.poll(async () => Math.abs((await widthOf(inspector)) - inspectorBefore)).toBeLessThan(2);
 
   await page.keyboard.press('Escape');
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible();
-  expect(Math.abs(((await sidebar.boundingBox())?.width ?? 0) - sidebarBefore)).toBeLessThan(2);
-  expect(Math.abs(((await inspector.boundingBox())?.width ?? 0) - inspectorBefore)).toBeLessThan(2);
+  await expect.poll(async () => Math.abs((await widthOf(sidebar)) - sidebarBefore)).toBeLessThan(2);
+  await expect.poll(async () => Math.abs((await widthOf(inspector)) - inspectorBefore)).toBeLessThan(2);
 });
 
 test('commit box separates a summary line from a smaller description', async ({ page }) => {
@@ -638,4 +638,17 @@ test('graph ref chips show whole labels and fold the rest behind a count', async
   }
   const hash = firstRow.getByTitle('Copy full hash');
   await expect(hash).toHaveText(/^[0-9a-f]{7}$/);
+});
+
+test('graph display menu hides and restores the hash column', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTitle('Copy full hash').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Graph display options' }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Hash' }).click();
+  await expect(page.getByTitle('Copy full hash')).toHaveCount(0);
+  await expect(page.getByRole('menuitemcheckbox', { name: 'Hash' })).toBeVisible();
+  await page.getByRole('menuitemcheckbox', { name: 'Hash' }).click();
+  await expect(page.getByTitle('Copy full hash').first()).toBeVisible();
 });

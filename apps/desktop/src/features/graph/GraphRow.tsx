@@ -6,11 +6,10 @@ import type { CommitInfo } from '@angkorgit/core';
 import { Avatar } from '@/components/Avatar';
 import { toast } from 'sonner';
 import { formatDate, timeAgo } from '@/shared/utils';
+import { DEFAULT_GRAPH_COLUMNS, type GraphColumns } from '@/features/ui/store';
 
 export const ROW_HEIGHT = 32;
 export const REF_COL_WIDTH = 150;
-const REF_COL_MIN = 120;
-const REF_COL_MAX = 240;
 const FLAT_REF_WIDTH = 224;
 const OVERFLOW_BADGE_WIDTH = 34;
 const CHAR_WIDTH = 6.4;
@@ -56,11 +55,13 @@ function GraphGutter({
   width,
   author,
   hasRefs,
+  showAuthor,
 }: {
   row: GraphRowData;
   width: number;
   author: CommitInfo['author'];
   hasRefs: boolean;
+  showAuthor: boolean;
 }) {
   const { node, passing } = row;
   const nx = Math.min(x(node.lane), width - AVATAR_SIZE / 2 - 2);
@@ -123,8 +124,11 @@ function GraphGutter({
             strokeWidth={2}
           />
         )}
+        {!node.isMerge && !showAuthor && (
+          <circle cx={nx} cy={CY} r={NODE_RADIUS} fill={laneColor(node.color)} />
+        )}
       </svg>
-      {!node.isMerge && (
+      {!node.isMerge && showAuthor && (
         <span
           className="absolute overflow-hidden rounded-full"
           title={author.name}
@@ -209,19 +213,7 @@ function fitGroups(groups: RefGroup[], available: number, isHead: boolean): RefG
   return shown;
 }
 
-export function computeRefColWidth(commits: CommitInfo[]): number {
-  let widest = 0;
-  for (const commit of commits) {
-    if (commit.refs.length === 0) continue;
-    const groups = groupRefs(commit.refs);
-    if (groups.length === 0) continue;
-    const first = estimateChipWidth(groups[0], commit.isHead && groups[0].local);
-    const width = first + (groups.length > 1 ? 4 + OVERFLOW_BADGE_WIDTH : 0) + 12;
-    if (width > widest) widest = width;
-  }
-  if (widest === 0) return REF_COL_WIDTH;
-  return Math.max(REF_COL_MIN, Math.min(REF_COL_MAX, widest));
-}
+
 
 function RefCell({
   refs,
@@ -317,7 +309,7 @@ interface Props {
   gutterWidth: number;
   flat?: boolean;
   selected: boolean;
-  refColWidth: number;
+  columns?: GraphColumns;
   worktrees?: ReadonlyMap<string, string>;
   onSelect: (oid: string, event: React.MouseEvent) => void;
   onContextMenu: (event: React.MouseEvent, commit: CommitInfo) => void;
@@ -331,7 +323,7 @@ export const CommitRow = memo(function CommitRow({
   gutterWidth,
   flat,
   selected,
-  refColWidth,
+  columns = DEFAULT_GRAPH_COLUMNS,
   worktrees,
   onSelect,
   onContextMenu,
@@ -339,18 +331,18 @@ export const CommitRow = memo(function CommitRow({
   onRefMenu,
 }: Props) {
   const isMergeCommit = commit.parents.length > 1;
-  const refCell = (
+  const refCell = columns.refs ? (
     <RefCell
       refs={commit.refs}
       isHead={commit.isHead}
       color={row.node.color}
       flat={flat}
-      width={refColWidth}
+      width={REF_COL_WIDTH}
       worktrees={worktrees}
       onCheckoutRef={onCheckoutRef}
       onRefMenu={(e, ref) => onRefMenu(e, ref, commit)}
     />
-  );
+  ) : null;
   return (
     <div
       role="row"
@@ -365,9 +357,15 @@ export const CommitRow = memo(function CommitRow({
     >
       {!flat && refCell}
       {flat ? (
-        <FlatGutter author={commit.author} />
+        columns.author && <FlatGutter author={commit.author} />
       ) : (
-        <GraphGutter row={row} width={gutterWidth} author={commit.author} hasRefs={commit.refs.length > 0} />
+        <GraphGutter
+          row={row}
+          width={gutterWidth}
+          author={commit.author}
+          hasRefs={columns.refs && commit.refs.length > 0}
+          showAuthor={columns.author}
+        />
       )}
       {flat && refCell}
       {commit.isHead && commit.refs.length === 0 && <Badge tone="primary">HEAD</Badge>}
@@ -375,6 +373,7 @@ export const CommitRow = memo(function CommitRow({
       <span className={cn('min-w-0 flex-1 truncate', isMergeCommit && !selected && 'text-muted')}>
         {commit.summary || <span className="text-faint">(no message)</span>}
       </span>
+      {columns.hash && (
       <button
         type="button"
         className="w-14 shrink-0 rounded px-0.5 text-right font-mono text-[11px] text-faint hover:bg-surface-raised hover:text-foreground"
@@ -387,12 +386,15 @@ export const CommitRow = memo(function CommitRow({
       >
         {commit.shortOid.slice(0, 7)}
       </button>
+      )}
+      {columns.date && (
       <span
         className="w-[4.5rem] shrink-0 whitespace-nowrap text-right text-[11px] text-faint"
         title={formatDate(commit.author.time)}
       >
         {timeAgo(commit.author.time)}
       </span>
+      )}
     </div>
   );
 });
