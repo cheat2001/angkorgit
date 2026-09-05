@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
-import { ChevronRight, Copy, FileText, Maximize2, Sparkles, X } from 'lucide-react';
+import { ChevronRight, Cloud, Copy, FileText, Maximize2, Monitor, Sparkles, Tag as TagIcon, X } from 'lucide-react';
 import type { CommitFileInfo, CommitInfo, FileDiff } from '@angkorgit/core';
 import { aiCapabilities } from '@angkorgit/core';
 import { Badge, Button, Hint, Logo, cn } from '@angkorgit/design-system';
@@ -15,7 +15,7 @@ import { AiResultDialog } from '@/features/ai/AiResultDialog';
 import { explainKeyFor, useAiWork } from '@/features/ai/workStore';
 import { Avatar } from '@/components/Avatar';
 import { FileTree, treeIndent } from '@/components/FileTree';
-import { basename, dirname, formatDate } from '@/shared/utils';
+import { basename, dirname, formatDate, timeAgo } from '@/shared/utils';
 
 const diffPath = (diff: CommitFileInfo) => diff.path;
 
@@ -195,7 +195,7 @@ export function CommitDetails({
     <div ref={scrollRef} className="flex h-full flex-col overflow-y-auto">
       <div className="border-b border-border-subtle p-4">
         <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 text-sm font-medium leading-snug">{commit.summary}</p>
+          <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">{commit.summary}</p>
           <Hint label="Close">
             <Button variant="ghost" size="icon-sm" aria-label="Back to working copy" onClick={close}>
               <X className="size-3.5" />
@@ -205,34 +205,49 @@ export function CommitDetails({
         {commit.body && (
           <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-muted">{commit.body}</pre>
         )}
-        <div className="mt-3 flex items-center gap-2 text-xs text-muted">
-          <Avatar name={commit.author.name} email={commit.author.email} size={24} />
-          <span>{commit.author.name}</span>
-          <span className="text-faint">{formatDate(commit.author.time)}</span>
+        <div className="mt-3 flex items-center gap-2.5">
+          <Avatar name={commit.author.name} email={commit.author.email} size={28} />
+          <span className="flex min-w-0 flex-col leading-tight">
+            <span className="truncate text-xs font-medium text-foreground">{commit.author.name}</span>
+            <span className="truncate text-[11px] text-faint" title={formatDate(commit.author.time)}>
+              {timeAgo(commit.author.time)} · {formatDate(commit.author.time)}
+              {commit.committer.email !== commit.author.email && ` · committed by ${commit.committer.name}`}
+            </span>
+          </span>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <button
-            className="flex items-center gap-1 rounded border border-border bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] text-muted hover:text-foreground"
-            onClick={() => {
-              void navigator.clipboard.writeText(commit.oid);
-              toast.success('Commit hash copied');
-            }}
-          >
-            {commit.shortOid} <Copy className="size-2.5" />
-          </button>
+          <Hint label="Copy full hash">
+            <button
+              className="flex h-5 items-center gap-1 rounded border border-border bg-surface-raised px-1.5 font-mono text-[10px] text-muted hover:text-foreground"
+              aria-label="Copy commit hash"
+              onClick={() => {
+                void navigator.clipboard.writeText(commit.oid);
+                toast.success('Commit hash copied');
+              }}
+            >
+              {commit.shortOid} <Copy className="size-2.5" />
+            </button>
+          </Hint>
           {commit.parents.map((parent) => (
             <button
               key={parent}
-              className="rounded border border-border-subtle px-1.5 py-0.5 font-mono text-[10px] text-faint hover:text-foreground"
+              className="flex h-5 items-center rounded border border-border-subtle px-1.5 font-mono text-[10px] text-faint hover:text-foreground"
               onClick={() => select(parent)}
-              title="Go to parent"
+              title={commit.parents.length > 1 ? 'Go to this parent' : 'Go to parent'}
             >
               ← {parent.slice(0, 7)}
             </button>
           ))}
           {commit.refs.map((ref) => (
-            <Badge key={ref.name} tone={ref.kind === 'tag' ? 'primary' : 'success'}>
-              {ref.shorthand}
+            <Badge
+              key={ref.name}
+              tone={ref.kind === 'tag' ? 'primary' : ref.kind === 'remoteBranch' ? 'info' : 'success'}
+              className="max-w-48"
+            >
+              {ref.kind === 'tag' && <TagIcon className="size-2.5 shrink-0" />}
+              {ref.kind === 'remoteBranch' && <Cloud className="size-2.5 shrink-0" />}
+              {(ref.kind === 'localBranch' || ref.kind === 'head') && <Monitor className="size-2.5 shrink-0" />}
+              <span className="truncate">{ref.shorthand}</span>
             </Badge>
           ))}
         </div>

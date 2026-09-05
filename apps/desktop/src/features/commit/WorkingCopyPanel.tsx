@@ -130,6 +130,9 @@ const FileRow = memo(function FileRow({
 const fileStatusPath = (file: FileStatus) => file.path;
 
 export const commitShortcut = { current: null as (() => void) | null };
+const COMMIT_BOX_MIN = 72;
+const COMMIT_BOX_AUTO_MAX = 260;
+const COMMIT_BOX_MAX = 600;
 
 const REVIEW_WAIT_MESSAGES = [
   'Reading your staged changes…',
@@ -212,6 +215,27 @@ export function WorkingCopyPanel() {
   const setSummary = (text: string) => setMessage(joinCommitMessage(text, body));
   const setBody = (text: string) => setMessage(joinCommitMessage(summary, text));
   const summaryRef = useRef<HTMLInputElement>(null);
+  const commitBoxHeight = useUi((s) => s.commitBoxHeight);
+  const [resizing, setResizing] = useState(false);
+  const startResize = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const el = messageRef.current;
+    if (!el) return;
+    const startY = event.clientY;
+    const startHeight = el.getBoundingClientRect().height;
+    setResizing(true);
+    const onMove = (e: MouseEvent) => {
+      const next = Math.round(Math.min(COMMIT_BOX_MAX, Math.max(COMMIT_BOX_MIN, startHeight + (startY - e.clientY))));
+      useUi.getState().setCommitBoxHeight(next);
+    };
+    const onUp = () => {
+      setResizing(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
   const setAmend = (value: boolean) => useCommitDraft.getState().setAmend(path, value);
   const [committing, setCommitting] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -225,9 +249,13 @@ export function WorkingCopyPanel() {
   useEffect(() => {
     const el = messageRef.current;
     if (!el) return;
+    if (commitBoxHeight !== null) {
+      el.style.height = `${commitBoxHeight}px`;
+      return;
+    }
     el.style.height = 'auto';
-    el.style.height = `${Math.max(72, Math.min(el.scrollHeight, 260))}px`;
-  }, [body]);
+    el.style.height = `${Math.max(COMMIT_BOX_MIN, Math.min(el.scrollHeight, COMMIT_BOX_AUTO_MAX))}px`;
+  }, [body, commitBoxHeight]);
 
   useEffect(() => {
     if (!path || useCommitDraft.getState().drafts[path]) return;
@@ -823,7 +851,25 @@ export function WorkingCopyPanel() {
           </Button>
         </div>
       ) : (
-        <div className="shrink-0 border-t border-border-subtle p-3">
+        <div className="relative shrink-0 border-t border-border-subtle p-3">
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize commit box"
+            title="Drag to resize · double-click to reset"
+            onMouseDown={startResize}
+            onDoubleClick={() => useUi.getState().setCommitBoxHeight(null)}
+            className={cn(
+              'group/handle absolute -top-1 left-0 right-0 z-10 flex h-2 cursor-row-resize items-center justify-center',
+            )}
+          >
+            <span
+              className={cn(
+                'h-0.5 w-10 rounded-full transition-colors',
+                resizing ? 'bg-primary' : 'bg-transparent group-hover/handle:bg-primary/60',
+              )}
+            />
+          </div>
           {reviewBusy && (
             <div className="mb-2 rounded-md border border-primary/30 bg-primary/5 text-xs leading-relaxed">
               <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
@@ -950,7 +996,10 @@ export function WorkingCopyPanel() {
               }}
               placeholder="Description — what changed and why  ·  ⌘⏎ to commit"
               aria-label="Commit description"
-              className="max-h-[260px] min-h-[72px] resize-none rounded-none border-0 bg-transparent px-3 py-2 text-xs leading-relaxed text-foreground shadow-none focus-visible:ring-0 focus-visible:border-0"
+              className={cn(
+                'min-h-[72px] resize-none rounded-none border-0 bg-transparent px-3 py-2 text-xs leading-relaxed text-foreground shadow-none focus-visible:ring-0 focus-visible:border-0',
+                commitBoxHeight === null ? 'max-h-[260px]' : 'max-h-[600px] overflow-y-auto',
+              )}
             />
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-end gap-2">

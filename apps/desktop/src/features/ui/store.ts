@@ -66,6 +66,7 @@ interface UiState {
   fileTree: boolean;
   sidebarSections: Record<string, boolean>;
   sidebarCollapseEpoch: number;
+  commitBoxHeight: number | null;
 
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -91,6 +92,7 @@ interface UiState {
   markWorktreeTab: (path: string, isWorktree: boolean) => void;
   setSidebarSection: (id: string, open: boolean) => void;
   collapseSidebarSections: (ids: readonly string[]) => void;
+  setCommitBoxHeight: (height: number | null) => void;
   setFileTree: (on: boolean) => void;
 }
 
@@ -134,6 +136,7 @@ export const useUi = create<UiState>()(
   fileTree: false,
   sidebarSections: {},
   sidebarCollapseEpoch: 0,
+  commitBoxHeight: null,
 
   toggleSidebar: () =>
     set((s) =>
@@ -197,6 +200,7 @@ export const useUi = create<UiState>()(
       sidebarSections: { ...s.sidebarSections, ...Object.fromEntries(ids.map((id) => [id, false])) },
       sidebarCollapseEpoch: s.sidebarCollapseEpoch + 1,
     })),
+  setCommitBoxHeight: (commitBoxHeight) => set({ commitBoxHeight }),
   setFileTree: (fileTree) => set({ fileTree }),
     }),
     {
@@ -211,6 +215,7 @@ export const useUi = create<UiState>()(
         worktreeTabs: state.worktreeTabs,
         fileTree: state.fileTree,
         sidebarSections: state.sidebarSections,
+        commitBoxHeight: state.commitBoxHeight,
       }),
     },
   ),

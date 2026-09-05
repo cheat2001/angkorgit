@@ -583,3 +583,23 @@ test('commit box separates a summary line from a smaller description', async ({ 
   await description.press('Backspace');
   await expect(summary).toBeFocused();
 });
+
+test('the commit box grows when its top edge is dragged and resets on double-click', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const description = page.getByLabel('Commit description');
+  const before = (await description.boundingBox())?.height ?? 0;
+  const handle = page.getByRole('separator', { name: 'Resize commit box' });
+  const grip = await handle.boundingBox();
+  if (!grip) throw new Error('no resize handle');
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + grip.width / 2, grip.y - 120, { steps: 6 });
+  await page.mouse.up();
+  const after = (await description.boundingBox())?.height ?? 0;
+  expect(after - before).toBeGreaterThan(100);
+  await handle.dblclick();
+  const reset = (await description.boundingBox())?.height ?? 0;
+  expect(Math.abs(reset - before)).toBeLessThan(2);
+});
