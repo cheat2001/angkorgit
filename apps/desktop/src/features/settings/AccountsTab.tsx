@@ -8,6 +8,8 @@ import {
   Gitlab,
   Globe,
   KeyRound,
+  MoreHorizontal,
+  Plus,
   RefreshCw,
   Star,
   Trash2,
@@ -15,7 +17,11 @@ import {
 import {
   Badge,
   Button,
-  Hint,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   Input,
   Select,
   SelectContent,
@@ -27,6 +33,8 @@ import {
 } from '@angkorgit/design-system';
 import { ipc, openExternal, type AccountCheckStatus, type HostingAccount } from '@/core/ipc';
 import { timeAgo } from '@/shared/utils';
+import { confirmDialog } from '@/components/confirm';
+import { Field, SettingCard } from './SettingCard';
 
 type ProviderKind = 'github' | 'gitlab' | 'gitlab-self' | 'bitbucket' | 'other';
 
@@ -224,6 +232,7 @@ export function AccountsTab() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [adding, setAdding] = useState(false);
   const tokenInputRef = useRef<HTMLInputElement>(null);
 
   const runChecks = async (list: HostingAccount[]) => {
@@ -317,6 +326,7 @@ export function AccountsTab() {
       setAccounts(updated);
       setToken('');
       setUsername('');
+      setAdding(false);
       if (isVerified) toast.success(`Connected ${cleanHost} as ${finalUsername}`);
       else toast.warning(`Saved ${cleanHost} as ${finalUsername} — token not verified`);
       const added = updated.find((a) => a.host === cleanHost && a.username === finalUsername);
@@ -352,50 +362,69 @@ export function AccountsTab() {
   }, {});
 
   const tokenPage = preset.tokenUrl(host.trim());
+  const showForm = adding || (!loading && accounts.length === 0);
+
+  const confirmRemove = async (account: HostingAccount) => {
+    const ok = await confirmDialog({
+      title: `Remove ${account.username} on ${account.host}?`,
+      description:
+        'The token is deleted from the system keychain. Pushes to this host fall back to your other accounts or the credential helper.',
+      confirmLabel: 'Remove account',
+      destructive: true,
+    });
+    if (ok) await remove(account);
+  };
 
   return (
-    <div className="flex flex-col gap-4">
-      {loading && (
-        <div className="flex flex-col gap-1">
-          {[0, 1].map((row) => (
-            <div
-              key={row}
-              className="flex items-center gap-3 rounded-lg border border-border p-3"
-            >
-              <div className="size-4 animate-pulse rounded bg-surface-raised" />
-              <div className="flex flex-1 flex-col gap-1.5">
-                <div className="h-3.5 w-36 animate-pulse rounded bg-surface-raised" />
-                <div className="h-3 w-52 animate-pulse rounded bg-surface-raised" />
+    <SettingCard
+      title="Accounts"
+      description="Used automatically when a remote's host matches — push and pull over HTTPS with no SSH setup. Several accounts per host are fine; one is the default and profiles can pick another."
+      action={
+        !showForm ? (
+          <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+            <Plus className="size-3.5" /> Add account
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className="flex flex-col gap-2">
+        {loading && (
+          <div className="flex flex-col gap-2">
+            {[0, 1].map((row) => (
+              <div key={row} className="flex items-center gap-3 rounded-lg border border-border-subtle p-3">
+                <div className="size-8 animate-pulse rounded-md bg-surface-raised" />
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <div className="h-3.5 w-36 animate-pulse rounded bg-surface-raised" />
+                  <div className="h-3 w-52 animate-pulse rounded bg-surface-raised" />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {loadFailed && <p className="text-xs text-danger">Could not load accounts.</p>}
-      {!loading && accounts.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {accounts.map((account) => {
+            ))}
+          </div>
+        )}
+        {loadFailed && <p className="text-xs text-danger">Could not load accounts.</p>}
+
+        {!loading &&
+          accounts.map((account) => {
             const key = accountKey(account);
             const multi = (hostCounts[account.host] ?? 0) > 1;
             return (
               <div
                 key={key}
-                className="group flex items-center gap-3 rounded-lg border border-border p-3"
+                className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface-raised/40 p-3"
               >
-                {providerIcon(account.provider)}
-                <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-1.5 text-sm">
-                    {account.host}
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface text-muted">
+                  {providerIcon(account.provider)}
+                </span>
+                <div className="min-w-0 flex-1 leading-tight">
+                  <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <span className="truncate">{account.username}</span>
+                    <span className="truncate font-normal text-muted">@ {account.host}</span>
                     {multi && account.isDefault && <Badge tone="neutral">default</Badge>}
-                    <AccountStatus account={account} check={checks[key]} />
                   </p>
-                  <p className="text-xs text-faint">
-                    {account.username} · token in system keychain
-                    {account.verified
-                      ? account.verifiedAt
-                        ? ` · checked ${timeAgo(account.verifiedAt)}`
-                        : ''
-                      : ' · not verified'}
+                  <p className="flex flex-wrap items-center gap-x-2 text-xs text-faint">
+                    <AccountStatus account={account} check={checks[key]} />
+                    <span>· token in the system keychain</span>
+                    {account.verified && account.verifiedAt && <span>· checked {timeAgo(account.verifiedAt)}</span>}
                   </p>
                 </div>
                 {!account.verified && (
@@ -403,92 +432,115 @@ export function AccountsTab() {
                     <RefreshCw className="size-3.5" /> Reconnect
                   </Button>
                 )}
-                {multi && !account.isDefault && (
-                  <Hint label={`Use ${account.username} by default for ${account.host}`}>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Make ${account.username} the default for ${account.host}`}
-                      className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-                      onClick={() => void makeDefault(account)}
-                    >
-                      <Star className="size-3.5" />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon-sm" aria-label={`${account.username} on ${account.host} actions`}>
+                      <MoreHorizontal className="size-3.5" />
                     </Button>
-                  </Hint>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Remove ${account.username} on ${account.host}`}
-                  className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-                  onClick={() => void remove(account)}
-                >
-                  <Trash2 className="size-3.5 text-danger" />
-                </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {multi && !account.isDefault && (
+                      <DropdownMenuItem onClick={() => void makeDefault(account)}>
+                        <Star /> Make default for {account.host}
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => reconnect(account)}>
+                      <RefreshCw /> Reconnect with a new token…
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem destructive onClick={() => void confirmRemove(account)}>
+                      <Trash2 /> Remove account…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             );
           })}
-        </div>
-      )}
 
-      <div className="rounded-lg border border-border p-3">
-        <p className="flex items-center gap-2 text-sm font-medium">
-          <KeyRound className="size-4" /> Add account
-        </p>
-        <p className="mt-1 text-xs text-faint">
-          Used automatically when a remote matches the host — push and pull over HTTPS, no SSH needed.
-          Add several accounts per host and pick a default; repos assigned to a profile use that
-          profile's account.
-        </p>
-        <div className="mt-3 flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Select value={provider} onValueChange={(v) => changeProvider(v as ProviderKind)}>
-              <SelectTrigger className="w-44 shrink-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(PROVIDERS) as ProviderKind[]).map((kind) => (
-                  <SelectItem key={kind} value={kind}>
-                    {PROVIDERS[kind].label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              placeholder="host, e.g. gitlab-selfhost.com"
-              value={host}
-              disabled={!preset.hostEditable}
-              onChange={(e) => setHost(e.target.value)}
-            />
+        {showForm && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <p className="mb-3 flex items-center gap-2 text-xs font-medium text-foreground">
+              <KeyRound className="size-3.5 text-primary" />
+              {accounts.length === 0 ? 'Connect your first account' : 'Add account'}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Provider">
+                <Select value={provider} onValueChange={(v) => changeProvider(v as ProviderKind)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(PROVIDERS) as ProviderKind[]).map((kind) => (
+                      <SelectItem key={kind} value={kind}>
+                        {PROVIDERS[kind].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Host">
+                <Input
+                  placeholder="gitlab.example.com"
+                  value={host}
+                  disabled={!preset.hostEditable}
+                  onChange={(e) => setHost(e.target.value)}
+                  className="font-mono"
+                />
+              </Field>
+              <Field
+                label={provider === 'bitbucket' ? 'Atlassian account email' : 'Username'}
+                hint={provider === 'bitbucket' ? 'Bitbucket username is detected' : provider === 'other' ? undefined : 'detected from the token'}
+              >
+                <Input
+                  placeholder={provider === 'bitbucket' ? 'you@company.com' : 'optional'}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </Field>
+              <Field
+                label="Token"
+                hint={
+                  tokenPage ? (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-primary hover:underline"
+                      onClick={() => void openExternal(tokenPage)}
+                    >
+                      Create one on {preset.label} <ExternalLink className="size-3" />
+                    </button>
+                  ) : undefined
+                }
+              >
+                <Input
+                  ref={tokenInputRef}
+                  type="password"
+                  placeholder="Paste the token"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void connect();
+                    if (e.key === 'Escape' && accounts.length > 0) setAdding(false);
+                  }}
+                />
+              </Field>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate text-[11px] text-faint">{preset.tokenHint}</span>
+              <span className="flex shrink-0 gap-2">
+                {accounts.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setAdding(false)}>
+                    Cancel
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => void connect()} disabled={busy || !token.trim() || !host.trim()}>
+                  {busy ? <Spinner className="text-primary-foreground" /> : null}
+                  Connect
+                </Button>
+              </span>
+            </div>
           </div>
-          <Input
-            placeholder={preset.usernameHint}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <div className="flex gap-2">
-            <Input
-              ref={tokenInputRef}
-              type="password"
-              placeholder={preset.tokenHint}
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void connect();
-              }}
-            />
-            <Button onClick={() => void connect()} disabled={busy || !token.trim() || !host.trim()}>
-              {busy ? <Spinner className="text-primary-foreground" /> : null}
-              Connect
-            </Button>
-          </div>
-          {tokenPage && (
-            <Button variant="ghost" size="sm" className="self-start" onClick={() => void openExternal(tokenPage)}>
-              <ExternalLink /> Open {preset.label} to create a token
-            </Button>
-          )}
-        </div>
+        )}
       </div>
-    </div>
+    </SettingCard>
   );
 }

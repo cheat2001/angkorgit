@@ -66,6 +66,7 @@ import { useUi } from '@/features/ui/store';
 import { ACCENTS, THEMES, useSettings, ZOOM_MAX, ZOOM_MIN, type IdentityProfile } from './store';
 import { applyProfileToRepo } from './profiles';
 import { AccountsTab } from './AccountsTab';
+import { Field, SettingCard, SettingEmpty, SettingRow } from './SettingCard';
 import { getAiProvider } from '@/features/ai/client';
 import { modKey } from '@/shared/utils';
 
@@ -83,40 +84,6 @@ const SECTIONS: Array<{
   { id: 'ai', label: 'AI Assistant', description: 'Provider, connection and message style', icon: Sparkles },
   { id: 'shortcuts', label: 'Shortcuts', description: 'Keyboard reference', icon: Keyboard },
 ];
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function SettingCard({
-  title,
-  description,
-  action,
-  children,
-}: {
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-  children?: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border border-border bg-surface p-4">
-      <div className="flex items-start gap-4">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-medium">{title}</h3>
-          {description && <p className="mt-0.5 text-xs leading-relaxed text-faint">{description}</p>}
-        </div>
-        {action && <div className="shrink-0">{action}</div>}
-      </div>
-      {children && <div className="mt-3">{children}</div>}
-    </section>
-  );
-}
 
 function SshCard() {
   const settings = useSettings();
@@ -160,15 +127,11 @@ function SshCard() {
       description="Used for git@… remotes; https:// remotes use the accounts above instead."
     >
       <div className="flex flex-col gap-3">
-        <label className="flex items-center justify-between gap-3">
-          <span className="flex flex-col">
-            <span className="text-xs font-medium text-muted">Use the SSH agent</span>
-            <span className="text-xs text-faint">
-              Tried before any key file, and the only way a passphrase-protected key can work.
-            </span>
-          </span>
-          <Switch checked={settings.sshUseAgent} onCheckedChange={settings.setSshUseAgent} />
-        </label>
+        <SettingRow
+          title="Use the SSH agent"
+          description="Tried before any key file, and the only way a passphrase-protected key can work."
+          control={<Switch checked={settings.sshUseAgent} onCheckedChange={settings.setSshUseAgent} />}
+        />
 
         <Field label="Private key">
           <div className="flex gap-2">
@@ -208,7 +171,7 @@ function SshCard() {
         </div>
 
         {publicKey && (
-          <div className="flex flex-col gap-2 rounded-md border border-border-subtle bg-surface-raised p-2">
+          <div className="flex flex-col gap-2 rounded-md border border-border-subtle bg-surface-raised p-2.5">
             <p className="break-all font-mono text-xs text-muted">{publicKey}</p>
             <Button
               variant="ghost"
@@ -223,22 +186,20 @@ function SshCard() {
             </Button>
           </div>
         )}
-
-        <label className="flex items-center justify-between gap-3">
-          <span className="flex flex-col">
-            <span className="text-xs font-medium text-muted">Use the system credential helper</span>
-            <span className="text-xs text-faint">
-              Falls back to credentials saved by git or another client. Turn off to test the
-              accounts above on their own.
-            </span>
-          </span>
-          <Switch
-            checked={settings.useCredentialHelper}
-            onCheckedChange={settings.setUseCredentialHelper}
-          />
-        </label>
       </div>
     </SettingCard>
+  );
+}
+
+function CredentialHelperCard() {
+  const useCredentialHelper = useSettings((s) => s.useCredentialHelper);
+  const setUseCredentialHelper = useSettings((s) => s.setUseCredentialHelper);
+  return (
+    <SettingCard
+      title="System credential helper"
+      description="After your accounts, fall back to credentials saved by git or another client. Turn off to test the accounts on their own."
+      action={<Switch checked={useCredentialHelper} onCheckedChange={setUseCredentialHelper} />}
+    />
   );
 }
 
@@ -814,11 +775,14 @@ export function SettingsDialog() {
                     </div>
                   </SettingCard>
 
-                  <SettingCard title="Zoom">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-faint">
+                  <SettingCard
+                    title="Zoom"
+                    description={
+                      <>
                         Also <Kbd>{modKey()}</Kbd> <Kbd>+</Kbd> / <Kbd>{modKey()}</Kbd> <Kbd>−</Kbd> anywhere
-                      </p>
+                      </>
+                    }
+                    action={
                       <div className="flex items-center gap-1">
                         <Button
                           variant="secondary"
@@ -846,8 +810,8 @@ export function SettingsDialog() {
                           <Plus className="size-3.5" />
                         </Button>
                       </div>
-                    </div>
-                  </SettingCard>
+                    }
+                  />
 
                   <SettingCard
                     title="Reduce motion"
@@ -1030,20 +994,16 @@ export function SettingsDialog() {
                       })}
 
                       {settings.profiles.length === 0 && !addingProfile && (
-                        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border-subtle bg-surface-raised/40 p-4 sm:flex-row sm:items-center">
-                          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-                            <UsersRound className="size-4" />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-foreground">No profiles yet</p>
-                            <p className="text-xs leading-relaxed text-muted">
-                              Add Work and Personal once, then every repository picks the right name, email and account.
-                            </p>
-                          </div>
-                          <Button variant="secondary" size="sm" onClick={() => setAddingProfile(true)}>
-                            <Plus className="size-3.5" /> New profile
-                          </Button>
-                        </div>
+                        <SettingEmpty
+                          icon={<UsersRound className="size-4" />}
+                          title="No profiles yet"
+                          description="Add Work and Personal once, then every repository picks the right name, email and account."
+                          action={
+                            <Button variant="secondary" size="sm" onClick={() => setAddingProfile(true)}>
+                              <Plus className="size-3.5" /> New profile
+                            </Button>
+                          }
+                        />
                       )}
 
                       {addingProfile && (
@@ -1112,6 +1072,7 @@ export function SettingsDialog() {
               {section === 'accounts' && (
                 <div className="flex flex-col gap-4">
                   <AccountsTab />
+                  <CredentialHelperCard />
                   <SshCard />
                 </div>
               )}
@@ -1125,13 +1086,12 @@ export function SettingsDialog() {
                         ? 'Uses an AI CLI already installed on this machine — Claude Code, Codex, Gemini CLI, OpenCode or Antigravity — with its own login and quota. No API key needed.'
                         : 'Used for commit messages, diff explanations, conflict help and reviews. Local models via Ollama or LM Studio need no API key.'
                     }
-                  >
-                    <div className="flex flex-col gap-3">
+                    action={
                       <Select
                         value={settings.ai.provider}
                         onValueChange={(value) => settings.setAiProvider(value as AiProviderKind)}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="h-8 w-48">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1142,10 +1102,13 @@ export function SettingsDialog() {
                           ))}
                         </SelectContent>
                       </Select>
+                    }
+                  >
+                    <div className="flex flex-col gap-3">
                       {settings.ai.provider === 'cli' ? (
                         <>
                           <CliAgentPicker />
-                          <Field label="Model override (optional — leave empty for the CLI's default)">
+                          <Field label="Model override" hint="optional, the CLI's default when empty">
                             <Input
                               value={settings.ai.model}
                               onChange={(e) => settings.setAi({ model: e.target.value })}
@@ -1165,7 +1128,7 @@ export function SettingsDialog() {
                               />
                             </Field>
                           )}
-                          <Field label={`Base URL (optional — defaults to ${preset.defaultBaseUrl})`}>
+                          <Field label="Base URL" hint={`optional, defaults to ${preset.defaultBaseUrl}`}>
                             <Input
                               value={settings.ai.baseUrl ?? ''}
                               onChange={(e) => settings.setAi({ baseUrl: e.target.value })}

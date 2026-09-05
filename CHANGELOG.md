@@ -47,6 +47,15 @@ All notable changes to AngKorGit are documented here. The format follows
   open or closed between launches.
 
 ### Changed
+- **Settings, every tab.** Authentication: accounts are readable cards
+  ("username @ host", status, when last checked) with a menu for make default,
+  reconnect and a confirmed remove; connecting an account is a labeled form
+  behind an "Add account" button, with the token page linked right from the
+  Token field; the credential-helper switch moved out of the SSH card into its
+  own row, since it concerns HTTPS accounts. Appearance: the zoom stepper sits
+  on its title row. AI: the provider picker sits on its title row and the
+  optional fields say so in a hint instead of a long label. The card, field,
+  row and empty-state primitives are shared by every tab.
 - **Settings, Git tab redesigned.** Toggles and pickers (auto fetch, pull
   requests, reduce motion) sit on the same line as their title instead of
   below a paragraph. The identity card says which scope it writes to and shows

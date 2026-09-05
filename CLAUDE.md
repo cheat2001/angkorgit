@@ -773,9 +773,19 @@ features/
 │                               to REPO-LOCAL config; ensureRepoProfile: assigned → keep,
 │                               1 profile → silent stamp, ≥2 → pickProfile dialog, cancel
 │                               → proceed unassigned; called before commit and push),
+│                               SettingCard.tsx (SHARED primitives for every settings
+│                               file: Field {label, hint} — hints replace long
+│                               "(optional — …)" labels —, SettingCard, SettingRow (title/
+│                               description left, control right, for switches inside a
+│                               card), SettingEmpty (icon tile + title + line + action,
+│                               the same empty-state shape as the sidebar's)),
 │                               SettingsDialog (Appearance/Git/AUTHENTICATION/AI/Shortcuts
 │                               tabs incl. commit-style card w/ live branch preview +
-│                               SshCard; SettingCard takes an optional `action` rendered
+│                               SshCard (agent switch is a SettingRow; the credential-
+│                               helper switch is NOT here any more — it is its own
+│                               CredentialHelperCard between Accounts and SSH because it
+│                               governs HTTPS accounts); Zoom and the AI Provider Select
+│                               are header actions; SettingCard takes an optional `action` rendered
 │                               in the HEADER row — single controls (Switch, Select) go
 │                               there, never alone under a paragraph (Reduce motion, Auto
 │                               fetch, Pull requests use it); Git tab order: Auto fetch,
@@ -791,10 +801,19 @@ features/
 │                               button) reveals a labeled 3-column form with Cancel/Add,
 │                               Enter adds, Escape cancels — never the old inline row of
 │                               bare placeholder inputs)),
-│                               AccountsTab (per-provider token connect, verified-on-
-│                               connect, host-matched; auto re-check on open via
-│                               account_check, expiry countdown, Reconnect prefill,
-│                               default-per-host star when a host has several accounts).
+│                               AccountsTab (a SettingCard "Accounts" with an "Add
+│                               account" header button that reveals a labeled 2-column
+│                               form — Provider, Host, Username/Atlassian email, Token
+│                               with the "Create one on <provider>" link as the field
+│                               hint, footer Cancel/Connect, Escape cancels; the form
+│                               shows by itself when there are no accounts; rows read
+│                               `username @ host` + default Badge + AccountStatus, with a
+│                               visible Reconnect button when unverified and a "…" menu
+│                               (make default when the host has several, reconnect,
+│                               Remove… via confirmDialog — never a hover-only trash
+│                               icon); per-provider token connect, verified-on-connect,
+│                               host-matched; auto re-check on open via account_check,
+│                               expiry countdown, Reconnect prefill).
 │                               Authentication tab = accounts (https://) + SSH keys
 │                               (git@) together — see G20
 ├── ai/client.ts              ← binds settings AI config + Rust HTTP/CLI transports to
