@@ -44,6 +44,14 @@ All notable changes to AngKorGit are documented here. The format follows
   live when the theme changes.
 
 ### Added
+- **Conflict resolver chrome.** The header shows the file name with its folder
+  dimmed, a progress bar for resolved conflicts, and a merge icon tile; the A and
+  B pane headers carry their colors as a top edge and say which is current and
+  which is incoming; each conflict block is numbered; block borders are softer
+  so the active one stands out; the bottom pane is labeled Result.
+- **Conflicts in the working copy** are a card: an icon tile, the count with a
+  one-line hint, and one row per file with the file name first, its folder
+  dimmed and a Resolve action on hover.
 - **Welcome page.** Recent repositories are rows with an icon (a worktree gets
   its own glyph), a home-relative path, the time, and a menu with Open, Reveal
   in Finder, Copy path and Remove, also on right-click. A repository whose

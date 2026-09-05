@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { basename, dirname } from '@/shared/utils';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
-import { Check, ChevronDown, ChevronUp, Pencil, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, GitMerge, Pencil, RotateCcw, Sparkles, X } from 'lucide-react';
 import {
   aiCapabilities,
   parseConflicts,
@@ -638,10 +639,15 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
   const renderBlockSideAll = (index: number, side: Side) => (
     <label
       className={cn(
-        'flex cursor-pointer items-center gap-2 px-3 py-0.5',
+        'flex cursor-pointer items-center gap-2 px-3 py-1',
         side === 'current' && 'border-r border-border-subtle',
       )}
     >
+      {side === 'current' && (
+        <span className="mr-1 shrink-0 rounded bg-surface px-1.5 py-px font-mono text-[10px] font-semibold text-muted">
+          #{conflictIndices.indexOf(index) + 1}
+        </span>
+      )}
       <Checkbox
         checked={!blockEdits.has(index) && sideFullyPicked(index, side)}
         onCheckedChange={() => void toggleBlockSide(index, side)}
@@ -766,12 +772,30 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       aria-modal="true"
       aria-label={`Resolve conflicts in ${file}`}
     >
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border-subtle bg-surface px-4">
-        <span className="text-sm font-semibold">Resolve conflicts</span>
-        <span className="min-w-0 truncate font-mono text-xs text-muted">{file}</span>
-        <Badge tone={resolvedCount === total ? 'success' : 'primary'}>
-          {resolvedCount}/{total} resolved
-        </Badge>
+      <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border-subtle bg-surface px-4">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-danger/15 text-danger">
+          <GitMerge className="size-4" />
+        </span>
+        <div className="min-w-0 leading-tight">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">Resolve conflicts</p>
+          <p className="flex min-w-0 items-baseline gap-1.5 text-sm">
+            <span className="max-w-full shrink-0 truncate font-semibold text-foreground">{basename(file)}</span>
+            {dirname(file) && <span className="min-w-0 truncate font-mono text-[11px] text-faint">{dirname(file)}</span>}
+          </p>
+        </div>
+        {total > 0 && (
+          <div className="flex shrink-0 items-center gap-2" aria-label={`${resolvedCount} of ${total} conflicts resolved`}>
+            <span className="h-1.5 w-28 overflow-hidden rounded-full bg-surface-raised">
+              <span
+                className={cn('block h-full rounded-full transition-[width] duration-300', resolvedCount === total ? 'bg-success' : 'bg-primary')}
+                style={{ width: `${Math.round((resolvedCount / total) * 100)}%` }}
+              />
+            </span>
+            <span className={cn('text-xs tabular-nums', resolvedCount === total ? 'text-success' : 'text-muted')}>
+              {resolvedCount} of {total} resolved
+            </span>
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Hint
             label={
@@ -806,7 +830,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
           <div className="relative min-h-0 flex-[3]">
             <div ref={topScrollRef} className="relative h-full overflow-y-auto">
             <div className="sticky top-0 z-10 grid grid-cols-2 border-b border-border-subtle bg-surface">
-              <label className="flex cursor-pointer items-center gap-2 border-r border-border-subtle px-3 py-1.5">
+              <label className="flex cursor-pointer items-center gap-2 border-r border-t-2 border-border-subtle border-t-info/60 px-3 py-1.5">
                 <Checkbox
                   checked={allOfSidePicked('current')}
                   onCheckedChange={() => void togglePaneSide('current')}
@@ -814,8 +838,9 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                 />
                 <Badge tone="info">A</Badge>
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-info">{aLabel}</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-faint">current</span>
               </label>
-              <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5">
+              <label className="flex cursor-pointer items-center gap-2 border-t-2 border-t-success/60 px-3 py-1.5">
                 <Checkbox
                   checked={allOfSidePicked('incoming')}
                   onCheckedChange={() => void togglePaneSide('incoming')}
@@ -823,6 +848,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                 />
                 <Badge tone="success">B</Badge>
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-success">{bLabel}</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-faint">incoming</span>
               </label>
             </div>
             {virtualized ? (
@@ -854,7 +880,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             'relative border-x border-t',
                             active
                               ? 'border-x-primary/50 border-t-primary/50'
-                              : 'border-x-transparent border-t-border',
+                              : 'border-x-transparent border-t-border-subtle',
                           )}
                         >
                           <div className="grid grid-cols-2 bg-surface-raised/60">
@@ -879,7 +905,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                           className={cn(
                             'relative border-x',
                             active ? 'border-x-primary/50' : 'border-x-transparent',
-                            row.last && cn('border-b', active ? 'border-b-primary/50' : 'border-b-border'),
+                            row.last && cn('border-b', active ? 'border-b-primary/50' : 'border-b-border-subtle'),
                           )}
                         >
                           <div className="grid grid-cols-2">
@@ -911,7 +937,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                       else blockRefs.current.delete(index);
                     }}
                     className={cn(
-                      'relative border-y border-border transition-shadow',
+                      'relative border-y border-border-subtle transition-shadow',
                       conflictIndices[activeConflict] === index && 'ring-1 ring-primary/50',
                     )}
                   >
@@ -1004,7 +1030,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
               </span>
             )}
             <div className="flex items-center gap-2 border-b border-border-subtle bg-surface px-3 py-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Output</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Result</span>
               {manualText !== null ? (
                 <>
                   <Badge tone="primary">

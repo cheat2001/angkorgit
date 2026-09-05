@@ -669,20 +669,35 @@ export function WorkingCopyPanel() {
   return (
     <div className="flex h-full flex-col">
       {conflicts.length > 0 && (
-        <div className="m-2 rounded-md border border-danger/40 bg-danger/10 p-2 text-xs">
-          <p className="flex items-center gap-1.5 font-medium text-danger">
-            <AlertTriangle className="size-3.5" />
-            {conflicts.length} conflicted file{conflicts.length === 1 ? '' : 's'}
-          </p>
-          {conflicts.map((file) => (
-            <button
-              key={file}
-              className="mt-1 block w-full truncate rounded px-1.5 py-1 text-left font-mono text-[11px] hover:bg-danger/10"
-              onClick={() => openConflict(file)}
-            >
-              {file}
-            </button>
-          ))}
+        <div className="m-2 overflow-hidden rounded-lg border border-danger/30 bg-danger/5">
+          <div className="flex items-center gap-2.5 px-3 py-2">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-danger/15 text-danger">
+              <AlertTriangle className="size-3.5" />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="text-xs font-medium text-foreground">
+                {conflicts.length} conflicted file{conflicts.length === 1 ? '' : 's'}
+              </span>
+              <span className="text-[11px] text-muted">Resolve each file, then commit to finish the {repo?.state === 'merge' ? 'merge' : 'operation'}.</span>
+            </span>
+          </div>
+          <div className="flex flex-col divide-y divide-danger/15 border-t border-danger/20">
+            {conflicts.map((file) => (
+              <button
+                key={file}
+                type="button"
+                className="group flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-danger/10"
+                onClick={() => openConflict(file)}
+              >
+                <Badge tone="danger" className="w-5 shrink-0 justify-center px-0 font-mono">!</Badge>
+                <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                  <span className="max-w-full shrink-0 truncate font-medium text-foreground">{basename(file)}</span>
+                  {dirname(file) && <span className="min-w-0 flex-1 truncate text-[11px] text-faint">{dirname(file)}</span>}
+                </span>
+                <span className="shrink-0 text-[11px] text-danger opacity-0 transition-opacity group-hover:opacity-100">Resolve</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

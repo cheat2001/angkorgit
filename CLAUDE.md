@@ -523,7 +523,11 @@ features/
 │                               discards the in-flight result, never aborts the
 │                               provider request; review is disabled while
 │                               committing, but commit never waits on a review);
-│                               during a
+│                               the conflicted-files banner is a danger-tinted card
+│                               (icon tile, "n conflicted files" + "Resolve each file,
+│                               then commit…" hint, divide-y file rows with a `!` Badge,
+│                               name-first path and a hover "Resolve" affordance) that
+│                               opens the resolver on click; during a
 │                               merge the commit box stays visible even with a clean
 │                               status and shows "Abort merge" beside Commit — both it
 │                               and the toolbar state badge call the SHARED
@@ -540,7 +544,17 @@ features/
 │                               whole-file toggles never re-jump),
 │                               DiffViewer (wrap vs VIRTUALIZED no-wrap), VirtualDiff
 │                               (inline + synced split columns), DiffMinimap, diffShared
-├── conflicts/ConflictResolver← aligned A/B panes, per-LINE checkboxes (whole side via
+├── conflicts/ConflictResolver← header = danger GitMerge tile + "RESOLVE CONFLICTS" overline +
+│                               basename bold / dirname dimmed (name-wins rule) + a
+│                               progress bar (primary → success when complete) + "n of m
+│                               resolved"; A/B pane headers carry a 2px top edge in
+│                               info/success and a "current"/"incoming" overline; each
+│                               block header shows a `#n` chip (position in
+│                               conflictIndices); non-active block borders are
+│                               border-subtle so the active primary ring is the only
+│                               strong edge; the bottom pane label reads "Result"
+│                               (owner: UI looked rough, behaviour unchanged);
+│                               aligned A/B panes, per-LINE checkboxes (whole side via
 │                               pane header, per-CONFLICT via each block's take-all
 │                               header row — PaneRow kind 'header' in virtualized mode,
 │                               carries the AI explain button; the explanation opens
