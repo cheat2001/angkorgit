@@ -571,14 +571,21 @@ features/
 │                               for the virtualized path and computed inline for the
 │                               plain path; the LineNo gutter is a w-9 tabular-nums span
 │                               and renders EMPTY for deleted-section rows and for the
-│                               shorter side of a conflict block;
+│                               shorter side of a conflict block; row order in A/B is
+│                               CHECKBOX → LineNo → code (owner preference), and plain text
+│                               rows carry a w-4 spacer where the checkbox would be so code
+│                               columns stay aligned; the "Conflict n of m" ↑/↓ nav lives
+│                               IN the Result header (a bordered pill after the label) —
+│                               the old floating pill on the divider covered the panes'
+│                               last line, and the top scroller has pb-6 so its last row
+│                               can always scroll fully into view;
 │                               aligned A/B panes, per-LINE checkboxes (whole side via
 │                               pane header, per-CONFLICT via each block's take-all
 │                               header row — PaneRow kind 'header' in virtualized mode,
 │                               carries the AI explain button; the explanation opens
 │                               in a floating bottom-right overlay with a busy state,
 │                               never inline at the pane bottom), prev/next nav as a
-│                               floating "Conflict n of m" pill on the Output divider
+│                               "Conflict n of m" control in the Result header
 │                               (scrolls BOTH panes, visible from 1 conflict up),
 │                               auto-jump to the first conflict on open, clean Output
 │                               pane (A/B tags, no markers) that auto-scrolls to the

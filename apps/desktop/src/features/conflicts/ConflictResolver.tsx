@@ -758,13 +758,13 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                   : 'hover:bg-surface-raised/80',
               )}
             >
-              <LineNo n={first === null ? null : first + li} />
               <Checkbox
                 className="mt-1"
                 checked={isPicked(index, side, li)}
                 onCheckedChange={() => void toggleLine(index, side, li)}
                 aria-label={`Take line ${li + 1} from ${side}`}
               />
+              <LineNo n={first === null ? null : first + li} />
               <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
                 {line || ' '}
               </pre>
@@ -809,13 +809,13 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
               : 'hover:bg-surface-raised/80',
           )}
         >
-          <LineNo n={first === null ? null : first + li} />
           <Checkbox
             className="mt-1"
             checked={isPicked(index, side, li)}
             onCheckedChange={() => void toggleLine(index, side, li)}
             aria-label={`Take line ${li + 1} from ${side}`}
           />
+          <LineNo n={first === null ? null : first + li} />
           <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
             {lines[li] || ' '}
           </pre>
@@ -891,7 +891,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-[3]">
-            <div ref={topScrollRef} className="relative h-full overflow-y-auto">
+            <div ref={topScrollRef} className="relative h-full overflow-y-auto pb-6">
             <div className="sticky top-0 z-10 grid grid-cols-2 border-b border-border-subtle bg-surface">
               <label className="flex cursor-pointer items-center gap-2 border-r border-t-2 border-border-subtle border-t-info/60 px-3 py-1.5">
                 <Checkbox
@@ -930,13 +930,15 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                     >
                       {row.kind === 'text' || block.kind !== 'conflict' ? (
                         <div className="grid grid-cols-2">
-                          <div className="flex min-w-0 items-start border-r border-border-subtle px-3">
+                          <div className="flex min-w-0 items-start gap-2 border-r border-border-subtle px-3">
+                            <span className="mt-1 w-4 shrink-0" />
                             <LineNo n={row.kind === 'text' ? (paneModel.lineStart.get(row.block)?.a ?? 1) + row.li : null} />
                             <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-faint">
                               {(row.kind === 'text' && row.text) || ' '}
                             </pre>
                           </div>
-                          <div className="flex min-w-0 items-start px-3">
+                          <div className="flex min-w-0 items-start gap-2 px-3">
+                            <span className="mt-1 w-4 shrink-0" />
                             <LineNo n={row.kind === 'text' ? (paneModel.lineStart.get(row.block)?.b ?? 1) + row.li : null} />
                             <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-faint">
                               {(row.kind === 'text' && row.text) || ' '}
@@ -993,7 +995,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                   <div key={index} className="grid grid-cols-2 py-0.5">
                     <div className="min-w-0 border-r border-border-subtle px-3">
                       {block.lines.map((line, li) => (
-                        <div key={li} className="flex items-start">
+                        <div key={li} className="flex items-start gap-2">
+                          <span className="mt-1 w-4 shrink-0" />
                           <LineNo n={(paneModel.lineStart.get(index)?.a ?? 1) + li} />
                           <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-faint">{line || ' '}</pre>
                         </div>
@@ -1001,7 +1004,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                     </div>
                     <div className="min-w-0 px-3">
                       {block.lines.map((line, li) => (
-                        <div key={li} className="flex items-start">
+                        <div key={li} className="flex items-start gap-2">
+                          <span className="mt-1 w-4 shrink-0" />
                           <LineNo n={(paneModel.lineStart.get(index)?.b ?? 1) + li} />
                           <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-faint">{line || ' '}</pre>
                         </div>
@@ -1079,37 +1083,37 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
           </div>
 
           <div className="relative flex min-h-0 flex-[2] flex-col border-t border-border">
-            {total > 0 && (
-              <span className="absolute -top-3.5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 shadow-soft">
-                <Hint label="Previous conflict">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-5 w-5"
-                    aria-label="Previous conflict"
-                    onClick={() => jump(-1)}
-                  >
-                    <ChevronUp className="size-3.5" />
-                  </Button>
-                </Hint>
-                <span className="whitespace-nowrap text-[10px] font-medium text-muted">
-                  Conflict {activeConflict + 1} of {total}
-                </span>
-                <Hint label="Next conflict">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-5 w-5"
-                    aria-label="Next conflict"
-                    onClick={() => jump(1)}
-                  >
-                    <ChevronDown className="size-3.5" />
-                  </Button>
-                </Hint>
-              </span>
-            )}
             <div className="flex items-center gap-2 border-b border-border-subtle bg-surface px-3 py-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Result</span>
+              {total > 0 && (
+                <span className="flex items-center gap-0.5 rounded-md border border-border-subtle bg-surface-raised/60 px-1">
+                  <Hint label="Previous conflict">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-5 w-5"
+                      aria-label="Previous conflict"
+                      onClick={() => jump(-1)}
+                    >
+                      <ChevronUp className="size-3.5" />
+                    </Button>
+                  </Hint>
+                  <span className="whitespace-nowrap px-1 text-[10px] font-medium tabular-nums text-muted">
+                    Conflict {activeConflict + 1} of {total}
+                  </span>
+                  <Hint label="Next conflict">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-5 w-5"
+                      aria-label="Next conflict"
+                      onClick={() => jump(1)}
+                    >
+                      <ChevronDown className="size-3.5" />
+                    </Button>
+                  </Hint>
+                </span>
+              )}
               {manualText !== null ? (
                 <>
                   <Badge tone="primary">

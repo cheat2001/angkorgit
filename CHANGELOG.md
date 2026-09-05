@@ -50,7 +50,10 @@ All notable changes to AngKorGit are documented here. The format follows
   which is incoming; each conflict block is numbered; block borders are softer
   so the active one stands out; the bottom pane is labeled Result.
 - **Line numbers in the conflict resolver.** The A pane, the B pane and the
-  Result each carry a line-number gutter. A and B count through their own
+  Result each carry a line-number gutter, with the pick checkbox first, then
+  the number, then the code, so text rows and conflict rows line up. The
+  "Conflict n of m" navigation moved from a floating pill into the Result
+  header, so it no longer covers the last visible line of the panes. A and B count through their own
   version of the file, so a line in a conflict block shows where it sits in
   that branch, and the Result counts the file you are about to write, updating
   as you pick lines or edit a block.
