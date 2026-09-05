@@ -348,7 +348,8 @@ export const CommitRow = memo(function CommitRow({
       role="row"
       aria-selected={selected}
       className={cn(
-        'flex h-8 cursor-pointer select-none items-center gap-2 pl-1 pr-2 text-sm transition-colors',
+        'flex h-8 cursor-pointer select-none items-center gap-2 pr-2 text-sm transition-colors',
+        columns.refs || flat ? 'pl-1' : 'pl-4',
         selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
         commit.isHead && 'font-medium',
       )}

@@ -48,7 +48,8 @@ export function WipRow({
         if (e.key === 'Enter' || e.key === ' ') focusWorkingCopy();
       }}
       className={cn(
-        'sticky top-0 z-10 flex h-9 cursor-pointer select-none items-center gap-2 border-b border-dashed border-primary/40 pl-1 pr-2 text-sm',
+        'sticky top-0 z-10 flex h-9 cursor-pointer select-none items-center gap-2 border-b border-dashed border-primary/40 pr-2 text-sm',
+        showRefs || flat ? 'pl-1' : 'pl-4',
         'bg-surface/95 backdrop-blur-sm transition-colors hover:bg-primary/10',
         selectedOid === null && 'bg-primary/10',
       )}

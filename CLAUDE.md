@@ -387,7 +387,9 @@ features/
 │                           ui.graphColumns {refs, author, hash, date} (persisted) —
 │                           CommitRow takes `columns`, WipRow `showRefs`, and with
 │                           author off the gutter draws a plain filled lane-colored node
-│                           instead of the avatar; empty state offers "Clear filters"
+│                           instead of the avatar; with refs off rows AND the WIP banner
+│                           switch pl-1 → pl-4 so lanes don't hug the sidebar divider
+│                           (owner feedback); empty state offers "Clear filters"
 │                           when any filter is active),
 │                           GraphRow (per-row SVG lanes; REF CHIPS: groupRefs merges
 │                           local+remote of the same name, DROPS 'head' refs when a local
