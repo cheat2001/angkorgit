@@ -28,6 +28,18 @@ describe('highlightLineState', () => {
     expect(code.html).toContain('hljs-keyword');
   });
 
+  it('does not carry a /* that is glued to a word, such as JSX text like feature/*', () => {
+    const jsx = highlightLineState(
+      `<span className="font-mono">feature/*</span> → <span className="font-mono">[{'{suffix}'}]</span>.`,
+      'typescript',
+    );
+    expect(jsx.endsInComment).toBe(false);
+    expect(highlightLineState('const glob = pattern + "/" + name/*', 'typescript').endsInComment).toBe(false);
+    expect(highlightLineState('const x = 1; /* trailing note', 'typescript').endsInComment).toBe(true);
+    expect(highlightLineState('run(/* inline start', 'typescript').endsInComment).toBe(true);
+    expect(highlightLineState('/* at line start', 'typescript').endsInComment).toBe(true);
+  });
+
   it('does not treat line comments or glob strings as open block comments', () => {
     expect(highlightLineState('// just a note', 'typescript').endsInComment).toBe(false);
     expect(highlightLineState("const files = glob('src/**/*.ts');", 'typescript').endsInComment).toBe(false);

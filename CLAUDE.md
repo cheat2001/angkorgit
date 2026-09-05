@@ -1282,8 +1282,16 @@ update CLAUDE.md or docs/ — never the code.
   word-diff segment renderer read; state resets at every hunk boundary, so a
   hunk that starts mid-comment still misrenders unless whole-file view is on.
   Languages without a block opener (python, yaml, bash, json, markdown, ruby)
-  ignore the flag. Unit tests: `tests/unit/highlight.test.ts` (vitest aliases
-  `@/shared/highlight` and `highlight.js` to the desktop package for this).
+  ignore the flag. FALSE-POSITIVE GUARD (owner found SettingsDialog.tsx greyed
+  out from a JSX text node `feature/*` — same symptom in GitKraken): hljs has
+  no JSX grammar, so `/*` inside JSX text opens a "comment"; `openerGluedToCode`
+  reads the text before the last `hljs-comment` span in hljs's own output and
+  refuses to carry the state when that opener is glued to a word char, `/` or
+  `>` (real comments follow whitespace/punctuation — `foo(/*`, `; /*` and
+  line-start `/*` still carry). The line itself still renders as hljs paints
+  it; only the continuation is suppressed. Unit tests: `tests/unit/
+  highlight.test.ts` (vitest aliases `@/shared/highlight` and `highlight.js` to
+  the desktop package for this).
 
 ## 9. Testing map
 

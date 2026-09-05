@@ -32,6 +32,9 @@ All notable changes to AngKorGit are documented here. The format follows
 - The inspector keeps one width. Opening a diff (which folds the sidebar away)
   used to switch the layout to a second remembered set of panel sizes, so the
   right column jumped to a different width and remembered it separately.
+- A `/*` glued to a word, such as the JSX text `feature/*`, no longer turns the
+  rest of a diff into a comment. Only openers that follow whitespace or
+  punctuation carry a block comment to the next line.
 - Multi-line comments in diffs are highlighted as comments all the way through.
   The inner lines of a `/** … */` block (and `<!-- … -->` in HTML) used to render
   as code because each line was highlighted on its own.

@@ -117,6 +117,24 @@ interface ModeChain {
   parent?: ModeChain;
 }
 
+const GLUED_TO_WORD = /[\w$/>]$/;
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function openerGluedToCode(html: string): boolean {
+  const index = html.lastIndexOf('<span class="hljs-comment">');
+  if (index < 0) return false;
+  const before = decodeEntities(html.slice(0, index).replace(/<[^>]+>/g, ''));
+  return GLUED_TO_WORD.test(before);
+}
+
 function endsInBlockComment(top: unknown): boolean {
   let mode = top as ModeChain | undefined;
   while (mode) {
@@ -158,7 +176,8 @@ export function highlightLineState(
     }
     result = {
       html,
-      endsInComment: opener !== undefined && endsInBlockComment(out._top),
+      endsInComment:
+        opener !== undefined && endsInBlockComment(out._top) && !openerGluedToCode(out.value),
     };
   } catch {
     result = { html: escapeHtml(code), endsInComment: false };
