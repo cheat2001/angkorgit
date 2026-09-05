@@ -452,7 +452,12 @@ features/
 │                               cursor-row-resize, gold bar on hover/drag) — drag sets
 │                               ui.commitBoxHeight (persisted, 72–600px) which replaces
 │                               the auto-grow (72–260px) until a double-click on the
-│                               handle resets it to null —
+│                               handle resets it to null; the height is applied BOTH in
+│                               the [body, commitBoxHeight] effect AND in a callback ref
+│                               (attachMessageBox) because the box unmounts while a repo
+│                               loads (status null → spinner) and remounts with identical
+│                               deps, so an effect alone left it at the default after a
+│                               tab switch (owner bug report 2026-09-05) —
 │                               staged/changes lists (VIRTUALIZED flat lists: two
 │                               useVirtualizer instances sharing one scroll container
 │                               via measured scrollMargin; tree mode unvirtualized),

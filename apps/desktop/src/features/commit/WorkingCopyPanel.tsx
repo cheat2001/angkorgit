@@ -247,18 +247,26 @@ export function WorkingCopyPanel() {
   const [reviewExpanded, setReviewExpanded] = useState(false);
   const [waitIndex, setWaitIndex] = useState(0);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; file: FileStatus; staged: boolean } | null>(null);
-  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const messageRef = useRef<HTMLTextAreaElement | null>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const el = messageRef.current;
-    if (!el) return;
-    if (commitBoxHeight !== null) {
-      el.style.height = `${commitBoxHeight}px`;
+  const applyBoxHeight = (el: HTMLTextAreaElement, fixed: number | null) => {
+    if (fixed !== null) {
+      el.style.height = `${fixed}px`;
       return;
     }
     el.style.height = 'auto';
     el.style.height = `${Math.max(COMMIT_BOX_MIN, Math.min(el.scrollHeight, COMMIT_BOX_AUTO_MAX))}px`;
+  };
+  const boxHeightRef = useRef(commitBoxHeight);
+  boxHeightRef.current = commitBoxHeight;
+  const attachMessageBox = (el: HTMLTextAreaElement | null) => {
+    messageRef.current = el;
+    if (el) applyBoxHeight(el, boxHeightRef.current);
+  };
+  useEffect(() => {
+    const el = messageRef.current;
+    if (el) applyBoxHeight(el, commitBoxHeight);
   }, [body, commitBoxHeight]);
 
   useEffect(() => {
@@ -1015,7 +1023,7 @@ export function WorkingCopyPanel() {
             </div>
             <div className="mx-3 h-px bg-border-subtle" />
             <Textarea
-              ref={messageRef}
+              ref={attachMessageBox}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               onKeyDown={(e) => {

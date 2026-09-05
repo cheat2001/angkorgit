@@ -22,6 +22,10 @@ All notable changes to AngKorGit are documented here. The format follows
   instead, because git allows one folder per branch.
 
 ### Fixed
+- The commit box keeps its resized height when switching repository tabs. The
+  box is rebuilt while a repository loads, and the saved height was only
+  applied when the text or the height changed, so a fresh box came back at the
+  default size.
 - The inspector keeps one width. Opening a diff (which folds the sidebar away)
   used to switch the layout to a second remembered set of panel sizes, so the
   right column jumped to a different width and remembered it separately.
