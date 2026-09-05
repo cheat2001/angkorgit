@@ -44,6 +44,12 @@ All notable changes to AngKorGit are documented here. The format follows
   live when the theme changes.
 
 ### Added
+- **One control per side in the resolver.** Each side of a conflict has a
+  single checkbox, centered on the block, that takes or releases all of its
+  lines. Individual lines show a small plus on hover; click it, or the line, to
+  take just that line, and a tick marks lines already taken. The "Take all A /
+  Take all B" row is gone; the block header is now just "Conflict n" and the AI
+  button.
 - **Editing the Result feels like an editor.** Clicking a block no longer swaps
   in a boxed text field. The lines stay in place, the caret lands on the line
   you clicked, line numbers keep counting while you type, and a slim gold bar

@@ -3,7 +3,7 @@ import { basename, dirname } from '@/shared/utils';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
-import { Check, ChevronDown, ChevronUp, GitMerge, Pencil, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, GitMerge, Pencil, Plus, RotateCcw, Sparkles, X } from 'lucide-react';
 import {
   aiCapabilities,
   parseConflicts,
@@ -716,32 +716,45 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     </div>
   );
 
-  const renderBlockSideAll = (index: number, side: Side) => (
-    <label
-      className={cn(
-        'flex cursor-pointer items-center gap-2 px-3 py-1',
-        side === 'current' && 'border-r border-border-subtle',
-      )}
-    >
-      {side === 'current' && (
-        <span className="mr-2 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-faint">
-          Conflict {conflictIndices.indexOf(index) + 1}
-        </span>
-      )}
-      <Checkbox
-        checked={!blockEdits.has(index) && sideFullyPicked(index, side)}
-        onCheckedChange={() => void toggleBlockSide(index, side)}
-        aria-label={
-          side === 'current'
-            ? 'Take all lines from A for this conflict'
-            : 'Take all lines from B for this conflict'
-        }
-      />
-      <span className="text-[11px] text-muted">
-        {side === 'current' ? 'Take all from A' : 'Take all from B'}
-      </span>
-    </label>
-  );
+  const renderLineControl = (index: number, side: Side, li: number, lineCount: number) => {
+    const middle = Math.floor((lineCount - 1) / 2);
+    if (li === middle) {
+      return (
+        <Checkbox
+          className="mt-1"
+          checked={!blockEdits.has(index) && sideFullyPicked(index, side)}
+          onCheckedChange={() => void toggleBlockSide(index, side)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={
+            side === 'current'
+              ? 'Take all lines from A for this conflict'
+              : 'Take all lines from B for this conflict'
+          }
+        />
+      );
+    }
+    const picked = isPicked(index, side, li);
+    return (
+      <button
+        type="button"
+        className={cn(
+          'mt-1 flex size-4 shrink-0 items-center justify-center rounded transition-opacity',
+          picked
+            ? side === 'current'
+              ? 'text-info'
+              : 'text-success'
+            : 'text-muted opacity-0 hover:bg-surface-raised group-hover/line:opacity-100 focus-visible:opacity-100',
+        )}
+        aria-label={`Take line ${li + 1} from ${side}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          void toggleLine(index, side, li);
+        }}
+      >
+        {picked ? <Check className="size-3" /> : <Plus className="size-3" />}
+      </button>
+    );
+  };
 
   const renderSideCell = (block: ConflictBlock, index: number, side: Side) => {
     const lines = side === 'current' ? block.current : block.incoming;
@@ -765,28 +778,26 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
           </label>
         ) : (
           lines.map((line, li) => (
-            <label
+            <div
               key={li}
+              role="button"
+              tabIndex={-1}
               className={cn(
-                'flex cursor-pointer items-start gap-2 px-3 py-0.5 transition-colors',
+                'group/line flex cursor-pointer items-start gap-2 px-3 py-0.5 transition-colors',
                 isPicked(index, side, li)
                   ? side === 'current'
                     ? 'bg-info/10'
                     : 'bg-success/10'
                   : 'hover:bg-surface-raised/60',
               )}
+              onClick={() => void toggleLine(index, side, li)}
             >
-              <Checkbox
-                className="mt-1"
-                checked={isPicked(index, side, li)}
-                onCheckedChange={() => void toggleLine(index, side, li)}
-                aria-label={`Take line ${li + 1} from ${side}`}
-              />
+              {renderLineControl(index, side, li, lines.length)}
               <LineNo n={first === null ? null : first + li} />
               <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
                 {line || ' '}
               </pre>
-            </label>
+            </div>
           ))
         )}
       </div>
@@ -817,27 +828,25 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     if (li >= lines.length) return <div className={cn('min-w-0', paneCls)} />;
     return (
       <div className={cn('min-w-0', paneCls)}>
-        <label
+        <div
+          role="button"
+          tabIndex={-1}
           className={cn(
-            'flex cursor-pointer items-start gap-2 px-3 py-0.5 transition-colors',
+            'group/line flex cursor-pointer items-start gap-2 px-3 py-0.5 transition-colors',
             isPicked(index, side, li)
               ? side === 'current'
                 ? 'bg-info/10'
                 : 'bg-success/10'
               : 'hover:bg-surface-raised/60',
           )}
+          onClick={() => void toggleLine(index, side, li)}
         >
-          <Checkbox
-            className="mt-1"
-            checked={isPicked(index, side, li)}
-            onCheckedChange={() => void toggleLine(index, side, li)}
-            aria-label={`Take line ${li + 1} from ${side}`}
-          />
+          {renderLineControl(index, side, li, lines.length)}
           <LineNo n={first === null ? null : first + li} />
           <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
             {lines[li] || ' '}
           </pre>
-        </label>
+        </div>
       </div>
     );
   };
@@ -972,9 +981,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                               : 'border-x-transparent border-t-border-subtle',
                           )}
                         >
-                          <div className="grid grid-cols-2 bg-surface-raised/40 pr-8">
-                            {renderBlockSideAll(row.block, 'current')}
-                            {renderBlockSideAll(row.block, 'incoming')}
+                          <div className="flex items-center bg-surface-raised/40 px-3 py-1 pr-8">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">
+                              Conflict {conflictIndices.indexOf(row.block) + 1}
+                            </span>
                           </div>
                           <Hint label="Explain this conflict with AI">
                             <Button
@@ -1042,9 +1052,10 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                       conflictIndices[activeConflict] === index && 'ring-1 ring-primary/50',
                     )}
                   >
-                    <div className="grid grid-cols-2 border-b border-border-subtle bg-surface-raised/40 pr-8">
-                      {renderBlockSideAll(index, 'current')}
-                      {renderBlockSideAll(index, 'incoming')}
+                    <div className="flex items-center border-b border-border-subtle bg-surface-raised/40 px-3 py-1 pr-8">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">
+                        Conflict {conflictIndices.indexOf(index) + 1}
+                      </span>
                     </div>
                     <div className="grid grid-cols-2">
                       {renderSideCell(block, index, 'current')}

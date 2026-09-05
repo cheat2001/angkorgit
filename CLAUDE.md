@@ -588,10 +588,20 @@ features/
 │                               space); Result rows mark A/B with a slim 0.5×2.5 colored
 │                               bar in the w-4 gutter slot instead of bold letters and tint
 │                               at /5 — add color only where it carries meaning;
-│                               aligned A/B panes, per-LINE checkboxes (whole side via
-│                               pane header, per-CONFLICT via each block's take-all
-│                               header row — PaneRow kind 'header' in virtualized mode,
-│                               carries the AI explain button; the explanation opens
+│                               aligned A/B panes; PICK CONTROLS (owner design): per side
+│                               of a block exactly ONE Checkbox, rendered on the MIDDLE
+│                               line (floor((n-1)/2)) of that side by renderLineControl —
+│                               it toggles the whole side (toggleBlockSide, aria-label
+│                               "Take all lines from A/B for this conflict" — e2e relies
+│                               on it) and stopPropagation()s so the row click does not
+│                               also toggle the line; every other line shows a hover
+│                               `Plus` button (group/line) that becomes a colored `Check`
+│                               once picked, and clicking the row itself toggles the line
+│                               (toggleLine); the whole-side checkbox in the PANE HEADER
+│                               remains; the old take-all header row is REMOVED — the
+│                               block header (PaneRow kind 'header' in virtualized mode) is
+│                               just the "CONFLICT n" caption and carries the AI explain
+│                               button; the explanation opens
 │                               in a floating bottom-right overlay with a busy state,
 │                               never inline at the pane bottom), prev/next nav as a
 │                               "Conflict n of m" control in the Result header
