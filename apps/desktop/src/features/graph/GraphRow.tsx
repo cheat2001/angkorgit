@@ -10,6 +10,8 @@ import { DEFAULT_GRAPH_COLUMNS, type GraphColumns } from '@/features/ui/store';
 
 export const ROW_HEIGHT = 32;
 export const REF_COL_WIDTH = 150;
+export const GUTTER_GAP = 10;
+export const AUTHOR_COL_WIDTH = 112;
 const FLAT_REF_WIDTH = 224;
 const OVERFLOW_BADGE_WIDTH = 34;
 const CHAR_WIDTH = 6.4;
@@ -55,18 +57,16 @@ function GraphGutter({
   width,
   author,
   hasRefs,
-  showAuthor,
 }: {
   row: GraphRowData;
   width: number;
   author: CommitInfo['author'];
   hasRefs: boolean;
-  showAuthor: boolean;
 }) {
   const { node, passing } = row;
   const nx = Math.min(x(node.lane), width - AVATAR_SIZE / 2 - 2);
   return (
-    <div className="relative shrink-0 overflow-hidden" style={{ width, height: ROW_HEIGHT }}>
+    <div className="relative shrink-0 overflow-hidden" style={{ width, height: ROW_HEIGHT, marginRight: GUTTER_GAP }}>
       <svg width={width} height={ROW_HEIGHT} aria-hidden>
         {hasRefs && (
           <line
@@ -124,11 +124,8 @@ function GraphGutter({
             strokeWidth={2}
           />
         )}
-        {!node.isMerge && !showAuthor && (
-          <circle cx={nx} cy={CY} r={NODE_RADIUS} fill={laneColor(node.color)} />
-        )}
       </svg>
-      {!node.isMerge && showAuthor && (
+      {!node.isMerge && (
         <span
           className="absolute overflow-hidden rounded-full"
           title={author.name}
@@ -358,25 +355,35 @@ export const CommitRow = memo(function CommitRow({
     >
       {!flat && refCell}
       {flat ? (
-        columns.author && <FlatGutter author={commit.author} />
+        <FlatGutter author={commit.author} />
       ) : (
         <GraphGutter
           row={row}
           width={gutterWidth}
           author={commit.author}
           hasRefs={columns.refs && commit.refs.length > 0}
-          showAuthor={columns.author}
         />
       )}
       {flat && refCell}
       {commit.isHead && commit.refs.length === 0 && <Badge tone="primary">HEAD</Badge>}
-      {isMergeCommit && <GitMerge className="size-3.5 shrink-0 text-faint" />}
       {columns.message ? (
-        <span className={cn('min-w-0 flex-1 truncate', isMergeCommit && !selected && 'text-muted')}>
-          {commit.summary || <span className="text-faint">(no message)</span>}
-        </span>
+        <>
+          {isMergeCommit && <GitMerge className="size-3.5 shrink-0 text-faint" />}
+          <span className={cn('min-w-0 flex-1 truncate', isMergeCommit && !selected && 'text-muted')}>
+            {commit.summary || <span className="text-faint">(no message)</span>}
+          </span>
+        </>
       ) : (
         <span className="min-w-0 flex-1" />
+      )}
+      {columns.author && (
+        <span
+          className="shrink-0 truncate text-[11px] text-muted"
+          style={{ width: AUTHOR_COL_WIDTH }}
+          title={`${commit.author.name} <${commit.author.email}>`}
+        >
+          {commit.author.name}
+        </span>
       )}
       {columns.hash && (
       <button

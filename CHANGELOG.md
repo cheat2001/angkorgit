@@ -46,12 +46,13 @@ All notable changes to AngKorGit are documented here. The format follows
   HEAD chip only appears when HEAD is detached, since the checked-out branch
   already carries the tick.
 - **Graph display options**: a menu in the graph header toggles branches and
-  tags, author avatars, commit message, hash and date on or off, remembered
-  across launches. With avatars off, commits render as plain colored nodes.
+  tags, commit message, an author name column, hash and date on or off,
+  remembered across launches. Avatars on the commit nodes always stay.
 - **Graph column headers**: a slim row above the graph names each column
   (Branch / tag, Graph, Message, Hash, Date) and follows the display toggles.
 - Graph lanes are spaced wider (20px instead of 14px) so parallel branches and
-  merge curves stop crowding each other.
+  merge curves stop crowding each other, and the graph keeps a clear gap before
+  the message column.
 - Merge commits read one shade quieter in the graph so the commits that changed
   code stand out in merge-heavy histories.
 - Click a hash in the graph to copy it; hover a relative time for the full date.

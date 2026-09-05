@@ -23,7 +23,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { CommitRow, FLAT_GUTTER_WIDTH, LANE_WIDTH, REF_COL_WIDTH, ROW_HEIGHT } from './GraphRow';
+import { AUTHOR_COL_WIDTH, CommitRow, FLAT_GUTTER_WIDTH, GUTTER_GAP, LANE_WIDTH, REF_COL_WIDTH, ROW_HEIGHT } from './GraphRow';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { useShortcuts } from '@/shared/useShortcuts';
@@ -343,8 +343,8 @@ export function CommitGraph() {
               {(
                 [
                   ['refs', 'Branches and tags'],
-                  ['author', 'Author avatars'],
                   ['message', 'Commit message'],
+                  ['author', 'Author'],
                   ['hash', 'Hash'],
                   ['date', 'Date'],
                 ] as const
@@ -375,12 +375,17 @@ export function CommitGraph() {
             Branch / tag
           </span>
         )}
-        <span className="shrink-0 truncate" style={{ width: gutterWidth }}>
+        <span className="shrink-0 truncate" style={{ width: gutterWidth, marginRight: flat ? 0 : GUTTER_GAP }}>
           {flat ? '' : 'Graph'}
         </span>
         <span className="min-w-0 flex-1 truncate">
           {flat && graphColumns.refs ? 'Branch / tag · message' : graphColumns.message ? 'Message' : ''}
         </span>
+        {graphColumns.author && (
+          <span className="shrink-0 truncate" style={{ width: AUTHOR_COL_WIDTH }}>
+            Author
+          </span>
+        )}
         {graphColumns.hash && <span className="w-14 shrink-0 text-right">Hash</span>}
         {graphColumns.date && <span className="w-[4.5rem] shrink-0 text-right">Date</span>}
       </div>
