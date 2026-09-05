@@ -145,7 +145,6 @@ const REVIEW_WAIT_MESSAGES = [
 
 const UNSTAGED_ROW_HEIGHT = 36;
 const STAGED_ROW_HEIGHT = 30;
-const CONFLICT_ROW_HEIGHT = 24;
 
 function VirtualFileList({
   files,
@@ -286,8 +285,12 @@ export function WorkingCopyPanel() {
   }, [path, status]);
 
   const files = useMemo(() => status?.files ?? [], [status]);
+  const conflictedPaths = useMemo(() => new Set(conflicts), [conflicts]);
   const stagedFiles = useMemo(() => files.filter((f) => f.staged), [files]);
-  const unstagedFiles = useMemo(() => files.filter((f) => f.unstaged), [files]);
+  const unstagedFiles = useMemo(
+    () => files.filter((f) => f.unstaged && !conflictedPaths.has(f.path)),
+    [files, conflictedPaths],
+  );
   const stagedSignature = useMemo(() => buildStagedReviewSignature(files), [files]);
   const review = useAiWork((s) => (path ? (s.reviews[path] ?? null) : null));
   const reviewBusy = useAiWork((s) => (path ? !!s.reviewBusy[path] : false));
@@ -554,13 +557,7 @@ export function WorkingCopyPanel() {
     };
   });
 
-  const conflictedPaths = useMemo(() => new Set(conflicts), [conflicts]);
-
-  const unstagedRowHeight = useCallback(
-    (file: FileStatus) =>
-      conflictedPaths.has(file.path) ? CONFLICT_ROW_HEIGHT : UNSTAGED_ROW_HEIGHT,
-    [conflictedPaths],
-  );
+  const unstagedRowHeight = useCallback(() => UNSTAGED_ROW_HEIGHT, []);
   const stagedRowHeight = useCallback(() => STAGED_ROW_HEIGHT, []);
 
   const visibleOrder = useMemo(
@@ -619,38 +616,20 @@ export function WorkingCopyPanel() {
   const treeIndent = (depth?: number) =>
     fileTree && depth !== undefined ? sharedTreeIndent(depth) : undefined;
 
-  const renderUnstaged = (file: FileStatus, depth?: number) =>
-    conflictedPaths.has(file.path) ? (
-      <div
-        key={`u-${file.path}`}
-        data-selected-file-row={
-          selectedFile?.path === file.path && !selectedFile.staged ? true : undefined
-        }
-        className={cn(
-          'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-danger hover:bg-danger/10',
-          selectedFile?.path === file.path && !selectedFile.staged && 'bg-danger/10',
-        )}
-        style={treeIndent(depth) !== undefined ? { paddingLeft: treeIndent(depth) } : undefined}
-        onClick={() => openConflict(file.path)}
-      >
-        <AlertTriangle className="size-3.5" />
-        <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
-        <span className="text-[10px]">resolve…</span>
-      </div>
-    ) : (
-      <FileRow
-        key={`u-${file.path}`}
-        file={file}
-        staged={false}
-        treeMode={fileTree}
-        indent={treeIndent(depth)}
-        selected={selectedFile?.path === file.path && !selectedFile.staged}
-        onClick={showDiff}
-        onPrimary={toggleStage}
-        onContextMenu={openFileMenu}
-        onDiscard={requestDiscard}
-      />
-    );
+  const renderUnstaged = (file: FileStatus, depth?: number) => (
+    <FileRow
+      key={`u-${file.path}`}
+      file={file}
+      staged={false}
+      treeMode={fileTree}
+      indent={treeIndent(depth)}
+      selected={selectedFile?.path === file.path && !selectedFile.staged}
+      onClick={showDiff}
+      onPrimary={toggleStage}
+      onContextMenu={openFileMenu}
+      onDiscard={requestDiscard}
+    />
+  );
 
   const renderStaged = (file: FileStatus, depth?: number) => (
     <FileRow
@@ -668,39 +647,6 @@ export function WorkingCopyPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      {conflicts.length > 0 && (
-        <div className="m-2 overflow-hidden rounded-lg border border-danger/30 bg-danger/5">
-          <div className="flex items-center gap-2.5 px-3 py-2">
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-danger/15 text-danger">
-              <AlertTriangle className="size-3.5" />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col leading-tight">
-              <span className="text-xs font-medium text-foreground">
-                {conflicts.length} conflicted file{conflicts.length === 1 ? '' : 's'}
-              </span>
-              <span className="text-[11px] text-muted">Resolve each file, then commit to finish the {repo?.state === 'merge' ? 'merge' : 'operation'}.</span>
-            </span>
-          </div>
-          <div className="flex flex-col divide-y divide-danger/15 border-t border-danger/20">
-            {conflicts.map((file) => (
-              <button
-                key={file}
-                type="button"
-                className="group flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-danger/10"
-                onClick={() => openConflict(file)}
-              >
-                <Badge tone="danger" className="w-5 shrink-0 justify-center px-0 font-mono">!</Badge>
-                <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                  <span className="max-w-full shrink-0 truncate font-medium text-foreground">{basename(file)}</span>
-                  {dirname(file) && <span className="min-w-0 flex-1 truncate text-[11px] text-faint">{dirname(file)}</span>}
-                </span>
-                <span className="shrink-0 text-[11px] text-danger opacity-0 transition-opacity group-hover:opacity-100">Resolve</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div
         ref={listScrollRef}
         tabIndex={0}
@@ -714,6 +660,39 @@ export function WorkingCopyPanel() {
           </div>
         ) : (
         <>
+        {conflicts.length > 0 && (
+          <>
+            <div className="mb-1 flex items-center justify-between px-2">
+              <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-danger">
+                <AlertTriangle className="size-3.5" />
+                Conflicts <span className="font-normal text-faint">{conflicts.length}</span>
+              </span>
+              <Button variant="ghost" size="sm" className="text-danger hover:text-danger" onClick={() => openConflict(conflicts[0])}>
+                Resolve
+              </Button>
+            </div>
+            <p className="mb-1 px-2 text-[11px] text-faint">
+              Resolve each file, then commit to finish the {repo?.state === 'merge' ? 'merge' : repo?.state === 'rebase' ? 'rebase' : 'operation'}.
+            </p>
+            <div className="mb-3 flex flex-col">
+              {conflicts.map((file) => (
+                <button
+                  key={`c-${file}`}
+                  type="button"
+                  className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-danger/10"
+                  onClick={() => openConflict(file)}
+                >
+                  <Badge tone="danger" className="w-5 shrink-0 justify-center px-0 font-mono">!</Badge>
+                  <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                    <span className="max-w-full shrink-0 truncate font-medium text-foreground">{basename(file)}</span>
+                    {dirname(file) && <span className="min-w-0 flex-1 truncate text-[11px] text-faint">{dirname(file)}</span>}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-danger opacity-0 transition-opacity group-hover:opacity-100">Resolve</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <div className="mb-1 flex items-center justify-between px-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted">
             Changes <span className="text-faint">{unstagedFiles.length}</span>

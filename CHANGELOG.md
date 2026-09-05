@@ -49,9 +49,12 @@ All notable changes to AngKorGit are documented here. The format follows
   B pane headers carry their colors as a top edge and say which is current and
   which is incoming; each conflict block is numbered; block borders are softer
   so the active one stands out; the bottom pane is labeled Result.
-- **Conflicts in the working copy** are a card: an icon tile, the count with a
-  one-line hint, and one row per file with the file name first, its folder
-  dimmed and a Resolve action on hover.
+- **Conflicts in the working copy** are their own section above Changes, in
+  the same style as Changes and Staged: a red "Conflicts n" header with a
+  Resolve action, a one-line hint, and one row per file with the file name
+  first and its folder dimmed. Conflicted files no longer appear a second time
+  in the Changes list, and the resolver opens as a solid editor surface instead
+  of a translucent overlay.
 - **Welcome page.** Recent repositories are rows with an icon (a worktree gets
   its own glyph), a home-relative path, the time, and a menu with Open, Reveal
   in Finder, Copy path and Remove, also on right-click. A repository whose

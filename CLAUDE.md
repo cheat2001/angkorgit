@@ -523,11 +523,14 @@ features/
 │                               discards the in-flight result, never aborts the
 │                               provider request; review is disabled while
 │                               committing, but commit never waits on a review);
-│                               the conflicted-files banner is a danger-tinted card
-│                               (icon tile, "n conflicted files" + "Resolve each file,
-│                               then commit…" hint, divide-y file rows with a `!` Badge,
-│                               name-first path and a hover "Resolve" affordance) that
-│                               opens the resolver on click; during a
+│                               conflicted files live in a CONFLICTS section INSIDE the
+│                               list scroller above Changes (same header style as
+│                               Changes/Staged but text-danger, a Resolve ghost button
+│                               opening the first file, a one-line hint naming the
+│                               merge/rebase, rows with a `!` Badge + name-first path +
+│                               hover "Resolve") and are FILTERED OUT of unstagedFiles so
+│                               they never appear twice (the owner saw the banner AND red
+│                               rows in Changes and called it messy); during a
 │                               merge the commit box stays visible even with a clean
 │                               status and shows "Abort merge" beside Commit — both it
 │                               and the toolbar state badge call the SHARED
@@ -544,7 +547,9 @@ features/
 │                               whole-file toggles never re-jump),
 │                               DiffViewer (wrap vs VIRTUALIZED no-wrap), VirtualDiff
 │                               (inline + synced split columns), DiffMinimap, diffShared
-├── conflicts/ConflictResolver← header = danger GitMerge tile + "RESOLVE CONFLICTS" overline +
+├── conflicts/ConflictResolver← a SOLID full-window surface (bg-background, no blur or
+│                               alpha — the owner found the translucent overlay wrong for
+│                               editor-like work); header = danger GitMerge tile + "RESOLVE CONFLICTS" overline +
 │                               basename bold / dirname dimmed (name-wins rule) + a
 │                               progress bar (primary → success when complete) + "n of m
 │                               resolved"; A/B pane headers carry a 2px top edge in

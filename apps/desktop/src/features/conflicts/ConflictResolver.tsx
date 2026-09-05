@@ -765,7 +765,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     <motion.div
       ref={overlayRef}
       tabIndex={-1}
-      className="fixed inset-0 z-50 flex flex-col bg-background/95 outline-none backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex flex-col bg-background outline-none"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       role="dialog"
