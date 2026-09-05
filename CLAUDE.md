@@ -410,7 +410,14 @@ features/
 │                           owner saw "a really long gap" before the message; laneX takes
 │                           laneWidth (WipRow's laneX(0) is width-independent); nodes are
 │                           20px avatars with a double ring (NODE_HALO 1.5px background
-│                           + NODE_RING 2px lane color via two box-shadows) —
+│                           + NODE_RING 2px lane color via two box-shadows); each row
+│                           draws a TAIL — a rounded rect from the node to the end of the
+│                           gutter (the gutter div is width + GUTTER_GAP wide, no margin)
+│                           filled with `url(#graph-tail-N)`, ten linearGradients
+│                           (lane color 0.28 → 0.12 → 0) rendered once by GraphTailDefs
+│                           inside the CommitGraph section, painted BEFORE the lane lines
+│                           so lines stay crisp over it (owner asked for a colored band
+│                           from avatar to next column) —
 │                           CommitRow takes `columns`, WipRow `showRefs`; with refs off
 │                           rows AND the WIP banner
 │                           switch pl-1 → pl-4 so lanes don't hug the sidebar divider

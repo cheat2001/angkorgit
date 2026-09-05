@@ -24,6 +24,7 @@ export const GUTTER_MAX_WIDTH = 190;
 export const GUTTER_BASE = 18;
 const NODE_RADIUS = 4;
 const AVATAR_SIZE = 20;
+const TAIL_HEIGHT = 22;
 const NODE_RING = 2;
 const NODE_HALO = 1.5;
 
@@ -33,6 +34,22 @@ export function laneColor(color: number): string {
 
 export const laneX = (lane: number, laneWidth: number = LANE_WIDTH) =>
   AVATAR_SIZE / 2 + NODE_RING + NODE_HALO + 1 + lane * laneWidth;
+
+export function GraphTailDefs() {
+  return (
+    <svg width={0} height={0} className="absolute" aria-hidden>
+      <defs>
+        {Array.from({ length: 10 }, (_, i) => (
+          <linearGradient key={i} id={`graph-tail-${i}`} x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor={laneColor(i)} stopOpacity={0.28} />
+            <stop offset="0.55" stopColor={laneColor(i)} stopOpacity={0.12} />
+            <stop offset="1" stopColor={laneColor(i)} stopOpacity={0} />
+          </linearGradient>
+        ))}
+      </defs>
+    </svg>
+  );
+}
 
 export function laneWidthFor(maxLane: number): number {
   const fit = Math.floor((GUTTER_MAX_WIDTH - GUTTER_BASE) / (maxLane + 1));
@@ -82,9 +99,18 @@ function GraphGutter({
   const { node, passing } = row;
   const x = (lane: number) => laneX(lane, laneWidth);
   const nx = Math.min(x(node.lane), width - AVATAR_SIZE / 2 - NODE_RING - NODE_HALO - 1);
+  const total = width + GUTTER_GAP;
   return (
-    <div className="relative shrink-0 overflow-hidden" style={{ width, height: ROW_HEIGHT, marginRight: GUTTER_GAP }}>
-      <svg width={width} height={ROW_HEIGHT} aria-hidden>
+    <div className="relative shrink-0 overflow-hidden" style={{ width: total, height: ROW_HEIGHT }}>
+      <svg width={total} height={ROW_HEIGHT} aria-hidden>
+        <rect
+          x={nx}
+          y={CY - TAIL_HEIGHT / 2}
+          width={Math.max(0, total - nx)}
+          height={TAIL_HEIGHT}
+          rx={TAIL_HEIGHT / 2}
+          fill={`url(#graph-tail-${node.color % 10})`}
+        />
         {hasRefs && (
           <line
             x1={0}

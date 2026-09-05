@@ -57,7 +57,9 @@ All notable changes to AngKorGit are documented here. The format follows
   close to the graph.
 - Commit nodes got a double ring: a thin gap in the page color and then the
   lane color around the avatar, so nodes read as distinct markers on top of the
-  lines even where several lanes cross.
+  lines even where several lanes cross. A soft band in the lane color now trails
+  from each node toward the message column, tying the commit to its text and
+  filling the space between them.
 - Merge commits read one shade quieter in the graph so the commits that changed
   code stand out in merge-heavy histories.
 - Click a hash in the graph to copy it; hover a relative time for the full date.
