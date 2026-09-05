@@ -579,6 +579,15 @@ features/
 │                               the old floating pill on the divider covered the panes'
 │                               last line, and the top scroller has pb-6 so its last row
 │                               can always scroll fully into view;
+│                               COLOR DISCIPLINE (owner: "looks like a kid made it" when
+│                               everything was tinted): side cells carry a 2px left edge
+│                               in info/success and NO full tint; only picked lines tint
+│                               (/10); block header bg surface-raised/40 with "CONFLICT n"
+│                               caption + muted "Take all from A/B" labels + the AI button
+│                               as a plain icon-sm at the row's right (pr-8 reserves the
+│                               space); Result rows mark A/B with a slim 0.5×2.5 colored
+│                               bar in the w-4 gutter slot instead of bold letters and tint
+│                               at /5 — add color only where it carries meaning;
 │                               aligned A/B panes, per-LINE checkboxes (whole side via
 │                               pane header, per-CONFLICT via each block's take-all
 │                               header row — PaneRow kind 'header' in virtualized mode,

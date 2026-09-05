@@ -607,7 +607,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     <div
       className={cn(
         'group relative flex cursor-text items-start gap-2 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40',
-        side === 'current' ? 'bg-info/10' : side === 'incoming' ? 'bg-success/10' : 'bg-primary/10',
+        side === 'current' ? 'bg-info/5' : side === 'incoming' ? 'bg-success/5' : 'bg-primary/5',
       )}
       onMouseDown={(e) => {
         e.preventDefault();
@@ -620,13 +620,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
           <Pencil className="size-3 text-primary" />
         </span>
       ) : (
-        <span
-          className={cn(
-            'w-4 shrink-0 text-center font-mono text-[10px] font-bold leading-5',
-            side === 'current' ? 'text-info' : 'text-success',
-          )}
-        >
-          {side === 'current' ? 'A' : 'B'}
+        <span className="flex w-4 shrink-0 justify-center pt-1.5">
+          <span className={cn('h-2.5 w-0.5 rounded-full', side === 'current' ? 'bg-info' : 'bg-success')} />
         </span>
       )}
       <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs italic leading-5 text-faint">
@@ -701,8 +696,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       )}
     >
       {side === 'current' && (
-        <span className="mr-1 shrink-0 rounded bg-surface px-1.5 py-px font-mono text-[10px] font-semibold text-muted">
-          #{conflictIndices.indexOf(index) + 1}
+        <span className="mr-2 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-faint">
+          Conflict {conflictIndices.indexOf(index) + 1}
         </span>
       )}
       <Checkbox
@@ -714,13 +709,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
             : 'Take all lines from B for this conflict'
         }
       />
-      <span
-        className={cn(
-          'text-[10px] font-medium',
-          side === 'current' ? 'text-info' : 'text-success',
-        )}
-      >
-        {side === 'current' ? 'Take all A' : 'Take all B'}
+      <span className="text-[11px] text-muted">
+        {side === 'current' ? 'Take all from A' : 'Take all from B'}
       </span>
     </label>
   );
@@ -732,8 +722,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
     return (
       <div
         className={cn(
-          'min-w-0',
-          side === 'current' ? 'border-r border-border-subtle bg-info/5' : 'bg-success/5',
+          'min-w-0 border-l-2',
+          side === 'current' ? 'border-r border-border-subtle border-l-info/60' : 'border-l-success/60',
         )}
       >
         {lines.length === 0 ? (
@@ -753,9 +743,9 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                 'flex cursor-pointer items-start gap-2 px-3 py-0.5 transition-colors',
                 isPicked(index, side, li)
                   ? side === 'current'
-                    ? 'bg-info/15'
-                    : 'bg-success/15'
-                  : 'hover:bg-surface-raised/80',
+                    ? 'bg-info/10'
+                    : 'bg-success/10'
+                  : 'hover:bg-surface-raised/60',
               )}
             >
               <Checkbox
@@ -777,7 +767,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
 
   const renderSideLine = (block: ConflictBlock, index: number, side: Side, li: number) => {
     const lines = side === 'current' ? block.current : block.incoming;
-    const paneCls = side === 'current' ? 'border-r border-border-subtle bg-info/5' : 'bg-success/5';
+    const paneCls = side === 'current' ? 'border-l-2 border-r border-border-subtle border-l-info/60' : 'border-l-2 border-l-success/60';
     const start = paneModel.lineStart.get(index);
     const first = start ? (side === 'current' ? start.a : start.b) : null;
     if (lines.length === 0) {
@@ -804,9 +794,9 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
             'flex cursor-pointer items-start gap-2 px-3 py-0.5 transition-colors',
             isPicked(index, side, li)
               ? side === 'current'
-                ? 'bg-info/15'
-                : 'bg-success/15'
-              : 'hover:bg-surface-raised/80',
+                ? 'bg-info/10'
+                : 'bg-success/10'
+              : 'hover:bg-surface-raised/60',
           )}
         >
           <Checkbox
@@ -954,7 +944,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                               : 'border-x-transparent border-t-border-subtle',
                           )}
                         >
-                          <div className="grid grid-cols-2 bg-surface-raised/60">
+                          <div className="grid grid-cols-2 bg-surface-raised/40 pr-8">
                             {renderBlockSideAll(row.block, 'current')}
                             {renderBlockSideAll(row.block, 'incoming')}
                           </div>
@@ -962,7 +952,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-surface shadow-soft"
+                              className="absolute right-1 top-0.5 z-10 h-6 w-6"
                               disabled={aiBusy}
                               aria-label="Explain this conflict with AI"
                               onClick={() => void explain(block.current.join('\n'), block.incoming.join('\n'))}
@@ -1024,7 +1014,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                       conflictIndices[activeConflict] === index && 'ring-1 ring-primary/50',
                     )}
                   >
-                    <div className="grid grid-cols-2 border-b border-border-subtle bg-surface-raised/60">
+                    <div className="grid grid-cols-2 border-b border-border-subtle bg-surface-raised/40 pr-8">
                       {renderBlockSideAll(index, 'current')}
                       {renderBlockSideAll(index, 'incoming')}
                     </div>
@@ -1036,7 +1026,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface shadow-soft"
+                        className="absolute right-1 top-0.5 h-6 w-6"
                         disabled={aiBusy}
                         aria-label="Explain this conflict with AI"
                         onClick={() => void explain(block.current.join('\n'), block.incoming.join('\n'))}
@@ -1212,7 +1202,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             renderDeletedRow(row.block, row.side)
                           ) : row.kind === 'edited' ? (
                             <div
-                              className="group relative flex cursor-text items-start gap-2 bg-primary/10 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
+                              className="group relative flex cursor-text items-start gap-2 bg-primary/5 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40"
                               onMouseDown={(e) => {
         e.preventDefault();
         startEdit(row.block);
@@ -1231,7 +1221,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                             <div
                               className={cn(
                                 'flex cursor-text items-start gap-2 px-2 transition-shadow hover:ring-1 hover:ring-inset hover:ring-primary/40',
-                                row.side === 'current' ? 'bg-info/10' : 'bg-success/10',
+                                row.side === 'current' ? 'bg-info/5' : 'bg-success/5',
                               )}
                               onMouseDown={(e) => {
         e.preventDefault();
@@ -1239,13 +1229,8 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       }}
                             >
                               <LineNo n={row.lineNo} />
-                              <span
-                                className={cn(
-                                  'w-4 shrink-0 text-center font-mono text-[10px] font-bold leading-5',
-                                  row.side === 'current' ? 'text-info' : 'text-success',
-                                )}
-                              >
-                                {row.side === 'current' ? 'A' : 'B'}
+                              <span className="flex w-4 shrink-0 justify-center pt-1.5">
+                                <span className={cn('h-2.5 w-0.5 rounded-full', row.side === 'current' ? 'bg-info' : 'bg-success')} />
                               </span>
                               <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
                                 {row.text || ' '}
@@ -1301,7 +1286,7 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
       }}
                         >
                           {edit.split('\n').map((line, li) => (
-                            <div key={li} className="flex items-start gap-2 bg-primary/10 px-2">
+                            <div key={li} className="flex items-start gap-2 bg-primary/5 px-2">
                               <LineNo n={(outputStarts.get(index) ?? 1) + li} />
                               <span className="flex w-4 shrink-0 items-center justify-center leading-5">
                                 <Pencil className="size-3 text-primary" />
@@ -1349,17 +1334,12 @@ export function ConflictResolver({ file, onResolved }: { file: string; onResolve
                               key={pi}
                               className={cn(
                                 'flex items-start gap-2 px-2',
-                                p.side === 'current' ? 'bg-info/10' : 'bg-success/10',
+                                p.side === 'current' ? 'bg-info/5' : 'bg-success/5',
                               )}
                             >
                               <LineNo n={(outputStarts.get(index) ?? 1) + pi} />
-                              <span
-                                className={cn(
-                                  'w-4 shrink-0 text-center font-mono text-[10px] font-bold leading-5',
-                                  p.side === 'current' ? 'text-info' : 'text-success',
-                                )}
-                              >
-                                {p.side === 'current' ? 'A' : 'B'}
+                              <span className="flex w-4 shrink-0 justify-center pt-1.5">
+                                <span className={cn('h-2.5 w-0.5 rounded-full', p.side === 'current' ? 'bg-info' : 'bg-success')} />
                               </span>
                               <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5">
                                 {(p.side === 'current' ? block.current : block.incoming)[p.line] || ' '}

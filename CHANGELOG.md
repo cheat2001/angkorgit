@@ -44,6 +44,12 @@ All notable changes to AngKorGit are documented here. The format follows
   live when the theme changes.
 
 ### Added
+- **Conflict resolver, calmer.** Color is now an accent rather than a wash:
+  the A and B panes lose their full tint in favor of a thin colored edge, only
+  picked lines are lightly tinted, the take-all row is quiet text headed by
+  "Conflict n", the AI button is a normal small button at the end of that row,
+  and Result lines mark their source with a slim colored bar instead of bold
+  letters.
 - **Conflict resolver chrome.** The header shows the file name with its folder
   dimmed, a progress bar for resolved conflicts, and a merge icon tile; the A and
   B pane headers carry their colors as a top edge and say which is current and
