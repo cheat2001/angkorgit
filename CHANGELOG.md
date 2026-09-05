@@ -31,8 +31,12 @@ All notable changes to AngKorGit are documented here. The format follows
   live when the theme changes.
 
 ### Changed
-- Right-clicking a stash opens its Apply, Pop and Delete menu; before, only the
-  hover button did.
+- Every sidebar row answers both the hover menu button and right-click with the
+  same actions: stashes (Apply, Pop, Delete), tags (Checkout, Push, Delete),
+  pull requests (Checkout, Open in browser, Copy URL) and submodules (Open,
+  Update, Copy path). Clicking a tag shows its commit in the graph, like a
+  stash. Before, tags and pull requests had no right-click, stashes had no
+  right-click, and submodules showed two bare icons instead of a menu.
 - In the Remotes section each remote's folder row (origin, upstream…) now carries
   the remote actions: hover for the menu button or right-click to fetch, edit or
   remove it. The separate list of remotes under the branch tree is gone.

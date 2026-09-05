@@ -64,7 +64,7 @@ import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import { useForge } from '@/features/forge/store';
 import { useSettings } from '@/features/settings/store';
 import { forgeNoun, pullRequestCheckoutSpec } from '@angkorgit/core';
-import type { BranchInfo, PullRequestInfo, RemoteInfo, StashInfo, SubmoduleInfo, WorktreeInfo } from '@angkorgit/core';
+import type { BranchInfo, PullRequestInfo, RemoteInfo, StashInfo, SubmoduleInfo, TagInfo, WorktreeInfo } from '@angkorgit/core';
 import { capCount, isMac } from '@/shared/utils';
 import { killTerminalSession } from '@/features/terminal/sessions';
 
@@ -201,6 +201,8 @@ export function Sidebar() {
   const [remoteMenu, setRemoteMenu] = useState<{ x: number; y: number; remote: RemoteInfo } | null>(null);
   const [worktreeMenu, setWorktreeMenu] = useState<{ x: number; y: number; worktree: WorktreeInfo } | null>(null);
   const [stashMenu, setStashMenu] = useState<{ x: number; y: number; stash: StashInfo } | null>(null);
+  const [tagMenu, setTagMenu] = useState<{ x: number; y: number; tag: TagInfo } | null>(null);
+  const [prMenu, setPrMenu] = useState<{ x: number; y: number; pr: PullRequestInfo } | null>(null);
   const [editRemote, setEditRemote] = useState<{ original: string; name: string; url: string } | null>(null);
   const [savingRemote, setSavingRemote] = useState(false);
 
@@ -916,44 +918,30 @@ export function Sidebar() {
               <div
                 key={pr.number}
                 className="group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised"
-                title={`#${pr.number} ${pr.title} — ${pr.author} wants to merge ${pr.sourceBranch} into ${pr.targetBranch}. Double-click to check out.`}
+                title={`#${pr.number} ${pr.title} — ${pr.author} wants to merge ${pr.sourceBranch} into ${pr.targetBranch}. Double-click to check out, right-click for actions.`}
                 onDoubleClick={() => checkoutPullRequest(pr)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setPrMenu({ x: e.clientX, y: e.clientY, pr });
+                }}
               >
                 <span className="min-w-0 flex-1 truncate">
                   <span className="text-faint">#{pr.number}</span> {pr.title}
                 </span>
                 {pr.isDraft && <Badge>Draft</Badge>}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-                      aria-label={`Pull request #${pr.number} actions`}
-                    >
-                      <MoreHorizontal className="size-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuLabel className="max-w-64 truncate">
-                      #{pr.number} {pr.title}
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => checkoutPullRequest(pr)}>
-                      <Check /> Checkout
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => void openExternal(pr.url)}>
-                      <Cloud /> Open in browser
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        void navigator.clipboard.writeText(pr.url);
-                        toast.success('URL copied');
-                      }}
-                    >
-                      <Copy /> Copy URL
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                  aria-label={`Pull request #${pr.number} actions`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setPrMenu({ x: rect.left, y: rect.bottom + 4, pr });
+                  }}
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </Button>
               </div>
             ))}
           </Section>
@@ -992,31 +980,34 @@ export function Sidebar() {
             <div className="px-2 py-1 pl-7 text-xs text-faint">No tags yet.</div>
           )}
           {filteredTags.map((tag) => (
-            <div key={tag.name} className="group flex items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised">
-              <span className="min-w-0 flex-1 truncate" title={tag.message ?? tag.name}>
+            <div
+              key={tag.name}
+              className="group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 pl-7 text-sm hover:bg-surface-raised"
+              onClick={() => useGraph.getState().select(tag.targetOid)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setTagMenu({ x: e.clientX, y: e.clientY, tag });
+              }}
+            >
+              <span
+                className="min-w-0 flex-1 truncate"
+                title={`${tag.message ?? tag.name} — click to show the commit, right-click for actions`}
+              >
                 {tag.name}
               </span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100" aria-label={`${tag.name} actions`}>
-                    <MoreHorizontal className="size-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => void act(`Checkout ${tag.name}`, () => ipc.checkoutDetached(path, tag.name), { kind: 'checkout' })}>
-                    <Check /> Checkout (detached)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => void act(`Push tag ${tag.name}`, () => ipc.pushTag(path, remotes[0]?.name ?? 'origin', tag.name))}
-                  >
-                    <Cloud /> Push to remote
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem destructive onClick={() => void act(`Delete tag ${tag.name}`, () => ipc.tagDelete(path, tag.name))}>
-                    <Trash2 /> Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                aria-label={`${tag.name} actions`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setTagMenu({ x: rect.left, y: rect.bottom + 4, tag });
+                }}
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
             </div>
           ))}
         </Section>
@@ -1081,28 +1072,19 @@ export function Sidebar() {
                 }}
               >
                 <span className="min-w-0 flex-1 truncate">{sub.path}</span>
-                <Hint label="Open as repository">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-                    aria-label={`Open ${sub.name}`}
-                    onClick={() => openSubmodule(sub)}
-                  >
-                    <FolderGit2 className="size-3.5" />
-                  </Button>
-                </Hint>
-                <Hint label="Update (checkout recorded commit)">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-                    aria-label={`Update ${sub.name}`}
-                    onClick={() => void act(`Update ${sub.name}`, () => ipc.submoduleUpdate(path, sub.name))}
-                  >
-                    <ListRestart className="size-3.5" />
-                  </Button>
-                </Hint>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                  aria-label={`${sub.name} actions`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setSubMenu({ x: rect.left, y: rect.bottom + 4, sub });
+                  }}
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </Button>
               </div>
             ))}
           </Section>
@@ -1135,6 +1117,70 @@ export function Sidebar() {
               }}
             >
               <Copy /> Copy path
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {prMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setPrMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: prMenu.x, top: prMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            <DropdownMenuLabel className="max-w-64 truncate">
+              #{prMenu.pr.number} {prMenu.pr.title}
+            </DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => checkoutPullRequest(prMenu.pr)}>
+              <Check /> Checkout
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void openExternal(prMenu.pr.url)}>
+              <Cloud /> Open in browser
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                void navigator.clipboard.writeText(prMenu.pr.url);
+                toast.success('URL copied');
+              }}
+            >
+              <Copy /> Copy URL
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {tagMenu && (
+        <DropdownMenu open onOpenChange={(o) => !o && setTagMenu(null)}>
+          <DropdownMenuTrigger asChild>
+            <span style={{ position: 'fixed', left: tagMenu.x, top: tagMenu.y }} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="bottom">
+            <DropdownMenuLabel className="max-w-64 truncate font-mono">{tagMenu.tag.name}</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => {
+                const tag = tagMenu.tag;
+                void act(`Checkout ${tag.name}`, () => ipc.checkoutDetached(path, tag.name), { kind: 'checkout' });
+              }}
+            >
+              <Check /> Checkout (detached)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                const tag = tagMenu.tag;
+                void act(`Push tag ${tag.name}`, () => ipc.pushTag(path, remotes[0]?.name ?? 'origin', tag.name));
+              }}
+            >
+              <Cloud /> Push to remote
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              destructive
+              onClick={() => {
+                const tag = tagMenu.tag;
+                void act(`Delete tag ${tag.name}`, () => ipc.tagDelete(path, tag.name));
+              }}
+            >
+              <Trash2 /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -608,10 +608,15 @@ features/
 │                               remote menu (fetch/edit/remove); remotes with no fetched
 │                               branches render as a chevron-less row with the same
 │                               menu; there is no separate remote list under the tree
-│                               (owner request 2026-09-05). Stash rows: right-click and
-│                               the hover "…" share ONE positioned stashMenu (apply/pop/
-│                               delete) — inline DropdownMenu triggers only answered the
-│                               button, not right-click
+│                               (owner request 2026-09-05). ROW-MENU INVARIANT (owner
+│                               request 2026-09-05): every row type — branch, remote
+│                               branch, remote folder, worktree, stash, tag, pull
+│                               request, submodule — answers BOTH the hover "…" button
+│                               and right-click with the SAME positioned menu (state
+│                               {x,y,item} + fixed-span DropdownMenuTrigger, the pattern
+│                               branchMenu started); never use an inline DropdownMenu
+│                               trigger on a row, it only answers the button. Stash and
+│                               tag rows also select their commit in the graph on click
 ├── history/undoStore.ts      ← undo/redo: tracked() records before/after HEAD snapshots;
 │                               kinds commit/checkout/merge/cherryPick/rebase/reset/revert/
 │                               branchCreate/Delete/Rename; validation guards (repo moved,
