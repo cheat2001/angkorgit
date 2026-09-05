@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Folder } from 'lucide-react';
 import { cn } from '@angkorgit/design-system';
+import { useUi } from '@/features/ui/store';
 
 interface TreeFolder<T> {
   name: string;
@@ -106,6 +107,14 @@ function TreeLevel<T>({
   );
 }
 
+function folderPaths<T>(folder: TreeFolder<T>, into: string[] = []): string[] {
+  for (const child of folder.folders) {
+    into.push(child.path);
+    folderPaths(child, into);
+  }
+  return into;
+}
+
 export function treeIndent(depth: number): number {
   return 8 + depth * 14 + 14;
 }
@@ -121,6 +130,11 @@ export function FileTree<T>({
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const root = useMemo(() => buildFileTree(items, pathOf), [items, pathOf]);
+  const fold = useUi((s) => s.fileTreeFold);
+  useEffect(() => {
+    if (fold.epoch === 0) return;
+    setCollapsed(fold.mode === 'collapse' ? new Set(folderPaths(root)) : new Set());
+  }, [fold, root]);
   const onToggle = (path: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);

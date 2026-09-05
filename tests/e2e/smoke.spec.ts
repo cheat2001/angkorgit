@@ -603,3 +603,17 @@ test('the commit box grows when its top edge is dragged and resets on double-cli
   const reset = (await description.boundingBox())?.height ?? 0;
   expect(Math.abs(reset - before)).toBeLessThan(2);
 });
+
+test('folder tree view can collapse and expand every folder at once', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Folder tree' }).click();
+  await expect(page.getByText('ipc.ts', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Collapse all folders' }).click();
+  await expect(page.getByText('ipc.ts', { exact: true })).toBeHidden();
+  await page.getByRole('button', { name: 'Expand all folders' }).click();
+  await expect(page.getByText('ipc.ts', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Flat file list' }).click();
+  await expect(page.getByRole('button', { name: 'Collapse all folders' })).toHaveCount(0);
+});

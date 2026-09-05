@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
-import { ChevronRight, Cloud, Copy, Maximize2, Monitor, Sparkles, Tag as TagIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Cloud, Copy, Maximize2, Monitor, Sparkles, Tag as TagIcon } from 'lucide-react';
 import type { CommitFileInfo, CommitInfo, FileDiff } from '@angkorgit/core';
 import { aiCapabilities } from '@angkorgit/core';
 import { Badge, Button, Hint, Logo, cn } from '@angkorgit/design-system';
@@ -198,25 +198,23 @@ export function CommitDetails({
           {commit.summary}
         </h2>
         {commit.body && (
-          <div className="relative mt-2">
+          <div className="mt-2">
             <pre
               className={cn(
                 'whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-muted',
-                longBody && !bodyExpanded && 'max-h-36 overflow-hidden',
+                longBody && !bodyExpanded && 'line-clamp-[8]',
               )}
             >
               {commit.body}
             </pre>
-            {longBody && !bodyExpanded && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
-            )}
             {longBody && (
               <button
                 type="button"
-                className="mt-1 text-[11px] font-medium text-primary hover:underline"
+                className="mt-1.5 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:bg-surface-raised hover:text-foreground"
                 onClick={() => setBodyExpanded((v) => !v)}
               >
-                {bodyExpanded ? 'Show less' : 'Show more'}
+                {bodyExpanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                {bodyExpanded ? 'Show less' : 'Show full message'}
               </button>
             )}
           </div>
