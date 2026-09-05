@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { motion } from 'framer-motion';
 import { useRepo } from './store';
 import { useGraph } from '@/features/graph/store';
@@ -33,11 +33,13 @@ import { useShortcuts } from '@/shared/useShortcuts';
 import { useUndo } from '@/features/history/undoStore';
 import { useSettings } from '@/features/settings/store';
 import { ipc, listen } from '@/core/ipc';
-import { Logo } from '@angkorgit/design-system';
+import { Logo, cn } from '@angkorgit/design-system';
 import { basename } from '@/shared/utils';
 
 const OVERLAY_SHOW_DELAY = 250;
 const OVERLAY_MIN_VISIBLE = 450;
+const SIDEBAR_DEFAULT_SIZE = 18;
+const INSPECTOR_DEFAULT_SIZE = 28;
 
 function useRepoLoadingOverlay(): boolean {
   const active = useRepo((s) => s.opening !== null || s.refreshing);
@@ -272,9 +274,32 @@ export function RepositoryPage() {
   );
   useShortcuts(shortcuts);
 
-  if (!repo) return null;
-
   const focusMode = !!centerFileHistory && !centerEditor && !centerDiff;
+  const showSidebar = sidebarOpen && !focusMode;
+  const focusModeRef = useRef(focusMode);
+  focusModeRef.current = focusMode;
+  const sidebarPanel = useRef<ImperativePanelHandle>(null);
+  const inspectorPanel = useRef<ImperativePanelHandle>(null);
+  useEffect(() => {
+    const panel = sidebarPanel.current;
+    if (!panel) return;
+    if (showSidebar) {
+      if (panel.isCollapsed()) panel.expand(SIDEBAR_DEFAULT_SIZE);
+    } else if (!panel.isCollapsed()) {
+      panel.collapse();
+    }
+  }, [showSidebar, repo]);
+  useEffect(() => {
+    const panel = inspectorPanel.current;
+    if (!panel) return;
+    if (focusMode) {
+      if (!panel.isCollapsed()) panel.collapse();
+    } else if (panel.isCollapsed()) {
+      panel.expand(INSPECTOR_DEFAULT_SIZE);
+    }
+  }, [focusMode, repo]);
+
+  if (!repo) return null;
 
   return (
     <motion.div
@@ -287,16 +312,25 @@ export function RepositoryPage() {
       <Toolbar onRefresh={refreshAll} />
       <div className="relative min-h-0 flex-1">
         <RepoLoadingOverlay />
-        <PanelGroup direction="horizontal" autoSaveId="angkorgit-main">
-          {sidebarOpen && !focusMode && (
-            <>
-              <Panel defaultSize={18} minSize={13} maxSize={30} order={1}>
-                <Sidebar />
-              </Panel>
-              <PanelResizeHandle className="w-px bg-border-subtle" />
-            </>
-          )}
-          <Panel defaultSize={54} minSize={30} order={2}>
+        <PanelGroup direction="horizontal" autoSaveId="angkorgit-main-v2">
+          <Panel
+            ref={sidebarPanel}
+            id="sidebar"
+            order={1}
+            defaultSize={SIDEBAR_DEFAULT_SIZE}
+            minSize={13}
+            maxSize={30}
+            collapsible
+            collapsedSize={0}
+            onCollapse={() => {
+              const ui = useUi.getState();
+              if (ui.sidebarOpen && !ui.sidebarHiddenForDiff && !focusModeRef.current) ui.setSidebarOpen(false);
+            }}
+          >
+            {showSidebar && <Sidebar />}
+          </Panel>
+          <PanelResizeHandle className={cn('w-px bg-border-subtle', !showSidebar && 'hidden')} />
+          <Panel id="center" order={2} defaultSize={54} minSize={30}>
             <PanelGroup direction="vertical" autoSaveId="angkorgit-center">
               <Panel minSize={30}>
                 <div className={centerDiff || centerEditor || centerFileHistory ? 'hidden' : 'h-full'}>
@@ -324,14 +358,19 @@ export function RepositoryPage() {
               )}
             </PanelGroup>
           </Panel>
-          {!focusMode && (
-            <>
-              <PanelResizeHandle className="w-px bg-border-subtle" />
-              <Panel defaultSize={28} minSize={20} maxSize={45} order={3}>
-                <Inspector />
-              </Panel>
-            </>
-          )}
+          <PanelResizeHandle className={cn('w-px bg-border-subtle', focusMode && 'hidden')} />
+          <Panel
+            ref={inspectorPanel}
+            id="inspector"
+            order={3}
+            defaultSize={INSPECTOR_DEFAULT_SIZE}
+            minSize={20}
+            maxSize={45}
+            collapsible
+            collapsedSize={0}
+          >
+            {!focusMode && <Inspector />}
+          </Panel>
         </PanelGroup>
       </div>
       <StatusBar />

@@ -22,6 +22,9 @@ All notable changes to AngKorGit are documented here. The format follows
   instead, because git allows one folder per branch.
 
 ### Fixed
+- The inspector keeps one width. Opening a diff (which folds the sidebar away)
+  used to switch the layout to a second remembered set of panel sizes, so the
+  right column jumped to a different width and remembered it separately.
 - Multi-line comments in diffs are highlighted as comments all the way through.
   The inner lines of a `/** … */` block (and `<!-- … -->` in HTML) used to render
   as code because each line was highlighted on its own.

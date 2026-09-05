@@ -525,3 +525,33 @@ test('collapse all folds every sidebar section and branch folder', async ({ page
   await expect(page.getByText('develop', { exact: true })).toBeVisible();
   await expect(page.getByText('diff-viewer', { exact: true })).toBeHidden();
 });
+
+test('opening a diff keeps the inspector at the same width', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const inspector = page.locator('[data-panel-id="inspector"]');
+  const sidebar = page.locator('[data-panel-id="sidebar"]');
+  const handle = page.locator('[data-panel-resize-handle-id]').first();
+  const grip = await handle.boundingBox();
+  if (!grip) throw new Error('no sidebar resize handle');
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + 300);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 80, grip.y + 300, { steps: 8 });
+  await page.mouse.up();
+  const sidebarBefore = (await sidebar.boundingBox())?.width ?? 0;
+  const inspectorBefore = (await inspector.boundingBox())?.width ?? 0;
+  expect(sidebarBefore).toBeGreaterThan(200);
+
+  await page.getByText('CommitGraph.tsx').first().click();
+  await expect(page.locator('section[aria-label^="Diff for"]')).toBeVisible();
+  expect((await sidebar.boundingBox())?.width ?? 0).toBeLessThan(2);
+  const inspectorDuring = (await inspector.boundingBox())?.width ?? 0;
+  expect(Math.abs(inspectorDuring - inspectorBefore)).toBeLessThan(2);
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible();
+  expect(Math.abs(((await sidebar.boundingBox())?.width ?? 0) - sidebarBefore)).toBeLessThan(2);
+  expect(Math.abs(((await inspector.boundingBox())?.width ?? 0) - inspectorBefore)).toBeLessThan(2);
+});

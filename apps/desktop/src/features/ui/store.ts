@@ -68,6 +68,7 @@ interface UiState {
   sidebarCollapseEpoch: number;
 
   toggleSidebar: () => void;
+  setSidebarOpen: (open: boolean) => void;
   toggleTerminal: () => void;
   setPaletteOpen: (open: boolean) => void;
   openDialog: (dialog: DialogKind, context?: DialogContext) => void;
@@ -140,6 +141,7 @@ export const useUi = create<UiState>()(
         ? { centerDiff: null, sidebarHiddenForDiff: false, sidebarOpen: true }
         : { sidebarOpen: !s.sidebarOpen },
     ),
+  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   openDialog: (dialog, context = null) => {
