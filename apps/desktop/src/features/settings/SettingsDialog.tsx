@@ -658,9 +658,9 @@ export function SettingsDialog() {
     (acc[account.host] ??= []).push(account);
     return acc;
   }, {});
-  const multiAccountHosts = Object.keys(accountsByHost)
-    .filter((host) => accountsByHost[host].length > 1)
-    .sort();
+  const accountHosts = Object.keys(accountsByHost).sort();
+  const showHostAccounts = hostAccounts.length >= 2;
+  const anyHostChoice = accountHosts.some((host) => accountsByHost[host].length > 1);
 
   const addProfile = () => {
     if (!profileLabel.trim() || !profileName.trim() || !profileEmail.trim()) return;
@@ -944,9 +944,9 @@ export function SettingsDialog() {
                   <SettingCard
                     title="Profiles"
                     description={
-                      multiAccountHosts.length > 0
+                      anyHostChoice
                         ? 'Work and personal identities, each with the account it should use on hosts where you have several. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository.'
-                        : 'Work and personal identities. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository. With one account per host, every profile uses it automatically.'
+                        : 'Work and personal identities. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository. Each host has one account, so every profile pushes with it.'
                     }
                     action={
                       !addingProfile && settings.profiles.length > 0 ? (
@@ -1003,12 +1003,12 @@ export function SettingsDialog() {
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
-                            {multiAccountHosts.length > 0 && (
+                            {showHostAccounts && (
                               <div className="mt-3 flex flex-col gap-1.5 border-t border-border-subtle pt-2.5">
                                 <span className="text-[11px] font-medium text-faint">
-                                  Account to use per host
+                                  {anyHostChoice ? 'Account to use per host' : 'Pushes with'}
                                 </span>
-                                {multiAccountHosts.map((host) => {
+                                {accountHosts.map((host) => {
                                   const options = accountsByHost[host];
                                   const fallback = options.find((a) => a.isDefault) ?? options[0];
                                   const chosen = profile.accounts?.[host];
@@ -1019,6 +1019,12 @@ export function SettingsDialog() {
                                         {providerIcon(options[0].provider)}
                                       </span>
                                       <span className="min-w-0 flex-1 truncate text-xs text-foreground">{host}</span>
+                                      {options.length === 1 ? (
+                                        <span className="flex h-7 items-center gap-1 rounded-md border border-border-subtle bg-surface px-2 text-xs text-muted">
+                                          <Check className="size-3 text-success" />
+                                          {options[0].username}
+                                        </span>
+                                      ) : (
                                       <Select
                                         value={value}
                                         onValueChange={(v) => setProfileHostAccount(profile, host, v === '__default' ? null : v)}
@@ -1034,9 +1040,10 @@ export function SettingsDialog() {
                                             <SelectItem key={account.username} value={account.username}>
                                               {account.username}
                                             </SelectItem>
-                                          ))}
+                          ))}
                                         </SelectContent>
                                       </Select>
+                                      )}
                                     </div>
                                   );
                                 })}

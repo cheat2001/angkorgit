@@ -804,12 +804,15 @@ features/
 │                               for a clean redesign 2026-09-05: each profile is a card
 │                               with Avatar + label + "In use" Badge + secondary Use
 │                               button + "…" menu whose Remove goes through confirmDialog;
-│                               account linking is "Account to use per host": one row per
-│                               host with ≥2 accounts (provider icon tile, host, Select
-│                               with "Host default · <name>" = unlink + each username) —
-│                               hosts with one account render NOTHING because the default
-│                               already applies (the earlier chip row was rejected as
-│                               messy); setProfileHostAccount writes/deletes
+│                               account linking is a per-host list shown once there are
+│                               ≥2 accounts IN TOTAL (owner with GitHub + GitLab expected
+│                               to see it): one row per host (provider icon tile, host),
+│                               a Select with "Host default · <name>" = unlink + each
+│                               username where the host has ≥2 accounts, and a static
+│                               ticked username where it has one; header reads "Account
+│                               to use per host" or "Pushes with" accordingly; hidden
+│                               entirely with 0–1 accounts (the earlier chip row was
+│                               rejected as messy); setProfileHostAccount writes/deletes
 │                               profile.accounts[host]; providerIcon is exported from
 │                               AccountsTab for this;
 │                               "New profile" header button (or the empty-state card's
