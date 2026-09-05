@@ -44,6 +44,16 @@ All notable changes to AngKorGit are documented here. The format follows
   live when the theme changes.
 
 ### Added
+- **Welcome page.** Recent repositories are rows with an icon (a worktree gets
+  its own glyph), a home-relative path, the time, and a menu with Open, Reveal
+  in Finder, Copy path and Remove, also on right-click. A repository whose
+  folder was moved or deleted is dimmed and marked "folder missing" instead of
+  failing with an error when clicked. The search box has focus on arrival and
+  the arrow keys and Enter open a repository without the mouse. A fresh install
+  gets a proper empty state with Open and Clone, and the version with a "Check
+  for updates" link sits in the footer.
+- **Sidebar empty states.** Tags, Stashes and Remotes use the same small card
+  as Worktrees when they have nothing to show, with the relevant action.
 - **Accordion sidebar.** Open sections take the room and scroll inside
   themselves, collapsed sections stay visible as slim headers pinned above or
   below, and short sections only take the rows they need. Expand Branches alone

@@ -85,6 +85,7 @@ pub fn run() {
             commands::read_file,
             commands::write_file,
             commands::reveal_path,
+            commands::paths_exist,
             commands::delete_file,
             commands::commit_create,
             commands::commit_amend,

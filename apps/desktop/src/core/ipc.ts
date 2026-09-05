@@ -203,6 +203,10 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('open_path', { path: target });
   },
+  async pathsExist(paths: string[]): Promise<boolean[]> {
+    if (!isTauri()) return paths.map((p) => !p.includes('api-gateway'));
+    return invoke('paths_exist', { paths });
+  },
   async revealPath(target: string): Promise<void> {
     if (!isTauri()) return;
     return invoke('reveal_path', { path: target });

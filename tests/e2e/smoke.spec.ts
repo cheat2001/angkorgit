@@ -676,3 +676,15 @@ test('sidebar sections behave as an accordion with collapsed headers pinned', as
   if (!tagsAfter) throw new Error('tags header missing');
   expect(tagsAfter.y).toBeLessThan(tagsBox.y);
 });
+
+test('welcome page flags missing folders and opens a repository from the keyboard', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('folder missing')).toBeVisible();
+  await expect(page.getByText('~/work/api-gateway')).toBeVisible();
+  const search = page.getByLabel('Search recent repositories');
+  await expect(search).toBeFocused();
+  await search.press('ArrowDown');
+  await search.press('Enter');
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+});

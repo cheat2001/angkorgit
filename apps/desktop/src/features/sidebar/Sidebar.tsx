@@ -137,6 +137,33 @@ const outcomeOk = (result: unknown) => {
 
 const FLAT_FILTER_CAP = 300;
 
+function SidebarEmpty({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mx-1 mb-1 mt-0.5 flex flex-col gap-2 rounded-lg border border-dashed border-border-subtle bg-surface-raised/40 p-3">
+      <div className="flex items-start gap-2.5">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary [&_svg]:size-3.5">
+          {icon}
+        </span>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-xs font-medium text-foreground">{title}</span>
+          <span className="text-[11px] leading-relaxed text-muted">{description}</span>
+        </span>
+      </div>
+      {action}
+    </div>
+  );
+}
+
 export const SIDEBAR_SECTIONS = [
   'branches',
   'worktrees',
@@ -891,27 +918,21 @@ export function Sidebar() {
             </div>
           )}
           {!repoRefreshing && worktrees.length <= 1 && (
-            <div className="mx-1 mb-1 mt-0.5 flex flex-col gap-2 rounded-lg border border-dashed border-border-subtle bg-surface-raised/40 p-3">
-              <div className="flex items-start gap-2.5">
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-                  <FolderTree className="size-3.5" />
-                </span>
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-xs font-medium text-foreground">Two branches, two folders</span>
-                  <span className="text-[11px] leading-relaxed text-muted">
-                    Fix a bug or run an agent beside your work. No stashing.
-                  </span>
-                </span>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="w-full justify-center"
-                onClick={() => openDialog('createWorktree')}
-              >
-                <Plus className="size-3.5" /> New worktree
-              </Button>
-            </div>
+            <SidebarEmpty
+              icon={<FolderTree />}
+              title="Two branches, two folders"
+              description="Fix a bug or run an agent beside your work. No stashing."
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full justify-center"
+                  onClick={() => openDialog('createWorktree')}
+                >
+                  <Plus className="size-3.5" /> New worktree
+                </Button>
+              }
+            />
           )}
           {worktrees.length > 1 && filteredWorktrees.map(renderWorktree)}
           {worktrees.length > 1 && q && filteredWorktrees.length === 0 && (
@@ -1019,7 +1040,11 @@ export function Sidebar() {
 
         <Section {...section('remotes')} icon={<Cloud className="size-3.5" />} title="Remotes" count={remoteBranches.length}>
           {remotes.length === 0 && !hasRemoteBranches && !repoRefreshing && (
-            <div className="px-2 py-1 pl-7 text-xs text-faint">No remotes yet.</div>
+            <SidebarEmpty
+              icon={<Cloud />}
+              title="No remotes"
+              description="This repository lives only on this machine. Add a remote to push, pull and open pull requests."
+            />
           )}
           {q
             ? remoteBranches.slice(0, FLAT_FILTER_CAP).map((branch) => renderRemoteBranch(branch, branch.name, 0))
@@ -1048,7 +1073,16 @@ export function Sidebar() {
           }
         >
           {tags.length === 0 && !repoRefreshing && (
-            <div className="px-2 py-1 pl-7 text-xs text-faint">No tags yet.</div>
+            <SidebarEmpty
+              icon={<TagIcon />}
+              title="No tags yet"
+              description="Mark releases and milestones so they stand out in the graph."
+              action={
+                <Button variant="secondary" size="sm" className="w-full justify-center" onClick={() => openDialog('createTag')}>
+                  <Plus className="size-3.5" /> New tag
+                </Button>
+              }
+            />
           )}
           {filteredTags.map((tag) => (
             <div
@@ -1098,7 +1132,16 @@ export function Sidebar() {
           }
         >
           {stashes.length === 0 && !repoRefreshing && (
-            <div className="px-2 py-1 pl-7 text-xs text-faint">Nothing stashed.</div>
+            <SidebarEmpty
+              icon={<Archive />}
+              title="Nothing stashed"
+              description="Set changes aside without committing, then pop them back later."
+              action={
+                <Button variant="secondary" size="sm" className="w-full justify-center" onClick={() => openDialog('createStash')}>
+                  <Plus className="size-3.5" /> Stash changes
+                </Button>
+              }
+            />
           )}
           {stashes.map((stash) => (
             <div

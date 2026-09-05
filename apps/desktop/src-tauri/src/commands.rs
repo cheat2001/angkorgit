@@ -196,6 +196,17 @@ pub async fn open_path(path: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub async fn paths_exist(paths: Vec<String>) -> AppResult<Vec<bool>> {
+    blocking(move || {
+        Ok(paths
+            .iter()
+            .map(|p| std::path::Path::new(p).is_dir())
+            .collect())
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn reveal_path(path: String) -> AppResult<()> {
     blocking(move || {
         let status = {
