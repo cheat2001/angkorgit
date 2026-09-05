@@ -1,0 +1,89 @@
+---
+import Frame from './Frame.astro';
+import { icon } from './icons';
+
+const ctx = (n: number, code: string) => ({ n, code, ctx: true });
+const a = [
+  ctx(1, "import { render } from './renderer';"),
+  ctx(2, ''),
+  ctx(3, 'export function drawGraph(rows: Row[]) {'),
+];
+const aBlock = ['  const palette = useThemePalette();', '  return render(rows, { palette, animate: true });'];
+const bBlock = ['  const colors = legacyColors();', '  return render(rows, { colors });'];
+const tail = [ctx(6, '}'), ctx(7, '')];
+const result = [...a.map((l) => ({ ...l, side: false })), { n: 4, code: aBlock[0], side: true }, { n: 5, code: aBlock[1], side: true }, ...tail.map((l) => ({ ...l, side: false }))];
+---
+
+<Frame>
+  <div class="flex h-full flex-col bg-background font-sans">
+    <div class="flex h-[72px] shrink-0 items-center gap-4 border-b border-border-subtle px-4">
+      <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-danger/15 text-danger" set:html={icon('merge', 'h-5 w-5')} />
+      <span class="flex flex-col leading-tight">
+        <span class="text-[10.5px] uppercase tracking-[0.14em] text-faint">Resolve conflicts</span>
+        <span class="mt-1 text-[15px]"><span class="font-semibold text-foreground">drawGraph.ts</span> <span class="font-mono text-[12px] text-faint">src/features/graph</span></span>
+      </span>
+      <span class="ml-4 h-1.5 w-40 overflow-hidden rounded-full bg-border-subtle"><span class="block h-full w-full rounded-full bg-success"></span></span>
+      <span class="text-[13px] text-success">1 of 1 resolved</span>
+      <span class="ml-auto flex h-9 items-center gap-2 rounded-md bg-primary px-3.5 text-[13px] font-medium text-primary-foreground" set:html={icon('check', 'h-4 w-4') + ' Mark resolved'} />
+      <span class="text-muted" set:html={icon('x', 'h-4 w-4')} />
+    </div>
+
+    <div class="grid shrink-0 grid-cols-2 divide-x divide-border-subtle" style="height: 440px">
+      {
+        [
+          { label: 'A', name: 'main', tag: 'Current', tone: 'info', block: aBlock, picked: true },
+          { label: 'B', name: 'feature/lane-colors', tag: 'Incoming', tone: 'success', block: bBlock, picked: false },
+        ].map((pane) => (
+          <div class="font-mono text-[12.5px]">
+            <div class:list={['flex h-10 items-center gap-3 border-b border-border-subtle border-t-2 px-3 font-sans', pane.tone === 'info' ? 'border-t-info' : 'border-t-success']}>
+              <span class:list={['flex h-4 w-4 items-center justify-center rounded-[3px] border', pane.picked ? 'border-info bg-info text-background' : 'border-border']} set:html={pane.picked ? icon('check', 'h-3 w-3') : ''} />
+              <span class:list={['flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold', pane.tone === 'info' ? 'bg-info/15 text-info' : 'bg-success/15 text-success']}>{pane.label}</span>
+              <span class:list={['text-[13px]', pane.tone === 'info' ? 'text-info' : 'text-success']}>{pane.name}</span>
+              <span class="ml-auto text-[10.5px] uppercase tracking-[0.12em] text-faint">{pane.tag}</span>
+            </div>
+            {a.map((l) => (
+              <div class="flex h-[26px] items-center gap-3 text-muted"><span class="w-9 shrink-0"></span><span class="w-6 text-right text-faint">{l.n}</span><span class="whitespace-pre">{l.code}</span></div>
+            ))}
+            <div class="flex h-[26px] items-center border-y border-primary/30 bg-surface-raised/50 px-3 font-sans text-[11px] uppercase tracking-[0.12em] text-faint">Conflict 1 {pane.tone === 'success' && <span class="ml-auto text-primary" set:html={icon('sparkles', 'h-3.5 w-3.5')} />}</div>
+            {pane.block.map((code, i) => (
+              <div class:list={['flex h-[26px] items-center gap-3 border-l-2 text-foreground', pane.tone === 'info' ? 'border-info' : 'border-success', pane.picked && 'bg-info/10']}>
+                <span class="flex w-9 shrink-0 items-center justify-center">
+                  {i === 0 ? (
+                    <span class:list={['flex h-4 w-4 items-center justify-center rounded-[3px] border', pane.picked ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background']} set:html={pane.picked ? icon('check', 'h-3 w-3') : ''} />
+                  ) : pane.picked ? (
+                    <span class="text-info" set:html={icon('check', 'h-3.5 w-3.5')} />
+                  ) : null}
+                </span>
+                <span class="w-6 text-right text-faint">{4 + i}</span>
+                <span class="whitespace-pre">{code}</span>
+              </div>
+            ))}
+            {tail.map((l) => (
+              <div class="flex h-[26px] items-center gap-3 text-muted"><span class="w-9 shrink-0"></span><span class="w-6 text-right text-faint">{l.n}</span><span class="whitespace-pre">{l.code}</span></div>
+            ))}
+          </div>
+        ))
+      }
+    </div>
+
+    <div class="flex min-h-0 flex-1 flex-col border-t border-border-subtle">
+      <div class="flex h-10 shrink-0 items-center gap-3 border-b border-border-subtle px-3">
+        <span class="text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground">Result</span>
+        <span class="flex h-6 items-center gap-2 rounded-md border border-border px-2 text-[12px] text-muted"><span set:html={icon('chevronDown', 'h-3 w-3 rotate-180')} /> Conflict 1 of 1 <span set:html={icon('chevronDown', 'h-3 w-3')} /></span>
+        <span class="text-[12px] text-faint">Ready to mark resolved — click any result to edit it</span>
+        <span class="ml-auto flex items-center gap-4 text-muted"><span set:html={icon('pencil', 'h-4 w-4')} /><span class="text-[13px]">Reset</span></span>
+      </div>
+      <div class="py-1 font-mono text-[12.5px]">
+        {
+          result.map((l) => (
+            <div class:list={['flex h-[26px] items-center gap-3', l.side ? 'bg-info/5 text-foreground' : 'text-muted']}>
+              <span class="flex w-9 shrink-0 items-center justify-center">{l.side && <span class="h-3.5 w-0.5 rounded-full bg-info"></span>}</span>
+              <span class="w-6 text-right text-faint">{l.n}</span>
+              <span class="whitespace-pre">{l.code}</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+</Frame>

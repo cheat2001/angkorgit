@@ -1,0 +1,40 @@
+---
+import { icon } from './icons';
+
+const section = (name: string, count: number, open = true) =>
+  `<div class="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted">${icon(open ? 'chevronDown' : 'chevronRight', 'h-3.5 w-3.5')}${icon(name === 'Branches' ? 'branch' : name === 'Worktrees' ? 'folderTree' : name === 'Pull requests' ? 'pr' : name === 'Remotes' ? 'cloud' : name === 'Tags' ? 'tag' : name === 'Stashes' ? 'archive' : 'layers', 'h-3.5 w-3.5')}<span class="text-foreground">${name}</span><span class="font-mono text-[11px] font-normal text-faint">${count}</span></div>`;
+---
+
+<aside class="flex w-[260px] shrink-0 flex-col border-r border-border-subtle bg-surface">
+  <div class="flex items-center gap-2 p-2">
+    <div class="flex h-8 flex-1 items-center gap-2 rounded-md bg-surface-raised px-2.5 text-[12.5px] text-faint">
+      <span set:html={icon('search', 'h-3.5 w-3.5')} /> Filter refs...
+    </div>
+    <span class="text-faint" set:html={icon('list', 'h-3.5 w-3.5 rotate-90')} />
+  </div>
+  <div class="flex flex-col gap-px px-2 text-[13px]">
+    <Fragment set:html={section('Branches', 4)} />
+    <div class="flex items-center gap-1.5 py-1 pl-6 text-foreground/90"><span class="text-faint" set:html={icon('chevronRight', 'h-3 w-3')} /><span class="text-faint" set:html={icon('folder', 'h-3.5 w-3.5')} /> feature <span class="font-mono text-[11px] text-faint">1</span></div>
+    <div class="flex items-center gap-1.5 py-1 pl-6 text-foreground/90"><span class="text-faint" set:html={icon('chevronRight', 'h-3 w-3')} /><span class="text-faint" set:html={icon('folder', 'h-3.5 w-3.5')} /> fix <span class="font-mono text-[11px] text-faint">1</span></div>
+    <div class="flex items-center gap-1.5 py-1 pl-[3.1rem] text-foreground/90">develop</div>
+    <div class="flex items-center gap-2 py-1 pl-[2.1rem]"><span class="text-success" set:html={icon('check', 'h-3.5 w-3.5')} /><span class="text-primary">main</span><span class="rounded-full border border-success/40 bg-success/10 px-1.5 font-mono text-[10.5px] text-success">↑2</span></div>
+
+    <Fragment set:html={section('Worktrees', 3)} />
+    <div class="flex items-start gap-2 rounded-md py-1 pl-[2.1rem]"><span class="mt-0.5 text-success" set:html={icon('check', 'h-3.5 w-3.5')} /><span class="flex flex-col leading-tight"><span class="flex items-center gap-1.5 text-primary">angkorgit <span class="text-faint" set:html={icon('home', 'h-3 w-3')} /><span class="h-1.5 w-1.5 rounded-full bg-primary"></span></span><span class="font-mono text-[10.5px] text-faint">main</span></span></div>
+    <div class="flex items-start gap-2 py-1 pl-[3.1rem]"><span class="flex flex-col leading-tight"><span class="flex items-center gap-1.5 text-foreground/90">angkorgit-feature-di… <span class="h-1.5 w-1.5 rounded-full bg-primary"></span></span><span class="font-mono text-[10.5px] text-faint">feature/diff-viewer</span></span></div>
+    <div class="flex items-start gap-2 py-1 pl-[3.1rem]"><span class="flex flex-col leading-tight"><span class="flex items-center gap-1.5 text-foreground/90">angkorgit-fix-stash… <span class="text-danger" set:html={icon('alert', 'h-3 w-3')} /></span><span class="font-mono text-[10.5px] text-faint">folder missing</span></span></div>
+
+    <Fragment set:html={section('Pull requests', 3)} />
+    <div class="flex items-center gap-1.5 py-1 pl-[2.1rem] text-foreground/90"><span class="text-faint">#12</span> feat(diff): side-by-sid…</div>
+    <div class="flex items-center gap-1.5 py-1 pl-[2.1rem] text-foreground/90"><span class="text-faint">#11</span> fix(stash): app… <span class="rounded-full border border-border px-1.5 text-[10.5px] text-muted">Draft</span></div>
+    <div class="flex items-center gap-1.5 py-1 pl-[2.1rem] text-foreground/90"><span class="text-faint">#9</span> docs: translate first-la…</div>
+
+    <Fragment set:html={section('Remotes', 1, false)} />
+    <Fragment set:html={section('Tags', 2, false)} />
+    <Fragment set:html={section('Stashes', 1)} />
+    <div class="flex items-center gap-1.5 py-1 pl-[2.1rem] text-foreground/90">WIP on main: experiment …</div>
+  </div>
+  <div class="mt-auto px-2 pb-2 text-[13px]">
+    <Fragment set:html={section('Submodules', 1, false)} />
+  </div>
+</aside>

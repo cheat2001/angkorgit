@@ -1,0 +1,33 @@
+---
+interface Props {
+  width?: number;
+  height?: number;
+  class?: string;
+}
+
+const { width = 1360, height = 800 } = Astro.props;
+---
+
+<div
+  class:list={['frame relative overflow-hidden rounded-lg border border-border bg-background shadow-soft', Astro.props.class]}
+  style={`aspect-ratio: ${width} / ${height}`}
+  data-frame-w={width}
+>
+  <div class="frame-inner absolute left-0 top-0 origin-top-left font-sans text-[13px] leading-normal text-foreground" style={`width:${width}px;height:${height}px`}>
+    <slot />
+  </div>
+</div>
+
+<script>
+  const frames = Array.from(document.querySelectorAll<HTMLElement>('.frame'));
+  const fit = (frame: HTMLElement) => {
+    const inner = frame.querySelector<HTMLElement>('.frame-inner');
+    const w = Number(frame.dataset.frameW || 1360);
+    if (inner) inner.style.transform = `scale(${frame.clientWidth / w})`;
+  };
+  const ro = new ResizeObserver((entries) => entries.forEach((e) => fit(e.target as HTMLElement)));
+  frames.forEach((f) => {
+    fit(f);
+    ro.observe(f);
+  });
+</script>

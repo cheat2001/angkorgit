@@ -63,8 +63,13 @@ angkorgit/
 │       │                        Commit (section wrapper: rail dot + optional colored side lane),
 │       │                        HeroGraph (hand-laid commit graph that doubles as the table of
 │       │                        contents, newest on top), Scene (feature section: copy + a
-│       │                        hand-built UI fragment — MockConflicts/MockWorktrees/MockGraph/
-│       │                        MockPalette render the app's look in tokens, no screenshots),
+│       │                        hand-built UI fragment from components/mock/: Frame scales a
+│       │                        1360×800 "window" to its column via ResizeObserver, AppFrame =
+│       │                        tab strip + toolbar + Sidebar + Graph + WorkingCopy rebuilt
+│       │                        1:1 from the real app (owner rejected real screenshots AND
+│       │                        loose mocks: it must look exactly like the app), Conflicts,
+│       │                        Palette, Worktree, GraphScene compose it; icons.ts holds the
+│       │                        lucide paths),
 │       │                        Hero, Story, Size ("Native, not a browser"), SpecSheet, AiSection,
 │       │                        Install (TerminalBlock), Questions, Header (+mobile menu),
 │       │                        Footer, ThemeToggle, Splash, Logo (SVG mirror of app mark).

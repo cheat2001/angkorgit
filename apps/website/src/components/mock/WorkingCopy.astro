@@ -1,0 +1,85 @@
+---
+import { icon } from './icons';
+
+const changes = [
+  { name: 'ipc.ts', dir: 'src/core', kind: 'M' },
+  { name: 'palette-seed.sql', dir: 'src/data', kind: 'M' },
+  { name: 'Architecture.md', dir: 'docs', kind: 'A' },
+  { name: 'WorkingCopyFileListItemContaine…', dir: 'src…', kind: 'A' },
+];
+const staged = [
+  { name: 'CommitGraph.tsx', dir: 'src/features/graph', kind: 'M' },
+  { name: 'old-layout.tsx', dir: 'src', kind: 'D' },
+];
+const tone = (k: string) => (k === 'M' ? 'border-info/40 bg-info/15 text-info' : k === 'A' ? 'border-success/40 bg-success/15 text-success' : 'border-danger/40 bg-danger/15 text-danger');
+---
+
+<aside class="flex w-[330px] shrink-0 flex-col bg-surface">
+  <div class="flex h-11 shrink-0 items-center gap-2 border-b border-border-subtle px-4">
+    <span class="text-xs font-semibold uppercase tracking-wide text-foreground">Working copy</span>
+    <span class="ml-auto flex items-center gap-1">
+      <span class="flex h-6 w-6 items-center justify-center rounded-md bg-surface-raised text-foreground" set:html={icon('list', 'h-3.5 w-3.5')} />
+      <span class="flex h-6 w-6 items-center justify-center text-muted" set:html={icon('folderTree', 'h-3.5 w-3.5')} />
+    </span>
+  </div>
+
+  <div class="flex-1 overflow-hidden px-3 py-3 text-[13px]">
+    <div class="flex items-center gap-1.5 px-1">
+      <span class="text-danger" set:html={icon('alert', 'h-3.5 w-3.5')} />
+      <span class="text-xs font-semibold uppercase tracking-wide text-danger">Conflicts <span class="font-normal text-danger/70">1</span></span>
+      <span class="ml-auto text-[12.5px] text-danger">Resolve</span>
+    </div>
+    <p class="px-1 pt-1 text-[11.5px] text-muted">Resolve each file, then commit to finish the operation.</p>
+    <div class="mt-1.5 flex items-center gap-2 rounded-md px-1 py-1">
+      <span class="flex h-5 w-5 items-center justify-center rounded-full border border-danger/40 bg-danger/15 text-[11px] font-semibold text-danger">!</span>
+      <span class="text-foreground">drawGraph.ts</span><span class="truncate text-[12px] text-faint">src/features/graph</span>
+    </div>
+
+    <div class="mt-3 flex items-center gap-1.5 px-1">
+      <span class="text-xs font-semibold uppercase tracking-wide text-muted">Changes <span class="text-faint">4</span></span>
+      <span class="ml-auto flex items-center gap-1 text-[12.5px] text-danger" set:html={icon('trash', 'h-3.5 w-3.5') + ' Discard all'} />
+      <span class="ml-3 flex items-center gap-1 text-[12.5px] text-muted" set:html={icon('plus', 'h-3.5 w-3.5') + ' Stage all'} />
+    </div>
+    {
+      changes.map((f) => (
+        <div class="mt-1 flex items-center gap-2 rounded-md px-1 py-1">
+          <span class="h-3.5 w-3.5 rounded-[3px] border border-border bg-background"></span>
+          <span class:list={['flex h-5 w-5 items-center justify-center rounded-full border text-[10.5px] font-semibold', tone(f.kind)]}>{f.kind}</span>
+          <span class="shrink-0 text-foreground">{f.name}</span>
+          <span class="truncate text-[12px] text-faint">{f.dir}</span>
+        </div>
+      ))
+    }
+
+    <div class="mt-3 flex items-center gap-1.5 px-1">
+      <span class="text-xs font-semibold uppercase tracking-wide text-muted">Staged <span class="text-faint">2</span></span>
+      <span class="ml-auto flex items-center gap-1 text-[12.5px] text-muted" set:html={icon('minus', 'h-3.5 w-3.5') + ' Unstage all'} />
+    </div>
+    {
+      staged.map((f) => (
+        <div class="mt-1 flex items-center gap-2 rounded-md px-1 py-1">
+          <span class="flex h-3.5 w-3.5 items-center justify-center rounded-[3px] bg-primary text-primary-foreground" set:html={icon('check', 'h-2.5 w-2.5')} />
+          <span class:list={['flex h-5 w-5 items-center justify-center rounded-full border text-[10.5px] font-semibold', tone(f.kind)]}>{f.kind}</span>
+          <span class="shrink-0 text-foreground">{f.name}</span>
+          <span class="truncate text-[12px] text-faint">{f.dir}</span>
+        </div>
+      ))
+    }
+  </div>
+
+  <div class="border-t border-border-subtle p-3">
+    <div class="rounded-md border border-border bg-background">
+      <div class="flex items-center border-b border-border-subtle px-3 py-2">
+        <span class="text-[14px] font-medium text-faint">Summary</span>
+        <span class="ml-auto text-primary" set:html={icon('sparkles', 'h-4 w-4')} />
+      </div>
+      <div class="px-3 py-2 text-[12px] leading-relaxed text-faint">Description — what changed and why · ⌘⏎ to commit<br /><span class="invisible">.</span></div>
+    </div>
+    <div class="mt-3 flex items-center gap-2">
+      <span class="h-3.5 w-3.5 rounded-[3px] border border-border bg-background"></span>
+      <span class="flex items-center gap-1 text-[12.5px] text-muted" set:html={icon('undo', 'h-3.5 w-3.5') + ' Amend'} />
+      <span class="ml-auto flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] text-foreground" set:html={icon('circleCheck', 'h-3.5 w-3.5 text-primary') + ' Review'} />
+      <span class="flex h-8 items-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground">Commit 2 files</span>
+    </div>
+  </div>
+</aside>

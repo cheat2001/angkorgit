@@ -1,0 +1,37 @@
+---
+import AppFrame from './AppFrame.astro';
+import { icon } from './icons';
+---
+
+<AppFrame dim>
+  <Fragment slot="overlay">
+    <div class="absolute left-1/2 top-1/2 w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface-overlay p-6 shadow-[0_30px_80px_-20px_rgb(0_0_0/0.7)]">
+      <div class="flex items-start">
+        <h3 class="flex items-center gap-2 text-[18px] font-semibold text-foreground"><span class="text-primary" set:html={icon('folderTree', 'h-4 w-4')} /> New worktree</h3>
+        <span class="ml-auto text-muted" set:html={icon('x', 'h-4 w-4')} />
+      </div>
+      <p class="mt-2 text-[13.5px] leading-relaxed text-muted">A second folder for this repository with its own checked-out branch. Work on two things at once without stashing, and keep every commit in the same history.</p>
+      <div class="mt-4 grid grid-cols-2 gap-1 rounded-md bg-surface-raised p-1 text-[13px]">
+        <span class="rounded bg-surface py-1.5 text-center font-medium text-foreground shadow-sm">New branch</span>
+        <span class="py-1.5 text-center text-muted">Existing branch</span>
+      </div>
+      <label class="mt-4 block text-[13px] text-foreground">Branch name</label>
+      <div class="mt-1.5 flex h-10 items-center rounded-md border-2 border-primary bg-background px-3 font-mono text-[13px] text-faint">feature/parallel-task</div>
+      <p class="mt-1.5 text-[12px] text-faint">Starts from main.</p>
+      <label class="mt-4 block text-[13px] text-foreground">Folder</label>
+      <div class="mt-1.5 flex items-center gap-2">
+        <div class="flex h-10 flex-1 items-center rounded-md border border-border bg-background px-3 font-mono text-[13px] text-foreground">/Users/demo/projects/angkorgit-new</div>
+        <span class="flex h-10 w-10 items-center justify-center rounded-md border border-border text-muted" set:html={icon('folder', 'h-4 w-4')} />
+      </div>
+      <p class="mt-1.5 text-[12px] text-faint">Created next to the repository by default. The folder must not exist yet.</p>
+      <div class="mt-4 flex items-center gap-2 text-[13px] text-foreground">
+        <span class="flex h-4 w-4 items-center justify-center rounded-[3px] bg-primary text-primary-foreground" set:html={icon('check', 'h-3 w-3')} />
+        Open it in a new tab
+      </div>
+      <div class="mt-6 flex items-center justify-end gap-3">
+        <span class="text-[14px] text-foreground">Cancel</span>
+        <span class="flex h-10 items-center rounded-md bg-primary px-4 text-[14px] font-medium text-primary-foreground">Create worktree</span>
+      </div>
+    </div>
+  </Fragment>
+</AppFrame>

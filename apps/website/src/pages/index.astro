@@ -5,10 +5,10 @@ import Hero from '../components/Hero.astro';
 import Rail from '../components/Rail.astro';
 import Story from '../components/Story.astro';
 import Scene from '../components/Scene.astro';
-import MockConflicts from '../components/MockConflicts.astro';
-import MockWorktrees from '../components/MockWorktrees.astro';
-import MockGraph from '../components/MockGraph.astro';
-import MockPalette from '../components/MockPalette.astro';
+import Conflicts from '../components/mock/Conflicts.astro';
+import Worktree from '../components/mock/Worktree.astro';
+import GraphScene from '../components/mock/GraphScene.astro';
+import Palette from '../components/mock/Palette.astro';
 import Size from '../components/Size.astro';
 import SpecSheet from '../components/SpecSheet.astro';
 import AiSection from '../components/AiSection.astro';
@@ -36,7 +36,7 @@ import Footer from '../components/Footer.astro';
           resolved, and the markers are guarded so you can't save half a conflict by accident.
         </p>
       </Fragment>
-      <MockConflicts slot="mock" />
+      <Conflicts slot="mock" />
     </Scene>
 
     <Scene id="worktrees" lane={1} kicker="New in 0.10" title="Two branches, <em>two folders</em>, one window." flip>
@@ -51,7 +51,7 @@ import Footer from '../components/Footer.astro';
           way git refuses on the command line.
         </p>
       </Fragment>
-      <MockWorktrees slot="mock" />
+      <Worktree slot="mock" />
     </Scene>
 
     <Scene id="graph" lane={2} kicker="Graph" title="Drag a branch onto another. <em>That's the merge.</em>">
@@ -65,7 +65,7 @@ import Footer from '../components/Footer.astro';
           merge if you picked the wrong branch.
         </p>
       </Fragment>
-      <MockGraph slot="mock" />
+      <GraphScene slot="mock" />
     </Scene>
 
     <Scene id="palette" lane={2} kicker="Keyboard" title="⌘K, then <em>type</em>." flip>
@@ -79,7 +79,7 @@ import Footer from '../components/Footer.astro';
           exactly one thing at a time.
         </p>
       </Fragment>
-      <MockPalette slot="mock" />
+      <Palette slot="mock" />
     </Scene>
 
     <Size />

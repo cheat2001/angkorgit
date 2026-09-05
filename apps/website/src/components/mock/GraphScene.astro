@@ -1,0 +1,15 @@
+---
+import AppFrame from './AppFrame.astro';
+import { icon } from './icons';
+---
+
+<AppFrame highlightRow={0}>
+  <Fragment slot="overlay">
+    <div class="pointer-events-none absolute left-[850px] top-[196px] rotate-[-4deg]">
+      <span class="inline-flex h-5 items-center gap-1 rounded-md border border-success/40 bg-success/15 px-1.5 font-mono text-[11px] text-success shadow-soft" set:html={'feature/diff-viewer ' + icon('folderTree', 'h-2.5 w-2.5')} />
+    </div>
+    <svg class="pointer-events-none absolute left-[960px] top-[208px] h-5 w-5 text-foreground drop-shadow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M5 3l14 8.5-6.2 1.6L9.5 19z" stroke="hsl(var(--background))" stroke-width="1.5" stroke-linejoin="round" />
+    </svg>
+  </Fragment>
+</AppFrame>

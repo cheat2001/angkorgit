@@ -1,0 +1,132 @@
+---
+import { icon } from './icons';
+
+interface Props {
+  highlightRow?: number;
+}
+const { highlightRow } = Astro.props;
+
+interface Row {
+  lane: number;
+  msg: string;
+  author: string;
+  hash: string;
+  refs?: { label: string; kind: 'local' | 'tag' | 'remote' }[];
+  through: number[];
+  up: boolean;
+  down: boolean;
+  fromBelow?: number[];
+  joinBelow?: number;
+  merge?: boolean;
+  selected?: boolean;
+}
+
+const rows: Row[] = [
+  { lane: 0, msg: 'feat(graph): virtualize commit rows', author: 'Sokha Chan', hash: '000190a', refs: [{ label: 'main', kind: 'local' }], through: [], up: false, down: true },
+  { lane: 0, msg: 'fix(diff): handle renamed files in word diff', author: 'Dara Kim', hash: '00018fa', through: [], up: true, down: true },
+  { lane: 0, msg: 'refactor(core): extract lane allocator', author: 'Maly Sok', hash: '00018ea', refs: [{ label: 'v0.4.0', kind: 'tag' }], through: [], up: true, down: true },
+  { lane: 0, msg: 'perf(history): lazy-load decorations', author: 'Sokha Chan', hash: '00018da', through: [], up: true, down: true },
+  { lane: 0, msg: "Merge branch 'feature/lane-4'", author: 'Dara Kim', hash: '00018ca', through: [], up: true, down: true, fromBelow: [1], merge: true },
+  { lane: 0, msg: 'fix(remote): retry ssh agent auth once', author: 'Maly Sok', hash: '00018ba', through: [1], up: true, down: true },
+  { lane: 0, msg: 'docs: update architecture overview', author: 'Sokha Chan', hash: '00018aa', through: [1], up: true, down: true, selected: true },
+  { lane: 1, msg: 'test(conflicts): cover diff3 markers', author: 'Dara Kim', hash: '000189a', refs: [{ label: 'feature/diff-viewer', kind: 'local' }], through: [0], up: true, down: false, joinBelow: 0 },
+  { lane: 0, msg: 'style(inspector): tighten spacing rhythm', author: 'Maly Sok', hash: '000188a', through: [], up: true, down: true },
+  { lane: 0, msg: 'feat(ai): provider registry + adapters', author: 'Sokha Chan', hash: '000187a', through: [], up: true, down: true },
+  { lane: 0, msg: 'feat(graph): virtualize commit rows', author: 'Dara Kim', hash: '000186a', through: [], up: true, down: true },
+  { lane: 0, msg: 'fix(diff): handle renamed files in word diff', author: 'Maly Sok', hash: '000185a', through: [], up: true, down: true },
+  { lane: 0, msg: 'refactor(core): extract lane allocator', author: 'Sokha Chan', hash: '000184a', through: [], up: true, down: true },
+  { lane: 0, msg: "Merge branch 'feature/lane-3'", author: 'Dara Kim', hash: '000183a', through: [], up: true, down: true, fromBelow: [1], merge: true },
+  { lane: 0, msg: 'feat(stash): quick apply from sidebar', author: 'Maly Sok', hash: '000182a', through: [1], up: true, down: true },
+  { lane: 0, msg: 'fix(remote): retry ssh agent auth once', author: 'Sokha Chan', hash: '000181a', through: [1], up: true, down: true },
+];
+
+const H = 28;
+const CY = 14;
+const W = 96;
+const X = (lane: number) => 14 + lane * 20;
+const MID = (CY + H) / 2;
+const laneColors = ['--graph-0', '--graph-1', '--graph-2'];
+const color = (lane: number, alt = false) => `hsl(var(${alt ? '--graph-2' : laneColors[lane]}))`;
+const laneAlt = (i: number) => i >= 13;
+const initials = (name: string) => name.split(' ').map((p) => p[0]).join('');
+const hue: Record<string, number> = { 'Sokha Chan': 150, 'Dara Kim': 300, 'Maly Sok': 262 };
+---
+
+<div class="flex h-11 shrink-0 items-center gap-2 border-b border-border-subtle bg-surface px-3">
+  <div class="flex h-8 w-[220px] items-center gap-2 rounded-md border border-border bg-background px-2.5 text-[12.5px] text-faint"><span set:html={icon('search', 'h-3.5 w-3.5')} /> Search commits…</div>
+  <div class="flex h-8 w-[150px] items-center gap-2 rounded-md border border-border bg-background px-2.5 text-[12.5px] text-faint"><span set:html={icon('user', 'h-3.5 w-3.5')} /> Filter author…</div>
+  <span class="ml-auto text-[12.5px] text-muted">200+ commits</span>
+  <span class="text-muted" set:html={icon('sliders', 'h-4 w-4')} />
+</div>
+<div class="grid h-6 shrink-0 grid-cols-[150px_106px_1fr_110px_72px_60px] items-center border-b border-border-subtle px-1 pr-4 text-[10.5px] uppercase tracking-wide text-faint">
+  <span class="pl-1">Branch / tag</span><span>Graph</span><span>Message</span><span>Author</span><span>Hash</span><span class="text-right">Date</span>
+</div>
+<div class="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap border-b border-dashed border-primary/40 bg-primary/10 pl-1 pr-4 [&>*]:shrink-0">
+  <span class="w-[150px] shrink-0"></span>
+  <svg width={W} height="36" viewBox={`0 0 ${W} 36`} fill="none" aria-hidden="true" class="shrink-0 -mr-2"><path d={`M${X(0)} 18 V36`} stroke={color(0)} stroke-width="2" /><circle cx={X(0)} cy="18" r="6" stroke={color(0)} stroke-width="2" stroke-dasharray="3 3" fill="hsl(var(--background))" /></svg>
+  <span class="text-primary" set:html={icon('pencil', 'h-3.5 w-3.5')} />
+  <span class="font-mono text-[12px] text-primary">// WIP</span>
+  <span class="text-[13px] text-foreground">6 uncommitted changes</span>
+  <span class="rounded-full border border-danger/40 bg-danger/10 px-2 py-px text-[11px] text-danger">1 conflicted</span>
+  <span class="rounded-full border border-success/40 bg-success/10 px-2 py-px text-[11px] text-success">2 staged</span>
+  <span class="rounded-full border border-info/40 bg-info/10 px-2 py-px text-[11px] text-info">4 modified</span>
+  <span class="ml-auto rounded-md border border-primary/60 px-2.5 py-0.5 text-[12px] text-primary">View changes</span>
+</div>
+<div class="relative min-h-0 flex-1 overflow-hidden">
+  {
+    rows.map((row, i) => (
+      <div
+        class:list={[
+          'grid h-[28px] grid-cols-[150px_106px_1fr_110px_72px_60px] items-center pl-1 pr-4 text-[13px]',
+          row.selected && 'bg-surface-raised',
+          highlightRow === i && 'bg-primary/10 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.6)]',
+        ]}
+      >
+        <span class="flex items-center justify-end gap-1 pr-2">
+          {row.refs?.map((ref) => (
+            <span
+              class:list={[
+                'inline-flex h-5 max-w-full items-center gap-1 truncate rounded-md border px-1.5 font-mono text-[11px]',
+                ref.kind === 'tag' ? 'border-primary/40 bg-primary/10 text-primary' : 'border-success/40 bg-success/10 text-success',
+              ]}
+            >
+              {ref.kind === 'local' && ref.label === 'main' && <span set:html={icon('check', 'h-2.5 w-2.5')} />}
+              {ref.kind === 'tag' && <span set:html={icon('tag', 'h-2.5 w-2.5')} />}
+              {ref.label}
+              {ref.kind === 'local' && ref.label === 'main' && <span set:html={icon('monitor', 'h-2.5 w-2.5') + icon('cloud', 'h-2.5 w-2.5')} class="flex gap-0.5" />}
+              {ref.kind === 'local' && ref.label !== 'main' && <span set:html={icon('folderTree', 'h-2.5 w-2.5')} />}
+            </span>
+          ))}
+          {row.refs && <span class="h-px w-4 shrink-0" style={`background:${color(row.lane, laneAlt(i))}`}></span>}
+        </span>
+        <span class="relative flex h-full items-center -mr-2">
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} fill="none" aria-hidden="true">
+            <rect x={X(row.lane)} y={CY - 8} width={W - X(row.lane)} height="16" rx="8" fill={color(row.lane, laneAlt(i))} opacity="0.16" />
+            {row.through.map((l) => <path d={`M${X(l)} 0 V${H}`} stroke={color(l, laneAlt(i))} stroke-width="2" />)}
+            {row.up && <path d={`M${X(row.lane)} 0 V${CY}`} stroke={color(row.lane, laneAlt(i))} stroke-width="2" />}
+            {row.down && <path d={`M${X(row.lane)} ${CY} V${H}`} stroke={color(row.lane, laneAlt(i))} stroke-width="2" />}
+            {row.fromBelow?.map((o) => <path d={`M${X(o)} ${H} C ${X(o)} ${MID}, ${X(row.lane)} ${MID}, ${X(row.lane)} ${CY}`} stroke={color(o, laneAlt(i))} stroke-width="2" />)}
+            {row.joinBelow !== undefined && <path d={`M${X(row.lane)} ${CY} C ${X(row.lane)} ${MID}, ${X(row.joinBelow)} ${MID}, ${X(row.joinBelow)} ${H}`} stroke={color(row.lane, laneAlt(i))} stroke-width="2" />}
+            {row.merge ? (
+              <circle cx={X(row.lane)} cy={CY} r="3.5" fill="hsl(var(--background))" stroke={color(row.lane, laneAlt(i))} stroke-width="2" />
+            ) : (
+              <>
+                <circle cx={X(row.lane)} cy={CY} r="13.5" fill="hsl(var(--background))" />
+                <circle cx={X(row.lane)} cy={CY} r="12" fill={color(row.lane, laneAlt(i))} />
+                <circle cx={X(row.lane)} cy={CY} r="10" fill={`hsl(${hue[row.author]} 45% 45%)`} />
+                <text x={X(row.lane)} y={CY + 3} text-anchor="middle" font-size="8.5" font-family="Inter Variable, Inter, sans-serif" font-weight="600" fill="white">{initials(row.author)}</text>
+              </>
+            )}
+          </svg>
+        </span>
+        <span class:list={['flex min-w-0 items-center gap-2 truncate pl-1', row.merge ? 'text-muted' : 'text-foreground']}>
+          {row.merge && <span class="text-faint" set:html={icon('merge', 'h-3.5 w-3.5')} />}
+          <span class="truncate">{row.msg}</span>
+        </span>
+        <span class="truncate text-[12.5px] text-muted">{row.author}</span>
+        <span class="font-mono text-[11.5px] text-faint">{row.hash}</span>
+        <span class="text-right font-mono text-[11.5px] text-faint">1y ago</span>
+      </div>
+    ))
+  }
+</div>

@@ -366,11 +366,6 @@ html {
   }
 }
 
-@media (max-width: 639px) {
-  .mock-scale {
-    zoom: 0.58;
-  }
-}
 
 .display {
   @apply font-display font-normal tracking-[-0.01em];

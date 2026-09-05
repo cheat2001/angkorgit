@@ -1,0 +1,79 @@
+---
+import Frame from './Frame.astro';
+import Sidebar from './Sidebar.astro';
+import Graph from './Graph.astro';
+import WorkingCopy from './WorkingCopy.astro';
+import { icon } from './icons';
+
+interface Props {
+  dim?: boolean;
+  highlightRow?: number;
+}
+
+const { dim = false, highlightRow } = Astro.props;
+---
+
+<Frame>
+  <div class:list={['flex h-full flex-col bg-background', dim && 'blur-[3px] brightness-[0.55]']}>
+    <div class="flex h-9 shrink-0 items-end gap-0.5 border-b border-border-subtle bg-surface px-2">
+      <div class="flex h-8 items-center gap-2 rounded-t-md border border-b-0 border-border-subtle bg-background px-3 text-[13px] text-foreground">
+        angkorgit
+        <span class="text-faint" set:html={icon('x', 'h-3 w-3')} />
+      </div>
+      <span class="mb-1 ml-auto text-faint" set:html={icon('plus', 'h-4 w-4')} />
+    </div>
+
+    <header class="flex h-12 shrink-0 items-center gap-1 border-b border-border-subtle bg-surface px-2 text-muted">
+      <span class="flex h-8 w-8 items-center justify-center" set:html={icon('home')} />
+      <span class="flex h-8 w-8 items-center justify-center" set:html={icon('panel')} />
+      <span class="ml-1 flex items-center gap-2">
+        <svg width="22" height="22" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+          <g stroke="#D97706" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M32 6 L27 20 L27 30 L37 30 L37 20 Z" /><path d="M16 16 L12.5 26 L12.5 34 L19.5 34 L19.5 26 Z" /><path d="M48 16 L44.5 26 L44.5 34 L51.5 34 L51.5 26 Z" /></g>
+          <g stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"><path d="M16 40 C16 48 24 46 32 46" /><path d="M48 40 C48 48 40 46 32 46" /><path d="M32 36 V 54" /></g>
+          <circle cx="16" cy="38" r="3.5" fill="#D97706" /><circle cx="48" cy="38" r="3.5" fill="#D97706" /><circle cx="32" cy="57" r="3.5" fill="currentColor" />
+        </svg>
+        <span class="flex flex-col leading-tight">
+          <span class="flex items-center gap-1 text-[14px] font-semibold text-foreground">angkorgit (demo) <span set:html={icon('chevronDown', 'h-3 w-3 text-faint')} /></span>
+          <span class="font-mono text-[11px] text-faint">main</span>
+        </span>
+      </span>
+      <span class="ml-4 flex h-8 w-8 items-center justify-center text-faint" set:html={icon('undo')} />
+      <span class="flex h-8 w-8 items-center justify-center text-faint" set:html={icon('redo')} />
+      <span class="mx-2 h-5 w-px bg-border-subtle"></span>
+      <span class="flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] text-foreground"><span set:html={icon('refresh')} /> Fetch</span>
+      <span class="flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] text-foreground"><span set:html={icon('down')} /> Pull</span>
+      <span class="flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] text-foreground">
+        <span set:html={icon('up')} /> Push
+        <span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/20 px-1.5 font-mono text-[11px] text-primary">2</span>
+      </span>
+      <span class="flex h-8 w-6 items-center justify-center" set:html={icon('chevronDown', 'h-3.5 w-3.5')} />
+      <span class="mx-2 h-5 w-px bg-border-subtle"></span>
+      <span class="flex h-8 w-8 items-center justify-center" set:html={icon('branchPlus')} />
+      <span class="flex h-8 w-8 items-center justify-center" set:html={icon('tag')} />
+      <span class="flex h-8 w-8 items-center justify-center" set:html={icon('archive')} />
+      <span class="ml-auto flex items-center">
+        <span class="flex h-8 w-8 items-center justify-center" set:html={icon('command')} />
+        <span class="flex h-8 w-8 items-center justify-center" set:html={icon('terminal')} />
+        <span class="flex h-8 w-8 items-center justify-center" set:html={icon('refresh')} />
+        <span class="flex h-8 w-8 items-center justify-center" set:html={icon('settings')} />
+      </span>
+    </header>
+
+    <div class="flex min-h-0 flex-1">
+      <Sidebar />
+      <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden border-r border-border-subtle">
+        <slot><Graph highlightRow={highlightRow} /></slot>
+      </div>
+      <WorkingCopy />
+    </div>
+
+    <div class="flex h-6 shrink-0 items-center gap-3 border-t border-border-subtle bg-surface px-3 font-mono text-[11px] text-muted">
+      <span class="flex items-center gap-1" set:html={icon('branch', 'h-3 w-3') + ' main'} />
+      <span class="text-success">↑2</span>
+      <span class="flex items-center gap-1 text-primary" set:html={icon('pencil', 'h-3 w-3') + ' 6 changes'} />
+      <span class="ml-auto flex items-center gap-1" set:html={icon('zoom', 'h-3 w-3') + ' 100%'} />
+      <span>v0.10.0</span>
+    </div>
+  </div>
+  <slot name="overlay" />
+</Frame>

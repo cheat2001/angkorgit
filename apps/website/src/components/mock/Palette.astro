@@ -1,0 +1,34 @@
+---
+import AppFrame from './AppFrame.astro';
+import { icon } from './icons';
+
+const items = [
+  { icon: 'history', label: 'File history…' },
+  { icon: 'down', label: 'Pull' },
+  { icon: 'up', label: 'Push' },
+  { icon: 'refresh', label: 'Fetch (with tags)' },
+  { icon: 'branchPlus', label: 'Create branch…' },
+  { icon: 'folderTree', label: 'New worktree…' },
+  { icon: 'tag', label: 'Create tag…' },
+  { icon: 'archive', label: 'Stash changes…' },
+];
+---
+
+<AppFrame>
+  <Fragment slot="overlay">
+    <div class="absolute left-1/2 top-[80px] w-[560px] -translate-x-1/2 overflow-hidden rounded-lg border border-border bg-surface-overlay shadow-[0_24px_60px_-20px_rgb(0_0_0/0.6)]">
+      <div class="flex h-12 items-center border-b border-border-subtle px-4 text-[14px] text-faint">Type a command or branch name…</div>
+      <div class="p-1.5">
+        <div class="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">Actions</div>
+        {
+          items.map((item, i) => (
+            <div class:list={['flex h-9 items-center gap-3 rounded-md px-2.5 text-[13.5px] text-foreground', i === 0 && 'bg-surface-raised']}>
+              <span class="text-muted" set:html={icon(item.icon, 'h-4 w-4')} />
+              {item.label}
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </Fragment>
+</AppFrame>
