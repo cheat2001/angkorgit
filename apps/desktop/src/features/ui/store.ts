@@ -6,11 +6,18 @@ export type DiffViewMode = 'inline' | 'split';
 export interface GraphColumns {
   refs: boolean;
   author: boolean;
+  message: boolean;
   hash: boolean;
   date: boolean;
 }
 
-export const DEFAULT_GRAPH_COLUMNS: GraphColumns = { refs: true, author: true, hash: true, date: true };
+export const DEFAULT_GRAPH_COLUMNS: GraphColumns = {
+  refs: true,
+  author: true,
+  message: true,
+  hash: true,
+  date: true,
+};
 
 export type DialogKind =
   | 'clone'
@@ -219,6 +226,14 @@ export const useUi = create<UiState>()(
     }),
     {
       name: 'angkorgit-ui',
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<UiState>;
+        return {
+          ...current,
+          ...saved,
+          graphColumns: { ...DEFAULT_GRAPH_COLUMNS, ...(saved.graphColumns ?? {}) },
+        };
+      },
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         diffView: state.diffView,

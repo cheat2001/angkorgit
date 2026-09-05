@@ -16,7 +16,7 @@ const CHAR_WIDTH = 6.4;
 const CHIP_PADDING = 18;
 const CHIP_ICON = 14;
 export const FLAT_GUTTER_WIDTH = 28;
-const LANE_WIDTH = 14;
+export const LANE_WIDTH = 20;
 const NODE_RADIUS = 4;
 const AVATAR_SIZE = 18;
 
@@ -371,9 +371,13 @@ export const CommitRow = memo(function CommitRow({
       {flat && refCell}
       {commit.isHead && commit.refs.length === 0 && <Badge tone="primary">HEAD</Badge>}
       {isMergeCommit && <GitMerge className="size-3.5 shrink-0 text-faint" />}
-      <span className={cn('min-w-0 flex-1 truncate', isMergeCommit && !selected && 'text-muted')}>
-        {commit.summary || <span className="text-faint">(no message)</span>}
-      </span>
+      {columns.message ? (
+        <span className={cn('min-w-0 flex-1 truncate', isMergeCommit && !selected && 'text-muted')}>
+          {commit.summary || <span className="text-faint">(no message)</span>}
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1" />
+      )}
       {columns.hash && (
       <button
         type="button"

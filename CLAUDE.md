@@ -384,7 +384,17 @@ features/
 │                           built and REJECTED by the owner (the layout shifting read as
 │                           broken), chips fit or fold instead; header "Graph display"
 │                           Settings2 menu of DropdownMenuCheckboxItems toggles
-│                           ui.graphColumns {refs, author, hash, date} (persisted) —
+│                           ui.graphColumns {refs, author, message, hash, date}
+│                           (persisted; the persist `merge` fills new keys from
+│                           DEFAULT_GRAPH_COLUMNS so an older saved object never hides a
+│                           column that did not exist yet); a static h-6 COLUMN HEADER
+│                           row sits between the filter bar and the scroll container
+│                           (outside it, so the sticky WIP banner stays first inside),
+│                           mirroring the row layout exactly — REF_COL_WIDTH with the
+│                           same -mr-2, gutterWidth, flex-1, w-14, w-[4.5rem] — and
+│                           hiding a header with its column; LANE_WIDTH is 20px (was 14,
+│                           owner found lanes crowded) and the gutter is
+│                           16 + lanes×LANE_WIDTH capped at 280 —
 │                           CommitRow takes `columns`, WipRow `showRefs`, and with
 │                           author off the gutter draws a plain filled lane-colored node
 │                           instead of the avatar; with refs off rows AND the WIP banner

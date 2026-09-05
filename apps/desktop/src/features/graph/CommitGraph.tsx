@@ -16,13 +16,14 @@ import {
   Hint,
   Input,
   Spinner,
+  cn,
 } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { CommitRow, FLAT_GUTTER_WIDTH, ROW_HEIGHT } from './GraphRow';
+import { CommitRow, FLAT_GUTTER_WIDTH, LANE_WIDTH, REF_COL_WIDTH, ROW_HEIGHT } from './GraphRow';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { useShortcuts } from '@/shared/useShortcuts';
@@ -146,7 +147,7 @@ export function CommitGraph() {
   }, [pendingScrollIndex, rows.length, virtualizer, clearPendingScroll]);
 
   const flat = Boolean(filters.search || filters.author);
-  const gutterWidth = flat ? FLAT_GUTTER_WIDTH : Math.min(16 + (maxLane + 1) * 14, 200);
+  const gutterWidth = flat ? FLAT_GUTTER_WIDTH : Math.min(16 + (maxLane + 1) * LANE_WIDTH, 280);
   const filtersActive = Boolean(filters.search || filters.author || filters.branch);
 
   const moveSelection = useCallback(
@@ -343,6 +344,7 @@ export function CommitGraph() {
                 [
                   ['refs', 'Branches and tags'],
                   ['author', 'Author avatars'],
+                  ['message', 'Commit message'],
                   ['hash', 'Hash'],
                   ['date', 'Date'],
                 ] as const
@@ -361,6 +363,27 @@ export function CommitGraph() {
         </div>
       </div>
 
+      <div
+        className={cn(
+          'flex h-6 shrink-0 select-none items-center gap-2 border-b border-border-subtle bg-surface pr-2 text-[10px] font-semibold uppercase tracking-wide text-faint',
+          graphColumns.refs || flat ? 'pl-1' : 'pl-4',
+        )}
+        aria-hidden
+      >
+        {!flat && graphColumns.refs && (
+          <span className="-mr-2 shrink-0 truncate" style={{ width: REF_COL_WIDTH }}>
+            Branch / tag
+          </span>
+        )}
+        <span className="shrink-0 truncate" style={{ width: gutterWidth }}>
+          {flat ? '' : 'Graph'}
+        </span>
+        <span className="min-w-0 flex-1 truncate">
+          {flat && graphColumns.refs ? 'Branch / tag · message' : graphColumns.message ? 'Message' : ''}
+        </span>
+        {graphColumns.hash && <span className="w-14 shrink-0 text-right">Hash</span>}
+        {graphColumns.date && <span className="w-[4.5rem] shrink-0 text-right">Date</span>}
+      </div>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" role="table" aria-label="Commits">
         <WipRow gutterWidth={gutterWidth} flat={flat} showRefs={graphColumns.refs} />
         {rows.length === 0 && !loading ? (
