@@ -11,6 +11,13 @@ pub fn open(path: &str) -> AppResult<Repository> {
 }
 
 pub fn discover(path: &str) -> AppResult<String> {
+    if !Path::new(path).exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("{path}: no such file or directory"),
+        )
+        .into());
+    }
     let repo = Repository::discover(path)?;
     let root = repo
         .workdir()

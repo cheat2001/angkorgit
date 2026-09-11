@@ -57,6 +57,20 @@ fn commit_all(repo: &TempRepo, message: &str) -> String {
 }
 
 #[test]
+fn discover_does_not_walk_up_from_a_missing_path() {
+    let repo = TempRepo::new();
+    let root = PathBuf::from(repo.path());
+    let err = core::discover(root.join("aaa").to_str().unwrap()).unwrap_err();
+    assert!(err.to_string().contains("no such file or directory"));
+    std::fs::create_dir(root.join("src")).unwrap();
+    let found = core::discover(root.join("src").to_str().unwrap()).unwrap();
+    assert_eq!(
+        std::fs::canonicalize(&found).unwrap(),
+        std::fs::canonicalize(&root).unwrap()
+    );
+}
+
+#[test]
 fn stage_commit_and_history() {
     let repo = TempRepo::new();
     repo.write("a.txt", "hello\n");

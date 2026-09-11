@@ -32,7 +32,7 @@ pub mod test_api {
     };
     pub use crate::core::remote::{checkout_remote_ref, fetch};
     pub use crate::core::repo::{
-        cleanup_state, info as repo_info, init, ref_fingerprint, set_config, status,
+        cleanup_state, discover, info as repo_info, init, ref_fingerprint, set_config, status,
     };
     pub use crate::core::stage::{
         discard_all, discard_line, discard_staged_all, discard_staged_file, stage_all, stage_file,
