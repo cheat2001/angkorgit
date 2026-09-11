@@ -508,6 +508,27 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             }}
           />
           <PaletteItem
+            icon={<SquareTerminal />}
+            label="Install command line tool"
+            onSelect={() => {
+              close();
+              void ipc
+                .cliInstall()
+                .then((status) =>
+                  toast.success(
+                    status.onPath
+                      ? 'Installed. Run angkorgit --help for usage.'
+                      : `Installed at ${status.path}. Add that folder to your PATH.`,
+                  ),
+                )
+                .catch((error) =>
+                  toast.error(
+                    `Could not install: ${(error as { message?: string }).message ?? error}`,
+                  ),
+                );
+            }}
+          />
+          <PaletteItem
             icon={<Download />}
             label="Check for updates"
             onSelect={() => {

@@ -53,6 +53,15 @@ export interface HostingAccount {
   isDefault?: boolean;
 }
 
+export interface CliToolStatus {
+  path: string;
+  onPath: boolean;
+}
+
+export type CliRequest =
+  | { kind: 'open'; path: string }
+  | { kind: 'clone'; url: string; into: string; branch?: string };
+
 export type AccountCheckStatus = 'ok' | 'unauthorized' | 'unreachable' | 'unsupported' | 'no_token';
 
 export interface AccountCheckResult {
@@ -83,6 +92,7 @@ export async function listen(event: string, handler: (payload: unknown) => void)
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
 const DEMO_AI_KEYS = 'angkorgit-demo-ai-keys';
+let demoCli: CliToolStatus | null = null;
 
 function demoAiKeys(): Record<string, string> {
   try {
@@ -116,12 +126,12 @@ export const ipc = {
     if (!isTauri()) return demo.demoRepo;
     return invoke('repo_init', { path });
   },
-  async cloneRepository(url: string, into: string): Promise<string> {
+  async cloneRepository(url: string, into: string, branch?: string | null): Promise<string> {
     if (!isTauri()) {
       await delay(600);
       return demo.demoRepo.path;
     }
-    return invoke('repo_clone', { url, into });
+    return invoke('repo_clone', { url, into, branch: branch ?? null });
   },
   async status(path: string): Promise<StatusSummary> {
     if (!isTauri()) return demo.demoStatus;
@@ -702,6 +712,29 @@ export const ipc = {
       return { status: res.status, body: await res.text() };
     }
     return invoke('http_request', { request });
+  },
+
+  async cliPendingOpen(): Promise<CliRequest | null> {
+    if (!isTauri()) return null;
+    return invoke('cli_pending_open');
+  },
+  async cliStatus(): Promise<CliToolStatus | null> {
+    if (!isTauri()) return demoCli;
+    return invoke('cli_status');
+  },
+  async cliInstall(): Promise<CliToolStatus> {
+    if (!isTauri()) {
+      demoCli = { path: '/usr/local/bin/angkorgit', onPath: true };
+      return demoCli;
+    }
+    return invoke('cli_install');
+  },
+  async cliUninstall(): Promise<void> {
+    if (!isTauri()) {
+      demoCli = null;
+      return;
+    }
+    return invoke('cli_uninstall');
   },
 };
 

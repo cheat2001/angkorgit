@@ -1,0 +1,6 @@
+Usage:
+  angkorgit                            Open the current directory
+  angkorgit open [path]                Open the provided path
+  angkorgit clone [-b branch] <url>    Clone the repository by url or name/owner
+                                       (ex torvalds/linux), optionally checking out
+                                       the branch

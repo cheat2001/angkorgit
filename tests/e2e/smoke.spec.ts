@@ -1166,3 +1166,17 @@ test('arrow keys walk from the graph into a commit\u2019s files and back', async
   await page.keyboard.press('ArrowDown');
   await expect(rows.nth(2)).toHaveAttribute('aria-selected', 'true');
 });
+
+test('settings can install the command line tool', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Git', exact: true }).click();
+  await expect(dialog.getByText('Command line tool')).toBeVisible();
+  await expect(dialog.getByText('angkorgit open [path]')).toBeVisible();
+  await expect(dialog.getByText(/angkorgit clone \[-b branch\]/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Install', exact: true }).click();
+  await expect(dialog.getByText('/usr/local/bin/angkorgit')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Uninstall', exact: true })).toBeVisible();
+});

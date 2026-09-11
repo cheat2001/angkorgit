@@ -52,10 +52,15 @@ pub async fn state_cleanup(path: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn repo_clone(app: AppHandle, url: String, into: String) -> AppResult<String> {
+pub async fn repo_clone(
+    app: AppHandle,
+    url: String,
+    into: String,
+    branch: Option<String>,
+) -> AppResult<String> {
     let emitter = app.clone();
     let root = blocking(move || {
-        remote::clone(&url, &into, move |pct| {
+        remote::clone(&url, &into, branch.as_deref(), move |pct| {
             let _ = emitter.emit("clone-progress", pct);
         })
     })
@@ -829,4 +834,24 @@ pub async fn ai_cli_run(
     request: crate::ai_cli::CliRunRequest,
 ) -> AppResult<crate::ai_cli::CliRunResult> {
     blocking(move || crate::ai_cli::run(request)).await
+}
+
+#[tauri::command]
+pub fn cli_pending_open() -> Option<crate::cli::CliRequest> {
+    crate::cli::take_pending()
+}
+
+#[tauri::command]
+pub fn cli_status() -> Option<crate::cli::CliToolStatus> {
+    crate::cli::status()
+}
+
+#[tauri::command]
+pub fn cli_install() -> AppResult<crate::cli::CliToolStatus> {
+    crate::cli::install()
+}
+
+#[tauri::command]
+pub fn cli_uninstall() -> AppResult<()> {
+    crate::cli::uninstall()
 }

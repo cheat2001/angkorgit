@@ -685,7 +685,12 @@ pub fn push_tag(path: &str, remote_name: &str, tag: &str) -> AppResult<OpOutcome
     })
 }
 
-pub fn clone(url: &str, into: &str, on_progress: impl Fn(u32) + Send) -> AppResult<String> {
+pub fn clone(
+    url: &str,
+    into: &str,
+    branch: Option<&str>,
+    on_progress: impl Fn(u32) + Send,
+) -> AppResult<String> {
     prime_account_bindings(None);
     let mut callbacks = make_callbacks();
     let mut last_pct: Option<u32> = None;
@@ -702,6 +707,9 @@ pub fn clone(url: &str, into: &str, on_progress: impl Fn(u32) + Send) -> AppResu
     opts.remote_callbacks(callbacks);
     let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(opts);
+    if let Some(branch) = branch {
+        builder.branch(branch);
+    }
 
     let repo = builder.clone(url, std::path::Path::new(into))?;
     let root = repo

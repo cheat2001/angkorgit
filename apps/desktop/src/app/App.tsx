@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { AnimatePresence, MotionConfig } from 'framer-motion';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { Spinner, TooltipProvider } from '@angkorgit/design-system';
 import { SplashScreen } from './SplashScreen';
 import { ConfirmHost } from '@/components/confirm';
@@ -15,7 +15,7 @@ const RepositoryPage = lazy(() =>
 import { useRepo } from '@/features/repository/store';
 import { applyTheme, themeBase, useSettings } from '@/features/settings/store';
 import { useShortcuts } from '@/shared/useShortcuts';
-import { ipc } from '@/core/ipc';
+import { ipc, listen, type CliRequest } from '@/core/ipc';
 
 function Shell() {
   const [splash, setSplash] = useState(true);
@@ -38,27 +38,81 @@ function Shell() {
     const splashFloor = useSettings.getState().reduceMotion ? 0 : 600;
     let finished = false;
     let readyTimer: number | undefined;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
     const finishSplash = () => {
       if (finished) return;
       finished = true;
       setSplash(false);
-      navigate('/welcome', { replace: true });
+      navigate(useRepo.getState().repo ? '/repo' : '/welcome', { replace: true });
     };
-    const splashFallback = window.setTimeout(finishSplash, 1600);
+    let cliBusy = false;
+    const openFromCli = (path: string) => {
+      const { repo, opening } = useRepo.getState();
+      if (opening === path || repo?.path === path) {
+        if (finished) navigate('/repo');
+        return Promise.resolve();
+      }
+      return useRepo
+        .getState()
+        .open(path)
+        .then(() => {
+          if (finished) navigate('/repo');
+          else finishSplash();
+        })
+        .catch((error) => {
+          toast.error(
+            `Could not open repository: ${(error as { message?: string }).message ?? error}`,
+          );
+          if (!finished) finishSplash();
+        });
+    };
+    const runCli = (request: CliRequest) => {
+      if (request.kind === 'open') return openFromCli(request.path);
+      cliBusy = true;
+      return ipc
+        .cloneRepository(request.url, request.into, request.branch)
+        .then((path) => {
+          cliBusy = false;
+          toast.success('Repository cloned');
+          return openFromCli(path);
+        })
+        .catch((error) => {
+          cliBusy = false;
+          toast.error(`Clone failed: ${(error as { message?: string }).message ?? error}`);
+          if (!finished) finishSplash();
+        });
+    };
+    const splashFallback = window.setTimeout(() => {
+      if (!useRepo.getState().opening && !cliBusy) finishSplash();
+    }, 1600);
     void loadRecents()
       .catch(() => undefined)
+      .then(() => ipc.cliPendingOpen())
+      .then((request) => (request ? runCli(request) : undefined))
+      .catch(() => undefined)
       .finally(() => {
+        if (useRepo.getState().opening || cliBusy) return;
         readyTimer = window.setTimeout(
           finishSplash,
           Math.max(0, splashFloor - (Date.now() - splashStart)),
         );
       });
+    void listen('cli-request', (payload) => {
+      const request = payload as CliRequest | null;
+      if (request?.kind === 'open' || request?.kind === 'clone') void runCli(request);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
     const updateTimer = setTimeout(() => {
       void import('@/features/updater/check').then(({ checkForUpdates }) =>
         checkForUpdates({ silent: true }),
       );
     }, 5000);
     return () => {
+      cancelled = true;
+      unlisten?.();
       clearTimeout(splashFallback);
       if (readyTimer !== undefined) clearTimeout(readyTimer);
       clearTimeout(updateTimer);
