@@ -324,19 +324,19 @@ mod tests {
     #[test]
     fn parse_open_forms() {
         assert_eq!(
-            parse_args(&args(&["--open", "/tmp/repo"]), None),
+            parse_args(&args(&["--open", "/tmp/repo"]), Some("/cwd")),
             Some(CliRequest::Open {
                 path: "/tmp/repo".into()
             })
         );
         assert_eq!(
-            parse_args(&args(&["open", "/tmp/repo"]), None),
+            parse_args(&args(&["open", "/tmp/repo"]), Some("/cwd")),
             Some(CliRequest::Open {
                 path: "/tmp/repo".into()
             })
         );
         assert_eq!(
-            parse_args(&args(&["/tmp/repo"]), None),
+            parse_args(&args(&["/tmp/repo"]), Some("/cwd")),
             Some(CliRequest::Open {
                 path: "/tmp/repo".into()
             })
@@ -383,7 +383,7 @@ mod tests {
                     "--branch",
                     "main"
                 ]),
-                None
+                Some("/cwd")
             ),
             Some(CliRequest::Clone {
                 url: "git@github.com:acme/app.git".into(),
