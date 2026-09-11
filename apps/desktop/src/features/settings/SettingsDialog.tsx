@@ -65,6 +65,7 @@ import { useRepo } from '@/features/repository/store';
 import { useUi } from '@/features/ui/store';
 import { ACCENTS, THEMES, useSettings, ZOOM_MAX, ZOOM_MIN, type IdentityProfile } from './store';
 import { applyProfileToRepo } from './profiles';
+import { installCliTool } from './cliTool';
 import { AccountsTab, providerIcon } from './AccountsTab';
 import { Field, SettingCard, SettingEmpty, SettingRow } from './SettingCard';
 import { getAiProvider } from '@/features/ai/client';
@@ -544,13 +545,7 @@ function CliToolCard() {
   const install = async () => {
     setBusy(true);
     try {
-      const next = await ipc.cliInstall();
-      setStatus(next);
-      toast.success(
-        next.onPath
-          ? 'Installed. Run angkorgit --help for usage.'
-          : `Installed at ${next.path}. Add that folder to your PATH.`,
-      );
+      setStatus(await installCliTool());
     } catch (error) {
       toast.error(`Could not install: ${(error as { message?: string }).message ?? error}`);
     } finally {
@@ -593,10 +588,7 @@ angkorgit open [path]
 angkorgit clone [-b branch] <url>`}
       </pre>
       {status && (
-        <p className="mt-1 text-[11px] leading-relaxed text-faint">
-          {status.path}
-          {!status.onPath && ' — add this folder to your PATH'}
-        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-faint">{status.path}</p>
       )}
     </SettingCard>
   );

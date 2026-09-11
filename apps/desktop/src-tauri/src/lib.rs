@@ -66,8 +66,6 @@ pub fn run() {
             if let Some(request) = cli::parse_args(&args, None) {
                 cli::queue(request);
             }
-            #[cfg(target_os = "macos")]
-            cli::attach_app_menu(app)?;
             Ok(())
         })
         .manage(terminal::TerminalState::default())

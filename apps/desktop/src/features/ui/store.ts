@@ -58,12 +58,19 @@ export interface StashPreset {
   paths: string[];
 }
 
+export interface ClonePreset {
+  url: string;
+  into: string;
+  branch?: string;
+}
+
 export type DialogContext =
   | string
   | InteractiveRebasePreset
   | CherryPickPreset
   | CreateWorktreePreset
   | StashPreset
+  | ClonePreset
   | null;
 
 interface UiState {

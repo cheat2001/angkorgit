@@ -9,9 +9,8 @@ All notable changes to AngKorGit are documented here. The format follows
 ### Added
 - **Open or clone a repository from the terminal.** Settings → Git (or the command
   palette) installs an `angkorgit` command. `angkorgit` and `angkorgit open [path]`
-  open a local folder; `angkorgit clone [-b branch] <url>` clones by URL or
-  `owner/repo` (GitHub) into the current directory and opens it. `angkorgit --help`
-  lists the commands.
+  open a local folder; `angkorgit clone [-b branch] <url>` opens the clone dialog
+  with the URL, folder and branch filled in. `angkorgit --help` lists the commands.
 
 ## [0.12.0] — 2026-09-10
 

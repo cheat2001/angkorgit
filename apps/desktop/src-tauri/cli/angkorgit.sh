@@ -69,7 +69,8 @@ case "$1" in
           exit 0
           ;;
       esac
-      launch_open "$(resolve "$2")"
+      abs=$(resolve "$2") || exit 1
+      launch_open "$abs"
     else
       launch_open "$(pwd)"
     fi
@@ -118,7 +119,8 @@ case "$1" in
     exit 1
     ;;
   *)
-    launch_open "$(resolve "$1")"
+    abs=$(resolve "$1") || exit 1
+    launch_open "$abs"
     exit 0
     ;;
 esac

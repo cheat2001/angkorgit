@@ -8,6 +8,10 @@ if /I "%~1"=="--help" goto help
 if /I "%~1"=="help" goto help
 if /I "%~1"=="open" goto open_cmd
 if /I "%~1"=="clone" goto clone_cmd
+if not exist "%~1" (
+  echo angkorgit: %~1: no such file or directory 1>&2
+  exit /b 1
+)
 start "" "%EXE%" --open "%~f1"
 exit /b 0
 
@@ -19,6 +23,10 @@ exit /b 0
 if "%~2"=="" goto open_cwd
 if /I "%~2"=="-h" goto help
 if /I "%~2"=="--help" goto help
+if not exist "%~2" (
+  echo angkorgit: %~2: no such file or directory 1>&2
+  exit /b 1
+)
 start "" "%EXE%" --open "%~f2"
 exit /b 0
 

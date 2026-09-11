@@ -17,7 +17,6 @@ static PENDING: Mutex<Option<CliRequest>> = Mutex::new(None);
 #[serde(rename_all = "camelCase")]
 pub struct CliToolStatus {
     pub path: String,
-    pub on_path: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -85,13 +84,8 @@ fn parse_clone_flags(args: &[&str], cwd: Option<&str>) -> Option<CliRequest> {
         }
     }
     let url = resolve_clone_url(&url?);
-    let parent = resolve_path(into.as_deref().unwrap_or("."), cwd);
-    let dest = Path::new(&parent).join(clone_dir_name(&url));
-    Some(CliRequest::Clone {
-        url,
-        into: dest.to_string_lossy().into_owned(),
-        branch,
-    })
+    let into = resolve_path(into.as_deref().unwrap_or("."), cwd);
+    Some(CliRequest::Clone { url, into, branch })
 }
 
 pub fn resolve_clone_url(input: &str) -> String {
@@ -104,16 +98,6 @@ pub fn resolve_clone_url(input: &str) -> String {
         return format!("https://github.com/{}/{}.git", parts[0], parts[1]);
     }
     trimmed.to_string()
-}
-
-fn clone_dir_name(url: &str) -> String {
-    let trimmed = url.trim_end_matches('/').trim_end_matches(".git");
-    trimmed
-        .rsplit(['/', ':'])
-        .next()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("repository")
-        .to_string()
 }
 
 pub fn resolve_path(path: &str, cwd: Option<&str>) -> String {
@@ -203,60 +187,6 @@ pub fn on_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
     }
 }
 
-#[cfg(target_os = "macos")]
-pub fn attach_app_menu(app: &tauri::App) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-
-    let menu = Menu::default(app.handle())?;
-    if let Some(app_menu) = menu.items()?.first().and_then(|item| item.as_submenu()) {
-        let install = MenuItem::with_id(
-            app.handle(),
-            "install-cli",
-            "Install Command Line Tool...",
-            true,
-            None::<&str>,
-        )?;
-        let sep = PredefinedMenuItem::separator(app.handle())?;
-        app_menu.insert(&install, 2)?;
-        app_menu.insert(&sep, 3)?;
-    }
-    app.set_menu(menu)?;
-    app.on_menu_event(|app, event| {
-        if event.id() != "install-cli" {
-            return;
-        }
-        match install() {
-            Ok(status) => {
-                let message = if status.on_path {
-                    format!(
-                        "Installed at {}.\n\nRun angkorgit --help for usage.",
-                        status.path
-                    )
-                } else {
-                    format!(
-                        "Installed at {}.\n\nAdd that folder to your PATH, then run angkorgit --help.",
-                        status.path
-                    )
-                };
-                app.dialog()
-                    .message(message)
-                    .title("Command line tool")
-                    .kind(MessageDialogKind::Info)
-                    .show(|_| {});
-            }
-            Err(error) => {
-                app.dialog()
-                    .message(error.to_string())
-                    .title("Command line tool")
-                    .kind(MessageDialogKind::Error)
-                    .show(|_| {});
-            }
-        }
-    });
-    Ok(())
-}
-
 fn write_shim(dest: &Path, body: &str) -> std::io::Result<()> {
     std::fs::write(dest, body)?;
     #[cfg(unix)]
@@ -272,15 +202,7 @@ fn write_shim(dest: &Path, body: &str) -> std::io::Result<()> {
 fn status_of(path: &Path) -> CliToolStatus {
     CliToolStatus {
         path: path.to_string_lossy().into_owned(),
-        on_path: dir_on_path(path.parent().unwrap_or(path)),
     }
-}
-
-fn dir_on_path(dir: &Path) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|entry| entry == dir)
 }
 
 fn shim_name() -> &'static str {
@@ -292,13 +214,9 @@ fn shim_name() -> &'static str {
 }
 
 fn dest_dirs() -> Vec<PathBuf> {
-    let path_dirs: Vec<PathBuf> = std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).collect())
-        .unwrap_or_default();
     let mut candidates = Vec::new();
     #[cfg(unix)]
     {
-        candidates.push(PathBuf::from("/opt/homebrew/bin"));
         candidates.push(PathBuf::from("/usr/local/bin"));
         if let Some(home) = home_dir() {
             candidates.push(home.join(".local").join("bin"));
@@ -310,17 +228,7 @@ fn dest_dirs() -> Vec<PathBuf> {
             candidates.push(PathBuf::from(base).join("angkorgit").join("bin"));
         }
     }
-    let mut on_path: Vec<PathBuf> = Vec::new();
-    let mut off_path: Vec<PathBuf> = Vec::new();
-    for dir in candidates {
-        if path_dirs.iter().any(|entry| entry == &dir) {
-            on_path.push(dir);
-        } else {
-            off_path.push(dir);
-        }
-    }
-    on_path.append(&mut off_path);
-    on_path
+    candidates
 }
 
 fn find_shim() -> Option<PathBuf> {
@@ -446,7 +354,7 @@ mod tests {
             parse_args(&args(&["clone", "torvalds/linux"]), Some("/src")),
             Some(CliRequest::Clone {
                 url: "https://github.com/torvalds/linux.git".into(),
-                into: Path::new("/src").join("linux").to_string_lossy().into_owned(),
+                into: "/src".into(),
                 branch: None,
             })
         );
@@ -457,7 +365,7 @@ mod tests {
             ),
             Some(CliRequest::Clone {
                 url: "https://gitlab.com/acme/app.git".into(),
-                into: Path::new("/src").join("app").to_string_lossy().into_owned(),
+                into: "/src".into(),
                 branch: Some("dev".into()),
             })
         );
@@ -475,7 +383,7 @@ mod tests {
             ),
             Some(CliRequest::Clone {
                 url: "git@github.com:acme/app.git".into(),
-                into: Path::new("/src").join("app").to_string_lossy().into_owned(),
+                into: "/src".into(),
                 branch: Some("main".into()),
             })
         );
@@ -514,6 +422,16 @@ mod tests {
         assert!(body.contains("angkorgit open [path]"));
         assert!(body.contains("angkorgit clone [-b branch] <url>"));
         assert!(body.contains("torvalds/linux"));
+        assert!(body.contains("abs=$(resolve \"$2\") || exit 1"));
+        assert!(!body.contains("launch_open \"$(resolve"));
         assert_eq!(HELP.lines().next(), Some("Usage:"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dest_dirs_are_usr_local_then_home_local() {
+        let dirs = dest_dirs();
+        assert_eq!(dirs.first(), Some(&PathBuf::from("/usr/local/bin")));
+        assert!(!dirs.iter().any(|dir| dir == Path::new("/opt/homebrew/bin")));
     }
 }

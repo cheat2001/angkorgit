@@ -14,6 +14,7 @@ const RepositoryPage = lazy(() =>
 );
 import { useRepo } from '@/features/repository/store';
 import { applyTheme, themeBase, useSettings } from '@/features/settings/store';
+import { useUi, type ClonePreset } from '@/features/ui/store';
 import { useShortcuts } from '@/shared/useShortcuts';
 import { ipc, listen, type CliRequest } from '@/core/ipc';
 
@@ -40,13 +41,18 @@ function Shell() {
     let readyTimer: number | undefined;
     let cancelled = false;
     let unlisten: (() => void) | undefined;
+    let pendingClone: ClonePreset | null = null;
+    const openClone = (preset: ClonePreset) => {
+      useUi.getState().openDialog('clone', preset);
+      navigate('/welcome', { replace: true });
+    };
     const finishSplash = () => {
       if (finished) return;
       finished = true;
       setSplash(false);
-      navigate(useRepo.getState().repo ? '/repo' : '/welcome', { replace: true });
+      if (pendingClone) openClone(pendingClone);
+      else navigate(useRepo.getState().repo ? '/repo' : '/welcome', { replace: true });
     };
-    let cliBusy = false;
     const openFromCli = (path: string) => {
       const { repo, opening } = useRepo.getState();
       if (opening === path || repo?.path === path) {
@@ -69,22 +75,17 @@ function Shell() {
     };
     const runCli = (request: CliRequest) => {
       if (request.kind === 'open') return openFromCli(request.path);
-      cliBusy = true;
-      return ipc
-        .cloneRepository(request.url, request.into, request.branch)
-        .then((path) => {
-          cliBusy = false;
-          toast.success('Repository cloned');
-          return openFromCli(path);
-        })
-        .catch((error) => {
-          cliBusy = false;
-          toast.error(`Clone failed: ${(error as { message?: string }).message ?? error}`);
-          if (!finished) finishSplash();
-        });
+      const preset: ClonePreset = {
+        url: request.url,
+        into: request.into,
+        branch: request.branch,
+      };
+      if (finished) openClone(preset);
+      else pendingClone = preset;
+      return Promise.resolve();
     };
     const splashFallback = window.setTimeout(() => {
-      if (!useRepo.getState().opening && !cliBusy) finishSplash();
+      if (!useRepo.getState().opening) finishSplash();
     }, 1600);
     void loadRecents()
       .catch(() => undefined)
@@ -92,7 +93,7 @@ function Shell() {
       .then((request) => (request ? runCli(request) : undefined))
       .catch(() => undefined)
       .finally(() => {
-        if (useRepo.getState().opening || cliBusy) return;
+        if (useRepo.getState().opening) return;
         readyTimer = window.setTimeout(
           finishSplash,
           Math.max(0, splashFloor - (Date.now() - splashStart)),
