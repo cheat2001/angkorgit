@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+#[cfg(unix)]
 use crate::ai_cli::home_dir;
 use crate::error::{AppError, AppResult};
 
