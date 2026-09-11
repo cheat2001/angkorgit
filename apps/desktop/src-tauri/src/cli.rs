@@ -138,6 +138,7 @@ pub fn request(app: &AppHandle, request: CliRequest) {
     focus_main(app);
 }
 
+#[cfg(target_os = "macos")]
 pub fn request_open(app: &AppHandle, path: String) {
     request(app, CliRequest::Open { path });
 }
@@ -256,6 +257,7 @@ fn is_our_shim(path: &Path) -> bool {
 }
 
 enum LaunchTarget {
+    #[cfg(target_os = "macos")]
     MacApp(PathBuf),
     Binary(PathBuf),
 }
@@ -282,6 +284,7 @@ fn launch_target() -> AppResult<LaunchTarget> {
 fn shim_body() -> AppResult<String> {
     let target = launch_target()?;
     Ok(match target {
+        #[cfg(target_os = "macos")]
         LaunchTarget::MacApp(app) => unix_shim(&app, "app"),
         LaunchTarget::Binary(exe) => {
             if cfg!(windows) {
