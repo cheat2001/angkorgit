@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
 
 use git2::{
-    build::CheckoutBuilder, AutotagOption, Cred, CredentialType, FetchOptions, PushOptions,
-    RemoteCallbacks, Repository,
+    build::CheckoutBuilder, AutotagOption, Cred, CredentialType, Direction, FetchOptions,
+    PushOptions, RemoteCallbacks, Repository,
 };
 
 use crate::error::{AppError, AppResult};
@@ -473,6 +473,20 @@ pub(crate) fn push_refspecs(branch: &str, force: bool, with_tags: bool) -> Vec<S
     refspecs
 }
 
+fn advertised_oid(
+    repo: &Repository,
+    remote_name: &str,
+    git_ref: &str,
+) -> AppResult<Option<git2::Oid>> {
+    let mut remote = repo.find_remote(remote_name)?;
+    let connection = remote.connect_auth(Direction::Fetch, Some(make_callbacks()), None)?;
+    Ok(connection
+        .list()?
+        .iter()
+        .find(|head| head.name() == git_ref)
+        .map(|head| head.oid()))
+}
+
 pub fn push(
     path: &str,
     remote_name: &str,
@@ -491,9 +505,37 @@ pub fn push(
             .to_string(),
     };
 
-    let refspecs = push_refspecs(&branch_name, force, with_tags);
+    let local_oid = {
+        let local = repo.find_branch(&branch_name, git2::BranchType::Local)?;
+        local
+            .get()
+            .target()
+            .ok_or_else(|| AppError::other(format!("branch {branch_name} has no target")))?
+    };
 
     prime_account_bindings(Some(&repo));
+    let git_ref = format!("refs/heads/{branch_name}");
+
+    // Match `git push`: when the live remote tip already equals the local tip,
+    // skip receive-pack so hosts (e.g. Drone on GitLab) do not fire a no-op CI run.
+    // Skip this check when also pushing tags — those may still need to move.
+    if !with_tags {
+        if let Some(remote_oid) = advertised_oid(&repo, remote_name, &git_ref)? {
+            if remote_oid == local_oid {
+                if set_upstream {
+                    let mut branch = repo.find_branch(&branch_name, git2::BranchType::Local)?;
+                    branch.set_upstream(Some(&format!("{remote_name}/{branch_name}")))?;
+                }
+                return Ok(OpOutcome {
+                    status: "up_to_date".into(),
+                    message: format!("{branch_name} is already up to date"),
+                });
+            }
+        }
+    }
+
+    let refspecs = push_refspecs(&branch_name, force, with_tags);
+
     let mut remote = repo.find_remote(remote_name)?;
     let mut opts = PushOptions::new();
     opts.remote_callbacks(make_callbacks());

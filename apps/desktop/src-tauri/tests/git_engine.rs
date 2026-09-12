@@ -1651,6 +1651,70 @@ fn add_origin(local: &TempRepo, origin: &TempRepo) {
     assert!(status.success());
 }
 
+/// Regression for cheat2001/angkorgit#17: an already-up-to-date push must not
+/// open receive-pack (which would fire CI even when the tip SHA is unchanged).
+#[test]
+fn push_is_up_to_date_when_the_remote_already_has_the_tip() {
+    let seeded = TempRepo::new();
+    seeded.write("a.txt", "base\n");
+    commit_all(&seeded, "base");
+    let origin = bare_clone(&seeded);
+    let local = clone_from(&origin);
+
+    let hook = origin.dir.join("hooks/pre-receive");
+    std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let outcome = core::push(local.path(), "origin", None, false, false, true).unwrap();
+    assert_eq!(outcome.status, "up_to_date");
+    assert!(
+        outcome.message.contains("already up to date"),
+        "unexpected message: {}",
+        outcome.message
+    );
+}
+
+fn bare_clone(src: &TempRepo) -> TempRepo {
+    let dir = std::env::temp_dir().join(format!(
+        "angkorgit-bare-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let status = Command::new("git")
+        .args(["clone", "--bare", src.path(), dir.to_str().unwrap()])
+        .status()
+        .expect("git CLI available");
+    assert!(status.success());
+    TempRepo { dir }
+}
+
+fn clone_from(origin: &TempRepo) -> TempRepo {
+    let dir = std::env::temp_dir().join(format!(
+        "angkorgit-clone-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let status = Command::new("git")
+        .args(["clone", origin.path(), dir.to_str().unwrap()])
+        .status()
+        .expect("git CLI available");
+    assert!(status.success());
+    let path = dir.to_str().unwrap();
+    core::set_config(Some(path), "user.name", "Test User", false).unwrap();
+    core::set_config(Some(path), "user.email", "test@angkorgit.dev", false).unwrap();
+    TempRepo { dir }
+}
+
 fn set_pull_head(origin: &TempRepo, oid: &str) {
     let status = Command::new("git")
         .args(["update-ref", "refs/pull/1/head", oid])
