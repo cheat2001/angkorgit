@@ -58,6 +58,7 @@ version = "0.14.0"
 dependencies = [
  "base64 0.22.1",
  "git2",
+ "gtk",
  "keyring",
  "notify-debouncer-mini",
  "portable-pty",
