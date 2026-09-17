@@ -377,6 +377,7 @@ mod tests {
     fn accepts_github_copilot_cli_program() {
         assert!(is_supported("copilot"));
         assert!(is_supported("/usr/local/bin/copilot"));
+        #[cfg(windows)]
         assert!(is_supported(r"C:\Program Files\GitHub Copilot\copilot.exe"));
     }
 
