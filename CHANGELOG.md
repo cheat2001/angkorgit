@@ -6,6 +6,11 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **GitHub Copilot CLI as an installed AI provider.** AngKorGit detects the
+  `copilot` binary, including WinGet installs on Windows, and runs prompts through
+  the user's existing Copilot login and quota with optional model overrides.
+
 ### Fixed
 - **"Show in file manager" on Windows opens the file's folder again.** Explorer was
   handed a path with forward slashes, quoted as a whole together with its `/select`

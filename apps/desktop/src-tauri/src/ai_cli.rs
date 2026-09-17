@@ -9,6 +9,7 @@ use crate::error::{AppError, AppResult};
 
 const AGENTS: &[(&str, &str, &str)] = &[
     ("claude", "Claude Code", "claude"),
+    ("copilot", "GitHub Copilot CLI", "copilot"),
     ("codex", "Codex CLI", "codex"),
     ("gemini", "Gemini CLI", "gemini"),
     ("opencode", "OpenCode", "opencode"),
@@ -104,6 +105,12 @@ pub(crate) fn search_path(extra: Option<&Path>) -> std::ffi::OsString {
     if cfg!(windows) {
         if let Some(appdata) = std::env::var_os("APPDATA") {
             push(&mut dirs, PathBuf::from(appdata).join("npm"));
+        }
+        if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
+            push(
+                &mut dirs,
+                PathBuf::from(local_appdata).join("Microsoft/WinGet/Links"),
+            );
         }
     }
     std::env::join_paths(dirs).unwrap_or_default()
@@ -364,6 +371,13 @@ mod tests {
             timeout_secs: Some(5),
         });
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn accepts_github_copilot_cli_program() {
+        assert!(is_supported("copilot"));
+        assert!(is_supported("/usr/local/bin/copilot"));
+        assert!(is_supported(r"C:\Program Files\GitHub Copilot\copilot.exe"));
     }
 
     #[cfg(unix)]

@@ -27,6 +27,23 @@ export const CLI_AGENTS: Record<CliAgentId, CliAgentSpec> = {
     promptVia: 'stdin',
     args: (model) => ['-p', '--output-format', 'text', ...(model ? ['--model', model] : [])],
   },
+  copilot: {
+    id: 'copilot',
+    label: 'GitHub Copilot CLI',
+    binary: 'copilot',
+    promptVia: 'arg',
+    args: (model) => [
+      '--silent',
+      '--stream',
+      'off',
+      '--no-ask-user',
+      '--no-color',
+      '--output-format',
+      'text',
+      ...(model ? ['--model', model] : []),
+      '--prompt',
+    ],
+  },
   codex: {
     id: 'codex',
     label: 'Codex CLI',

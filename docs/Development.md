@@ -47,9 +47,10 @@ The engine lives in `apps/desktop/src-tauri/src/core/`, one module per domain ar
 2. Register it in `createAiProvider` and `AI_PROVIDER_PRESETS`.
 3. Done — settings UI, capabilities and transport pick it up automatically.
 
-Installed AI-CLI agents (Claude Code, Codex, Gemini CLI, OpenCode) follow a different
-path: add the agent's argv/stdin shape in `packages/core/src/ai/cliAgents.ts` and its
-binary to the allowlist in `apps/desktop/src-tauri/src/ai_cli.rs`.
+Installed AI-CLI agents (Claude Code, GitHub Copilot CLI, Codex, Gemini CLI,
+OpenCode, Antigravity) follow a different path: add the agent's argv/stdin shape
+in `packages/core/src/ai/cliAgents.ts` and its binary to the allowlist in
+`apps/desktop/src-tauri/src/ai_cli.rs`.
 
 ## Release
 

@@ -46,7 +46,7 @@ It's free, MIT licensed, and there is no account, no telemetry and no cloud. Eve
 
 **Remotes and accounts.** Fetch, pull and push through the same credential chain git uses. SSH keys and access tokens, several accounts on one host, identity profiles stored per repository and never in your global gitconfig. Pull requests from GitHub, GitLab and Bitbucket: list, check out, create, pick reviewers. Commit signing through your existing git config.
 
-**AI, if you want it.** A commit message from the staged diff, a plain explanation of a commit or a conflict, a review of what you are about to commit, a pull request description. It uses the AI CLI you already log into (Claude Code, Codex, Gemini CLI, OpenCode), or an API key, or Ollama on your own machine. Requests go straight from your computer to the provider you chose. Every one of them has a Stop button.
+**AI, if you want it.** A commit message from the staged diff, a plain explanation of a commit or a conflict, a review of what you are about to commit, a pull request description. It uses the AI CLI you already log into (Claude Code, GitHub Copilot CLI, Codex, Gemini CLI, OpenCode, Antigravity), or an API key, or Ollama on your own machine. Requests go straight from your computer to the provider you chose. Every one of them has a Stop button.
 
 **Keyboard first.** ⌘K opens a palette with every command in the app, shortcuts are printed next to menu items, Escape closes exactly one thing at a time.
 
