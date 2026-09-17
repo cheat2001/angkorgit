@@ -3,6 +3,7 @@ import Commit from './Commit.astro';
 
 const providers = [
   { name: 'Claude Code', kind: 'CLI you already log into' },
+  { name: 'GitHub Copilot CLI', kind: 'CLI you already log into' },
   { name: 'Codex', kind: 'CLI you already log into' },
   { name: 'Gemini CLI', kind: 'CLI you already log into' },
   { name: 'OpenCode', kind: 'CLI you already log into' },
@@ -22,8 +23,9 @@ const providers = [
         <h2 class="display mt-3 text-4xl leading-[1.02] sm:text-5xl">Uses the AI you <em>already</em> have.</h2>
         <div class="mt-6 space-y-4 text-[17px] leading-relaxed text-muted">
           <p>
-            AngKorGit doesn't ship a model or a token wallet. If you've got Claude Code, Codex, Gemini CLI or OpenCode
-            installed, it finds the binary and uses your own login and quota. No key to paste.
+            AngKorGit doesn't ship a model or a token wallet. If you've got Claude Code, GitHub Copilot CLI, Codex,
+            Gemini CLI, OpenCode or Antigravity installed, it finds the binary and uses your own login and quota. No
+            key to paste.
           </p>
           <p>
             Or point it at an API key, or at Ollama on your own machine. Whatever you pick, requests go straight from
@@ -49,7 +51,7 @@ const providers = [
             <p class="text-[10px] uppercase tracking-[0.12em] text-faint">Detected on this machine</p>
             <ul class="mt-2 grid gap-1.5 sm:grid-cols-2">
               {
-                providers.slice(0, 4).map((p, i) => (
+                providers.slice(0, 5).map((p, i) => (
                   <li class:list={['flex items-center gap-2 rounded-md border px-2.5 py-2', i === 0 ? 'border-primary/50 bg-primary/10' : 'border-border-subtle bg-background']}>
                     <span class="flex h-6 w-6 items-center justify-center rounded-md bg-surface-raised font-mono text-[10px] text-muted">&gt;_</span>
                     <span class="flex min-w-0 flex-col leading-tight">

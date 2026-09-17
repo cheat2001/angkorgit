@@ -97,6 +97,21 @@ describe('cli agent specs', () => {
     expect(CLI_AGENTS.opencode.promptVia).toBe('arg');
   });
 
+  it('copilot runs one silent, non-interactive prompt without asking the user', () => {
+    expect(CLI_AGENTS.copilot.promptVia).toBe('arg');
+    expect(CLI_AGENTS.copilot.args('')).toEqual([
+      '--silent',
+      '--stream',
+      'off',
+      '--no-ask-user',
+      '--no-color',
+      '--output-format',
+      'text',
+      '--prompt',
+    ]);
+    expect(CLI_AGENTS.copilot.args('gpt-5.4')).toContain('gpt-5.4');
+  });
+
   it('antigravity puts -p last so the appended prompt becomes its value', () => {
     expect(CLI_AGENTS.antigravity.promptVia).toBe('arg');
     expect(CLI_AGENTS.antigravity.args('').at(-1)).toBe('-p');

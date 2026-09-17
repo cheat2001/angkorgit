@@ -225,7 +225,7 @@ export const AI_PROVIDER_PRESETS: Record<
   AiProviderKind,
   { label: string; defaultModel: string; needsApiKey: boolean; defaultBaseUrl: string }
 > = {
-  cli: { label: 'Installed AI CLI (Claude Code, Codex…)', defaultModel: '', needsApiKey: false, defaultBaseUrl: '' },
+  cli: { label: 'Installed AI CLI (Claude, Copilot, Codex…)', defaultModel: '', needsApiKey: false, defaultBaseUrl: '' },
   openai: { label: 'OpenAI', defaultModel: 'gpt-4o-mini', needsApiKey: true, defaultBaseUrl: 'https://api.openai.com/v1' },
   anthropic: { label: 'Anthropic', defaultModel: 'claude-sonnet-5', needsApiKey: true, defaultBaseUrl: 'https://api.anthropic.com' },
   gemini: { label: 'Google Gemini', defaultModel: 'gemini-2.0-flash', needsApiKey: true, defaultBaseUrl: 'https://generativelanguage.googleapis.com' },
