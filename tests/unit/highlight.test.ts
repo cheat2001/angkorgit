@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { highlightLineState, supportsBlockComments } from '@/shared/highlight';
+import { highlightLineState, languageOf, supportsBlockComments } from '@/shared/highlight';
 
 const text = (html: string) => html.replace(/<[^>]+>/g, '');
 const wholeLineIsComment = (html: string) =>
@@ -61,6 +61,45 @@ describe('highlightLineState', () => {
     expect(inner.html).not.toContain('hljs-tag');
     expect(text(inner.html)).toBe('  still a comment &lt;b&gt;not a tag&lt;/b&gt;');
     expect(highlightLineState('done -->', 'xml', true).endsInComment).toBe(false);
+  });
+
+  it('highlights a less variable and selector', () => {
+    expect(languageOf('styles/theme.less')).toBe('less');
+    expect(supportsBlockComments('less')).toBe(true);
+    const variable = highlightLineState('@color: #fff;', 'less');
+    expect(variable.html).toContain('hljs-variable');
+    expect(variable.html).toContain('hljs-number');
+    const rule = highlightLineState('.btn { color: red; }', 'less');
+    expect(rule.html).toContain('hljs-selector-class');
+    expect(rule.html).toContain('hljs-attribute');
+  });
+
+  it('maps aliases and basenames for common config and style files', () => {
+    expect(languageOf('src/util.cts')).toBe('typescript');
+    expect(languageOf('readme.markdown')).toBe('markdown');
+    expect(languageOf('types/foo.pyi')).toBe('python');
+    expect(languageOf('App.kts')).toBe('kotlin');
+    expect(languageOf('board.ino')).toBe('cpp');
+    expect(languageOf('index.htm')).toBe('xml');
+    expect(languageOf('styles/app.scss')).toBe('scss');
+    expect(languageOf('config/app.ini')).toBe('ini');
+    expect(languageOf('messages.properties')).toBe('properties');
+    expect(languageOf('repo/.gitignore')).toBe('properties');
+    expect(languageOf('.editorconfig')).toBe('properties');
+    expect(languageOf('Dockerfile')).toBe('dockerfile');
+    expect(languageOf('path/Makefile')).toBe('makefile');
+    expect(languageOf('CMakeLists.txt')).toBe('cmake');
+    expect(languageOf('tool.cmake')).toBe('cmake');
+  });
+
+  it('highlights scss variables and dockerfile keywords', () => {
+    expect(supportsBlockComments('scss')).toBe(true);
+    const scssLine = highlightLineState('$color: #fff;', 'scss');
+    expect(scssLine.html).toContain('hljs-variable');
+    const docker = highlightLineState('FROM node:20-alpine', 'dockerfile');
+    expect(docker.html).toContain('hljs-keyword');
+    const ignore = highlightLineState('node_modules/', 'properties');
+    expect(text(ignore.html)).toBe('node_modules/');
   });
 
   it('ignores the continuation flag for languages without block comments', () => {

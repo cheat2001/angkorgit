@@ -8,6 +8,8 @@ import java from 'highlight.js/lib/languages/java';
 import csharp from 'highlight.js/lib/languages/csharp';
 import cpp from 'highlight.js/lib/languages/cpp';
 import css from 'highlight.js/lib/languages/css';
+import less from 'highlight.js/lib/languages/less';
+import scss from 'highlight.js/lib/languages/scss';
 import xml from 'highlight.js/lib/languages/xml';
 import json from 'highlight.js/lib/languages/json';
 import yaml from 'highlight.js/lib/languages/yaml';
@@ -18,6 +20,11 @@ import ruby from 'highlight.js/lib/languages/ruby';
 import php from 'highlight.js/lib/languages/php';
 import kotlin from 'highlight.js/lib/languages/kotlin';
 import swift from 'highlight.js/lib/languages/swift';
+import ini from 'highlight.js/lib/languages/ini';
+import properties from 'highlight.js/lib/languages/properties';
+import dockerfile from 'highlight.js/lib/languages/dockerfile';
+import makefile from 'highlight.js/lib/languages/makefile';
+import cmake from 'highlight.js/lib/languages/cmake';
 
 hljs.registerLanguage('typescript', typescript);
 hljs.registerLanguage('javascript', javascript);
@@ -28,6 +35,8 @@ hljs.registerLanguage('java', java);
 hljs.registerLanguage('csharp', csharp);
 hljs.registerLanguage('cpp', cpp);
 hljs.registerLanguage('css', css);
+hljs.registerLanguage('less', less);
+hljs.registerLanguage('scss', scss);
 hljs.registerLanguage('xml', xml);
 hljs.registerLanguage('json', json);
 hljs.registerLanguage('yaml', yaml);
@@ -38,17 +47,35 @@ hljs.registerLanguage('ruby', ruby);
 hljs.registerLanguage('php', php);
 hljs.registerLanguage('kotlin', kotlin);
 hljs.registerLanguage('swift', swift);
+hljs.registerLanguage('ini', ini);
+hljs.registerLanguage('properties', properties);
+hljs.registerLanguage('dockerfile', dockerfile);
+hljs.registerLanguage('makefile', makefile);
+hljs.registerLanguage('cmake', cmake);
+
+/** Exact file basenames (lowercased), including leading-dot names. */
+const BASENAME_TO_LANG: Record<string, string> = {
+  dockerfile: 'dockerfile',
+  makefile: 'makefile',
+  gnumakefile: 'makefile',
+  'cmakelists.txt': 'cmake',
+  '.gitignore': 'properties',
+  '.gitattributes': 'properties',
+  '.editorconfig': 'properties',
+};
 
 const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript',
   tsx: 'typescript',
   mts: 'typescript',
+  cts: 'typescript',
   js: 'javascript',
   jsx: 'javascript',
   mjs: 'javascript',
   cjs: 'javascript',
   rs: 'rust',
   py: 'python',
+  pyi: 'python',
   go: 'go',
   java: 'java',
   cs: 'csharp',
@@ -57,9 +84,15 @@ const EXT_TO_LANG: Record<string, string> = {
   cc: 'cpp',
   cpp: 'cpp',
   hpp: 'cpp',
+  hh: 'cpp',
+  hxx: 'cpp',
+  cxx: 'cpp',
+  ino: 'cpp',
   css: 'css',
-  scss: 'css',
+  less: 'less',
+  scss: 'scss',
   html: 'xml',
+  htm: 'xml',
   svg: 'xml',
   xml: 'xml',
   vue: 'xml',
@@ -70,16 +103,33 @@ const EXT_TO_LANG: Record<string, string> = {
   zsh: 'bash',
   bash: 'bash',
   md: 'markdown',
+  markdown: 'markdown',
+  mdx: 'markdown',
   sql: 'sql',
   rb: 'ruby',
   php: 'php',
   kt: 'kotlin',
+  kts: 'kotlin',
   swift: 'swift',
+  ini: 'ini',
+  cfg: 'ini',
+  conf: 'ini',
+  properties: 'properties',
+  cmake: 'cmake',
 };
 
+function fileName(path: string): string {
+  const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+  return (slash >= 0 ? path.slice(slash + 1) : path).toLowerCase();
+}
+
 export function languageOf(path: string): string | null {
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
-  return EXT_TO_LANG[ext] ?? null;
+  const name = fileName(path);
+  const byName = BASENAME_TO_LANG[name];
+  if (byName) return byName;
+  const dot = name.lastIndexOf('.');
+  if (dot <= 0) return null;
+  return EXT_TO_LANG[name.slice(dot + 1)] ?? null;
 }
 
 const MAX_HIGHLIGHT_LENGTH = 5000;
@@ -94,6 +144,8 @@ const BLOCK_COMMENT_OPENERS: Record<string, string> = {
   csharp: '/*',
   cpp: '/*',
   css: '/*',
+  less: '/*',
+  scss: '/*',
   kotlin: '/*',
   swift: '/*',
   php: '/*',
