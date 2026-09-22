@@ -123,12 +123,12 @@ export const ipc = {
   async openRepository(path: string): Promise<RepositoryInfo> {
     if (!isTauri()) {
       await delay();
-      return demo.demoRepo;
+      return demo.demoRepoAt(path);
     }
     return invoke('repo_open', { path });
   },
   async repoInfo(path: string): Promise<RepositoryInfo> {
-    if (!isTauri()) return demo.demoRepo;
+    if (!isTauri()) return demo.demoRepoAt(path);
     return invoke('repo_info', { path });
   },
   async refFingerprint(path: string): Promise<string> {
@@ -147,7 +147,7 @@ export const ipc = {
     return invoke('repo_clone', { url, into, branch: branch ?? null });
   },
   async status(path: string): Promise<StatusSummary> {
-    if (!isTauri()) return demo.demoStatus;
+    if (!isTauri()) return demo.demoStatusAt(path);
     return invoke('repo_status', { path });
   },
   async stateCleanup(path: string): Promise<void> {

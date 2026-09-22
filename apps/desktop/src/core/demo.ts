@@ -7,6 +7,7 @@ import type {
   CommitFileInfo,
   CommitInfo,
   FileDiff,
+  FileStatus,
   HistoryPage,
   HistoryQuery,
   HttpRequest,
@@ -103,11 +104,38 @@ export const demoRepo: RepositoryInfo = {
   mainPath: null,
 };
 
+/** Suffix-only Working Copy — open this to judge highlight, not angkorgit WIP. */
+export const DEMO_SYNTAX_REPO_PATH = '/Users/demo/projects/syntax-lab';
+
+export const DEMO_LESS_PATH = 'styles/theme.less';
+export const DEMO_SCSS_PATH = 'styles/button.scss';
+export const DEMO_DOCKERFILE_PATH = 'Dockerfile';
+export const DEMO_MAKEFILE_PATH = 'Makefile';
+export const DEMO_CMAKE_LISTS_PATH = 'CMakeLists.txt';
+export const DEMO_CMAKE_PATH = 'build/tool.cmake';
+export const DEMO_GITIGNORE_PATH = '.gitignore';
+export const DEMO_EDITORCONFIG_PATH = '.editorconfig';
+export const DEMO_INI_PATH = 'config/app.ini';
+export const DEMO_PROPERTIES_PATH = 'config/messages.properties';
+
 export const demoRecents: RecentRepository[] = [
   { path: '/Users/demo/projects/angkorgit', name: 'angkorgit', lastOpenedAt: 1754200000 },
   { path: '/Users/demo/projects/temple-ui', name: 'temple-ui', lastOpenedAt: 1754100000 },
+  { path: DEMO_SYNTAX_REPO_PATH, name: 'syntax-lab', lastOpenedAt: 1754000000 },
   { path: '/Users/demo/work/api-gateway', name: 'api-gateway', lastOpenedAt: 1753900000 },
 ];
+
+export function demoRepoAt(path: string): RepositoryInfo {
+  if (path === DEMO_SYNTAX_REPO_PATH) {
+    return {
+      ...demoRepo,
+      path,
+      name: 'syntax-lab',
+      state: 'clean',
+    };
+  }
+  return demoRepo;
+}
 
 export const demoFonts = [
   { family: 'Fira Code', monospaced: true },
@@ -187,6 +215,31 @@ export const demoStatus: StatusSummary = {
   ahead: 2,
   behind: 0,
 };
+
+const DEMO_SYNTAX_STATUS_SEED: FileStatus[] = [
+  { path: DEMO_LESS_PATH, origPath: null, staged: null, unstaged: 'modified' },
+  { path: DEMO_SCSS_PATH, origPath: null, staged: null, unstaged: 'modified' },
+  { path: DEMO_DOCKERFILE_PATH, origPath: null, staged: null, unstaged: 'untracked' },
+  { path: DEMO_MAKEFILE_PATH, origPath: null, staged: null, unstaged: 'untracked' },
+  { path: DEMO_CMAKE_LISTS_PATH, origPath: null, staged: null, unstaged: 'untracked' },
+  { path: DEMO_CMAKE_PATH, origPath: null, staged: null, unstaged: 'modified' },
+  { path: DEMO_GITIGNORE_PATH, origPath: null, staged: null, unstaged: 'modified' },
+  { path: DEMO_EDITORCONFIG_PATH, origPath: null, staged: null, unstaged: 'untracked' },
+  { path: DEMO_INI_PATH, origPath: null, staged: null, unstaged: 'modified' },
+  { path: DEMO_PROPERTIES_PATH, origPath: null, staged: null, unstaged: 'modified' },
+];
+
+export function demoStatusAt(path: string): StatusSummary {
+  if (path === DEMO_SYNTAX_REPO_PATH) {
+    return {
+      files: DEMO_SYNTAX_STATUS_SEED.map((f) => ({ ...f })),
+      branch: 'main',
+      ahead: 0,
+      behind: 0,
+    };
+  }
+  return demoStatus;
+}
 
 export const demoBranches: BranchInfo[] = [
   { name: 'main', isHead: true, isRemote: false, upstream: 'origin/main', ahead: 2, behind: 0, targetOid: ALL_COMMITS[0].oid },
@@ -402,8 +455,140 @@ export const demoLargeFileDiff: FileDiff = {
   ],
 };
 
+function demoStatusDiff(
+  path: string,
+  status: FileDiff['status'],
+  rows: Array<readonly [' ' | '-' | '+', string]>,
+): FileDiff {
+  let oldNo = status === 'new' ? 0 : 1;
+  let newNo = status === 'deleted' ? 0 : 1;
+  let additions = 0;
+  let deletions = 0;
+  const lines = rows.map(([mark, content]) => {
+    if (mark === '-') {
+      deletions += 1;
+      return { kind: 'deletion' as const, oldLineNo: oldNo++, newLineNo: null, content };
+    }
+    if (mark === '+') {
+      additions += 1;
+      return { kind: 'addition' as const, oldLineNo: null, newLineNo: newNo++, content };
+    }
+    return { kind: 'context' as const, oldLineNo: oldNo++, newLineNo: newNo++, content };
+  });
+  return {
+    path,
+    oldPath: null,
+    status,
+    isBinary: false,
+    isImage: false,
+    oldImage: null,
+    newImage: null,
+    additions,
+    deletions,
+    hunks: [
+      {
+        header: `@@ -${status === 'new' ? 0 : 1},${deletions} +${status === 'deleted' ? 0 : 1},${additions} @@`,
+        oldStart: status === 'new' ? 0 : 1,
+        oldLines: deletions,
+        newStart: status === 'deleted' ? 0 : 1,
+        newLines: additions,
+        lines,
+      },
+    ],
+  };
+}
+
 export function demoFileDiffFor(path: string): FileDiff {
   if (path === demoLargeFileDiff.path) return demoLargeFileDiff;
+  if (path === DEMO_LESS_PATH) {
+    return demoStatusDiff(path, 'modified', [
+      [' ', '@accent: #2563eb;'],
+      ['-', '.btn { color: #111; }'],
+      ['+', '.btn {'],
+      ['+', '  color: @accent;'],
+      ['+', '  &:hover { color: darken(@accent, 8%); }'],
+      ['+', '}'],
+    ]);
+  }
+  if (path === DEMO_SCSS_PATH) {
+    return demoStatusDiff(path, 'modified', [
+      [' ', '$radius: 8px;'],
+      ['-', '.chip { border-radius: 4px; }'],
+      ['+', '.chip {'],
+      ['+', '  border-radius: $radius;'],
+      ['+', '  &--active { font-weight: 600; }'],
+      ['+', '}'],
+    ]);
+  }
+  if (path === DEMO_DOCKERFILE_PATH) {
+    return demoStatusDiff(path, 'new', [
+      ['+', 'FROM node:20-alpine'],
+      ['+', 'WORKDIR /app'],
+      ['+', 'COPY package.json bun.lock ./'],
+      ['+', 'RUN bun install --frozen-lockfile'],
+      ['+', 'COPY . .'],
+      ['+', 'CMD ["bun", "run", "dev"]'],
+    ]);
+  }
+  if (path === DEMO_MAKEFILE_PATH) {
+    return demoStatusDiff(path, 'new', [
+      ['+', '.PHONY: build test'],
+      ['+', ''],
+      ['+', 'build:'],
+      ['+', '\tbun run build'],
+      ['+', ''],
+      ['+', 'test:'],
+      ['+', '\tbun test'],
+    ]);
+  }
+  if (path === DEMO_CMAKE_LISTS_PATH) {
+    return demoStatusDiff(path, 'new', [
+      ['+', 'cmake_minimum_required(VERSION 3.20)'],
+      ['+', 'project(syntax_lab LANGUAGES CXX)'],
+      ['+', 'add_executable(app main.cpp)'],
+    ]);
+  }
+  if (path === DEMO_CMAKE_PATH) {
+    return demoStatusDiff(path, 'modified', [
+      [' ', 'option(SYNTAX_LAB_TESTS "Build tests" ON)'],
+      ['-', 'set(SYNTAX_LAB_WARNINGS OFF)'],
+      ['+', 'set(SYNTAX_LAB_WARNINGS ON)'],
+    ]);
+  }
+  if (path === DEMO_GITIGNORE_PATH) {
+    return demoStatusDiff(path, 'modified', [
+      [' ', 'node_modules/'],
+      [' ', 'dist/'],
+      ['-', '.env'],
+      ['+', '.env'],
+      ['+', '.env.local'],
+      ['+', '*.log'],
+    ]);
+  }
+  if (path === DEMO_EDITORCONFIG_PATH) {
+    return demoStatusDiff(path, 'new', [
+      ['+', 'root = true'],
+      ['+', ''],
+      ['+', '[*]'],
+      ['+', 'indent_style = space'],
+      ['+', 'indent_size = 2'],
+    ]);
+  }
+  if (path === DEMO_INI_PATH) {
+    return demoStatusDiff(path, 'modified', [
+      [' ', '[app]'],
+      ['-', 'theme = dark'],
+      ['+', 'theme = system'],
+      ['+', 'locale = en'],
+    ]);
+  }
+  if (path === DEMO_PROPERTIES_PATH) {
+    return demoStatusDiff(path, 'modified', [
+      [' ', 'app.name=AngKorGit'],
+      ['-', 'app.tagline=Git client'],
+      ['+', 'app.tagline=Fast Git client'],
+    ]);
+  }
   return { ...demoFileDiff, path };
 }
 
