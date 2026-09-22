@@ -65,7 +65,7 @@ body {
 .hljs-title, .hljs-function { color: hsl(var(--syntax-function)); }
 .hljs-attr, .hljs-attribute, .hljs-property, .hljs-variable, .hljs-selector-attr { color: hsl(var(--syntax-variable)); }
 .hljs-type, .hljs-class, .hljs-selector-tag, .hljs-selector-class, .hljs-selector-id { color: hsl(var(--syntax-type)); }
-.hljs-selector-pseudo, .hljs-meta { color: hsl(var(--syntax-keyword)); }
+.hljs-selector-pseudo { color: hsl(var(--syntax-keyword)); }
 
 /* xterm fills its panel */
 .terminal-host .xterm {

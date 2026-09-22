@@ -53,15 +53,12 @@ hljs.registerLanguage('dockerfile', dockerfile);
 hljs.registerLanguage('makefile', makefile);
 hljs.registerLanguage('cmake', cmake);
 
-/** Exact file basenames (lowercased), including leading-dot names. */
 const BASENAME_TO_LANG: Record<string, string> = {
   dockerfile: 'dockerfile',
   makefile: 'makefile',
   gnumakefile: 'makefile',
   'cmakelists.txt': 'cmake',
-  '.gitignore': 'properties',
-  '.gitattributes': 'properties',
-  '.editorconfig': 'properties',
+  '.editorconfig': 'ini',
 };
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -112,8 +109,6 @@ const EXT_TO_LANG: Record<string, string> = {
   kts: 'kotlin',
   swift: 'swift',
   ini: 'ini',
-  cfg: 'ini',
-  conf: 'ini',
   properties: 'properties',
   cmake: 'cmake',
 };

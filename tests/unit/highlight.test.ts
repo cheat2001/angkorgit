@@ -84,8 +84,11 @@ describe('highlightLineState', () => {
     expect(languageOf('styles/app.scss')).toBe('scss');
     expect(languageOf('config/app.ini')).toBe('ini');
     expect(languageOf('messages.properties')).toBe('properties');
-    expect(languageOf('repo/.gitignore')).toBe('properties');
-    expect(languageOf('.editorconfig')).toBe('properties');
+    expect(languageOf('repo/.gitignore')).toBeNull();
+    expect(languageOf('.gitattributes')).toBeNull();
+    expect(languageOf('.editorconfig')).toBe('ini');
+    expect(languageOf('nginx.conf')).toBeNull();
+    expect(languageOf('app.cfg')).toBeNull();
     expect(languageOf('Dockerfile')).toBe('dockerfile');
     expect(languageOf('path/Makefile')).toBe('makefile');
     expect(languageOf('CMakeLists.txt')).toBe('cmake');
@@ -98,8 +101,8 @@ describe('highlightLineState', () => {
     expect(scssLine.html).toContain('hljs-variable');
     const docker = highlightLineState('FROM node:20-alpine', 'dockerfile');
     expect(docker.html).toContain('hljs-keyword');
-    const ignore = highlightLineState('node_modules/', 'properties');
-    expect(text(ignore.html)).toBe('node_modules/');
+    const editorconfig = highlightLineState('[*]', 'ini');
+    expect(editorconfig.html).toContain('hljs-section');
   });
 
   it('ignores the continuation flag for languages without block comments', () => {
