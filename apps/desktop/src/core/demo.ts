@@ -103,6 +103,9 @@ export const demoRepo: RepositoryInfo = {
   mainPath: null,
 };
 
+export const DEMO_LESS_PATH = 'styles/theme.less';
+export const DEMO_DOCKERFILE_PATH = 'Dockerfile';
+
 export const demoRecents: RecentRepository[] = [
   { path: '/Users/demo/projects/angkorgit', name: 'angkorgit', lastOpenedAt: 1754200000 },
   { path: '/Users/demo/projects/temple-ui', name: 'temple-ui', lastOpenedAt: 1754100000 },
@@ -182,6 +185,8 @@ export const demoStatus: StatusSummary = {
       unstaged: 'untracked',
     },
     { path: 'src/old-layout.tsx', origPath: null, staged: 'deleted', unstaged: null },
+    { path: DEMO_LESS_PATH, origPath: null, staged: null, unstaged: 'modified' },
+    { path: DEMO_DOCKERFILE_PATH, origPath: null, staged: null, unstaged: 'untracked' },
   ],
   branch: 'main',
   ahead: 2,
@@ -402,8 +407,77 @@ export const demoLargeFileDiff: FileDiff = {
   ],
 };
 
+function demoStatusDiff(
+  path: string,
+  status: FileDiff['status'],
+  rows: Array<readonly [' ' | '-' | '+', string]>,
+): FileDiff {
+  let oldNo = status === 'new' ? 0 : 1;
+  let newNo = status === 'deleted' ? 0 : 1;
+  let additions = 0;
+  let deletions = 0;
+  let context = 0;
+  const lines = rows.map(([mark, content]) => {
+    if (mark === '-') {
+      deletions += 1;
+      return { kind: 'deletion' as const, oldLineNo: oldNo++, newLineNo: null, content };
+    }
+    if (mark === '+') {
+      additions += 1;
+      return { kind: 'addition' as const, oldLineNo: null, newLineNo: newNo++, content };
+    }
+    context += 1;
+    return { kind: 'context' as const, oldLineNo: oldNo++, newLineNo: newNo++, content };
+  });
+  const oldLines = deletions + context;
+  const newLines = additions + context;
+  const oldStart = oldLines === 0 ? 0 : 1;
+  const newStart = newLines === 0 ? 0 : 1;
+  return {
+    path,
+    oldPath: null,
+    status,
+    isBinary: false,
+    isImage: false,
+    oldImage: null,
+    newImage: null,
+    additions,
+    deletions,
+    hunks: [
+      {
+        header: `@@ -${oldStart},${oldLines} +${newStart},${newLines} @@`,
+        oldStart,
+        oldLines,
+        newStart,
+        newLines,
+        lines,
+      },
+    ],
+  };
+}
+
 export function demoFileDiffFor(path: string): FileDiff {
   if (path === demoLargeFileDiff.path) return demoLargeFileDiff;
+  if (path === DEMO_LESS_PATH) {
+    return demoStatusDiff(path, 'modified', [
+      [' ', '@accent: #2563eb;'],
+      ['-', '.btn { color: #111; }'],
+      ['+', '.btn {'],
+      ['+', '  color: @accent;'],
+      ['+', '  &:hover { color: darken(@accent, 8%); }'],
+      ['+', '}'],
+    ]);
+  }
+  if (path === DEMO_DOCKERFILE_PATH) {
+    return demoStatusDiff(path, 'new', [
+      ['+', 'FROM node:20-alpine'],
+      ['+', 'WORKDIR /app'],
+      ['+', 'COPY package.json bun.lock ./'],
+      ['+', 'RUN bun install --frozen-lockfile'],
+      ['+', 'COPY . .'],
+      ['+', 'CMD ["bun", "run", "dev"]'],
+    ]);
+  }
   return { ...demoFileDiff, path };
 }
 

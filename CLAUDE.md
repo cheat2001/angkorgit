@@ -35,7 +35,7 @@ craftsmanship from Cambodia 🇰🇭.
 | Animation | **Framer Motion 11** (subtle; splash logo draw) | |
 | Router | react-router-dom 6 (MemoryRouter: `/welcome`, `/repo`) | |
 | Icons / fonts | lucide-react · Inter Variable + JetBrains Mono (self-hosted @fontsource) | |
-| Key libs | @tanstack/react-virtual, react-resizable-panels, cmdk, sonner, @xterm/xterm, highlight.js (lib/core + 20 langs) | |
+| Key libs | @tanstack/react-virtual, react-resizable-panels, cmdk, sonner, @xterm/xterm, highlight.js (lib/core + 26 langs) | |
 | Rust deps | tauri-plugin-dialog/opener, portable-pty, keyring 3, notify-debouncer-mini, reqwest (rustls), which 7, base64, thiserror | |
 
 ## 3. Monorepo layout (pnpm workspaces)

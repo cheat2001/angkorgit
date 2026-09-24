@@ -6,6 +6,13 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **More languages in the diff highlighter.** Diffs for Less, SCSS, Dockerfiles,
+  Makefiles, CMake, `.ini` / `.properties`, and `.editorconfig` pick up highlight.js
+  grammars instead of rendering as plain text. Common aliases (`cts`, `pyi`, `mdx`,
+  `kts`, …) and basenames (`Dockerfile`, `Makefile`, `CMakeLists.txt`) map to the
+  right grammar. CSS selector token classes are coloured so style diffs are readable.
+
 ## [0.18.0] — 2026-09-24
 
 The review release. AI can now review one file from its diff or a whole commit from the
