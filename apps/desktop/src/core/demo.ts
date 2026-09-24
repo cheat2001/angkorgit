@@ -416,6 +416,7 @@ function demoStatusDiff(
   let newNo = status === 'deleted' ? 0 : 1;
   let additions = 0;
   let deletions = 0;
+  let context = 0;
   const lines = rows.map(([mark, content]) => {
     if (mark === '-') {
       deletions += 1;
@@ -425,8 +426,13 @@ function demoStatusDiff(
       additions += 1;
       return { kind: 'addition' as const, oldLineNo: null, newLineNo: newNo++, content };
     }
+    context += 1;
     return { kind: 'context' as const, oldLineNo: oldNo++, newLineNo: newNo++, content };
   });
+  const oldLines = deletions + context;
+  const newLines = additions + context;
+  const oldStart = oldLines === 0 ? 0 : 1;
+  const newStart = newLines === 0 ? 0 : 1;
   return {
     path,
     oldPath: null,
@@ -439,11 +445,11 @@ function demoStatusDiff(
     deletions,
     hunks: [
       {
-        header: `@@ -${status === 'new' ? 0 : 1},${deletions} +${status === 'deleted' ? 0 : 1},${additions} @@`,
-        oldStart: status === 'new' ? 0 : 1,
-        oldLines: deletions,
-        newStart: status === 'deleted' ? 0 : 1,
-        newLines: additions,
+        header: `@@ -${oldStart},${oldLines} +${newStart},${newLines} @@`,
+        oldStart,
+        oldLines,
+        newStart,
+        newLines,
         lines,
       },
     ],
