@@ -254,10 +254,6 @@ fn commit_tree_diff<'a>(
     Ok(diff)
 }
 
-pub fn commit_diff(path: &str, oid: &str, context_lines: u32) -> AppResult<Vec<FileDiff>> {
-    commit_diff_with(path, oid, context_lines, false)
-}
-
 pub fn commit_diff_with(
     path: &str,
     oid: &str,
