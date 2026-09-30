@@ -10,6 +10,7 @@ import {
   Copy,
   ExternalLink,
   File as FileIcon,
+  FileText,
   FolderOpen,
   History,
   Monitor,
@@ -42,6 +43,7 @@ import {
   DropdownMenuTrigger,
   Hint,
   Logo,
+  PaneEmpty,
   Textarea,
   cn,
 } from '@angkorgit/design-system';
@@ -1032,9 +1034,15 @@ export function CommitDetails({
               ))}
             </div>
           ) : shownEntries.length === 0 ? (
-            <p className="px-2 py-1.5 text-xs text-faint">
-              {filtering ? 'No files match the filter.' : 'This commit has no files.'}
-            </p>
+            filtering ? (
+              <p className="px-2 py-1.5 text-xs text-faint">No files match the filter.</p>
+            ) : (
+              <PaneEmpty
+                icon={<FileText />}
+                title="No files"
+                description="This commit did not change any files."
+              />
+            )
           ) : (
             <FileTree
               items={shownEntries}

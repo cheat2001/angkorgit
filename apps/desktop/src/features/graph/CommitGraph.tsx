@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
-import { Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronUp, Combine, Copy, FastForward, Filter, FolderTree, GitBranchPlus, Settings2, GitMerge, ListOrdered, ListRestart, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronUp, Combine, Copy, FastForward, Filter, FolderTree, GitBranchPlus, GitCommitHorizontal, Settings2, GitMerge, ListOrdered, ListRestart, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
 import type { CommitInfo, RefInfo } from '@angkorgit/core';
 import {
   Button,
@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
   Hint,
   Input,
+  PaneEmpty,
   Spinner,
   cn,
 } from '@angkorgit/design-system';
@@ -536,18 +537,21 @@ export function CommitGraph() {
               </Button>
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-faint">
-              <span>{filtersActive ? 'No commits match these filters' : 'No commits yet'}</span>
-              {filtersActive && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setFilters(path, { branch: '' })}
-                >
+            <PaneEmpty
+              icon={filtersActive ? <Filter /> : <GitCommitHorizontal />}
+              title={filtersActive ? 'No matching commits' : 'No commits yet'}
+              description={
+                filtersActive
+                  ? 'Nothing matches the current filters.'
+                  : 'The first commit will appear here.'
+              }
+            >
+              {filtersActive ? (
+                <Button variant="ghost" size="sm" onClick={() => setFilters(path, { branch: '' })}>
                   Clear filters
                 </Button>
-              )}
-            </div>
+              ) : null}
+            </PaneEmpty>
           )
         ) : (
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>

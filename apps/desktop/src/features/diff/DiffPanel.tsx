@@ -17,6 +17,7 @@ import {
   Hint,
   Kbd,
   Logo,
+  PaneEmpty,
   Separator,
   Spinner,
   cn,
@@ -122,6 +123,15 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
 
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
+  const blankText = !!diff && !diff.isBinary && !diff.isImage && diff.hunks.length === 0;
+  const whitespaceOnly =
+    ignoreWhitespace && !target.unchanged && (blankText || (!diff && !isWorkingCopy));
+  const emptyFile =
+    !!diff &&
+    !!target.unchanged &&
+    !diff.isBinary &&
+    !diff.isImage &&
+    diff.hunks.every((hunk) => hunk.lines.length === 0);
   const aiKey = fileAiKeyFor(path, target);
   const aiResult = useAiWork((s) => s.fileAi[aiKey] ?? null);
   const aiBusyKind = useAiWork((s) => s.fileAiBusy[aiKey] ?? null);
@@ -721,18 +731,23 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
                 Retry
               </Button>
             </div>
-          ) : diff &&
-            target.unchanged &&
-            !diff.isBinary &&
-            !diff.isImage &&
-            diff.hunks.every((h) => h.lines.length === 0) ? (
-            <p className="py-16 text-center text-sm text-faint">This file is empty.</p>
+          ) : emptyFile ? (
+            <PaneEmpty icon={<FileText />} title="This file is empty" description="There is nothing to compare." />
+          ) : whitespaceOnly ? (
+            <PaneEmpty
+              icon={<Space />}
+              title="Only whitespace changes found"
+              description={
+                isWorkingCopy && target.staged
+                  ? 'These whitespace changes are staged and will be committed. Turn off Ignore whitespace to unstage them.'
+                  : 'Line and hunk stage are off while whitespace is hidden.'
+              }
+            />
           ) : diff ? (
             <DiffViewer
             diff={diff}
             scrollRef={scrollRef}
             search={highlight}
-            emptyLabel={ignoreWhitespace ? 'Only whitespace changed in this file' : undefined}
             onLineContextMenu={(e, info) => {
               e.preventDefault();
               setLineMenu({
@@ -775,12 +790,16 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             }
             />
           ) : (
-            <p className="py-16 text-center text-sm text-faint">
-              No diff to show — the change may already be staged or resolved.
-            </p>
+            <PaneEmpty
+              icon={<FileText />}
+              title="No diff to show"
+              description="The change may already be staged or resolved."
+            />
           )}
         </div>
-        {diff && !loading && <DiffMinimap diff={diff} view={diffView} scrollRef={scrollRef} />}
+        {diff && !loading && !whitespaceOnly && !emptyFile && (
+          <DiffMinimap diff={diff} view={diffView} scrollRef={scrollRef} />
+        )}
       </div>
 
       {lineMenu && (

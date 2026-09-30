@@ -2135,7 +2135,7 @@ test('ignore whitespace hides an indent-only change and turns staging off', asyn
   await diff.getByRole('button', { name: 'View options' }).click();
   await page.getByRole('menuitemcheckbox', { name: 'Ignore whitespace' }).click();
   await expect(diff.getByText('+0', { exact: true })).toBeVisible();
-  await expect(diff.getByText('Only whitespace changed in this file')).toBeVisible();
+  await expect(diff.getByText('Only whitespace changes found')).toBeVisible();
   await expect(diff.getByRole('button', { name: 'Stage hunk' })).toHaveCount(0);
   await diff.getByRole('button', { name: 'View options' }).click();
   await expect(page.getByRole('menu').getByText('not the patch git would apply')).toBeVisible();

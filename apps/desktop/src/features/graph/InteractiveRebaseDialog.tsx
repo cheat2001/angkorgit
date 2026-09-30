@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { GripVertical } from 'lucide-react';
+import { GitCommitHorizontal, GripVertical } from 'lucide-react';
 import type { CommitInfo, RebaseTodoAction, RebaseTodoEntry } from '@angkorgit/core';
 import {
   Badge,
@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
   Hint,
+  PaneEmpty,
   Select,
   SelectContent,
   SelectItem,
@@ -197,9 +198,12 @@ export function InteractiveRebaseDialog() {
             className="flex max-h-[50vh] flex-col gap-1 overflow-y-auto pr-1"
           >
             {rows.length === 0 && (
-              <p className="py-6 text-center text-sm text-faint">
-                No commits to rebase above this point.
-              </p>
+              <PaneEmpty
+                className="min-h-40"
+                icon={<GitCommitHorizontal />}
+                title="No commits to rebase"
+                description="Nothing sits above this point."
+              />
             )}
             {rows.map((row) => (
               <div

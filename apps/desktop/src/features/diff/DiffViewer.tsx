@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
+import { FileText, ImageOff } from 'lucide-react';
 import type { DiffHunk, DiffLine, FileDiff } from '@angkorgit/core';
-import { cn } from '@angkorgit/design-system';
+import { cn, PaneEmpty } from '@angkorgit/design-system';
 import { useUi } from '@/features/ui/store';
 import { languageOf } from '@/shared/highlight';
 import { CodeLine, gutter, lineBg, pairHunkLines, prepareLineStates, wrapUnavailable, type SearchRanges } from './diffShared';
@@ -159,6 +160,15 @@ function WrappedSplitHunk({ hunk, language, useWordDiff, actions, search }: Hunk
 }
 
 function ImageDiff({ diff }: { diff: FileDiff }) {
+  if (!diff.oldImage && !diff.newImage) {
+    return (
+      <PaneEmpty
+        icon={<ImageOff />}
+        title="Image unavailable"
+        description="The contents could not be loaded."
+      />
+    );
+  }
   const mime = diff.path.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
   return (
     <div className="flex gap-4 p-4">
@@ -174,9 +184,6 @@ function ImageDiff({ diff }: { diff: FileDiff }) {
           <figcaption className="mt-2 text-xs text-success">After</figcaption>
         </figure>
       )}
-      {!diff.oldImage && !diff.newImage && (
-        <p className="w-full py-8 text-center text-sm text-faint">Image contents unavailable</p>
-      )}
     </div>
   );
 }
@@ -187,14 +194,12 @@ export function DiffViewer({
   hunkActions,
   onLineContextMenu,
   search,
-  emptyLabel = 'No changes',
 }: {
   diff: FileDiff;
   scrollRef?: React.RefObject<HTMLDivElement>;
   hunkActions?: (hunkIndex: number) => React.ReactNode;
   onLineContextMenu?: (event: React.MouseEvent, info: LineMenuInfo) => void;
   search?: SearchRanges;
-  emptyLabel?: string;
 }) {
   const diffView = useUi((s) => s.diffView);
   const useWord = useUi((s) => s.wordDiff);
@@ -211,10 +216,22 @@ export function DiffViewer({
 
   if (diff.isImage) return <ImageDiff diff={diff} />;
   if (diff.isBinary) {
-    return <p className="py-8 text-center text-sm text-faint">Binary file — no text diff</p>;
+    return (
+      <PaneEmpty
+        icon={<FileText />}
+        title="Binary file"
+        description="There is no text diff for this file."
+      />
+    );
   }
   if (diff.hunks.length === 0) {
-    return <p className="py-8 text-center text-sm text-faint">{emptyLabel}</p>;
+    return (
+      <PaneEmpty
+        icon={<FileText />}
+        title="No changes"
+        description="This revision matches the previous one."
+      />
+    );
   }
 
   if (!wrap && scrollRef) {

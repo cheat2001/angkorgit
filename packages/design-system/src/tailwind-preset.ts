@@ -22,6 +22,7 @@ const preset: Partial<Config> = {
           DEFAULT: 'hsl(var(--primary) / <alpha-value>)',
           foreground: 'hsl(var(--primary-foreground) / <alpha-value>)',
         },
+        plate: 'hsl(var(--primary) / 0.15)',
         danger: {
           DEFAULT: 'hsl(var(--danger) / <alpha-value>)',
           foreground: 'hsl(var(--danger-foreground) / <alpha-value>)',
