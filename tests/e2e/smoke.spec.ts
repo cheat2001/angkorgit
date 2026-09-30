@@ -1907,7 +1907,7 @@ test('the All files view shows the whole working tree with changed files still a
   await expect(inspector.getByText('README.md')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'All files' }).click();
-  await expect(inspector.getByText('8 changed')).toBeVisible();
+  await expect(inspector.getByText('9 changed')).toBeVisible();
   await expect(inspector.getByText('README.md')).toBeVisible();
   await expect(inspector.getByLabel('Stage src/core/ipc.ts')).toBeVisible();
   await expect(inspector.getByLabel('Unstage src/features/graph/CommitGraph.tsx')).toBeVisible();
@@ -2117,6 +2117,7 @@ test('ignore whitespace hides an indent-only change and turns staging off', asyn
   await page.getByRole('menuitemcheckbox', { name: 'Ignore whitespace' }).click();
   await expect(diff.getByText('+0', { exact: true })).toBeVisible();
   await expect(diff.getByRole('button', { name: 'Stage hunk' })).toHaveCount(0);
+  await diff.getByRole('button', { name: 'View options' }).click();
   await expect(page.getByRole('menu').getByText('not the patch git would apply')).toBeVisible();
 
   await page.keyboard.press('Escape');
