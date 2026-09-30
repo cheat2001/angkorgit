@@ -481,21 +481,22 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
           </Hint>
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>View options</DropdownMenuLabel>
-            <DropdownMenuCheckboxItem checked={wordDiff} onCheckedChange={(v) => setWordDiff(v === true)}>
-              <WholeWord /> Word diff
+            <DropdownMenuCheckboxItem className="gap-2" checked={wordDiff} onCheckedChange={(v) => setWordDiff(v === true)}>
+              <WholeWord className="size-4" /> Word diff
             </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem checked={ignoreWhitespace} onCheckedChange={(v) => setIgnoreWhitespace(v === true)}>
-              <Space /> Ignore whitespace
+            <DropdownMenuCheckboxItem className="gap-2" checked={ignoreWhitespace} onCheckedChange={(v) => setIgnoreWhitespace(v === true)}>
+              <Space className="size-4" /> Ignore whitespace
             </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem
+              className="gap-2"
               checked={wrapLines}
               disabled={!!textDiff && wrapUnavailable(textDiff)}
               onCheckedChange={(v) => setWrapLines(v === true)}
             >
-              <WrapText /> Wrap long lines
+              <WrapText className="size-4" /> Wrap long lines
             </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem checked={fullFileDiff} onCheckedChange={(v) => setFullFileDiff(v === true)}>
-              <FileText /> Show whole file
+            <DropdownMenuCheckboxItem className="gap-2" checked={fullFileDiff} onCheckedChange={(v) => setFullFileDiff(v === true)}>
+              <FileText className="size-4" /> Show whole file
             </DropdownMenuCheckboxItem>
             {ignoreWhitespace && (
               <p className="max-w-56 px-2 pb-1.5 pt-1 text-[11px] leading-snug text-faint">
