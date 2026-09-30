@@ -1224,6 +1224,36 @@ fn file_diff_reports_hunks() {
 }
 
 #[test]
+fn file_diff_can_ignore_whitespace() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n  two\nthree\n");
+    commit_all(&repo, "base");
+    repo.write("a.txt", "one\ntwo\nthree\n");
+
+    let raw = core::file_diff(repo.path(), "a.txt", false, 3).unwrap();
+    assert!(raw.additions + raw.deletions > 0);
+
+    let ignored = core::file_diff_with(repo.path(), "a.txt", false, 3, true).unwrap();
+    assert_eq!(ignored.additions, 0);
+    assert_eq!(ignored.deletions, 0);
+
+    repo.write("a.txt", "one\nTWO\nthree\n");
+    let token = core::file_diff_with(repo.path(), "a.txt", false, 3, true).unwrap();
+    assert!(token.additions + token.deletions > 0);
+
+    commit_all(&repo, "token");
+    repo.write("a.txt", "one\n  two\nthree\n");
+    commit_all(&repo, "reindent");
+    repo.write("a.txt", "one\ntwo\nthree\n");
+    let oid = commit_all(&repo, "dedent");
+    let commit = core::commit_file_diff_with(repo.path(), &oid, "a.txt", None, 3, true).unwrap();
+    assert_eq!(commit.additions, 0);
+    assert_eq!(commit.deletions, 0);
+    let shown = core::commit_diff_with(repo.path(), &oid, 3, false).unwrap();
+    assert!(shown.iter().any(|d| d.additions + d.deletions > 0));
+}
+
+#[test]
 fn rebase_linearizes_history() {
     let repo = TempRepo::new();
     repo.write("a.txt", "base\n");

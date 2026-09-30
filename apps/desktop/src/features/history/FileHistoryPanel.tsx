@@ -81,6 +81,7 @@ export function FileHistoryPanel({ file }: { file: string }) {
   const setDiffView = useUi((s) => s.setDiffView);
   const wordDiff = useUi((s) => s.wordDiff);
   const setWordDiff = useUi((s) => s.setWordDiff);
+  const ignoreWhitespace = useUi((s) => s.ignoreWhitespace);
   const wrapLines = useUi((s) => s.wrapLines);
   const setWrapLines = useUi((s) => s.setWrapLines);
   const fullFileDiff = useUi((s) => s.fullFileDiff);
@@ -200,8 +201,10 @@ export function FileHistoryPanel({ file }: { file: string }) {
     const context = fullFileDiff ? 10_000_000 : undefined;
     const request =
       selected === WORKING_COPY
-        ? ipc.diffFile(path, file, false, context).then((d) => (d.hunks.length > 0 ? d : null))
-        : ipc.diffCommit(path, selected, context).then((diffs) => diffs.find((d) => d.path === file) ?? null);
+        ? ipc.diffFile(path, file, false, context, ignoreWhitespace).then((d) => (d.hunks.length > 0 ? d : null))
+        : ipc
+            .diffCommit(path, selected, context, ignoreWhitespace)
+            .then((diffs) => diffs.find((d) => d.path === file) ?? null);
     void request
       .then((found) => {
         if (cancelled) return;
@@ -219,7 +222,7 @@ export function FileHistoryPanel({ file }: { file: string }) {
     return () => {
       cancelled = true;
     };
-  }, [path, selected, file, fullFileDiff, pane]);
+  }, [path, selected, file, fullFileDiff, ignoreWhitespace, pane]);
 
   return (
     <motion.section

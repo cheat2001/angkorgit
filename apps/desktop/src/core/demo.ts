@@ -105,6 +105,7 @@ export const demoRepo: RepositoryInfo = {
 
 export const DEMO_LESS_PATH = 'styles/theme.less';
 export const DEMO_DOCKERFILE_PATH = 'Dockerfile';
+export const DEMO_INDENT_PATH = 'src/indent.txt';
 
 export const demoRecents: RecentRepository[] = [
   { path: '/Users/demo/projects/angkorgit', name: 'angkorgit', lastOpenedAt: 1754200000 },
@@ -187,6 +188,7 @@ export const demoStatus: StatusSummary = {
     { path: 'src/old-layout.tsx', origPath: null, staged: 'deleted', unstaged: null },
     { path: DEMO_LESS_PATH, origPath: null, staged: null, unstaged: 'modified' },
     { path: DEMO_DOCKERFILE_PATH, origPath: null, staged: null, unstaged: 'untracked' },
+    { path: DEMO_INDENT_PATH, origPath: null, staged: null, unstaged: 'modified' },
   ],
   branch: 'main',
   ahead: 2,
@@ -456,7 +458,17 @@ function demoStatusDiff(
   };
 }
 
-export function demoFileDiffFor(path: string): FileDiff {
+export function demoFileDiffFor(path: string, ignoreWhitespace = false): FileDiff {
+  if (path === DEMO_INDENT_PATH) {
+    const diff = demoStatusDiff(path, 'modified', [
+      [' ', 'one'],
+      ['-', '  two'],
+      ['+', 'two'],
+      [' ', 'three'],
+    ]);
+    if (!ignoreWhitespace) return diff;
+    return { ...diff, hunks: [], additions: 0, deletions: 0 };
+  }
   if (path === demoLargeFileDiff.path) return demoLargeFileDiff;
   if (path === DEMO_LESS_PATH) {
     return demoStatusDiff(path, 'modified', [
@@ -481,8 +493,8 @@ export function demoFileDiffFor(path: string): FileDiff {
   return { ...demoFileDiff, path };
 }
 
-export function demoCommitDiff(): FileDiff[] {
-  return [demoFileDiff];
+export function demoCommitDiff(ignoreWhitespace = false): FileDiff[] {
+  return [demoFileDiffFor(demoFileDiff.path, ignoreWhitespace)];
 }
 
 export function demoCommitFiles(): CommitFileInfo[] {

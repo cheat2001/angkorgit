@@ -537,13 +537,35 @@ export const ipc = {
     return invoke('worktree_prune', { path });
   },
 
-  async diffFile(path: string, file: string, staged: boolean, contextLines?: number): Promise<FileDiff> {
-    if (!isTauri()) return demo.demoFileDiffFor(file);
-    return invoke('diff_file', { path, file, staged, contextLines: contextLines ?? null });
+  async diffFile(
+    path: string,
+    file: string,
+    staged: boolean,
+    contextLines?: number,
+    ignoreWhitespace?: boolean,
+  ): Promise<FileDiff> {
+    if (!isTauri()) return demo.demoFileDiffFor(file, ignoreWhitespace);
+    return invoke('diff_file', {
+      path,
+      file,
+      staged,
+      contextLines: contextLines ?? null,
+      ignoreWhitespace: ignoreWhitespace ?? null,
+    });
   },
-  async diffCommit(path: string, oid: string, contextLines?: number): Promise<FileDiff[]> {
-    if (!isTauri()) return demo.demoCommitDiff();
-    return invoke('diff_commit', { path, oid, contextLines: contextLines ?? null });
+  async diffCommit(
+    path: string,
+    oid: string,
+    contextLines?: number,
+    ignoreWhitespace?: boolean,
+  ): Promise<FileDiff[]> {
+    if (!isTauri()) return demo.demoCommitDiff(ignoreWhitespace);
+    return invoke('diff_commit', {
+      path,
+      oid,
+      contextLines: contextLines ?? null,
+      ignoreWhitespace: ignoreWhitespace ?? null,
+    });
   },
   async commitFiles(path: string, oid: string): Promise<CommitFileInfo[]> {
     if (!isTauri()) return demo.demoCommitFiles();
@@ -567,14 +589,16 @@ export const ipc = {
     file: string,
     oldPath?: string | null,
     contextLines?: number,
+    ignoreWhitespace?: boolean,
   ): Promise<FileDiff> {
-    if (!isTauri()) return demo.demoFileDiffFor(file);
+    if (!isTauri()) return demo.demoFileDiffFor(file, ignoreWhitespace);
     return invoke('diff_commit_file', {
       path,
       oid,
       file,
       oldPath: oldPath ?? null,
       contextLines: contextLines ?? null,
+      ignoreWhitespace: ignoreWhitespace ?? null,
     });
   },
   async stagedPatch(path: string): Promise<string> {

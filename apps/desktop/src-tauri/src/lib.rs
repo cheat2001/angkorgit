@@ -25,7 +25,10 @@ pub mod test_api {
     pub use crate::core::conflict::{
         list as conflict_list, read as conflict_read, resolve as conflict_resolve,
     };
-    pub use crate::core::diff::{commit_file_diff, commit_files, file_diff};
+    pub use crate::core::diff::{
+        commit_diff_with, commit_file_diff, commit_file_diff_with, commit_files, file_diff,
+        file_diff_with,
+    };
     pub use crate::core::files::{file_contents, index_files, tree_files};
     pub use crate::core::history::{
         file_history, list as history, position as history_position, search as history_search,

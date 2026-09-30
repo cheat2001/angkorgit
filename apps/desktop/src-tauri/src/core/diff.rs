@@ -22,13 +22,16 @@ pub enum DiffTarget {
     Staged,
 }
 
-fn base_opts(file: Option<&str>, context_lines: u32) -> DiffOptions {
+fn base_opts(file: Option<&str>, context_lines: u32, ignore_whitespace: bool) -> DiffOptions {
     let mut opts = DiffOptions::new();
     let context_lines = context_lines.min(10_000_000);
     opts.context_lines(context_lines)
         .include_untracked(true)
         .show_untracked_content(true)
         .recurse_untracked_dirs(true);
+    if ignore_whitespace {
+        opts.ignore_whitespace(true);
+    }
     if let Some(f) = file {
         opts.pathspec(f);
     }
@@ -40,8 +43,9 @@ fn make_diff<'a>(
     target: DiffTarget,
     file: Option<&str>,
     context_lines: u32,
+    ignore_whitespace: bool,
 ) -> AppResult<Diff<'a>> {
-    let mut opts = base_opts(file, context_lines);
+    let mut opts = base_opts(file, context_lines, ignore_whitespace);
     let diff = match target {
         DiffTarget::Unstaged => repo.diff_index_to_workdir(None, Some(&mut opts))?,
         DiffTarget::Staged => {
@@ -193,13 +197,23 @@ fn file_diff_from(
 }
 
 pub fn file_diff(path: &str, file: &str, staged: bool, context_lines: u32) -> AppResult<FileDiff> {
+    file_diff_with(path, file, staged, context_lines, false)
+}
+
+pub fn file_diff_with(
+    path: &str,
+    file: &str,
+    staged: bool,
+    context_lines: u32,
+    ignore_whitespace: bool,
+) -> AppResult<FileDiff> {
     let repo = super::repo::open(path)?;
     let target = if staged {
         DiffTarget::Staged
     } else {
         DiffTarget::Unstaged
     };
-    let diff = make_diff(&repo, target, Some(file), context_lines)?;
+    let diff = make_diff(&repo, target, Some(file), context_lines, ignore_whitespace)?;
     if diff.deltas().len() == 0 {
         return Ok(FileDiff {
             path: file.to_string(),
@@ -223,12 +237,13 @@ fn commit_tree_diff<'a>(
     file: Option<&str>,
     old_path: Option<&str>,
     context_lines: u32,
+    ignore_whitespace: bool,
 ) -> AppResult<Diff<'a>> {
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
     let tree = commit.tree()?;
     let parent_tree = commit.parent(0).ok().map(|p| p.tree()).transpose()?;
 
-    let mut opts = base_opts(file, context_lines);
+    let mut opts = base_opts(file, context_lines, ignore_whitespace);
     if let Some(old) = old_path {
         opts.pathspec(old);
     }
@@ -240,8 +255,17 @@ fn commit_tree_diff<'a>(
 }
 
 pub fn commit_diff(path: &str, oid: &str, context_lines: u32) -> AppResult<Vec<FileDiff>> {
+    commit_diff_with(path, oid, context_lines, false)
+}
+
+pub fn commit_diff_with(
+    path: &str,
+    oid: &str,
+    context_lines: u32,
+    ignore_whitespace: bool,
+) -> AppResult<Vec<FileDiff>> {
     let repo = super::repo::open(path)?;
-    let diff = commit_tree_diff(&repo, oid, None, None, context_lines)?;
+    let diff = commit_tree_diff(&repo, oid, None, None, context_lines, ignore_whitespace)?;
     let count = diff.deltas().len();
     let mut result = Vec::with_capacity(count);
     for i in 0..count {
@@ -256,7 +280,7 @@ pub fn commit_files(path: &str, oid: &str) -> AppResult<Vec<CommitFileInfo>> {
 }
 
 pub fn files_of_commit(repo: &Repository, oid: &str) -> AppResult<Vec<CommitFileInfo>> {
-    let diff = commit_tree_diff(repo, oid, None, None, 0)?;
+    let diff = commit_tree_diff(repo, oid, None, None, 0, false)?;
     let count = diff.deltas().len();
     let mut result = Vec::with_capacity(count);
     for i in 0..count {
@@ -298,8 +322,26 @@ pub fn commit_file_diff(
     old_path: Option<&str>,
     context_lines: u32,
 ) -> AppResult<FileDiff> {
+    commit_file_diff_with(path, oid, file, old_path, context_lines, false)
+}
+
+pub fn commit_file_diff_with(
+    path: &str,
+    oid: &str,
+    file: &str,
+    old_path: Option<&str>,
+    context_lines: u32,
+    ignore_whitespace: bool,
+) -> AppResult<FileDiff> {
     let repo = super::repo::open(path)?;
-    let diff = commit_tree_diff(&repo, oid, Some(file), old_path, context_lines)?;
+    let diff = commit_tree_diff(
+        &repo,
+        oid,
+        Some(file),
+        old_path,
+        context_lines,
+        ignore_whitespace,
+    )?;
     let count = diff.deltas().len();
     for i in 0..count {
         let delta = diff
@@ -330,7 +372,7 @@ pub fn commit_file_diff(
 
 pub fn staged_patch_text(path: &str) -> AppResult<String> {
     let repo = super::repo::open(path)?;
-    let diff = make_diff(&repo, DiffTarget::Staged, None, 3)?;
+    let diff = make_diff(&repo, DiffTarget::Staged, None, 3, false)?;
     let mut text = String::new();
     diff.print(git2::DiffFormat::Patch, |_d, _h, line| {
         match line.origin() {

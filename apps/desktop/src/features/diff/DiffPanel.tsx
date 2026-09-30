@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Columns2, Copy, FileText, History, Minus, Plus, Rows3, SearchCheck, SlidersHorizontal, Sparkles, TextSelect, Trash2, UserRoundSearch, WholeWord, WrapText, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Columns2, Copy, FileText, History, Minus, Plus, Rows3, SearchCheck, SlidersHorizontal, Space, Sparkles, TextSelect, Trash2, UserRoundSearch, WholeWord, WrapText, X } from 'lucide-react';
 import type { CommitFileInfo, FileDiff } from '@angkorgit/core';
 import { aiCapabilities, hasCommittedHistory, hasReviewableText, hashText, locateDiffLine, patchTextOf, PROJECT_REVIEW_FILE } from '@angkorgit/core';
 import {
@@ -80,6 +80,8 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const setDiffView = useUi((s) => s.setDiffView);
   const wordDiff = useUi((s) => s.wordDiff);
   const setWordDiff = useUi((s) => s.setWordDiff);
+  const ignoreWhitespace = useUi((s) => s.ignoreWhitespace);
+  const setIgnoreWhitespace = useUi((s) => s.setIgnoreWhitespace);
   const fullFileDiff = useUi((s) => s.fullFileDiff);
   const setFullFileDiff = useUi((s) => s.setFullFileDiff);
   const wrapLines = useUi((s) => s.wrapLines);
@@ -116,10 +118,17 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const diffRef = useRef<FileDiff | null>(null);
   diffRef.current = diff;
 
-  const fetchDiff = async (contextLines?: number): Promise<FileDiff | null> => {
+  const fetchDiff = async (contextLines?: number, ignore = ignoreWhitespace): Promise<FileDiff | null> => {
     if (target.unchanged) return ipc.fileContents(path, target.path, target.oid ?? null);
     if (target.oid) {
-      const result = await ipc.commitFileDiff(path, target.oid, target.path, target.oldPath ?? null, contextLines);
+      const result = await ipc.commitFileDiff(
+        path,
+        target.oid,
+        target.path,
+        target.oldPath ?? null,
+        contextLines,
+        ignore,
+      );
       const untouched =
         result.hunks.length === 0 &&
         result.additions === 0 &&
@@ -128,7 +137,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         !result.isImage;
       return untouched ? null : result;
     }
-    return ipc.diffFile(path, target.path, target.staged ?? false, contextLines);
+    return ipc.diffFile(path, target.path, target.staged ?? false, contextLines, ignore);
   };
   const [commitFileList, setCommitFileList] = useState<CommitFileInfo[]>([]);
   const commitFiles = useMemo(() => commitFileList.map((f) => f.path), [commitFileList]);
@@ -244,7 +253,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     if (!path) return;
     let cancelled = false;
     const seq = ++requestSeq.current;
-    const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}|${target.unchanged ?? false}|${fullFileDiff}|${reloadToken}`;
+    const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}|${target.unchanged ?? false}|${fullFileDiff}|${ignoreWhitespace}|${reloadToken}`;
     if (loadedKey.current !== key) setLoading(true);
     void fetchDiff(fullFileDiff ? 10_000_000 : undefined)
       .then((result) => {
@@ -268,7 +277,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, target.path, target.oid, target.staged, target.unchanged, fullFileDiff, reloadToken, statusSignature]);
+  }, [path, target.path, target.oid, target.staged, target.unchanged, fullFileDiff, ignoreWhitespace, reloadToken, statusSignature]);
 
   useEffect(
     () => () => {
@@ -298,7 +307,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     const run = useAiWork.getState().startFileAi(key, kind);
     const stillRunning = () => useAiWork.getState().isFileAiRun(key, run);
     try {
-      const source = !fullFileDiff && diff ? diff : await fetchDiff();
+      const source = !fullFileDiff && !ignoreWhitespace && diff ? diff : await fetchDiff(undefined, false);
       if (!stillRunning()) return;
       if (!hasReviewableText(source)) {
         toast.info('This file has no text changes to send');
@@ -452,13 +461,19 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
           </Button>
         </Hint>
         <DropdownMenu>
-          <Hint label="View options">
+          <Hint
+            label={
+              ignoreWhitespace
+                ? 'Ignoring whitespace. Hunk and line stage stay off — these hunks are not the patch git would apply.'
+                : 'View options'
+            }
+          >
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon-sm"
                 aria-label="View options"
-                className={cn((wordDiff || wrapLines || fullFileDiff) && 'text-primary')}
+                className={cn((wordDiff || wrapLines || fullFileDiff || ignoreWhitespace) && 'text-primary')}
               >
                 <SlidersHorizontal className="size-3.5" />
               </Button>
@@ -468,6 +483,9 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <DropdownMenuLabel>View options</DropdownMenuLabel>
             <DropdownMenuCheckboxItem checked={wordDiff} onCheckedChange={(v) => setWordDiff(v === true)}>
               <WholeWord /> Word diff
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem checked={ignoreWhitespace} onCheckedChange={(v) => setIgnoreWhitespace(v === true)}>
+              <Space /> Ignore whitespace
             </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem
               checked={wrapLines}
@@ -479,6 +497,11 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <DropdownMenuCheckboxItem checked={fullFileDiff} onCheckedChange={(v) => setFullFileDiff(v === true)}>
               <FileText /> Show whole file
             </DropdownMenuCheckboxItem>
+            {ignoreWhitespace && (
+              <p className="max-w-56 px-2 pb-1.5 pt-1 text-[11px] leading-snug text-faint">
+                Hunk and line stage stay off. These hunks are not the patch git would apply.
+              </p>
+            )}
             {textDiff && wrapUnavailable(textDiff) && (
               <p className="max-w-56 px-2 pb-1.5 pt-1 text-[11px] leading-snug text-faint">
                 Wrapping stays off for large files so scrolling keeps up.
@@ -678,7 +701,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
               });
             }}
             hunkActions={
-              isWorkingCopy && !fullFileDiff && !target.unchanged
+              isWorkingCopy && !fullFileDiff && !target.unchanged && !ignoreWhitespace
                 ? (hunkIndex) => (
                     <Button
                       variant="ghost"
@@ -723,7 +746,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <span style={{ position: 'fixed', left: lineMenu.x, top: lineMenu.y }} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="bottom" onCloseAutoFocus={(e) => e.preventDefault()}>
-            {isWorkingCopy && lineMenu.info.line.kind !== 'context' && (
+            {isWorkingCopy && !ignoreWhitespace && lineMenu.info.line.kind !== 'context' && (
               <>
                 {target.staged ? (
                   <DropdownMenuItem

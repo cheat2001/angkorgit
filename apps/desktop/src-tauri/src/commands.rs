@@ -626,8 +626,11 @@ pub async fn diff_file(
     file: String,
     staged: bool,
     contextLines: Option<u32>,
+    ignoreWhitespace: Option<bool>,
 ) -> AppResult<FileDiff> {
-    blocking(move || diff::file_diff(&path, &file, staged, contextLines.unwrap_or(3))).await
+    let ignore = ignoreWhitespace.unwrap_or(false);
+    blocking(move || diff::file_diff_with(&path, &file, staged, contextLines.unwrap_or(3), ignore))
+        .await
 }
 
 #[tauri::command]
@@ -635,8 +638,10 @@ pub async fn diff_commit(
     path: String,
     oid: String,
     contextLines: Option<u32>,
+    ignoreWhitespace: Option<bool>,
 ) -> AppResult<Vec<FileDiff>> {
-    blocking(move || diff::commit_diff(&path, &oid, contextLines.unwrap_or(3))).await
+    let ignore = ignoreWhitespace.unwrap_or(false);
+    blocking(move || diff::commit_diff_with(&path, &oid, contextLines.unwrap_or(3), ignore)).await
 }
 
 #[tauri::command]
@@ -651,14 +656,17 @@ pub async fn diff_commit_file(
     file: String,
     oldPath: Option<String>,
     contextLines: Option<u32>,
+    ignoreWhitespace: Option<bool>,
 ) -> AppResult<FileDiff> {
+    let ignore = ignoreWhitespace.unwrap_or(false);
     blocking(move || {
-        diff::commit_file_diff(
+        diff::commit_file_diff_with(
             &path,
             &oid,
             &file,
             oldPath.as_deref(),
             contextLines.unwrap_or(3),
+            ignore,
         )
     })
     .await
