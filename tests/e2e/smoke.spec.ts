@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { demoStatus } from '../../apps/desktop/src/core/demo';
 
 test('splash fades into the welcome screen', async ({ page }) => {
   await page.goto('/');
@@ -1309,7 +1310,11 @@ test('staged files can be discarded from the row, the menu and the header', asyn
   await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: 'Discard all staged changes' }).click();
-  await expect(dialog.getByText('Discard all 2 staged changes?')).toBeVisible();
+  const stagedCount = demoStatus.files.filter((file) => file.staged).length;
+  const stagedNoun = stagedCount === 1 ? 'change' : 'changes';
+  await expect(
+    dialog.getByText(`Discard all ${stagedCount} staged ${stagedNoun}?`),
+  ).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 });
 
