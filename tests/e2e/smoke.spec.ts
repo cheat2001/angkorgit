@@ -1926,7 +1926,7 @@ test('the All files view shows the whole working tree with changed files still a
   await expect(inspector.getByText('README.md')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'All files' }).click();
-  await expect(inspector.getByText('9 changed')).toBeVisible();
+  await expect(inspector.getByText('12 changed')).toBeVisible();
   await expect(inspector.getByText('README.md')).toBeVisible();
   await expect(inspector.getByLabel('Stage src/core/ipc.ts')).toBeVisible();
   await expect(inspector.getByLabel('Unstage src/features/graph/CommitGraph.tsx')).toBeVisible();
