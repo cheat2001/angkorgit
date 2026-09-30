@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { filterFiles } from '../../packages/core/src/git/fileFilter';
 import { demoStatus } from '../../apps/desktop/src/core/demo';
 
 test('splash fades into the welcome screen', async ({ page }) => {
@@ -530,7 +531,7 @@ test('commit actions stay inside a narrow working copy panel', async ({ page }) 
   expect(panel).not.toBeNull();
 
   for (const name of ['Review', /Commit \d+ files?/] as const) {
-    const button = inspector.getByRole('button', { name });
+    const button = inspector.getByRole('button', { name, exact: true });
     await expect(button).toBeVisible();
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
@@ -1216,7 +1217,11 @@ test('the working copy filter narrows both lists and shows counts', async ({ pag
   await expect(page.getByText('CommitGraph.tsx', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('ipc.ts', { exact: true })).toHaveCount(0);
   await expect(page.getByText('No changes match the filter.')).toBeVisible();
-  await expect(page.getByText(/^Staged/).locator('..')).toContainText('1 of 2');
+  const staged = demoStatus.files.filter((file) => file.staged);
+  const stagedShown = filterFiles(staged, (file) => file.path, 'graph');
+  await expect(page.getByText(/^Staged/).locator('..')).toContainText(
+    `${stagedShown.length} of ${staged.length}`,
+  );
 
   await page.getByRole('button', { name: 'Clear filter' }).click();
   await expect(filter).toHaveValue('');
