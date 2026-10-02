@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { filterFiles } from '../../packages/core/src/git/fileFilter';
+import { demoStatus } from '../../apps/desktop/src/core/demo';
 
 test('splash fades into the welcome screen', async ({ page }) => {
   await page.goto('/');
@@ -529,7 +531,7 @@ test('commit actions stay inside a narrow working copy panel', async ({ page }) 
   expect(panel).not.toBeNull();
 
   for (const name of ['Review', /Commit \d+ files?/] as const) {
-    const button = inspector.getByRole('button', { name });
+    const button = inspector.getByRole('button', { name, exact: true });
     await expect(button).toBeVisible();
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
@@ -1215,7 +1217,11 @@ test('the working copy filter narrows both lists and shows counts', async ({ pag
   await expect(page.getByText('CommitGraph.tsx', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('ipc.ts', { exact: true })).toHaveCount(0);
   await expect(page.getByText('No changes match the filter.')).toBeVisible();
-  await expect(page.getByText(/^Staged/).locator('..')).toContainText('1 of 2');
+  const staged = demoStatus.files.filter((file) => file.staged);
+  const stagedShown = filterFiles(staged, (file) => file.path, 'graph');
+  await expect(page.getByText(/^Staged/).locator('..')).toContainText(
+    `${stagedShown.length} of ${staged.length}`,
+  );
 
   await page.getByRole('button', { name: 'Clear filter' }).click();
   await expect(filter).toHaveValue('');
@@ -1309,7 +1315,11 @@ test('staged files can be discarded from the row, the menu and the header', asyn
   await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: 'Discard all staged changes' }).click();
-  await expect(dialog.getByText('Discard all 2 staged changes?')).toBeVisible();
+  const stagedCount = demoStatus.files.filter((file) => file.staged).length;
+  const stagedNoun = stagedCount === 1 ? 'change' : 'changes';
+  await expect(
+    dialog.getByText(`Discard all ${stagedCount} staged ${stagedNoun}?`),
+  ).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 });
 
@@ -1926,7 +1936,7 @@ test('the All files view shows the whole working tree with changed files still a
   await expect(inspector.getByText('README.md')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'All files' }).click();
-  await expect(inspector.getByText('9 changed')).toBeVisible();
+  await expect(inspector.getByText('12 changed')).toBeVisible();
   await expect(inspector.getByText('README.md')).toBeVisible();
   await expect(inspector.getByLabel('Stage src/core/ipc.ts')).toBeVisible();
   await expect(inspector.getByLabel('Unstage src/features/graph/CommitGraph.tsx')).toBeVisible();
@@ -2135,7 +2145,7 @@ test('ignore whitespace hides an indent-only change and turns staging off', asyn
   await diff.getByRole('button', { name: 'View options' }).click();
   await page.getByRole('menuitemcheckbox', { name: 'Ignore whitespace' }).click();
   await expect(diff.getByText('+0', { exact: true })).toBeVisible();
-  await expect(diff.getByText('Only whitespace changed in this file')).toBeVisible();
+  await expect(diff.getByText('Only whitespace changes found')).toBeVisible();
   await expect(diff.getByRole('button', { name: 'Stage hunk' })).toHaveCount(0);
   await diff.getByRole('button', { name: 'View options' }).click();
   await expect(page.getByRole('menu').getByText('not the patch git would apply')).toBeVisible();

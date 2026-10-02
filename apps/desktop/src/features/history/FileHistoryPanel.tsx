@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
   Hint,
   Kbd,
+  PaneEmpty,
   Spinner,
   cn,
 } from '@angkorgit/design-system';
@@ -351,9 +352,11 @@ export function FileHistoryPanel({ file }: { file: string }) {
               <Spinner className="size-5" />
             </div>
           ) : commits.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-faint">
-              No commits touch this file on the current branch.
-            </p>
+            <PaneEmpty
+              icon={<GitCommitHorizontal />}
+              title="No history"
+              description="No commits touch this file on the current branch."
+            />
           ) : (
             <>
               <div

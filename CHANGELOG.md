@@ -6,6 +6,9 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Empty panes use one panel.** Diff blanks, a file with no history, an empty graph, a commit with no files, a welcome search with no matches, and an empty rebase plan use a centered panel (icon, title, one line) instead of a faint sentence. A staged whitespace-only file says those changes are still staged.
+
 ## [0.20.0] — 2026-09-30
 
 The keyboard release. → walks through the changes of an open diff, ⌘1 to ⌘9 and

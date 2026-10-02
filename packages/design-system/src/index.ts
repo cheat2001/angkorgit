@@ -8,5 +8,6 @@ export * from './components/HoverCard';
 export * from './components/Tabs';
 export * from './components/misc';
 export * from './components/Logo';
+export * from './components/PaneEmpty';
 export * from './components/TemplePattern';
 export { default as tailwindPreset } from './tailwind-preset';
