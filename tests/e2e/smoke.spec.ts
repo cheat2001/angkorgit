@@ -1601,9 +1601,11 @@ test('the remotes section offers Add remote and opens the add dialog', async ({ 
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
-  const remotesHeader = page.getByRole('button', { name: /^Remotes/ });
-  await remotesHeader.hover();
-  await page.getByRole('button', { name: 'Add remote', exact: true }).click({ force: true });
+  const remotesSection = page.locator('[data-sidebar-section-header]').filter({
+    has: page.getByRole('button', { name: /^Remotes/ }),
+  });
+  await remotesSection.hover();
+  await remotesSection.getByRole('button', { name: 'Add remote', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'Add remote' })).toBeVisible();
   await expect(dialog.getByPlaceholder('upstream')).toBeVisible();
@@ -2205,4 +2207,78 @@ test('force push from the push menu asks first', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('Push (force) done')).toHaveCount(0);
+});
+
+test('long diff lines have a sticky horizontal scrollbar and support Shift+wheel', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await page.getByText('palette-seed.sql').first().click();
+  await expect(page.getByText('temple gold').first()).toBeVisible();
+  const diff = page.locator('section[aria-label^="Diff for"]');
+  const scrollbar = diff.getByLabel('Scroll diff horizontally');
+  const scroller = diff.locator('div.overflow-y-auto');
+
+  for (const view of ['Inline diff', 'Side-by-side diff']) {
+    await diff.getByRole('button', { name: view, exact: true }).click();
+    await expect(scrollbar).toBeVisible();
+    expect(await scrollbar.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(100);
+    const viewport = await scroller.boundingBox();
+    const bar = await scrollbar.boundingBox();
+    expect(bar!.y + bar!.height).toBeLessThanOrEqual(viewport!.y + viewport!.height + 1);
+    expect(bar!.y).toBeGreaterThan(viewport!.y + viewport!.height - 20);
+
+    await scrollbar.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => scrollbar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    const offset = await scrollbar.evaluate((el) => el.scrollLeft);
+    const vertical = await scroller.evaluate((el) => el.scrollTop);
+    await diff.locator('[data-diff-pane]').first().evaluate((el) => {
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY: 160, shiftKey: true, bubbles: true, cancelable: true }));
+    });
+    await expect.poll(() => scrollbar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(offset);
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(vertical);
+    const transforms = await diff.locator('[data-diff-layer]').evaluateAll((els) => els.map((el) => (el as HTMLElement).style.transform));
+    expect(new Set(transforms).size).toBe(1);
+    expect(transforms[0]).toMatch(/translateX\(-/);
+
+    await scroller.evaluate((el) => { el.scrollTop = 0; });
+    await expect(scrollbar).toBeVisible();
+    const topBar = await scrollbar.boundingBox();
+    expect(topBar!.y).toBeGreaterThan(viewport!.y + viewport!.height - 20);
+  }
+
+  await diff.getByRole('button', { name: 'View options', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Wrap long lines' }).click();
+  await expect(scrollbar).toHaveCount(0);
+});
+
+test('the code diff opened from a selected commit scrolls horizontally in both views', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await page.getByText('feat(graph): virtualize commit rows').first().click();
+  const inspector = page.getByRole('complementary', { name: 'Inspector' });
+  await inspector.getByText('CommitGraph.tsx', { exact: true }).click();
+  const diff = page.locator('section[aria-label="Diff for src/features/graph/CommitGraph.tsx"]');
+  await expect(inspector.getByRole('heading', { name: 'feat(graph): virtualize commit rows', exact: true })).toBeVisible();
+  await expect(diff.getByRole('button', { name: 'Stage file', exact: true })).toHaveCount(0);
+  await page.setViewportSize({ width: 800, height: 900 });
+  const scrollbar = diff.getByLabel('Scroll diff horizontally');
+
+  for (const view of ['Inline diff', 'Side-by-side diff']) {
+    await diff.getByRole('button', { name: view, exact: true }).click();
+    await expect(scrollbar).toBeVisible();
+    expect(await scrollbar.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(100);
+    await scrollbar.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => scrollbar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    const offset = await scrollbar.evaluate((el) => el.scrollLeft);
+    await diff.locator('[data-diff-pane]').first().evaluate((el) => {
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY: 160, shiftKey: true, bubbles: true, cancelable: true }));
+    });
+    await expect.poll(() => scrollbar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(offset);
+    const transforms = await diff.locator('[data-diff-layer]').evaluateAll((els) => els.map((el) => (el as HTMLElement).style.transform));
+    expect(new Set(transforms).size).toBe(1);
+    expect(transforms[0]).toMatch(/translateX\(-/);
+  }
 });

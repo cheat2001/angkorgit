@@ -265,6 +265,7 @@ function useHorizontalPan(
   panes: React.RefObject<HTMLDivElement>[],
   layers: React.RefObject<HTMLDivElement>[],
   width: number,
+  scrollbarRef: React.RefObject<HTMLDivElement>,
 ) {
   const x = useRef(0);
   useEffect(() => {
@@ -277,7 +278,14 @@ function useHorizontalPan(
       for (const layer of layers) {
         if (layer.current) w = Math.max(w, layer.current.scrollWidth);
       }
-      return Math.max(0, w - pane.clientWidth);
+      const limit = Math.max(0, w - pane.clientWidth);
+      const scrollbar = scrollbarRef.current;
+      if (scrollbar?.firstElementChild) {
+        (scrollbar.firstElementChild as HTMLElement).style.width = `${scrollbar.clientWidth + limit}px`;
+        scrollbar.style.height = limit > 0 ? '12px' : '0px';
+        scrollbar.tabIndex = limit > 0 ? 0 : -1;
+      }
+      return limit;
     };
     const maxX = () => {
       if (limit === null) limit = measureLimit();
@@ -285,7 +293,10 @@ function useHorizontalPan(
     };
     const apply = () => {
       raf = 0;
-      x.current = Math.min(x.current, maxX());
+      const limit = maxX();
+      const scrollbar = scrollbarRef.current;
+      x.current = Math.min(x.current, limit);
+      if (scrollbar && scrollbar.scrollLeft !== x.current) scrollbar.scrollLeft = x.current;
       for (const layer of layers) {
         if (layer.current) layer.current.style.transform = `translateX(${-x.current}px)`;
       }
@@ -295,14 +306,22 @@ function useHorizontalPan(
       apply();
     };
     const onWheel = (e: WheelEvent) => {
-      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical → outer scroller
-      const dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
+      const shifted = e.shiftKey && e.deltaX === 0;
+      if (!shifted && Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+      const delta = shifted ? e.deltaY : e.deltaX;
+      const dx = e.deltaMode === 1 ? delta * 16 : delta;
       const next = Math.min(Math.max(0, x.current + dx), maxX());
       e.preventDefault();
       if (next === x.current) return;
       x.current = next;
       if (!raf) raf = requestAnimationFrame(apply);
     };
+    const onScroll = () => {
+      x.current = scrollbarRef.current?.scrollLeft ?? 0;
+      apply();
+    };
+    const scrollbar = scrollbarRef.current;
+    scrollbar?.addEventListener('scroll', onScroll);
     const els = panes.flatMap((p) => (p.current ? [p.current] : []));
     const observer = new ResizeObserver(() => {
       limit = null;
@@ -317,12 +336,29 @@ function useHorizontalPan(
     return () => {
       if (raf) cancelAnimationFrame(raf);
       observer.disconnect();
+      scrollbar?.removeEventListener('scroll', onScroll);
       for (const el of els) {
         el.removeEventListener('wheel', onWheel);
         panControllers.delete(el);
       }
     };
-  }, [panes, layers, width]);
+  }, [panes, layers, width, scrollbarRef]);
+}
+
+function HorizontalScrollbar({ scrollbarRef }: { scrollbarRef: React.RefObject<HTMLDivElement> }) {
+  return (
+    <div
+      ref={scrollbarRef}
+      aria-label="Scroll diff horizontally"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) event.stopPropagation();
+      }}
+      className="sticky bottom-0 z-10 h-3 shrink-0 overflow-x-auto overflow-y-hidden bg-surface"
+    >
+      <div className="h-px" />
+    </div>
+  );
 }
 
 function SelectionSentinel({ edge }: { edge: 'start' | 'end' }) {
@@ -365,102 +401,106 @@ export function VirtualInlineDiff({ rows, language, useWordDiff, scrollRef, hunk
   const layerRef = useRef<HTMLDivElement>(null);
   const panes = useMemo(() => [paneRef], []);
   const layers = useMemo(() => [layerRef], []);
-  useHorizontalPan(panes, layers, width);
+  const scrollbarRef = useRef<HTMLDivElement>(null);
+  useHorizontalPan(panes, layers, width, scrollbarRef);
   useStableSelection(rows, scrollRef);
 
   return (
-    <div className="flex items-start">
-      <div
-        className="relative w-[104px] shrink-0 border-r border-border-subtle bg-surface"
-        style={{ height: total }}
-      >
-        {items.map((item) => {
-          const row = rows[item.index];
-          return (
-            <div
-              key={item.key}
-              className={cn(
-                'absolute left-0 flex w-full',
-                row.kind === 'header' ? 'border-y border-border-subtle bg-surface-raised/60' : lineBg(row.kind === 'line' ? row.line.kind : 'context'),
-              )}
-              style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
-            >
-              {row.kind === 'line' && (
-                <>
-                  <GutterCell text={row.line.oldLineNo?.toString() ?? ''} className="border-r border-border-subtle" />
-                  <GutterCell text={row.line.newLineNo?.toString() ?? ''} className="border-r border-border-subtle" />
-                  <span className={cn('w-6 select-none text-center font-mono text-xs leading-5', marker(row.line.kind).cls)}>
-                    {marker(row.line.kind).char}
-                  </span>
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div ref={paneRef} data-diff-pane="new" className="relative min-w-0 flex-1 cursor-text overflow-hidden" style={{ height: total }}>
-        <div aria-hidden className="pointer-events-none absolute inset-0">
+    <div className="relative flex flex-col">
+      <div className="flex items-start">
+        <div
+          className="relative w-[104px] shrink-0 border-r border-border-subtle bg-surface"
+          style={{ height: total }}
+        >
           {items.map((item) => {
             const row = rows[item.index];
             return (
               <div
                 key={item.key}
                 className={cn(
-                  'absolute left-0 w-full',
-                  row.kind === 'header'
-                    ? 'border-y border-border-subtle bg-surface-raised/60'
-                    : lineBg(row.kind === 'line' ? row.line.kind : 'context'),
+                  'absolute left-0 flex w-full',
+                  row.kind === 'header' ? 'border-y border-border-subtle bg-surface-raised/60' : lineBg(row.kind === 'line' ? row.line.kind : 'context'),
                 )}
                 style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
-              />
-            );
-          })}
-        </div>
-        <div ref={layerRef} data-diff-layer className="absolute inset-y-0 left-0" style={{ width, minWidth: '100%', tabSize: 4, willChange: 'transform' }}>
-          <SelectionSentinel edge="start" />
-          {items.map((item) => {
-            const row = rows[item.index];
-            if (row.kind !== 'line') return null;
-            return (
-              <div
-                key={item.key}
-                data-diff-row={item.index}
-                className="absolute left-0"
-                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
-                onContextMenu={
-                  onLineContextMenu ? (e) => onLineContextMenu(e, { line: row.line }) : undefined
-                }
               >
-                <LineContent line={row.line} search={search}>
-                  <CodeLine
-                    line={row.line}
-                    pair={row.pair}
-                    language={language}
-                    useWordDiff={useWordDiff}
-                    side={row.line.kind === 'deletion' ? 'old' : 'new'}
-                    wrap={false}
-                  />
-                </LineContent>
+                {row.kind === 'line' && (
+                  <>
+                    <GutterCell text={row.line.oldLineNo?.toString() ?? ''} className="border-r border-border-subtle" />
+                    <GutterCell text={row.line.newLineNo?.toString() ?? ''} className="border-r border-border-subtle" />
+                    <span className={cn('w-6 select-none text-center font-mono text-xs leading-5', marker(row.line.kind).cls)}>
+                      {marker(row.line.kind).char}
+                    </span>
+                  </>
+                )}
               </div>
             );
           })}
-          <SelectionSentinel edge="end" />
         </div>
-        {items.map((item) => {
-          const row = rows[item.index];
-          if (row.kind !== 'header') return null;
-          return (
-            <div
-              key={item.key}
-              className="absolute left-0 w-full"
-              style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
-            >
-              <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
-            </div>
-          );
-        })}
+
+        <div ref={paneRef} data-diff-pane="new" className="relative min-w-0 flex-1 cursor-text overflow-hidden" style={{ height: total }}>
+          <div aria-hidden className="pointer-events-none absolute inset-0">
+            {items.map((item) => {
+              const row = rows[item.index];
+              return (
+                <div
+                  key={item.key}
+                  className={cn(
+                    'absolute left-0 w-full',
+                    row.kind === 'header'
+                      ? 'border-y border-border-subtle bg-surface-raised/60'
+                      : lineBg(row.kind === 'line' ? row.line.kind : 'context'),
+                  )}
+                  style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+                />
+              );
+            })}
+          </div>
+          <div ref={layerRef} data-diff-layer className="absolute inset-y-0 left-0" style={{ width, minWidth: '100%', tabSize: 4, willChange: 'transform' }}>
+            <SelectionSentinel edge="start" />
+            {items.map((item) => {
+              const row = rows[item.index];
+              if (row.kind !== 'line') return null;
+              return (
+                <div
+                  key={item.key}
+                  data-diff-row={item.index}
+                  className="absolute left-0"
+                  style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)`, ...ROW_W }}
+                  onContextMenu={
+                    onLineContextMenu ? (e) => onLineContextMenu(e, { line: row.line }) : undefined
+                  }
+                >
+                  <LineContent line={row.line} search={search}>
+                    <CodeLine
+                      line={row.line}
+                      pair={row.pair}
+                      language={language}
+                      useWordDiff={useWordDiff}
+                      side={row.line.kind === 'deletion' ? 'old' : 'new'}
+                      wrap={false}
+                    />
+                  </LineContent>
+                </div>
+              );
+            })}
+            <SelectionSentinel edge="end" />
+          </div>
+          {items.map((item) => {
+            const row = rows[item.index];
+            if (row.kind !== 'header') return null;
+            return (
+              <div
+                key={item.key}
+                className="absolute left-0 w-full"
+                style={{ top: 0, height: item.size, transform: `translateY(${item.start}px)` }}
+              >
+                <HeaderContent header={row.header} hunkIndex={row.hunkIndex} hunkActions={hunkActions} />
+              </div>
+            );
+          })}
+        </div>
       </div>
+      <HorizontalScrollbar scrollbarRef={scrollbarRef} />
     </div>
   );
 }
@@ -603,13 +643,17 @@ export function VirtualSplitDiff(props: CommonProps) {
 
   const width = useMemo(() => contentWidth(rowContents(props.rows)), [props.rows]);
 
-  useHorizontalPan(panes, layers, width);
+  const scrollbarRef = useRef<HTMLDivElement>(null);
+  useHorizontalPan(panes, layers, width, scrollbarRef);
   useStableSelection(props.rows, props.scrollRef);
 
   return (
-    <div className="flex items-start">
-      <SplitHalf {...props} items={items} total={total} width={width} side="old" paneRef={paneL} layerRef={layerL} />
-      <SplitHalf {...props} items={items} total={total} width={width} side="new" paneRef={paneR} layerRef={layerR} />
+    <div className="relative flex flex-col">
+      <div className="flex items-start">
+        <SplitHalf {...props} items={items} total={total} width={width} side="old" paneRef={paneL} layerRef={layerL} />
+        <SplitHalf {...props} items={items} total={total} width={width} side="new" paneRef={paneR} layerRef={layerR} />
+      </div>
+      <HorizontalScrollbar scrollbarRef={scrollbarRef} />
     </div>
   );
 }
