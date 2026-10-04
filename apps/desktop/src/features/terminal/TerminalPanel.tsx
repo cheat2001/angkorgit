@@ -177,8 +177,8 @@ export function TerminalPanel() {
     } else {
       session.terminal.options.theme = terminalThemeFromTokens();
       session.fit.fit();
-      session.terminal.focus();
     }
+    session.terminal.focus();
 
     const attached = session;
     const observer = new ResizeObserver(() => attached.fit.fit());

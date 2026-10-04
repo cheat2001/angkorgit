@@ -2334,7 +2334,12 @@ features/
 │                               persistent: a module-level Map keyed by repo path holds
 │                               each xterm + its DOM container, unmount only detaches
 │                               (container.remove()), remount re-appends — scrollback and
-│                               running processes survive repo switches. Killed only via
+│                               running processes survive repo switches. Focus after BOTH
+│                               fresh-session setup and re-attachment, so opening the panel
+│                               accepts typing immediately. A reused-only focus call was
+│                               masked by dev StrictMode's second effect run; verify the
+│                               focus e2e against a production build served by Vite preview
+│                               as well as dev mode. Killed only via
 │                               killTerminalSession(path) (RepoTabs close) or shell exit
 │                               (exited flag → fresh session on next mount)
 ├── settings/                 ← store (theme, accent, zoom, reduceMotion, interface/code/terminal

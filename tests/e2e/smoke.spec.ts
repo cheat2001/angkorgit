@@ -1617,13 +1617,22 @@ test('the remotes section offers Add remote and opens the add dialog', async ({ 
   await expect(dialog).toBeHidden();
 });
 
-test('the terminal answers right-click with copy, paste, select all and clear', async ({ page }) => {
+test('the terminal focuses on open and reopen and offers its right-click actions', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: 'Toggle terminal' }).click();
   const host = page.locator('.terminal-host');
   await expect(host).toBeVisible();
+  await expect(host.locator('.xterm-helper-textarea')).toBeFocused();
+  await page.keyboard.type('first-open');
+  await expect(host.locator('.xterm-rows')).toContainText('first-open');
+  await page.getByRole('button', { name: 'Close terminal' }).click();
+  await expect(host).toBeHidden();
+  await page.getByRole('button', { name: 'Toggle terminal' }).click();
+  await expect(host.locator('.xterm-helper-textarea')).toBeFocused();
+  await page.keyboard.type('-reopened');
+  await expect(host.locator('.xterm-rows')).toContainText('first-open-reopened');
   await host.click({ button: 'right' });
   const menu = page.getByRole('menu');
   await expect(menu.getByRole('menuitem', { name: 'Copy' })).toBeDisabled();

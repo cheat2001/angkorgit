@@ -6,6 +6,10 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Opening the terminal now focuses its input immediately, so typing works without
+  clicking inside it first.
+
 ## [0.21.1] — 2026-10-04
 
 A patch for the horizontal scrollbar that 0.21.0 introduced. On macOS it halved every
