@@ -19,13 +19,15 @@ pub fn discover(path: &str) -> AppResult<String> {
         .into());
     }
     let repo = Repository::discover(path)?;
-    let root = repo
-        .workdir()
+    Ok(root_path(&repo))
+}
+
+pub fn root_path(repo: &Repository) -> String {
+    repo.workdir()
         .unwrap_or_else(|| repo.path())
         .to_string_lossy()
         .trim_end_matches('/')
-        .to_string();
-    Ok(root)
+        .to_string()
 }
 
 pub fn repo_name(path: &str) -> String {

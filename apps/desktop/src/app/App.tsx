@@ -17,6 +17,7 @@ import { applyTheme, themeBase, useSettings } from '@/features/settings/store';
 import { useUi, type ClonePreset } from '@/features/ui/store';
 import { useShortcuts } from '@/shared/useShortcuts';
 import { useRepoShortcuts } from '@/features/repository/useRepoShortcuts';
+import { RepoQuickOpen } from '@/features/repository/RepoQuickOpen';
 import { ipc, listen, type CliRequest } from '@/core/ipc';
 import { seedForgeHostsFromAccounts } from '@/features/forge/hosts';
 
@@ -141,6 +142,7 @@ function Shell() {
           </Routes>
         </Suspense>
       )}
+      {!splash && <RepoQuickOpen />}
       <AnimatePresence>{splash && <SplashScreen key="splash" />}</AnimatePresence>
     </>
   );

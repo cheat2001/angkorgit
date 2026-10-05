@@ -926,6 +926,155 @@ test('welcome page flags missing folders and opens a repository from the keyboar
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
 });
 
+test('scanning a folder lists its repositories and adds the picked ones to recents', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(() => {
+    window.prompt = () => '/Users/demo/projects';
+  });
+  await page.getByRole('button', { name: 'Scan a folder for repositories' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add repositories from a folder' });
+  await expect(dialog.locator('[data-scan-summary]')).toHaveText('Found 4 · 2 already in recents');
+  await expect(dialog.getByText('In recents', { exact: true })).toHaveCount(2);
+  await expect(dialog.getByLabel('Add angkorgit')).toBeDisabled();
+  const add = dialog.getByRole('button', { name: 'Add 2 repositories' });
+  await expect(add).toBeEnabled();
+  await dialog.getByLabel('Add lane-colors').click();
+  await dialog.getByRole('button', { name: 'Add 1 repository' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('Added 1 repository')).toBeVisible();
+  await expect(page.getByText('~/projects/tools/release-kit')).toBeVisible();
+  await expect(page.getByText('lane-colors', { exact: true })).toHaveCount(0);
+});
+
+test('tabs close when their folder is gone and same-named repositories show their parent folder', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    localStorage.setItem(
+      'angkorgit-ui',
+      JSON.stringify({
+        state: {
+          repoTabs: ['/Users/demo/work/api-gateway', '/Users/demo/forks/angkorgit', '/Users/demo/projects/temple-ui'],
+          worktreeTabs: [],
+        },
+        version: 0,
+      }),
+    );
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Closed the api-gateway tab: its folder no longer exists')).toBeVisible();
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(3);
+  await expect(page.locator('[data-tab-path="/Users/demo/work/api-gateway"]')).toHaveCount(0);
+  await expect(page.locator('[data-tab-path="/Users/demo/forks/angkorgit"] [data-tab-hint]')).toHaveText('forks');
+  await expect(page.locator('[data-tab-path="/Users/demo/projects/angkorgit"] [data-tab-hint]')).toHaveText('projects');
+  await expect(page.locator('[data-tab-path="/Users/demo/projects/temple-ui"] [data-tab-hint]')).toHaveCount(0);
+});
+
+test('mod+p searches recent repositories and opens or switches to their tab, mod+t opens a new tab', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('ControlOrMeta+p');
+  const switcher = page.locator('[data-repo-switcher]');
+  const input = page.getByPlaceholder('Search recent repositories by name or path…');
+  await expect(input).toBeVisible();
+  await expect(input).toBeFocused();
+  await expect(switcher.locator('[data-repo-path]')).toHaveCount(4);
+  await input.fill('temple');
+  await expect(switcher.locator('[data-repo-path]')).toHaveCount(1);
+  await page.keyboard.press('Enter');
+  await expect(input).toBeHidden();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(1);
+  await expect(page.getByRole('tab', { selected: true })).toContainText('temple-ui');
+
+  await page.keyboard.press('ControlOrMeta+p');
+  await expect(switcher.locator('[data-repo-path="/Users/demo/projects/temple-ui"] [data-repo-tab-state]')).toHaveText('Current');
+  await input.fill('angkor');
+  await page.keyboard.press('Enter');
+  await expect(tabs).toHaveCount(2);
+  await expect(page.getByRole('tab', { selected: true })).toContainText('angkorgit');
+
+  await page.keyboard.press('ControlOrMeta+p');
+  await expect(switcher.locator('[data-repo-path="/Users/demo/projects/temple-ui"] [data-repo-tab-state]')).toHaveText('Open tab');
+  await input.fill('temple');
+  await page.keyboard.press('Enter');
+  await expect(tabs).toHaveCount(2);
+  await expect(page.getByRole('tab', { selected: true })).toContainText('temple-ui');
+
+  await page.keyboard.press('ControlOrMeta+k');
+  await expect(page.getByPlaceholder('Type a command or branch name…')).toBeVisible();
+  await expect(input).toBeHidden();
+  await page.keyboard.press('Escape');
+
+  await page.evaluate(() => {
+    window.prompt = () => '/Users/demo/forks/sandbox';
+  });
+  await page.keyboard.press('ControlOrMeta+t');
+  await expect(tabs).toHaveCount(3);
+  await expect(page.getByRole('tab', { selected: true })).toContainText('sandbox');
+});
+
+test('the all files layout stacks every commit file and follows the file list', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('row').nth(2).click();
+  await page.getByLabel('Commit files').getByRole('button', { name: /GraphRow\.tsx/ }).click();
+  await page.getByRole('button', { name: 'Show all files' }).click();
+  const view = page.locator('[data-all-changes]');
+  await expect(view).toBeVisible();
+  const sections = view.locator('[data-file-path]');
+  await expect(sections).toHaveCount(5);
+  await expect(view.locator('[data-file-diff]').first()).toBeVisible();
+  const scroller = view.locator('[data-all-changes-scroller]');
+  const topOf = async (path: string) => {
+    const box = await view.locator(`[data-file-path="${path}"]`).boundingBox();
+    const root = await scroller.boundingBox();
+    if (!box || !root) throw new Error('geometry missing');
+    return box.y - root.y;
+  };
+  await expect.poll(() => topOf('src/features/graph/GraphRow.tsx')).toBeLessThan(16);
+  await expect(view.getByText('2 of 5')).toBeVisible();
+
+  await page.getByLabel('Commit files').getByRole('button', { name: /Architecture\.md/ }).click();
+  await expect.poll(() => topOf('docs/Architecture.md')).toBeLessThan(16);
+  await expect(view.getByText('4 of 5')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Side-by-side diff' }).click();
+  await expect(view.locator('[data-file-diff] div.w-1\\/2').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Inline diff' }).click();
+
+  await scroller.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await scroller.hover();
+  await page.mouse.wheel(0, 1);
+  await expect(page.locator('[data-active-file]')).toContainText('CommitGraph.tsx');
+
+  await view.getByRole('button', { name: 'Collapse src/features/graph/store.ts' }).click();
+  await expect(view.locator('[data-file-path="src/features/graph/store.ts"]')).toHaveAttribute('data-file-section', 'collapsed');
+  await expect(view.locator('[data-file-path="src/features/graph/store.ts"] [data-file-diff]')).toHaveCount(0);
+  await view.getByRole('button', { name: 'Collapse all files' }).click();
+  await expect(view.locator('[data-file-section="open"]')).toHaveCount(0);
+  await view.getByRole('button', { name: 'Expand all files' }).click();
+  await expect(view.locator('[data-file-section="collapsed"]')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Show one file' }).click();
+  await expect(view).toBeHidden();
+  await expect(page.locator('section[aria-label^="Diff for"]')).toBeVisible();
+  await page.reload();
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await page.getByRole('row').nth(2).click();
+  await page.getByRole('button', { name: /GraphRow\.tsx/ }).first().click();
+  await expect(page.locator('section[aria-label^="Diff for"]')).toBeVisible();
+  await expect(view).toBeHidden();
+});
+
 test('conflict resolver shows line numbers in both sides and the result', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();

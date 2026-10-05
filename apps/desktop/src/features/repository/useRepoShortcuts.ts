@@ -5,6 +5,7 @@ import { orderRepoTabs, repoForChord } from '@angkorgit/core';
 import { useRepo } from './store';
 import { useSettings } from '@/features/settings/store';
 import { useUi } from '@/features/ui/store';
+import { pickDirectory } from '@/core/ipc';
 import { basename, isMac } from '@/shared/utils';
 
 const TAB_DIGIT = /^Digit([1-9])$/;
@@ -13,12 +14,29 @@ export async function switchToRepo(path: string, ensureRepoRoute: () => void): P
   const { repo, opening, open } = useRepo.getState();
   if (opening !== null || repo?.path === path) return;
   useUi.getState().setPaletteOpen(false);
+  useUi.getState().setRepoSwitcherOpen(false);
   try {
     await open(path);
     ensureRepoRoute();
   } catch (error) {
     toast.error(`Could not open ${basename(path)}: ${(error as { message?: string }).message ?? error}`);
   }
+}
+
+export async function openRepositoryInNewTab(ensureRepoRoute: () => void): Promise<void> {
+  const dir = await pickDirectory('Open a repository in a new tab');
+  if (!dir) return;
+  try {
+    await useRepo.getState().open(dir);
+    ensureRepoRoute();
+  } catch (error) {
+    toast.error(`Could not open repository: ${(error as { message?: string }).message ?? error}`);
+  }
+}
+
+function plainModKey(event: KeyboardEvent, code: string): boolean {
+  const mod = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  return mod && !event.altKey && !event.shiftKey && event.code === code;
 }
 
 function tabForKey(event: KeyboardEvent, tabs: string[], activePath: string | null): string | null {
@@ -49,6 +67,18 @@ export function useRepoShortcuts(): void {
       if (target?.closest('.xterm')) return;
       const ui = useUi.getState();
       if (ui.dialog || ui.conflictFile) return;
+      if (plainModKey(event, 'KeyP')) {
+        event.preventDefault();
+        ui.setRepoSwitcherOpen(!ui.repoSwitcherOpen);
+        return;
+      }
+      if (plainModKey(event, 'KeyT')) {
+        event.preventDefault();
+        ui.setPaletteOpen(false);
+        ui.setRepoSwitcherOpen(false);
+        void openRepositoryInNewTab(ensureRepoRoute);
+        return;
+      }
       const activePath = useRepo.getState().repo?.path ?? null;
       const settings = useSettings.getState();
       const ordered = orderRepoTabs(ui.repoTabs, settings.repoGroups, settings.repoGroupOf, ui.worktreeMains);

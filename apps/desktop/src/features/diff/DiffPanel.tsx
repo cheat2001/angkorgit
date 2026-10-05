@@ -1,17 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Columns2, Copy, FileText, History, Info, Minus, Plus, Rows3, SearchCheck, SlidersHorizontal, Space, Sparkles, TextSelect, Trash2, UserRoundSearch, WholeWord, WrapText, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, History, Minus, Plus, SearchCheck, Sparkles, TextSelect, Trash2, UserRoundSearch, X } from 'lucide-react';
 import type { CommitFileInfo, FileDiff } from '@angkorgit/core';
 import { aiCapabilities, hasCommittedHistory, hasReviewableText, hashText, locateDiffLine, patchTextOf, PROJECT_REVIEW_FILE } from '@angkorgit/core';
 import {
   Badge,
   Button,
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   Hint,
@@ -40,6 +38,7 @@ import { useDiffSelectAll } from './diffCopy';
 import { diffSelectionText } from './diffSelection';
 import { changeBlocks, DiffMinimap, scrollToFraction } from './DiffMinimap';
 import { ChangeNavButtons, useChangeJump } from './changeNav';
+import { DiffLayoutToggle, DiffViewControls, MenuNote } from './DiffViewControls';
 
 const LOCATE_HIGHLIGHT_MS = 2500;
 const COMPACT_HEADER_WIDTH = 960;
@@ -67,15 +66,6 @@ function fileAiIcon(kind: FileAiKind, className: string) {
   return kind === 'review' ? <SearchCheck className={className} /> : <Sparkles className={className} />;
 }
 
-function MenuNote({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mx-1 mb-0.5 mt-1 flex items-start gap-2 rounded-md bg-surface-raised px-2 py-1.5 text-[11px] leading-snug text-muted">
-      <Info className="mt-px size-3.5 shrink-0 text-faint" />
-      <span>{children}</span>
-    </div>
-  );
-}
-
 export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const repo = useRepo((s) => s.repo);
   const status = useRepo((s) => s.status);
@@ -86,15 +76,9 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const openFileHistory = useUi((s) => s.openFileHistory);
   const openBlame = useUi((s) => s.openBlame);
   const diffView = useUi((s) => s.diffView);
-  const setDiffView = useUi((s) => s.setDiffView);
-  const wordDiff = useUi((s) => s.wordDiff);
-  const setWordDiff = useUi((s) => s.setWordDiff);
   const ignoreWhitespace = useUi((s) => s.ignoreWhitespace);
-  const setIgnoreWhitespace = useUi((s) => s.setIgnoreWhitespace);
   const fullFileDiff = useUi((s) => s.fullFileDiff);
-  const setFullFileDiff = useUi((s) => s.setFullFileDiff);
   const wrapLines = useUi((s) => s.wrapLines);
-  const setWrapLines = useUi((s) => s.setWrapLines);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -483,74 +467,18 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
           </span>
         )}
         <Separator orientation="vertical" className="mx-1 h-4" />
-        <Hint label="Inline diff">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Inline diff"
-            className={cn(diffView === 'inline' && 'bg-surface-raised text-foreground')}
-            onClick={() => setDiffView('inline')}
-          >
-            <Rows3 className="size-3.5" />
-          </Button>
-        </Hint>
-        <Hint label="Side-by-side diff">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Side-by-side diff"
-            className={cn(diffView === 'split' && 'bg-surface-raised text-foreground')}
-            onClick={() => setDiffView('split')}
-          >
-            <Columns2 className="size-3.5" />
-          </Button>
-        </Hint>
-        <DropdownMenu>
-          <Hint
-            label={
-              ignoreWhitespace
-                ? 'View options. Whitespace is ignored, so hunk and line staging are off: these hunks are not the patch git would apply.'
-                : 'View options'
-            }
-          >
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="View options"
-                className={cn((wordDiff || wrapLines || fullFileDiff || ignoreWhitespace) && 'text-primary')}
-              >
-                <SlidersHorizontal className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-          </Hint>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuLabel>View options</DropdownMenuLabel>
-            <DropdownMenuCheckboxItem icon={<WholeWord />} checked={wordDiff} onCheckedChange={(v) => setWordDiff(v === true)}>
-              Word diff
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem icon={<Space />} checked={ignoreWhitespace} onCheckedChange={(v) => setIgnoreWhitespace(v === true)}>
-              Ignore whitespace
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              icon={<WrapText />}
-              checked={wrapLines}
-              disabled={!!textDiff && wrapUnavailable(textDiff)}
-              onCheckedChange={(v) => setWrapLines(v === true)}
-            >
-              Wrap long lines
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem icon={<FileText />} checked={fullFileDiff} onCheckedChange={(v) => setFullFileDiff(v === true)}>
-              Show whole file
-            </DropdownMenuCheckboxItem>
-            {ignoreWhitespace && (
-              <MenuNote>Staging is off: these hunks are not the patch git would apply.</MenuNote>
-            )}
-            {textDiff && wrapUnavailable(textDiff) && (
-              <MenuNote>Wrapping stays off for large files so scrolling keeps up.</MenuNote>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {target.oid && !target.unchanged && <DiffLayoutToggle />}
+        <DiffViewControls
+          wrapDisabled={!!textDiff && wrapUnavailable(textDiff)}
+          notes={
+            <>
+              {ignoreWhitespace && <MenuNote>Staging is off: these hunks are not the patch git would apply.</MenuNote>}
+              {textDiff && wrapUnavailable(textDiff) && (
+                <MenuNote>Wrapping stays off for large files so scrolling keeps up.</MenuNote>
+              )}
+            </>
+          }
+        />
         <Hint label="File history">
           <Button
             variant="ghost"

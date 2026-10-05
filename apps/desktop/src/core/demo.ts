@@ -13,6 +13,7 @@ import type {
   HttpResponse,
   RecentRepository,
   RepositoryInfo,
+  RepositoryScan,
   StashInfo,
   StatusSummary,
   TagInfo,
@@ -118,6 +119,25 @@ export const demoRecents: RecentRepository[] = [
   { path: '/Users/demo/work/api-gateway', name: 'api-gateway', lastOpenedAt: 1753900000 },
   { path: '/Users/demo/work/billing-service', name: 'billing-service', lastOpenedAt: 1753800000 },
 ];
+
+export function demoAddRecents(paths: string[]): RecentRepository[] {
+  const at = Math.floor(Date.now() / 1000);
+  const kept = demoRecents.filter((r) => !paths.includes(r.path));
+  const added = paths.map((path) => ({ path, name: path.split('/').pop() ?? path, lastOpenedAt: at }));
+  demoRecents.splice(0, demoRecents.length, ...added, ...kept);
+  return demoRecents;
+}
+
+export async function demoScan(root: string): Promise<RepositoryScan> {
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const base = root.replace(/\/+$/, '');
+  const repositories = ['angkorgit', 'temple-ui', 'tools/release-kit', 'sandbox/lane-colors'].map((rel) => ({
+    path: `${base}/${rel}`,
+    name: rel.split('/').pop() ?? rel,
+    isWorktree: rel === 'sandbox/lane-colors',
+  }));
+  return { repositories, truncated: false };
+}
 
 export const demoFonts = [
   { family: 'Fira Code', monospaced: true },

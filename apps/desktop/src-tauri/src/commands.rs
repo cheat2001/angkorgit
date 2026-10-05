@@ -2,7 +2,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::core::types::*;
 use crate::core::{
-    branch, commit, conflict, diff, files, history, misc, remote, repo, stage, worktree,
+    branch, commit, conflict, diff, files, history, misc, remote, repo, scan, stage, worktree,
 };
 use crate::error::AppResult;
 use crate::terminal::TerminalState;
@@ -74,6 +74,16 @@ pub async fn repo_clone(
 #[tauri::command]
 pub fn recent_repositories(app: AppHandle) -> AppResult<Vec<RecentRepository>> {
     crate::state::recent_list(&app)
+}
+
+#[tauri::command]
+pub fn recent_add_many(app: AppHandle, paths: Vec<String>) -> AppResult<Vec<RecentRepository>> {
+    crate::state::recent_add_many(&app, &paths)
+}
+
+#[tauri::command]
+pub async fn repositories_scan(root: String) -> AppResult<RepositoryScan> {
+    blocking(move || scan::scan(&root, scan::SCAN_MAX_DEPTH)).await
 }
 
 #[tauri::command]

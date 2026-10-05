@@ -796,7 +796,9 @@ function RepoShortcutsCard() {
 }
 
 const SHORTCUTS: Array<[string, string[]]> = [
-  ['Command palette', ['mod', 'K / P']],
+  ['Command palette', ['mod', 'K']],
+  ['Switch to a recent repository', ['mod', 'P']],
+  ['Open a repository in a new tab', ['mod', 'T']],
   ['Toggle terminal', ['mod', '`']],
   ['Toggle sidebar', ['mod', 'B']],
   ['Undo / redo operation', ['mod', 'Z / ⇧Z']],

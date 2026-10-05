@@ -14,6 +14,7 @@ import { Sidebar } from '@/features/sidebar/Sidebar';
 import { CommitGraph } from '@/features/graph/CommitGraph';
 import { InteractiveRebaseDialog } from '@/features/graph/InteractiveRebaseDialog';
 import { DiffPanel } from '@/features/diff/DiffPanel';
+import { AllChangesView } from '@/features/diff/AllChangesView';
 import { EditorPanel, editorCloseShortcut } from '@/features/editor/EditorPanel';
 import { commitShortcut } from '@/features/commit/WorkingCopyPanel';
 import { FileHistoryPanel } from '@/features/history/FileHistoryPanel';
@@ -97,6 +98,7 @@ export function RepositoryPage() {
   const terminalOpen = useUi((s) => s.terminalOpen);
   const conflictFile = useUi((s) => s.conflictFile);
   const centerDiff = useUi((s) => s.centerDiff);
+  const diffLayout = useUi((s) => s.diffLayout);
   const centerEditor = useUi((s) => s.centerEditor);
   const centerFileHistory = useUi((s) => s.centerFileHistory);
   const closeCenterDiff = useUi((s) => s.closeCenterDiff);
@@ -242,7 +244,6 @@ export function RepositoryPage() {
   const shortcuts = useMemo(
     () => [
       { combo: 'mod+k', handler: () => setPaletteOpen(true) },
-      { combo: 'mod+p', handler: () => setPaletteOpen(true) },
       { combo: 'mod+`', handler: () => toggleTerminal() },
       { combo: 'mod+b', handler: () => toggleSidebar() },
       {
@@ -387,7 +388,11 @@ export function RepositoryPage() {
                 {centerEditor ? (
                   <EditorPanel key={centerEditor} file={centerEditor} />
                 ) : centerDiff ? (
-                  <DiffPanel target={centerDiff} />
+                  diffLayout === 'all' && centerDiff.oid && !centerDiff.unchanged ? (
+                    <AllChangesView key={centerDiff.oid} target={{ ...centerDiff, oid: centerDiff.oid }} />
+                  ) : (
+                    <DiffPanel target={centerDiff} />
+                  )
                 ) : (
                   centerFileHistory && (
                     <FileHistoryPanel key={centerFileHistory} file={centerFileHistory} />

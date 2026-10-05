@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { CommitFileInfo } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
 
 export type ChangeMarkTone = 'info' | 'success' | 'danger' | 'primary' | 'neutral';
@@ -36,3 +37,13 @@ export function ChangeMark({
     </span>
   );
 }
+
+export const statusMeta: Record<
+  CommitFileInfo['status'],
+  { label: string; mark: string; className: string; tone: 'info' | 'success' | 'danger' | 'primary' }
+> = {
+  modified: { label: 'modified', mark: 'M', className: 'text-info', tone: 'info' },
+  new: { label: 'added', mark: 'A', className: 'text-success', tone: 'success' },
+  deleted: { label: 'deleted', mark: 'D', className: 'text-danger', tone: 'danger' },
+  renamed: { label: 'renamed', mark: 'R', className: 'text-primary', tone: 'primary' },
+};

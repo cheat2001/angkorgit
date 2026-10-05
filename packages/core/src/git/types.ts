@@ -45,6 +45,17 @@ export interface RecentRepository {
   lastOpenedAt: number;
 }
 
+export interface ScannedRepository {
+  path: string;
+  name: string;
+  isWorktree: boolean;
+}
+
+export interface RepositoryScan {
+  repositories: ScannedRepository[];
+  truncated: boolean;
+}
+
 export interface Signature {
   name: string;
   email: string;

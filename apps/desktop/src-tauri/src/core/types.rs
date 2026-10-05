@@ -49,6 +49,21 @@ pub struct RecentRepository {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct ScannedRepository {
+    pub path: String,
+    pub name: String,
+    pub is_worktree: bool,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryScan {
+    pub repositories: Vec<ScannedRepository>,
+    pub truncated: bool,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct SignatureInfo {
     pub name: String,
     pub email: String,

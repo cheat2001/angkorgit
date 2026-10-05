@@ -53,7 +53,8 @@ export function CreateWorktreeDialog() {
     !('repoPath' in rawContext) &&
     !('paths' in rawContext) &&
     !('section' in rawContext) &&
-    !('url' in rawContext)
+    !('url' in rawContext) &&
+    !('scanRoot' in rawContext)
       ? rawContext
       : null;
 

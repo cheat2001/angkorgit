@@ -44,6 +44,7 @@ pub mod test_api {
     pub use crate::core::repo::{
         cleanup_state, discover, info as repo_info, init, ref_fingerprint, set_config, status,
     };
+    pub use crate::core::scan::{scan as scan_repositories, SCAN_MAX_DEPTH};
     pub use crate::core::stage::{
         discard_all, discard_line, discard_staged_all, discard_staged_file, stage_all, stage_file,
         stage_hunk, stage_line, unstage_all, unstage_file, unstage_hunk, unstage_line,
@@ -122,6 +123,8 @@ pub fn run() {
             commands::repo_clone,
             commands::recent_repositories,
             commands::recent_remove,
+            commands::recent_add_many,
+            commands::repositories_scan,
             commands::config_get,
             commands::config_set,
             commands::stage_file,

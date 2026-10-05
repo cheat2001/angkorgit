@@ -18,6 +18,7 @@ import {
   Copy,
   FolderGit2,
   FolderOpen,
+  FolderSearch,
   FolderTree,
   GitBranchPlus,
   MoreHorizontal,
@@ -58,6 +59,7 @@ import { RepoShortcutDialog } from './RepoShortcutDialog';
 import { RepoGroupDialog } from './RepoGroupDialog';
 import { GroupDot, GroupTile, RepoGroupSubmenu } from './RepoGroupMenu';
 import { closeRepoGroup, deleteRepoGroup, openRepoGroup } from './groups';
+import { ScanRepositoriesDialog, startRepositoryScan } from './ScanRepositoriesDialog';
 import { SettingsDialog } from '@/features/settings/SettingsDialog';
 import { SettingEmpty } from '@/features/settings/SettingCard';
 import { isMac, shortenHome, timeAgo } from '@/shared/utils';
@@ -500,17 +502,31 @@ export function WelcomePage() {
               </div>
               </>
             )}
+            <Hint label="Scan a folder for repositories">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={cn(recents.length === 0 && 'ml-auto')}
+                onClick={() => void startRepositoryScan()}
+                aria-label="Scan a folder for repositories"
+              >
+                <FolderSearch className="size-3.5" />
+              </Button>
+            </Hint>
           </div>
           <div className={cn('overflow-y-auto p-2', hasGroups ? 'max-h-96' : 'max-h-72')}>
             {recents.length === 0 ? (
               <SettingEmpty
                 icon={<FolderGit2 className="size-4" />}
                 title="No repositories yet"
-                description="Open a folder that already has a .git directory, or clone one from a URL. Everything you open shows up here."
+                description="Open a folder that already has a .git directory, scan a folder full of them, or clone one from a URL. Everything you open shows up here."
                 action={
                   <span className="flex gap-2">
                     <Button variant="secondary" size="sm" onClick={browse}>
                       <FolderOpen className="size-3.5" /> Open
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => void startRepositoryScan()}>
+                      <FolderSearch className="size-3.5" /> Scan
                     </Button>
                     <Button variant="secondary" size="sm" onClick={() => openDialog('clone')}>
                       <GitBranchPlus className="size-3.5" /> Clone
@@ -654,6 +670,7 @@ export function WelcomePage() {
       <SettingsDialog />
       <RepoShortcutDialog />
       <RepoGroupDialog />
+      <ScanRepositoriesDialog />
     </motion.div>
   );
 }

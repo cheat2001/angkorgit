@@ -16,6 +16,7 @@ import type {
   HttpResponse,
   RebaseTodoEntry,
   RecentRepository,
+  RepositoryScan,
   RemoteInfo,
   RepositoryInfo,
   StashInfo,
@@ -157,6 +158,14 @@ export const ipc = {
   async recentRepositories(): Promise<RecentRepository[]> {
     if (!isTauri()) return demo.demoRecents;
     return invoke('recent_repositories');
+  },
+  async addRecents(paths: string[]): Promise<RecentRepository[]> {
+    if (!isTauri()) return demo.demoAddRecents(paths);
+    return invoke('recent_add_many', { paths });
+  },
+  async scanRepositories(root: string): Promise<RepositoryScan> {
+    if (!isTauri()) return demo.demoScan(root);
+    return invoke('repositories_scan', { root });
   },
   async removeRecent(path: string): Promise<RecentRepository[]> {
     if (!isTauri()) return demo.demoRecents.filter((r) => r.path !== path);

@@ -57,7 +57,7 @@ import { useSettings } from '@/features/settings/store';
 import { openInEditor, preferredEditor, useEditors } from '@/features/settings/editors';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { AiResultPanel } from '@/features/ai/AiResultPanel';
-import { ChangeMark } from '@/components/ChangeMark';
+import { ChangeMark, statusMeta } from '@/components/ChangeMark';
 import { DirName } from '@/components/DirName';
 import { EXPLAIN_WAIT_MESSAGES, REVIEW_WAIT_MESSAGES } from '@/features/ai/waitMessages';
 import { commitReviewKeyFor, explainKeyFor, useAiWork } from '@/features/ai/workStore';
@@ -84,15 +84,6 @@ type ChangeKind = CommitFileInfo['status'];
 const VIRTUAL_FILE_THRESHOLD = 200;
 const FILE_ROW_HEIGHT = 34;
 
-const statusMeta: Record<
-  CommitFileInfo['status'],
-  { label: string; mark: string; className: string; tone: 'info' | 'success' | 'danger' | 'primary' }
-> = {
-  modified: { label: 'modified', mark: 'M', className: 'text-info', tone: 'info' },
-  new: { label: 'added', mark: 'A', className: 'text-success', tone: 'success' },
-  deleted: { label: 'deleted', mark: 'D', className: 'text-danger', tone: 'danger' },
-  renamed: { label: 'renamed', mark: 'R', className: 'text-primary', tone: 'primary' },
-};
 
 function ChangeFilter({
   diffs,

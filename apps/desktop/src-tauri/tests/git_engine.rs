@@ -2808,3 +2808,55 @@ fn file_contents_reads_a_file_at_a_commit_and_in_the_working_copy_as_context_lin
     assert!(binary.is_binary);
     assert!(binary.hunks.is_empty());
 }
+
+#[test]
+fn scan_finds_every_repository_and_skips_noise() {
+    let root = std::env::temp_dir().join(format!(
+        "angkorgit-scan-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let make = |rel: &str| {
+        let dir = root.join(rel);
+        std::fs::create_dir_all(&dir).unwrap();
+        core::init(dir.to_str().unwrap()).unwrap();
+    };
+    make("alpha");
+    make("alpha/inner");
+    make("group/beta");
+    make("node_modules/pkg");
+    make(".cache/hidden");
+    make("a/b/c/d/e/f/deep");
+    make(&format!("{}/too-deep", "x/".repeat(core::SCAN_MAX_DEPTH)));
+    std::fs::create_dir_all(root.join("plain/folder")).unwrap();
+    std::fs::create_dir_all(root.join("fake/.git")).unwrap();
+
+    let scan = core::scan_repositories(root.to_str().unwrap(), core::SCAN_MAX_DEPTH).unwrap();
+    let names: Vec<&str> = scan.repositories.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(names, ["deep", "alpha", "inner", "beta"]);
+    assert!(!scan.truncated);
+    assert!(scan.repositories.iter().all(|r| !r.is_worktree));
+    let alpha = &scan.repositories[1];
+    assert_eq!(
+        std::fs::canonicalize(&alpha.path).unwrap(),
+        std::fs::canonicalize(root.join("alpha")).unwrap()
+    );
+    assert_eq!(alpha.path, core::discover(&alpha.path).unwrap());
+
+    let shallow = core::scan_repositories(root.to_str().unwrap(), 1).unwrap();
+    assert_eq!(shallow.repositories.len(), 1);
+
+    let itself = core::scan_repositories(root.join("alpha").to_str().unwrap(), 4).unwrap();
+    let names: Vec<&str> = itself
+        .repositories
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect();
+    assert_eq!(names, ["alpha", "inner"]);
+
+    assert!(core::scan_repositories(root.join("missing").to_str().unwrap(), 4).is_err());
+    let _ = std::fs::remove_dir_all(&root);
+}
