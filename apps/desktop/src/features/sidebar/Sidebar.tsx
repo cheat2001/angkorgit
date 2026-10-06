@@ -191,7 +191,7 @@ function Section({
           <span className="min-w-0 flex-1 truncate text-left">{title}</span>
         </button>
         {action && (
-          <span className="flex w-0 items-center overflow-hidden group-hover:w-auto group-focus-within:w-auto">
+          <span className="flex w-0 min-w-0 items-center overflow-hidden group-hover:w-auto group-focus-within:w-auto">
             {action}
           </span>
         )}

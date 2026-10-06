@@ -1614,8 +1614,9 @@ test('the remotes section offers Add remote and opens the add dialog', async ({ 
   const remotesSection = page.locator('[data-sidebar-section-header]').filter({
     has: page.getByRole('button', { name: /^Remotes/ }),
   });
-  await remotesSection.hover();
-  await remotesSection.getByRole('button', { name: 'Add remote', exact: true }).click();
+  const addRemote = remotesSection.getByRole('button', { name: 'Add remote', exact: true });
+  await addRemote.focus();
+  await addRemote.click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'Add remote' })).toBeVisible();
   await expect(dialog.getByPlaceholder('upstream')).toBeVisible();
