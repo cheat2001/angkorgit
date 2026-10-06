@@ -22,7 +22,7 @@ export function PaneEmpty({
       )}
     >
       <div className="relative flex max-w-[16rem] flex-col items-center gap-3 text-center">
-        <span aria-hidden className="rounded-lg bg-plate p-2.5 text-primary [&_svg]:size-5">
+        <span aria-hidden className="rounded-lg bg-primary/15 p-2.5 text-primary [&_svg]:size-5">
           {icon}
         </span>
         <div>

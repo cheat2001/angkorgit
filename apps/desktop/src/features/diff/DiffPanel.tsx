@@ -124,8 +124,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const path = repo?.path ?? '';
   const isWorkingCopy = target.oid === undefined;
   const blankText = !!diff && !diff.isBinary && !diff.isImage && diff.hunks.length === 0;
-  const whitespaceOnly =
-    ignoreWhitespace && !target.unchanged && (blankText || (!diff && !isWorkingCopy));
+  const whitespaceOnly = ignoreWhitespace && !target.unchanged && blankText;
   const emptyFile =
     !!diff &&
     !!target.unchanged &&
@@ -155,7 +154,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         result.deletions === 0 &&
         !result.isBinary &&
         !result.isImage;
-      return untouched ? null : result;
+      return untouched && !ignore ? null : result;
     }
     return ipc.diffFile(path, target.path, target.staged ?? false, contextLines, ignore);
   };
