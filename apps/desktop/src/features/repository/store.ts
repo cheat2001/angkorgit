@@ -113,7 +113,7 @@ export const useRepo = create<RepoState>((set, get) => ({
       .catch(() => undefined);
     void import('@/features/ui/store').then(({ useUi }) => {
       useUi.getState().addRepoTab(repo.path);
-      useUi.getState().markWorktreeTab(repo.path, repo.isWorktree);
+      useUi.getState().markWorktreeTab(repo.path, repo.isWorktree, repo.mainPath);
     });
     try {
       await get().refresh();

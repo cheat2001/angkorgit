@@ -338,7 +338,7 @@ pub fn file_history(path: &str, file: &str, limit: usize, skip: usize) -> AppRes
         };
         let current = blob_of(&commit);
         let parent_commit = commit.parent(0).ok();
-        let parent = parent_commit.as_ref().and_then(&blob_of);
+        let parent = parent_commit.as_ref().and_then(blob_of);
         let changed = match (current, parent) {
             (Some(c), Some(p)) => c != p,
             (Some(_), None) => true, // added here (or root commit)

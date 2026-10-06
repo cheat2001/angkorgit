@@ -1,0 +1,126 @@
+---
+import Page from '../../layouts/Page.astro';
+import { SITE } from '../../lib/site';
+
+const roles = [
+  {
+    role: 'Author',
+    who: 'Chansocheat Sok (cheat2001) and the contributors whose pull requests are merged',
+    does: 'writes the code and opens pull requests.',
+  },
+  {
+    role: 'Reviewer',
+    who: 'Chansocheat Sok (cheat2001)',
+    does: 'reviews every change before it lands on main. Contributor pull requests are squashed under the contributor’s name after review.',
+  },
+  {
+    role: 'Approver',
+    who: 'Chansocheat Sok (cheat2001)',
+    does: 'tags the release, publishes it and approves the signing request for each release.',
+  },
+];
+---
+
+<Page
+  title="AngKorGit code signing policy"
+  description="How AngKorGit release builds are produced, signed and verified, who approves them, and what the app sends over the network. Free code signing provided by SignPath.io, certificate by SignPath Foundation."
+  kicker="Code signing policy"
+  heading="Where the <em>build</em> comes from."
+  crumbs={[{ href: '/code-signing/', label: 'Code signing policy' }]}
+>
+  <Fragment slot="intro">
+    <p>
+      Every AngKorGit release is built by GitHub Actions from a tag on the public repository. Nothing is built on a
+      laptop and uploaded by hand. This page is the code signing policy for those builds: who is allowed to produce
+      them, how the Windows installer gets its signature, and what the app does with your data once it is running.
+    </p>
+    <p>Free code signing provided by <a href="https://signpath.io" class="link-underline text-foreground">SignPath.io</a>, certificate by <a href="https://signpath.org" class="link-underline text-foreground">SignPath Foundation</a>.</p>
+  </Fragment>
+
+  <section class="mt-14 max-w-3xl space-y-4 text-[17px] leading-relaxed text-muted">
+    <h2 class="display text-3xl text-foreground">How a release is built</h2>
+    <p>
+      A release starts as a <code>v*</code> tag on <code>main</code>. The
+      <a href={`${SITE.repo}/blob/main/.github/workflows/release.yml`} class="link-underline text-foreground">release workflow</a>
+      checks out that tag, installs the pinned dependencies from the lockfiles, runs the Tauri bundler on macOS, Windows
+      and Linux runners, and attaches the result to a draft GitHub release. The workflow file is part of the repository,
+      so the build steps are reviewed like any other change.
+    </p>
+    <p>
+      The Windows installer and <code>.msi</code> are then submitted to SignPath from inside that same workflow run.
+      SignPath checks that the artifact came from a GitHub Actions run of this repository before it signs anything, and
+      the signing request waits for a manual approval. Only after the signed files come back does the release get
+      published. Updates the app downloads for itself carry a second signature, a minisign key held by the maintainer,
+      which the updater verifies before it installs anything.
+    </p>
+    <p>
+      The signed binaries are built only from this repository&rsquo;s own source and build scripts. Third party crates
+      and npm packages are compiled in, unmodified, from the versions in the lockfiles.
+    </p>
+  </section>
+
+  <section class="mt-14 max-w-3xl">
+    <h2 class="display text-3xl text-foreground">Who does what</h2>
+    <p class="mt-4 text-[17px] leading-relaxed text-muted">
+      AngKorGit is maintained by one person, so the three roles below are mostly the same account. Each one still has
+      its own job, and two factor authentication is required on GitHub and on SignPath for anyone holding a role.
+    </p>
+    <dl class="mt-8 divide-y divide-border-subtle rounded-lg border border-border-subtle bg-surface">
+      {
+        roles.map((r) => (
+          <div class="grid gap-2 p-5 sm:grid-cols-[8rem_1fr]">
+            <dt class="font-mono text-xs uppercase tracking-[0.14em] text-primary">{r.role}</dt>
+            <dd class="text-[15px] leading-relaxed text-muted">
+              <span class="text-foreground">{r.who}</span> {r.does}
+            </dd>
+          </div>
+        ))
+      }
+    </dl>
+  </section>
+
+  <section class="mt-14 max-w-3xl space-y-4 text-[17px] leading-relaxed text-muted">
+    <h2 class="display text-3xl text-foreground">Checking a download</h2>
+    <p>
+      On Windows, right click the installer, open Properties and the Digital Signatures tab. The signer reads
+      SignPath Foundation. On every platform, the
+      <a href={SITE.releases} class="link-underline text-foreground">releases page</a> is the only place builds are
+      published, and the Homebrew cask pins the SHA-256 of the macOS disk image. If a download looks wrong, do not run
+      it, and <a href={SITE.security} class="link-underline text-foreground">report it</a>.
+    </p>
+    <p>
+      Releases before the first signed one are unsigned. They were built by the same workflow, but Windows cannot tell,
+      which is why SmartScreen calls the publisher unknown on those versions.
+    </p>
+  </section>
+
+  <section class="mt-14 max-w-3xl space-y-4 text-[17px] leading-relaxed text-muted">
+    <h2 class="display text-3xl text-foreground">Privacy</h2>
+    <p>
+      AngKorGit has no telemetry and no analytics. It never phones home, there is no account, and nothing you do in the
+      app is reported anywhere. The program does connect to other systems, but only the ones you point it at:
+    </p>
+    <ul class="list-disc space-y-2 pl-6">
+      <li>The Git remotes of the repositories you open, for fetch, pull, push and clone.</li>
+      <li>GitHub, GitLab or Bitbucket, only after you connect an account in Settings, for pull requests and avatars.</li>
+      <li>Gravatar, to look up commit author avatars by a hash of the email address.</li>
+      <li>The AI provider you choose in Settings, and only the text of the change you ask it about. Nothing is sent until you click.</li>
+      <li>GitHub Releases, shortly after launch, to ask whether a newer signed build exists.</li>
+    </ul>
+    <p>
+      Account tokens and AI provider keys live in your operating system keychain. Settings and recent repositories
+      stay on your machine. The full list of what the app touches, and how to report a security problem, is in
+      <a href={SITE.security} class="link-underline text-foreground">SECURITY.md</a>.
+    </p>
+  </section>
+
+  <section class="mt-14 max-w-3xl space-y-4 text-[17px] leading-relaxed text-muted">
+    <h2 class="display text-3xl text-foreground">Installing and removing</h2>
+    <p>
+      The installers change nothing outside their own install folder and the usual shortcuts. The optional command
+      line tool, added from Settings, puts a small shim on your PATH and says where. Uninstall through the same channel
+      you installed with: the Windows uninstaller, dragging the app out of Applications, Homebrew, or your Linux
+      package manager, and the shim is removed from Settings.
+    </p>
+  </section>
+</Page>

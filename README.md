@@ -122,13 +122,13 @@ Grab the file for your platform from the [releases page](https://github.com/chea
 brew install --cask cheat2001/tap/angkorgit
 
 # macOS, direct download
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.20.0/AngKorGit_0.20.0_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.21.1/AngKorGit_0.21.1_universal.dmg -o ~/Downloads/AngKorGit.dmg && xattr -cr ~/Downloads/AngKorGit.dmg && open ~/Downloads/AngKorGit.dmg
 
 # Windows (PowerShell)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.20.0/AngKorGit_0.20.0_x64-setup.exe -o "$env:TEMP\AngKorGit-setup.exe"; Start-Process "$env:TEMP\AngKorGit-setup.exe"
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.21.1/AngKorGit_0.21.1_x64-setup.exe -o "$env:TEMP\AngKorGit-setup.exe"; Start-Process "$env:TEMP\AngKorGit-setup.exe"
 
 # Linux (AppImage)
-curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.20.0/AngKorGit_0.20.0_amd64.AppImage -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage
+curl -L https://github.com/cheat2001/angkorgit/releases/download/v0.21.1/AngKorGit_0.21.1_amd64.AppImage -o ~/Downloads/AngKorGit.AppImage && chmod +x ~/Downloads/AngKorGit.AppImage && ~/Downloads/AngKorGit.AppImage
 ```
 
 The builds aren't signed with a paid certificate, so your OS asks once on first launch. After that the app updates itself, and every update is verified with a signature before it installs. All releases are built in public by GitHub Actions from this source tree. The full first-launch walkthrough is on the [getting started page](https://angkorgit.app/docs/getting-started/).

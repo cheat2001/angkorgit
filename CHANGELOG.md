@@ -9,6 +9,75 @@ All notable changes to AngKorGit are documented here. The format follows
 ### Changed
 - **Empty panes use one panel.** Diff blanks, a file with no history, an empty graph, a commit with no files, a welcome search with no matches, and an empty rebase plan use a centered panel (icon, title, one line) instead of a faint sentence. A staged whitespace-only file says those changes are still staged.
 
+## [0.21.1] — 2026-10-04
+
+A patch for the horizontal scrollbar that 0.21.0 introduced. On macOS it halved every
+trackpad pan and drew no thumb to grab, and dragging a text selection past the edge of
+the code did not pan the lines. All three are fixed; nothing else changes.
+
+### Fixed
+- Horizontal scrolling in a diff with long lines felt heavy and jittery since 0.21.0: the
+  new scrollbar echoed every position back into the pan, so a trackpad gesture moved the
+  code forward one frame and back the next and only about half of it landed. The pan now
+  ignores its own scrollbar echo, so the code follows the gesture pixel for pixel again.
+- The horizontal scrollbar under a long-line diff had no visible thumb on macOS, so there
+  was nothing to grab with a mouse. The bar now draws its own thumb: drag it, click the
+  track to page, or scroll over it, and it stays visible instead of fading out.
+- Selecting text in a long-line diff and dragging past the right edge of the code now pans
+  the lines along with the pointer and keeps extending the selection, the way an editor
+  does. Before, the drag stopped at the edge and nothing moved.
+
+## [0.21.0] — 2026-10-04
+
+The groups release. Repositories can be sorted into named groups, on the welcome page and
+in the tab strip, where each group gets a colour, a name and a collapse toggle so a dozen
+open tabs fold into three or four labels. ⌘W closes a tab. Long diff lines get a real
+horizontal scrollbar from a contributor, the commit box stops capitalising conventional
+prefixes, images other than PNG paint again in the diff, and the pull request dialog can
+push an unpushed branch itself.
+
+### Added
+- **Repository groups.** Repositories on the welcome page can be sorted into named
+  groups, such as Frontend, Backend, Work or Personal. Right-click a recent repository
+  or a tab and choose Add to group, or drag a repository onto a group. Each group is a
+  collapsible section with its own colour and a count, repositories outside any group
+  stay under Other, and nothing changes until the first group is created. A group's menu
+  opens every repository in it as tabs in one go, closes those tabs again, renames or
+  recolours it, or ungroups it without touching the repositories. The repository menu in
+  the toolbar lists repositories under their group, the palette offers Open all in and
+  Close all in for each group and finds repositories by group name, tab tooltips name the
+  group, and a worktree follows its main repository's group.
+- **Tab groups in the tab strip.** Open tabs cluster by group, each group marked by a
+  thin edge in its colour above the tabs and its name in small coloured type at the
+  front, while repositories outside any group stay plain. Click the name to collapse the
+  group to its name and a count, so a dozen open repositories fold into three or four
+  labels; the active tab always stays visible. Drag a tab into another group or onto its name to move the repository into
+  that group, or next to an ungrouped tab to take it out. Right-click the name to collapse or
+  expand the group, collapse every other group, open the rest of its repositories,
+  close its tabs, edit it or ungroup it. ⌘1 to ⌘9 and ⌘⇧[ / ⌘⇧] follow the order on screen. Groups
+  keep the order you give them: drag a group's name onto another group in the strip, or drag a
+  group header on the welcome page (its menu has Move up and Move down too), and every
+  list follows.
+- **⌘W closes the current tab** (Ctrl+W on Windows and Linux), the way browsers and
+  GitKraken do. Closing the last tab returns to the welcome page. Inside the terminal the
+  keys still reach the shell.
+- **A tab strip that stays readable.** Thin separators sit between neighbouring tabs and
+  step aside next to the active one, and once tabs overflow the window a list button appears at the end of the strip with
+  every open tab by group, so a tab that scrolled out of view is one click away.
+
+### Fixed
+- Long diff lines can be reached with a horizontal scrollbar or Shift+mouse-wheel in
+  inline and side-by-side views, including changes opened from a selected commit. The
+  scrollbar stays visible while scrolling vertically.
+- Typing a conventional prefix such as `fix:` in the commit summary no longer comes back
+  as `Fix:` from the field's automatic capitalisation. Spell check stays on.
+- JPEG, GIF, WebP, BMP, ICO and AVIF images in a diff painted blank, because every
+  non-SVG image was sent to the webview as `image/png`. Each extension now gets its own
+  media type. (#51)
+- The pull request dialog could be filled out on a branch that was never pushed, only to
+  find Create disabled at the end. The note now carries a Push button that pushes the
+  branch with its upstream and enables Create, keeping the title and description. (#54)
+
 ## [0.20.0] — 2026-09-30
 
 The keyboard release. → walks through the changes of an open diff, ⌘1 to ⌘9 and
@@ -1563,7 +1632,9 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.21.1...HEAD
+[0.21.1]: https://github.com/cheat2001/angkorgit/compare/v0.21.0...v0.21.1
+[0.21.0]: https://github.com/cheat2001/angkorgit/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/cheat2001/angkorgit/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/cheat2001/angkorgit/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/cheat2001/angkorgit/compare/v0.17.0...v0.18.0

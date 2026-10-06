@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { chordLabels, parseChordId } from '@angkorgit/core';
+import { useEffect, useMemo, useState } from 'react';
+import { chordLabels, groupRepos, parseChordId, type RecentRepository } from '@angkorgit/core';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
@@ -48,6 +48,7 @@ import {
 import { ipc, pickDirectory } from '@/core/ipc';
 import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
+import { GroupDot } from '@/features/repository/RepoGroupMenu';
 import { fetchRemotes, fetchResultMessage } from '@/features/repository/fetchRemotes';
 import { abortMergeFlow } from '@/features/repository/merge';
 import { sidebarVisible, useUi } from '@/features/ui/store';
@@ -65,8 +66,12 @@ function RepoSwitcher() {
   const openDialog = useUi((s) => s.openDialog);
   const profiles = useSettings((s) => s.profiles);
   const shortcuts = useSettings((s) => s.repoShortcuts);
+  const groups = useSettings((s) => s.repoGroups);
+  const groupOf = useSettings((s) => s.repoGroupOf);
+  const worktreeMains = useUi((s) => s.worktreeMains);
   const profileId = useRepo((s) => s.profileId);
   const [activeEmail, setActiveEmail] = useState('');
+  const grouped = useMemo(() => groupRepos(recents, groups, groupOf, worktreeMains), [recents, groups, groupOf, worktreeMains]);
 
   useEffect(() => {
     if (!repo?.path) return;
@@ -100,6 +105,27 @@ function RepoSwitcher() {
     }
   };
 
+  const renderRecent = (recent: RecentRepository) => {
+    const isCurrent = recent.path === repo.path;
+    const chord = shortcuts[recent.path] ? parseChordId(shortcuts[recent.path]) : null;
+    return (
+      <DropdownMenuItem key={recent.path} onClick={() => void switchTo(recent.path)}>
+        {isCurrent ? <Check className="text-primary" /> : <FolderGit2 />}
+        <span className="min-w-0 flex-1">
+          <span className={cn('block truncate', isCurrent && 'text-primary')}>{recent.name}</span>
+          <span className="block truncate font-mono text-[10px] text-faint">{recent.path}</span>
+        </span>
+        {chord && (
+          <span className="flex shrink-0 items-center gap-0.5">
+            {chordLabels(chord, isMac).map((label, index) => (
+              <Kbd key={index}>{label}</Kbd>
+            ))}
+          </span>
+        )}
+      </DropdownMenuItem>
+    );
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -129,28 +155,29 @@ function RepoSwitcher() {
         align="start"
         className="flex max-h-[min(70vh,var(--radix-dropdown-menu-content-available-height))] min-w-72 flex-col"
       >
-        <DropdownMenuLabel>Repositories</DropdownMenuLabel>
+        {groups.length === 0 && <DropdownMenuLabel>Repositories</DropdownMenuLabel>}
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {recents.map((recent) => {
-            const isCurrent = recent.path === repo.path;
-            const chord = shortcuts[recent.path] ? parseChordId(shortcuts[recent.path]) : null;
-            return (
-              <DropdownMenuItem key={recent.path} onClick={() => void switchTo(recent.path)}>
-                {isCurrent ? <Check className="text-primary" /> : <FolderGit2 />}
-                <span className="min-w-0 flex-1">
-                  <span className={cn('block truncate', isCurrent && 'text-primary')}>{recent.name}</span>
-                  <span className="block truncate font-mono text-[10px] text-faint">{recent.path}</span>
-                </span>
-                {chord && (
-                  <span className="flex shrink-0 items-center gap-0.5">
-                    {chordLabels(chord, isMac).map((label, index) => (
-                      <Kbd key={index}>{label}</Kbd>
-                    ))}
-                  </span>
-                )}
-              </DropdownMenuItem>
-            );
-          })}
+          {groups.length === 0
+            ? recents.map(renderRecent)
+            : [
+                ...grouped.sections
+                  .filter((section) => section.repos.length > 0)
+                  .map((section) => (
+                    <div key={section.group.id} data-switcher-group={section.group.name}>
+                      <DropdownMenuLabel className="flex items-center gap-1.5">
+                        <GroupDot color={section.group.color} className="-ml-1" />
+                        <span className="truncate">{section.group.name}</span>
+                      </DropdownMenuLabel>
+                      {section.repos.map(renderRecent)}
+                    </div>
+                  )),
+                grouped.ungrouped.length > 0 && (
+                  <div key="ungrouped" data-switcher-group="Other">
+                    <DropdownMenuLabel>Other</DropdownMenuLabel>
+                    {grouped.ungrouped.map(renderRecent)}
+                  </div>
+                ),
+              ]}
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem

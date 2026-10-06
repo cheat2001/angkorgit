@@ -17,6 +17,7 @@ import {
   FolderGit2,
   FolderOpen,
   FolderTree,
+  Folders,
   GitBranchPlus,
   GitPullRequest,
   Globe,
@@ -48,13 +49,18 @@ import { installCliTool } from '@/features/settings/cliTool';
 import { openInEditor, preferredEditor, useEditors } from '@/features/settings/editors';
 import { useUndo } from '@/features/history/undoStore';
 import { useForge } from '@/features/forge/store';
-import { chordLabels, forgeNoun, parseChordId, pickForgeRemote, remoteWebUrl } from '@angkorgit/core';
+import { chordLabels, forgeNoun, groupRepos, parseChordId, pickForgeRemote, remoteWebUrl, repoGroupIdFor } from '@angkorgit/core';
+import { closeRepoGroup, openRepoGroup, plural } from '@/features/repository/groups';
 import { currentPullRequestUrl, isMac, modKey } from '@/shared/utils';
 
 export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const repo = useRepo((s) => s.repo);
   const editorId = useSettings((s) => s.editorId);
   const repoShortcuts = useSettings((s) => s.repoShortcuts);
+  const repoGroups = useSettings((s) => s.repoGroups);
+  const repoGroupOf = useSettings((s) => s.repoGroupOf);
+  const worktreeMains = useUi((s) => s.worktreeMains);
+  const repoTabs = useUi((s) => s.repoTabs);
   const { editors } = useEditors();
   const editor = preferredEditor(editors, editorId);
   const branches = useRepo((s) => s.branches);
@@ -85,6 +91,14 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
   const remote = remotes[0]?.name ?? 'origin';
   const locals = useMemo(() => branches.filter((b) => !b.isRemote && !b.isHead), [branches]);
   const otherRepos = useMemo(() => recents.filter((r) => r.path !== path).slice(0, 8), [recents, path]);
+  const groupSections = useMemo(
+    () => groupRepos(recents, repoGroups, repoGroupOf, worktreeMains).sections.filter((s) => s.repos.length > 0),
+    [recents, repoGroups, repoGroupOf, worktreeMains],
+  );
+  const groupNameOf = (repoPath: string): string | undefined => {
+    const id = repoGroupIdFor(repoPath, repoGroupOf, worktreeMains);
+    return id ? repoGroups.find((g) => g.id === id)?.name : undefined;
+  };
   const nextUndo = useMemo(() => [...undoStack].reverse().find((e) => e.repoPath === path), [undoStack, path]);
   const nextRedo = useMemo(() => [...redoStack].reverse().find((e) => e.repoPath === path), [redoStack, path]);
 
@@ -459,6 +473,41 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
           </Command.Group>
         )}
 
+        {groupSections.length > 0 && (
+          <Command.Group heading="Repository groups">
+            {groupSections.map((section) => {
+              const paths = section.repos.map((r) => r.path);
+              const openCount = paths.filter((p) => repoTabs.includes(p)).length;
+              return [
+                <PaletteItem
+                  key={`open:${section.group.id}`}
+                  icon={<Folders />}
+                  label={`Open all in ${section.group.name}`}
+                  detail={plural(paths.length, 'repository')}
+                  keywords={[section.group.name, 'group', 'tabs']}
+                  onSelect={() => {
+                    close();
+                    void openRepoGroup(section.group, paths);
+                  }}
+                />,
+                openCount > 0 && (
+                  <PaletteItem
+                    key={`close:${section.group.id}`}
+                    icon={<Folders />}
+                    label={`Close all in ${section.group.name}`}
+                    detail={`${openCount} open`}
+                    keywords={[section.group.name, 'group', 'tabs']}
+                    onSelect={() => {
+                      close();
+                      closeRepoGroup(section.group, paths);
+                    }}
+                  />
+                ),
+              ];
+            })}
+          </Command.Group>
+        )}
+
         {otherRepos.length > 0 && (
           <Command.Group heading="Switch repository">
             {otherRepos.map((recent) => (
@@ -466,6 +515,8 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
                 key={recent.path}
                 icon={<FolderGit2 />}
                 label={recent.name}
+                detail={groupNameOf(recent.path)}
+                keywords={groupNameOf(recent.path) ? [groupNameOf(recent.path)!] : undefined}
                 keys={repoShortcuts[recent.path] ? chordLabels(parseChordId(repoShortcuts[recent.path])!, isMac) : undefined}
                 onSelect={() => {
                   close();
@@ -623,23 +674,31 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
 function PaletteItem({
   icon,
   label,
+  detail,
   shortcut,
   keys,
+  keywords,
   onSelect,
 }: {
   icon: React.ReactNode;
   label: string;
+  detail?: string;
   shortcut?: string;
   keys?: string[];
+  keywords?: string[];
   onSelect: () => void;
 }) {
   return (
     <Command.Item
       onSelect={onSelect}
+      keywords={keywords}
       className="flex cursor-default select-none items-center gap-2.5 rounded-md px-2 py-2 text-sm text-foreground data-[selected=true]:bg-surface-raised [&_svg]:size-4 [&_svg]:text-muted"
     >
       {icon}
-      <span className="flex-1">{label}</span>
+      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <span className="truncate">{label}</span>
+        {detail && <span className="shrink-0 text-xs text-faint">{detail}</span>}
+      </span>
       {shortcut && (
         <span className="flex items-center gap-0.5">
           <Kbd>{modKey()}</Kbd>

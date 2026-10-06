@@ -33,6 +33,7 @@ export type DialogKind =
   | 'cherryPick'
   | 'createWorktree'
   | 'repoShortcut'
+  | 'repoGroup'
   | null;
 
 export interface CenterDiffTarget {
@@ -77,6 +78,11 @@ export interface RepoShortcutPreset {
   repoPath: string;
 }
 
+export interface RepoGroupPreset {
+  groupId: string | null;
+  repoPath: string | null;
+}
+
 export interface SettingsPreset {
   section: 'appearance' | 'git' | 'accounts' | 'ai' | 'shortcuts';
 }
@@ -90,6 +96,7 @@ export type DialogContext =
   | StashPreset
   | ClonePreset
   | RepoShortcutPreset
+  | RepoGroupPreset
   | null;
 
 interface UiState {
@@ -112,6 +119,9 @@ interface UiState {
   conflictFile: string | null;
   repoTabs: string[];
   worktreeTabs: string[];
+  worktreeMains: Record<string, string>;
+  repoGroupsCollapsed: Record<string, boolean>;
+  tabGroupsCollapsed: Record<string, boolean>;
   fileView: FileView;
   fileFilterOpen: boolean;
   fileFilterFocusSeq: number;
@@ -148,7 +158,10 @@ interface UiState {
   addRepoTab: (path: string) => void;
   closeRepoTab: (path: string) => void;
   moveRepoTab: (from: string, to: string) => void;
-  markWorktreeTab: (path: string, isWorktree: boolean) => void;
+  markWorktreeTab: (path: string, isWorktree: boolean, mainPath?: string | null) => void;
+  toggleRepoGroupCollapsed: (id: string) => void;
+  toggleTabGroupCollapsed: (id: string) => void;
+  setTabGroupsCollapsed: (patch: Record<string, boolean>) => void;
   setSidebarSection: (id: string, open: boolean) => void;
   collapseSidebarSections: (ids: readonly string[]) => void;
   setCommitBoxHeight: (height: number | null) => void;
@@ -202,6 +215,9 @@ export const useUi = create<UiState>()(
   conflictFile: null,
   repoTabs: [],
   worktreeTabs: [],
+  worktreeMains: {},
+  repoGroupsCollapsed: {},
+  tabGroupsCollapsed: {},
   fileView: 'list',
   fileFilterOpen: false,
   fileFilterFocusSeq: 0,
@@ -270,14 +286,28 @@ export const useUi = create<UiState>()(
       repoTabs.splice(toIdx, 0, from);
       return { repoTabs };
     }),
-  markWorktreeTab: (path, isWorktree) =>
+  markWorktreeTab: (path, isWorktree, mainPath = null) =>
     set((s) => {
       const has = s.worktreeTabs.includes(path);
-      if (has === isWorktree) return s;
+      const main = isWorktree && mainPath && mainPath !== path ? mainPath : null;
+      if (has === isWorktree && (s.worktreeMains[path] ?? null) === main) return s;
+      const worktreeMains = { ...s.worktreeMains };
+      if (main) worktreeMains[path] = main;
+      else delete worktreeMains[path];
       return {
-        worktreeTabs: isWorktree ? [...s.worktreeTabs, path] : s.worktreeTabs.filter((t) => t !== path),
+        worktreeTabs: isWorktree
+          ? has
+            ? s.worktreeTabs
+            : [...s.worktreeTabs, path]
+          : s.worktreeTabs.filter((t) => t !== path),
+        worktreeMains,
       };
     }),
+  toggleRepoGroupCollapsed: (id) =>
+    set((s) => ({ repoGroupsCollapsed: { ...s.repoGroupsCollapsed, [id]: !s.repoGroupsCollapsed[id] } })),
+  toggleTabGroupCollapsed: (id) =>
+    set((s) => ({ tabGroupsCollapsed: { ...s.tabGroupsCollapsed, [id]: !s.tabGroupsCollapsed[id] } })),
+  setTabGroupsCollapsed: (patch) => set((s) => ({ tabGroupsCollapsed: { ...s.tabGroupsCollapsed, ...patch } })),
   setSidebarSection: (id, open) =>
     set((s) => (s.sidebarSections[id] === open ? s : { sidebarSections: { ...s.sidebarSections, [id]: open } })),
   collapseSidebarSections: (ids) =>
@@ -318,6 +348,9 @@ export const useUi = create<UiState>()(
         wrapLines: state.wrapLines,
         repoTabs: state.repoTabs,
         worktreeTabs: state.worktreeTabs,
+        worktreeMains: state.worktreeMains,
+        repoGroupsCollapsed: state.repoGroupsCollapsed,
+        tabGroupsCollapsed: state.tabGroupsCollapsed,
         fileView: state.fileView,
         sidebarSections: state.sidebarSections,
         commitBoxHeight: state.commitBoxHeight,

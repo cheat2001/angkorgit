@@ -119,6 +119,7 @@ export const demoRecents: RecentRepository[] = [
   { path: '/Users/demo/projects/angkorgit', name: 'angkorgit', lastOpenedAt: 1754200000 },
   { path: '/Users/demo/projects/temple-ui', name: 'temple-ui', lastOpenedAt: 1754100000 },
   { path: '/Users/demo/work/api-gateway', name: 'api-gateway', lastOpenedAt: 1753900000 },
+  { path: '/Users/demo/work/billing-service', name: 'billing-service', lastOpenedAt: 1753800000 },
 ];
 
 export const demoFonts = [

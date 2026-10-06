@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { DiffLine } from '@angkorgit/core';
 import type { FlatRow } from './VirtualDiff';
+import { PANE_SELECTOR, panControllers } from './pan';
 
 interface Endpoint {
   layer: HTMLElement;
@@ -41,6 +42,8 @@ const START_SENTINEL = '[data-diff-sentinel="start"]';
 const END_SENTINEL = '[data-diff-sentinel="end"]';
 
 const readers = new WeakMap<HTMLElement, () => string | null>();
+const EDGE_PAN_MIN = 4;
+const EDGE_PAN_MAX = 40;
 
 export function diffSelectionText(scroller: HTMLElement | null): string | null {
   if (!scroller) return null;
@@ -155,15 +158,49 @@ function sameEndpoint(a: Endpoint, b: Endpoint): boolean {
   return a.layer === b.layer && a.row === b.row && a.offset === b.offset;
 }
 
-function pastEdge(root: HTMLElement, pointer: Point): boolean {
+function paneOf(layer: HTMLElement): HTMLElement {
+  return layer.closest<HTMLElement>(PANE_SELECTOR) ?? layer;
+}
+
+function pastVerticalEdge(root: HTMLElement, pointer: Point): boolean {
   const box = root.getBoundingClientRect();
   return pointer.y <= box.top || pointer.y >= box.bottom;
+}
+
+function horizontalOvershoot(layer: HTMLElement, root: HTMLElement, pointer: Point): number {
+  const box = root.getBoundingClientRect();
+  const pane = paneOf(layer).getBoundingClientRect();
+  const over = pointer.x < pane.left ? pointer.x - pane.left : pointer.x > pane.right ? pointer.x - pane.right : 0;
+  if (over === 0) return 0;
+  const y = Math.min(Math.max(pointer.y, box.top + 1), box.bottom - 1);
+  const under = document.elementFromPoint(pointer.x, y)?.closest<HTMLElement>(PANE_SELECTOR);
+  return under && under !== paneOf(layer) ? 0 : over;
+}
+
+function pastEdge(root: HTMLElement, layer: HTMLElement, pointer: Point): boolean {
+  return pastVerticalEdge(root, pointer) || horizontalOvershoot(layer, root, pointer) !== 0;
+}
+
+function caretEndpoint(layer: HTMLElement, root: HTMLElement, pointer: Point): Endpoint | null {
+  if (typeof document.caretRangeFromPoint !== 'function') return null;
+  const box = root.getBoundingClientRect();
+  const pane = paneOf(layer).getBoundingClientRect();
+  const x = Math.min(Math.max(pointer.x, pane.left + 1), pane.right - 1);
+  const y = Math.min(Math.max(pointer.y, box.top + 1), box.bottom - 1);
+  const range = document.caretRangeFromPoint(x, y);
+  if (!range) return null;
+  const located = locate(range.startContainer, range.startOffset, root);
+  return located.kind === 'row' && located.endpoint.layer === layer ? located.endpoint : null;
 }
 
 function edgeEndpoint(layer: HTMLElement, root: HTMLElement, pointer: Point): Endpoint | null {
   const box = root.getBoundingClientRect();
   const rowEls = Array.from(layer.querySelectorAll<HTMLElement>(ROW_SELECTOR));
   if (rowEls.length === 0) return null;
+  if (!pastVerticalEdge(root, pointer)) {
+    const caret = caretEndpoint(layer, root, pointer);
+    if (caret) return caret;
+  }
   const visible = rowEls.filter((el) => {
     const rect = el.getBoundingClientRect();
     return rect.bottom > box.top && rect.top < box.bottom;
@@ -243,7 +280,8 @@ export function useStableSelection(
       applied.current = null;
       return;
     }
-    const clamped = dragging.current && pointer.current !== null && pastEdge(root, pointer.current);
+    const clamped =
+      dragging.current && pointer.current !== null && pastEdge(root, selection.anchor.layer, pointer.current);
     if (clamped && pointer.current) {
       const focus = edgeEndpoint(selection.anchor.layer, root, pointer.current);
       if (focus && !sameEndpoint(selection.anchor, focus)) {
@@ -301,6 +339,7 @@ export function useStableSelection(
         if (!focus || sameEndpoint(anchor, focus)) return;
         logical.current = { anchor, focus };
         sync();
+        startEdgePan();
         return;
       }
       if (a.kind === 'outside' || f.kind === 'outside') {
@@ -313,6 +352,30 @@ export function useStableSelection(
       const focus = f.kind === 'row' ? f.endpoint : previous?.focus ?? null;
       if (!anchor || !focus || sameEndpoint(anchor, focus)) return;
       logical.current = { anchor, focus };
+    };
+
+    let edgePan = 0;
+    const stopEdgePan = () => {
+      if (edgePan) cancelAnimationFrame(edgePan);
+      edgePan = 0;
+    };
+    const edgePanStep = () => {
+      edgePan = 0;
+      const root = scrollRef.current;
+      const selection = logical.current;
+      if (!root || !selection || !dragging.current || !pointer.current) return;
+      const over = pastVerticalEdge(root, pointer.current)
+        ? 0
+        : horizontalOvershoot(selection.anchor.layer, root, pointer.current);
+      if (over === 0) return;
+      const pan = panControllers.get(paneOf(selection.anchor.layer));
+      if (!pan) return;
+      pan(Math.sign(over) * Math.min(EDGE_PAN_MAX, EDGE_PAN_MIN + Math.abs(over) / 3));
+      sync();
+      edgePan = requestAnimationFrame(edgePanStep);
+    };
+    const startEdgePan = () => {
+      if (!edgePan) edgePan = requestAnimationFrame(edgePanStep);
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -329,12 +392,17 @@ export function useStableSelection(
       if (!dragging.current) return;
       pointer.current = { x: e.clientX, y: e.clientY };
       const root = scrollRef.current;
-      if (root && logical.current && pastEdge(root, pointer.current)) sync();
+      if (!root || !logical.current) return;
+      if (pastEdge(root, logical.current.anchor.layer, pointer.current)) {
+        sync();
+        startEdgePan();
+      }
     };
     const endDrag = () => {
       if (!dragging.current) return;
       dragging.current = false;
       pointer.current = null;
+      stopEdgePan();
       const dom = window.getSelection();
       if (dom && (dom.rangeCount === 0 || dom.isCollapsed)) {
         logical.current = null;
@@ -359,6 +427,7 @@ export function useStableSelection(
     window.addEventListener('blur', endDrag);
     document.addEventListener('copy', onCopy);
     return () => {
+      stopEdgePan();
       if (root && readers.get(root) === read) readers.delete(root);
       document.removeEventListener('selectionchange', onSelectionChange);
       document.removeEventListener('mousedown', onMouseDown, true);

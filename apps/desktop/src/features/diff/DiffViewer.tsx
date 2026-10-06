@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { FileText, ImageOff } from 'lucide-react';
-import type { DiffHunk, DiffLine, FileDiff } from '@angkorgit/core';
+import { imageMimeFor, type DiffHunk, type DiffLine, type FileDiff } from '@angkorgit/core';
 import { cn, PaneEmpty } from '@angkorgit/design-system';
 import { useUi } from '@/features/ui/store';
 import { languageOf } from '@/shared/highlight';
@@ -169,7 +169,7 @@ function ImageDiff({ diff }: { diff: FileDiff }) {
       />
     );
   }
-  const mime = diff.path.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
+  const mime = imageMimeFor(diff.path) ?? 'application/octet-stream';
   return (
     <div className="flex gap-4 p-4">
       {diff.oldImage && (

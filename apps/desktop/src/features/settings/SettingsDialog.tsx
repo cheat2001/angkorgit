@@ -804,6 +804,7 @@ const SHORTCUTS: Array<[string, string[]]> = [
   ['Settings', ['mod', ',']],
   ['Switch to tab 1 to 9', ['mod', '1 … 9']],
   ['Previous / next tab', ['mod', '⇧', '[ / ]']],
+  ['Close tab', ['mod', 'W']],
   ['Commit staged changes', ['mod', '⏎']],
   ['Previous / next commit', ['↑ / ↓']],
   ['First / last commit', ['Home / End']],

@@ -685,6 +685,7 @@ export function CommitDetails({
               placeholder="Summary"
               aria-label="Commit summary"
               rows={1}
+              autoCapitalize="off"
               spellCheck
               className="min-h-9 resize-none overflow-hidden rounded-none border-0 bg-transparent px-3 py-2 text-sm font-medium leading-snug text-foreground shadow-none placeholder:font-normal placeholder:text-faint focus-visible:border-0 focus-visible:ring-0"
             />
@@ -701,6 +702,8 @@ export function CommitDetails({
               }}
               placeholder="Description"
               aria-label="Commit description"
+              autoCapitalize="off"
+              spellCheck
               rows={Math.min(12, Math.max(3, draftParts.body.split('\n').length + 1))}
               style={descHeight === null ? undefined : { height: descHeight }}
               className="min-h-[72px] resize-none rounded-none border-0 bg-transparent px-3 py-2 text-xs leading-relaxed text-foreground shadow-none focus-visible:border-0 focus-visible:ring-0"

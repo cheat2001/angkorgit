@@ -4,6 +4,8 @@ export * from './git/commitMessage';
 export * from './git/fileFilter';
 export * from './git/allFiles';
 export * from './git/blameable';
+export * from './git/repoGroups';
+export * from './git/imageMime';
 export * from './shortcuts/chord';
 export * from './graph/layout';
 export * from './diff/wordDiff';

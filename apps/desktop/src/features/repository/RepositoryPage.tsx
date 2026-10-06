@@ -31,6 +31,8 @@ import { CloneDialog } from './CloneDialog';
 import { CreatePrDialog } from '@/features/forge/CreatePrDialog';
 import { CreateWorktreeDialog } from '@/features/worktrees/CreateWorktreeDialog';
 import { RepoShortcutDialog } from './RepoShortcutDialog';
+import { closeRepoTabs } from './tabs';
+import { RepoGroupDialog } from './RepoGroupDialog';
 import { useForge } from '@/features/forge/store';
 import { seedForgeHostsFromAccounts } from '@/features/forge/hosts';
 import { useShortcuts } from '@/shared/useShortcuts';
@@ -264,6 +266,14 @@ export function RepositoryPage() {
         },
       },
       { combo: 'mod+r', handler: () => void refreshAll() },
+      {
+        combo: 'mod+w',
+        handler: (event: KeyboardEvent) => {
+          if ((event.target as HTMLElement | null)?.closest('.xterm')) return;
+          const path = useRepo.getState().repo?.path;
+          if (path) closeRepoTabs([path]);
+        },
+      },
       { combo: 'mod+enter', handler: () => commitShortcut.current?.() },
       {
         combo: 'mod+,',
@@ -419,6 +429,7 @@ export function RepositoryPage() {
       <CreatePrDialog />
       <CreateWorktreeDialog />
       <RepoShortcutDialog />
+      <RepoGroupDialog />
       <InteractiveRebaseDialog />
       <CloneDialog
         onCloned={(path) =>

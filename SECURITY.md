@@ -25,9 +25,9 @@ For transparency, the app's security-relevant surface is:
   passphrase**, because AngKorGit cannot prompt for one — a passphrase-protected
   key only works via your SSH agent. Generation never overwrites an existing key.
 - **AI provider keys** — API keys you enter in Settings → AI are stored in the
-  app's local settings (the webview's local storage on your machine), **not** in
-  the OS keychain, and are sent only to the provider you configured. Prefer the
-  installed-CLI or local-model providers if you'd rather store no key at all.
+  OS keychain under the same AngKorGit service as hosting accounts, and are sent
+  only to the provider you configured. Prefer the installed-CLI or local-model
+  providers if you'd rather store no key at all.
 - **AI CLIs** — if you select an installed AI CLI (Claude Code, GitHub Copilot
   CLI, Codex, Gemini CLI, OpenCode, Antigravity, Cursor CLI), AngKorGit runs that binary as a
   local subprocess with your user's permissions. Only a fixed allowlist of known

@@ -1611,9 +1611,11 @@ test('the remotes section offers Add remote and opens the add dialog', async ({ 
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
-  const remotesHeader = page.getByRole('button', { name: /^Remotes/ });
-  await remotesHeader.hover();
-  await page.getByRole('button', { name: 'Add remote', exact: true }).click({ force: true });
+  const remotesSection = page.locator('[data-sidebar-section-header]').filter({
+    has: page.getByRole('button', { name: /^Remotes/ }),
+  });
+  await remotesSection.hover();
+  await remotesSection.getByRole('button', { name: 'Add remote', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'Add remote' })).toBeVisible();
   await expect(dialog.getByPlaceholder('upstream')).toBeVisible();
@@ -2192,6 +2194,13 @@ test('tabs switch with mod+digit and a custom chord assigned from the tab menu',
   await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Control+Shift+t');
   await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ControlOrMeta+w');
+  await expect(tabs).toHaveCount(1);
+  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible();
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.getByRole('option', { name: 'temple-ui' }).click();
+  await expect(tabs).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const dialog = page.getByRole('dialog');
@@ -2215,4 +2224,330 @@ test('force push from the push menu asks first', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('Push (force) done')).toHaveCount(0);
+});
+
+test('dragging a diff selection past the right edge pans the long lines and extends the selection', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await page.getByText('palette-seed.sql').first().click();
+  await expect(page.getByText('temple gold').first()).toBeVisible();
+  const diff = page.locator('section[aria-label^="Diff for"]');
+  await diff.getByRole('button', { name: 'Inline diff', exact: true }).click();
+  const pane = diff.locator('[data-diff-pane]').first();
+  const layer = pane.locator('[data-diff-layer]');
+  await expect(layer).toHaveAttribute('style', /translateX\(0px\)|translateX\(-0px\)/);
+  const paneBox = (await pane.boundingBox())!;
+  const scroller = diff.locator('div.overflow-y-auto');
+  const start = await scroller.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const rows = Array.from(el.querySelectorAll<HTMLElement>('[data-diff-row]')).filter((row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.top > box.top + 40 && rect.bottom < box.bottom - 40 && (row.textContent ?? '').length > 60;
+    });
+    const row = rows[0];
+    if (!row) return null;
+    const rect = row.getBoundingClientRect();
+    return { x: rect.left + 20, y: rect.top + rect.height / 2 };
+  });
+  if (!start) throw new Error('no diff row to start from');
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 80, start.y, { steps: 4 });
+  await page.mouse.move(paneBox.x + paneBox.width + 60, start.y, { steps: 4 });
+  await expect
+    .poll(() => layer.evaluate((el) => Math.abs(parseFloat(/translateX\((-?[\d.]+)px\)/.exec((el as HTMLElement).style.transform)?.[1] ?? '0'))))
+    .toBeGreaterThan(60);
+  const panned = await layer.evaluate((el) => Math.abs(parseFloat(/translateX\((-?[\d.]+)px\)/.exec((el as HTMLElement).style.transform)?.[1] ?? '0')));
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+  expect(selected.length).toBeGreaterThan(40);
+  await page.mouse.move(start.x + 100, start.y, { steps: 2 });
+  await page.waitForTimeout(120);
+  expect(await layer.evaluate((el) => Math.abs(parseFloat(/translateX\((-?[\d.]+)px\)/.exec((el as HTMLElement).style.transform)?.[1] ?? '0')))).toBe(panned);
+  await page.mouse.up();
+  expect(await diff.getByLabel('Scroll diff horizontally').evaluate((el) => el.scrollLeft)).toBeGreaterThan(50);
+});
+
+test('long diff lines have a sticky horizontal scrollbar and support Shift+wheel', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await page.getByText('palette-seed.sql').first().click();
+  await expect(page.getByText('temple gold').first()).toBeVisible();
+  const diff = page.locator('section[aria-label^="Diff for"]');
+  const scrollbar = diff.getByLabel('Scroll diff horizontally');
+  const scroller = diff.locator('div.overflow-y-auto');
+
+  for (const view of ['Inline diff', 'Side-by-side diff']) {
+    await diff.getByRole('button', { name: view, exact: true }).click();
+    await expect(scrollbar).toBeVisible();
+    expect(await scrollbar.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(100);
+    const viewport = await scroller.boundingBox();
+    const bar = await scrollbar.boundingBox();
+    expect(bar!.y + bar!.height).toBeLessThanOrEqual(viewport!.y + viewport!.height + 1);
+    expect(bar!.y).toBeGreaterThan(viewport!.y + viewport!.height - 20);
+
+    await scrollbar.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => scrollbar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    const offset = await scrollbar.evaluate((el) => el.scrollLeft);
+    const vertical = await scroller.evaluate((el) => el.scrollTop);
+    await diff.locator('[data-diff-pane]').first().evaluate((el) => {
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY: 160, shiftKey: true, bubbles: true, cancelable: true }));
+    });
+    await expect.poll(() => scrollbar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(offset);
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(vertical);
+    const transforms = await diff.locator('[data-diff-layer]').evaluateAll((els) => els.map((el) => (el as HTMLElement).style.transform));
+    expect(new Set(transforms).size).toBe(1);
+    expect(transforms[0]).toMatch(/translateX\(-/);
+
+    await scroller.evaluate((el) => { el.scrollTop = 0; });
+    await expect(scrollbar).toBeVisible();
+    const topBar = await scrollbar.boundingBox();
+    expect(topBar!.y).toBeGreaterThan(viewport!.y + viewport!.height - 20);
+  }
+
+  await diff.getByRole('button', { name: 'View options', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Wrap long lines' }).click();
+  await expect(scrollbar).toHaveCount(0);
+});
+
+test('a trackpad pan moves the long-line diff by the whole gesture without stepping back', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await page.getByText('palette-seed.sql').first().click();
+  await expect(page.getByText('temple gold').first()).toBeVisible();
+  const diff = page.locator('section[aria-label^="Diff for"]');
+  await diff.getByRole('button', { name: 'Inline diff', exact: true }).click();
+  await expect(diff.getByLabel('Scroll diff horizontally')).toBeVisible();
+
+  const steps = await diff.locator('[data-diff-pane]').first().evaluate(async (pane) => {
+    const layer = pane.querySelector('[data-diff-layer]') as HTMLElement;
+    const read = () => Math.abs(parseFloat(/translateX\((-?[\d.]+)px\)/.exec(layer.style.transform)?.[1] ?? '0'));
+    const positions: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      pane.dispatchEvent(new WheelEvent('wheel', { deltaX: 2.4, deltaY: 0.3, bubbles: true, cancelable: true }));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      positions.push(read());
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    positions.push(read());
+    return positions.map((value, index) => value - (positions[index - 1] ?? 0));
+  });
+  expect(steps.filter((step) => step < 0)).toEqual([]);
+  expect(steps.reduce((sum, step) => sum + step, 0)).toBeCloseTo(72, 0);
+  const engine = diff.getByLabel('Scroll diff horizontally');
+  await expect.poll(() => engine.evaluate((el) => el.scrollLeft)).toBeGreaterThan(70);
+
+  const bar = diff.locator('[data-diff-scrollbar]');
+  const thumb = diff.locator('[data-diff-scrollbar-thumb]');
+  await expect(thumb).toBeVisible();
+  const before = await thumb.boundingBox();
+  await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before!.x + before!.width / 2 + 60, before!.y + before!.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const dragged = await engine.evaluate((el) => el.scrollLeft);
+  expect(dragged).toBeGreaterThan(80);
+  expect((await thumb.boundingBox())!.x).toBeGreaterThan(before!.x + 20);
+  await expect.poll(() => diff.locator('[data-diff-layer]').first().evaluate((el) => (el as HTMLElement).style.transform)).toBe(`translateX(-${dragged}px)`);
+
+  await expect(bar).toBeVisible();
+  const moved = await thumb.boundingBox();
+  await page.mouse.click(moved!.x - 8, moved!.y + moved!.height / 2);
+  await expect.poll(() => engine.evaluate((el) => el.scrollLeft)).toBe(0);
+  await expect.poll(() => diff.locator('[data-diff-layer]').first().evaluate((el) => (el as HTMLElement).style.transform)).toBe('translateX(0px)');
+});
+
+test('the code diff opened from a selected commit scrolls horizontally in both views', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await page.getByText('feat(graph): virtualize commit rows').first().click();
+  const inspector = page.getByRole('complementary', { name: 'Inspector' });
+  await inspector.getByText('CommitGraph.tsx', { exact: true }).click();
+  const diff = page.locator('section[aria-label="Diff for src/features/graph/CommitGraph.tsx"]');
+  await expect(inspector.getByRole('heading', { name: 'feat(graph): virtualize commit rows', exact: true })).toBeVisible();
+  await expect(diff.getByRole('button', { name: 'Stage file', exact: true })).toHaveCount(0);
+  await page.setViewportSize({ width: 800, height: 900 });
+  const scrollbar = diff.getByLabel('Scroll diff horizontally');
+
+  for (const view of ['Inline diff', 'Side-by-side diff']) {
+    await diff.getByRole('button', { name: view, exact: true }).click();
+    await expect(scrollbar).toBeVisible();
+    expect(await scrollbar.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(100);
+    await scrollbar.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => scrollbar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    const offset = await scrollbar.evaluate((el) => el.scrollLeft);
+    await diff.locator('[data-diff-pane]').first().evaluate((el) => {
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY: 160, shiftKey: true, bubbles: true, cancelable: true }));
+    });
+    await expect.poll(() => scrollbar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(offset);
+    const transforms = await diff.locator('[data-diff-layer]').evaluateAll((els) => els.map((el) => (el as HTMLElement).style.transform));
+    expect(new Set(transforms).size).toBe(1);
+    expect(transforms[0]).toMatch(/translateX\(-/);
+  }
+});
+
+test('repositories can be grouped on the welcome page and a group opens as tabs', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-group-header]')).toHaveCount(0);
+
+  const temple = page.locator('[data-recent-row="/Users/demo/projects/temple-ui"]');
+  await temple.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Add to group' }).hover();
+  await page.getByRole('menuitem', { name: 'New group…' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'New group' })).toBeVisible();
+  const name = dialog.getByLabel('Name');
+  await expect(name).toBeFocused();
+  const create = dialog.getByRole('button', { name: 'Create group' });
+  await expect(create).toBeDisabled();
+  await name.fill('Frontend');
+  await dialog.getByRole('radio', { name: 'Teal' }).click();
+  await create.click();
+  await expect(dialog).toBeHidden();
+
+  const frontend = page.locator('[data-group-header]', { hasText: 'Frontend' });
+  await expect(frontend).toBeVisible();
+  await expect(frontend.getByText('1', { exact: true })).toBeVisible();
+  const other = page.locator('[data-group-header]', { hasText: 'Other' });
+  await expect(other.getByText('3', { exact: true })).toBeVisible();
+
+  const angkor = page.locator('[data-recent-row="/Users/demo/projects/angkorgit"]');
+  await angkor.dragTo(frontend);
+  await expect(frontend.getByText('2', { exact: true })).toBeVisible();
+  await expect(other.getByText('2', { exact: true })).toBeVisible();
+
+  const billing = page.locator('[data-recent-row="/Users/demo/work/billing-service"]');
+  await billing.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Add to group' }).hover();
+  await page.getByRole('menuitem', { name: 'New group…' }).click();
+  await dialog.getByLabel('Name').fill('frontend');
+  await expect(dialog.getByText('A group with this name already exists')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Create group' })).toBeDisabled();
+  await dialog.getByLabel('Name').fill('Backend');
+  await dialog.getByLabel('Name').press('Enter');
+  await expect(dialog).toBeHidden();
+  const backend = page.locator('[data-group-header]', { hasText: 'Backend' });
+  await expect(backend.getByText('1', { exact: true })).toBeVisible();
+  const headers = page.locator('[data-group-header]');
+  await expect(headers.nth(0)).toContainText('Frontend');
+  await backend.click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
+  await page.getByRole('menuitem', { name: 'Move up' }).click();
+  await expect(headers.nth(0)).toContainText('Backend');
+  await backend.click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Move up' })).toBeDisabled();
+  await page.getByRole('menuitem', { name: 'Move down' }).click();
+  await expect(headers.nth(0)).toContainText('Frontend');
+  await backend.dragTo(frontend, { targetPosition: { x: 200, y: 3 } });
+  await expect(headers.nth(0)).toContainText('Backend');
+  await frontend.dragTo(backend, { targetPosition: { x: 200, y: 3 } });
+  await expect(headers.nth(0)).toContainText('Frontend');
+
+  await backend.getByRole('button', { name: 'Backend', exact: true }).click();
+  await expect(billing).toBeHidden();
+  await backend.getByRole('button', { name: 'Backend', exact: true }).click();
+  await expect(billing).toBeVisible();
+
+  await page.getByLabel('Search recent repositories').fill('front');
+  await expect(page.locator('[data-group-header]')).toHaveCount(0);
+  await expect(page.locator('[data-recent-row]')).toHaveCount(2);
+  await page.getByLabel('Search recent repositories').fill('');
+  await expect(page.locator('[data-group-header]')).toHaveCount(3);
+
+  await frontend.hover();
+  await frontend.getByRole('button', { name: 'Frontend group actions' }).click();
+  await page.getByRole('menuitem', { name: 'Open all in tabs' }).click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(2);
+  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.nth(0)).toHaveAttribute('title', /· Frontend/);
+
+  await tabs.nth(1).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Move to group' }).hover();
+  await page.getByRole('menuitem', { name: 'Backend' }).click();
+  await expect(tabs.nth(1)).toHaveAttribute('title', /· Backend/);
+  const clusters = page.locator('[data-tab-cluster]');
+  await expect(clusters).toHaveCount(2);
+  await expect(clusters.nth(0)).toContainText('angkorgit');
+  await expect(clusters.nth(1)).toContainText('temple-ui');
+  const frontendChip = clusters.nth(0).locator('[data-tab-group]');
+  const backendChip = clusters.nth(1).locator('[data-tab-group]');
+  await expect(frontendChip).toHaveText('Frontend');
+  await backendChip.click();
+  await expect(tabs).toHaveCount(1);
+  await expect(backendChip).toHaveText('Backend1');
+  await frontendChip.click();
+  await expect(tabs).toHaveCount(1);
+  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ControlOrMeta+2');
+  await expect(page.locator('[data-tab-path="/Users/demo/projects/temple-ui"]')).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs).toHaveCount(1);
+  await frontendChip.click();
+  await backendChip.click();
+  await expect(tabs).toHaveCount(2);
+  await expect(page.locator('[data-tab-separator]')).toHaveCount(0);
+  await expect(page.locator('[data-tab-overflow]')).toHaveCount(0);
+  await backendChip.click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Close its tabs' })).toContainText('1');
+  await page.getByRole('menuitem', { name: 'Collapse other groups' }).click();
+  await expect(frontendChip).toHaveText('Frontend1');
+  await expect(tabs).toHaveCount(1);
+  await page.keyboard.press('ControlOrMeta+1');
+  await expect(tabs).toHaveCount(1);
+  await expect(page.locator('[data-tab-path="/Users/demo/projects/angkorgit"]')).toHaveAttribute('aria-selected', 'true');
+  await frontendChip.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Expand all groups' }).click();
+  await expect(tabs).toHaveCount(2);
+  await backendChip.dragTo(clusters.nth(0), { targetPosition: { x: 4, y: 20 } });
+  await expect(clusters.nth(0)).toContainText('Backend');
+  await expect(clusters.nth(1)).toContainText('Frontend');
+  await expect(tabs.nth(0)).toHaveAttribute('title', /temple-ui/);
+  await page.keyboard.press('ControlOrMeta+1');
+  await expect(page.locator('[data-tab-path="/Users/demo/projects/temple-ui"]')).toHaveAttribute('aria-selected', 'true');
+  await page.locator('[data-tab-cluster]').nth(1).locator('[data-tab-group]').dragTo(clusters.nth(0), { targetPosition: { x: 4, y: 20 } });
+  await expect(clusters.nth(0)).toContainText('Frontend');
+  await page.keyboard.press('ControlOrMeta+1');
+  await expect(page.locator('[data-tab-path="/Users/demo/projects/angkorgit"]')).toHaveAttribute('aria-selected', 'true');
+  await page.setViewportSize({ width: 380, height: 900 });
+  const overflow = page.locator('[data-tab-overflow]');
+  await expect(overflow).toBeVisible();
+  await overflow.click();
+  const overflowMenu = page.getByRole('menu');
+  await expect(overflowMenu.getByText('Frontend', { exact: true })).toBeVisible();
+  await overflowMenu.getByRole('menuitem', { name: 'temple-ui' }).click();
+  await expect(page.locator('[data-tab-path="/Users/demo/projects/temple-ui"]')).toHaveAttribute('aria-selected', 'true');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(overflow).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Switch repository' }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu.locator('[data-switcher-group="Frontend"]')).toContainText('angkorgit');
+  await expect(menu.locator('[data-switcher-group="Backend"]')).toContainText('temple-ui');
+  await expect(menu.locator('[data-switcher-group="Other"]')).toContainText('api-gateway');
+  await page.keyboard.press('Escape');
+
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.locator('[cmdk-input]').fill('backend');
+  await expect(page.getByRole('option', { name: /Open all in Backend/ })).toContainText('2 repositories');
+  await page.getByRole('option', { name: /Close all in Backend/ }).click();
+  await expect(tabs).toHaveCount(1);
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.getByText('Recent repositories')).toBeVisible();
+  await frontend.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Ungroup…' }).click();
+  await expect(page.getByRole('heading', { name: 'Ungroup “Frontend”?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Ungroup', exact: true }).click();
+  await expect(frontend).toBeHidden();
+  await expect(page.locator('[data-recent-row="/Users/demo/projects/angkorgit"]')).toBeVisible();
+  await expect(backend.getByText('2', { exact: true })).toBeVisible();
 });

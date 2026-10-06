@@ -30,6 +30,7 @@ import {
 import { aiCapabilities, defaultForgeTarget, forgeNoun, forgeTargets, sameForgeRepo, type ForgeUser } from '@angkorgit/core';
 import { ipc, openExternal } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
+import { ensureRepoProfile } from '@/features/settings/profiles';
 import { useUi } from '@/features/ui/store';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
 import { forgeProviderFor, useForge } from './store';
@@ -112,6 +113,23 @@ export function CreatePrDialog() {
   const head = branches.find((b) => !b.isRemote && b.isHead);
   const notPushed = !head?.upstream;
   const unpushed = head?.ahead ?? 0;
+  const [pushing, setPushing] = useState(false);
+
+  const pushBranch = async () => {
+    if (!repo || !head || pushing) return;
+    setPushing(true);
+    setError(null);
+    try {
+      await ensureRepoProfile(repo.path);
+      const outcome = await ipc.push(repo.path, sourceName, false, false, true, head.name);
+      toast.success(outcome.message || `Pushed ${head.name} to ${sourceName}`);
+      await useRepo.getState().refresh();
+    } catch (err) {
+      setError(`Could not push ${head.name}: ${(err as { message?: string }).message ?? err}`);
+    } finally {
+      setPushing(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -445,7 +463,19 @@ export function CreatePrDialog() {
           )}
           {notPushed && (
             <DialogNote tone="attention">
-              This branch has not been pushed yet — push it first so {provider.label} can see it.
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>This branch has not been pushed yet, so {provider.label} cannot see it. Your title and description stay put.</span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  disabled={pushing || !head}
+                  onClick={() => void pushBranch()}
+                >
+                  {pushing && <Spinner className="size-3" />}
+                  Push {head?.name ?? 'branch'} to {sourceName}
+                </Button>
+              </span>
             </DialogNote>
           )}
           {!notPushed && unpushed > 0 && (

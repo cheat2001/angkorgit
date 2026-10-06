@@ -7,7 +7,10 @@ import {
   type AiConnectionStatus,
   type AiProviderKind,
   type AiStyleConfig,
+  moveRepoGroup as moveGroupInList,
   type CommitStyle,
+  type RepoGroup,
+  type RepoGroupDropPosition,
   type ReviewStyle,
 } from '@angkorgit/core';
 import { ipc, isTauri } from '@/core/ipc';
@@ -163,6 +166,8 @@ interface SettingsState {
   cloneRoot: string | null;
   editorId: string | null;
   repoShortcuts: Record<string, string>;
+  repoGroups: RepoGroup[];
+  repoGroupOf: Record<string, string>;
   profiles: IdentityProfile[];
   ai: AiConfig;
   aiProfiles: Partial<Record<AiProviderKind, AiProfile>>;
@@ -191,6 +196,11 @@ interface SettingsState {
   setCloneRoot: (value: string | null) => void;
   setEditorId: (value: string | null) => void;
   setRepoShortcut: (path: string, chord: string | null) => void;
+  addRepoGroup: (name: string, color: number, paths?: string[]) => string;
+  updateRepoGroup: (id: string, patch: Partial<Pick<RepoGroup, 'name' | 'color'>>) => void;
+  removeRepoGroup: (id: string) => void;
+  moveRepoGroup: (id: string, targetId: string, position: RepoGroupDropPosition) => void;
+  setRepoGroup: (path: string, groupId: string | null) => void;
   addProfile: (profile: Omit<IdentityProfile, 'id'>) => void;
   updateProfile: (id: string, patch: Partial<Omit<IdentityProfile, 'id'>>) => void;
   removeProfile: (id: string) => void;
@@ -253,6 +263,8 @@ export const useSettings = create<SettingsState>()(
       cloneRoot: null,
       editorId: null,
       repoShortcuts: {},
+      repoGroups: [],
+      repoGroupOf: {},
       reduceMotion:
         typeof window !== 'undefined' &&
         window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -298,6 +310,34 @@ export const useSettings = create<SettingsState>()(
           );
           if (chord) repoShortcuts[path] = chord;
           return { repoShortcuts };
+        }),
+      addRepoGroup: (name, color, paths = []) => {
+        const id = crypto.randomUUID();
+        set((s) => ({
+          repoGroups: [...s.repoGroups, { id, name: name.trim(), color }],
+          repoGroupOf: { ...s.repoGroupOf, ...Object.fromEntries(paths.map((path) => [path, id])) },
+        }));
+        return id;
+      },
+      updateRepoGroup: (id, patch) =>
+        set((s) => ({
+          repoGroups: s.repoGroups.map((group) =>
+            group.id === id ? { ...group, ...patch, name: (patch.name ?? group.name).trim() } : group,
+          ),
+        })),
+      removeRepoGroup: (id) =>
+        set((s) => ({
+          repoGroups: s.repoGroups.filter((group) => group.id !== id),
+          repoGroupOf: Object.fromEntries(Object.entries(s.repoGroupOf).filter(([, groupId]) => groupId !== id)),
+        })),
+      moveRepoGroup: (id, targetId, position) =>
+        set((s) => ({ repoGroups: moveGroupInList(s.repoGroups, id, targetId, position) })),
+      setRepoGroup: (path, groupId) =>
+        set((s) => {
+          const repoGroupOf = { ...s.repoGroupOf };
+          if (groupId) repoGroupOf[path] = groupId;
+          else delete repoGroupOf[path];
+          return { repoGroupOf };
         }),
       setInterfaceFontFamily: (interfaceFontFamily) => {
         applyFonts(interfaceFontFamily, get().codeFontFamily);

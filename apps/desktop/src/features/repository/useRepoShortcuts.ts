@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { repoForChord } from '@angkorgit/core';
+import { orderRepoTabs, repoForChord } from '@angkorgit/core';
 import { useRepo } from './store';
 import { useSettings } from '@/features/settings/store';
 import { useUi } from '@/features/ui/store';
@@ -50,8 +50,9 @@ export function useRepoShortcuts(): void {
       const ui = useUi.getState();
       if (ui.dialog || ui.conflictFile) return;
       const activePath = useRepo.getState().repo?.path ?? null;
-      const path =
-        tabForKey(event, ui.repoTabs, activePath) ?? repoForChord(useSettings.getState().repoShortcuts, event);
+      const settings = useSettings.getState();
+      const ordered = orderRepoTabs(ui.repoTabs, settings.repoGroups, settings.repoGroupOf, ui.worktreeMains);
+      const path = tabForKey(event, ordered, activePath) ?? repoForChord(settings.repoShortcuts, event);
       if (!path) return;
       event.preventDefault();
       void switchToRepo(path, ensureRepoRoute);
