@@ -10,18 +10,12 @@ interface AlignedPair {
   b: number | null;
 }
 
-/** Same split as `wordDiff`. A word stays one token; everything else is one character. */
 function tokenizeLine(line: string): string[] {
   return line.match(/\w+|\s+|[^\w\s]/g) ?? [];
 }
 
-/**
- * Token Dice distance. 0 is the same bag of tokens, 1 shares nothing.
- * A single replaced line still pairs, so this only decides among several candidates.
- */
 const MAX_LINE_DISTANCE = 0.4;
 
-/** Past this many candidate pairs the gap zips by position. */
 const ALIGN_GAP_MAX_PAIRS = 4_096;
 
 const PAIR_SIDES_MAX_CELLS = 250_000;
@@ -67,11 +61,6 @@ function tokenDistance(a: readonly string[], b: readonly string[]): number {
   return 1 - (2 * shared) / total;
 }
 
-/**
- * Pair a run with no identical line. One replacement stays one row.
- * Otherwise the first later line under the distance cap wins.
- * First hit, not the closest: two similar lines that swapped order can miss.
- */
 function alignGap(
   linesA: readonly string[],
   idxA: number[],
@@ -138,11 +127,6 @@ function pairSides(a: string[], b: string[]): AlignedPair[] {
   return out;
 }
 
-/**
- * Pair a hunk for inline word diff and side-by-side rows. Identical lines
- * anchor. Between them, a similar line shares a row and a dissimilar line
- * sits opposite an empty cell.
- */
 export function pairHunkLines(hunk: DiffHunk): LinePair[] {
   const pairs: LinePair[] = [];
   let removed: DiffLine[] = [];

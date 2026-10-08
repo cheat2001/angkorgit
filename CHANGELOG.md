@@ -32,6 +32,10 @@ All notable changes to AngKorGit are documented here. The format follows
   tab strip.
 
 ### Fixed
+- Side-by-side word diff no longer pairs an inserted line with the wrong neighbor.
+  Identical lines still share a row. A changed line pairs with a later line only when
+  the tokens still match; an unrelated insertion stays on its own row. A single
+  replaced line still shares a row.
 - Opening the terminal now focuses its input immediately, so typing works without
   clicking inside it first.
 - A tab whose folder was moved or deleted no longer lingers next to the repository's
