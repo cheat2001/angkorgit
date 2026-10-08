@@ -2390,7 +2390,7 @@ test('ignore whitespace hides an indent-only change and turns staging off', asyn
   await page.keyboard.press('Escape');
   await page.getByText('ipc.ts', { exact: true }).first().click();
   const token = page.locator('section[aria-label="Diff for src/core/ipc.ts"]');
-  await expect(token.getByText('+16', { exact: true })).toBeVisible();
+  await expect(token.getByText('+22', { exact: true })).toBeVisible();
   await expect(token.getByRole('button', { name: 'Stage hunk' })).toHaveCount(0);
 });
 

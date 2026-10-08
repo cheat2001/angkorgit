@@ -304,7 +304,7 @@ export const demoFileDiff: FileDiff = {
   isImage: false,
   oldImage: null,
   newImage: null,
-  additions: 21,
+  additions: 22,
   deletions: 8,
   hunks: [
     {
