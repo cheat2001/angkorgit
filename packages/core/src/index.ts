@@ -10,6 +10,7 @@ export * from './git/tabLabels';
 export * from './shortcuts/chord';
 export * from './graph/layout';
 export * from './diff/wordDiff';
+export * from './diff/pairHunk';
 export * from './diff/renderCap';
 export * from './diff/patchText';
 export * from './diff/locateLine';

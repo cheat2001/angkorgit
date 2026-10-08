@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import type { FileDiff } from '@angkorgit/core';
+import { pairHunkLines, type FileDiff } from '@angkorgit/core';
 import { useSettings } from '@/features/settings/store';
 import type { DiffViewMode } from '@/features/ui/store';
 
@@ -12,27 +12,14 @@ function logicalRows(diff: FileDiff, view: DiffViewMode): RowKind[] {
     if (view === 'inline') {
       for (const line of hunk.lines) rows.push(line.kind);
     } else {
-      let pendingDeletions = 0;
-      const flush = () => {
-        for (let i = 0; i < pendingDeletions; i++) rows.push('deletion');
-        pendingDeletions = 0;
-      };
-      for (const line of hunk.lines) {
-        if (line.kind === 'deletion') {
-          pendingDeletions++;
-        } else if (line.kind === 'addition') {
-          if (pendingDeletions > 0) {
-            pendingDeletions--;
-            rows.push('mixed');
-          } else {
-            rows.push('addition');
-          }
-        } else {
-          flush();
-          rows.push('context');
-        }
+      for (const pair of pairHunkLines(hunk)) {
+        const leftChange = pair.left != null && pair.left.kind !== 'context';
+        const rightChange = pair.right != null && pair.right.kind !== 'context';
+        if (leftChange && rightChange) rows.push('mixed');
+        else if (leftChange) rows.push('deletion');
+        else if (rightChange) rows.push('addition');
+        else rows.push('context');
       }
-      flush();
     }
   }
   return rows;

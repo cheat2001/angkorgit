@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import type { DiffHunk, DiffLine, FileDiff } from '@angkorgit/core';
+import type { DiffLine, FileDiff } from '@angkorgit/core';
 import { MAX_RENDERED_LINE, clipRenderedLine, wordDiff, type WordSegment } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
 import { embeddedDiffLanguages, highlightLineState, supportsBlockComments } from '@/shared/highlight';
@@ -15,34 +15,7 @@ export function wrapUnavailable(diff: FileDiff): boolean {
   return false;
 }
 
-export interface LinePair {
-  left: DiffLine | null;
-  right: DiffLine | null;
-}
-
-export function pairHunkLines(hunk: DiffHunk): LinePair[] {
-  const pairs: LinePair[] = [];
-  let pendingDeletions: DiffLine[] = [];
-
-  const flush = () => {
-    for (const del of pendingDeletions) pairs.push({ left: del, right: null });
-    pendingDeletions = [];
-  };
-
-  for (const line of hunk.lines) {
-    if (line.kind === 'deletion') {
-      pendingDeletions.push(line);
-    } else if (line.kind === 'addition') {
-      const del = pendingDeletions.shift();
-      pairs.push({ left: del ?? null, right: line });
-    } else {
-      flush();
-      pairs.push({ left: line, right: line });
-    }
-  }
-  flush();
-  return pairs;
-}
+export { pairHunkLines, type LinePair } from '@angkorgit/core';
 
 const COMMENT_STATE_LINE_CAP = 8000;
 const commentStates = new WeakMap<DiffLine, boolean>();

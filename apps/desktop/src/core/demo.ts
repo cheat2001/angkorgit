@@ -304,7 +304,7 @@ export const demoFileDiff: FileDiff = {
   isImage: false,
   oldImage: null,
   newImage: null,
-  additions: 16,
+  additions: 21,
   deletions: 8,
   hunks: [
     {
@@ -367,6 +367,22 @@ export const demoFileDiff: FileDiff = {
         { kind: 'addition', oldLineNo: null, newLineNo: 51, content: "  useShortcut('Home', () => select(0));" },
         { kind: 'addition', oldLineNo: null, newLineNo: 52, content: "  useShortcut('End', () => select(rows.length - 1));" },
         { kind: 'context', oldLineNo: 44, newLineNo: 53, content: '}' },
+      ],
+    },
+    {
+      header: '@@ -110,4 +121,5 @@ function load(id) {',
+      oldStart: 110,
+      oldLines: 4,
+      newStart: 121,
+      newLines: 5,
+      lines: [
+        { kind: 'context', oldLineNo: 110, newLineNo: 121, content: '// cache' },
+        { kind: 'deletion', oldLineNo: 111, newLineNo: null, content: 'function load(id) {' },
+        { kind: 'deletion', oldLineNo: 112, newLineNo: null, content: '  return db.get(id);' },
+        { kind: 'addition', oldLineNo: null, newLineNo: 122, content: 'function load(userId) {' },
+        { kind: 'addition', oldLineNo: null, newLineNo: 123, content: '  logger.info(userId);' },
+        { kind: 'addition', oldLineNo: null, newLineNo: 124, content: '  return db.get(userId);' },
+        { kind: 'context', oldLineNo: 113, newLineNo: 125, content: '}' },
       ],
     },
   ],
