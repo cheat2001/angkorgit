@@ -6,6 +6,13 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Right-click a group header on the start page to **Fetch all** or **Pull all
+  (fast-forward only)**. A live summary lists moved refs and commit ranges, unchanged
+  repositories, skipped repositories with reasons, and failures. Pull follows each
+  checked-out branch's configured upstream and skips local changes, detached HEADs,
+  unfinished operations, and diverged history. (#69)
+
 ## [0.23.0] — 2026-10-13
 
 The working-copy release. Folders in the file tree stage and unstage as one, the

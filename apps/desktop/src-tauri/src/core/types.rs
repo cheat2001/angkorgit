@@ -279,3 +279,21 @@ pub struct GeneratedKey {
     pub path: String,
     pub public_key: String,
 }
+
+/// Result of a group action for one repository, including partial fetch failures.
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupUpdateResult {
+    pub status: String,
+    pub message: String,
+    pub changes: Vec<RefMovement>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RefMovement {
+    pub name: String,
+    pub old_oid: Option<String>,
+    pub new_oid: Option<String>,
+    pub commits: Option<usize>,
+}
