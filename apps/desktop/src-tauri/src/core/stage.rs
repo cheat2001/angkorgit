@@ -5,30 +5,48 @@ use git2::{ApplyLocation, DiffFormat, DiffOptions, Repository};
 use crate::error::{AppError, AppResult};
 
 pub fn stage_file(path: &str, file: &str) -> AppResult<()> {
+    stage_files(path, &[file.to_string()])
+}
+
+pub fn stage_files(path: &str, files: &[String]) -> AppResult<()> {
+    if files.is_empty() {
+        return Ok(());
+    }
     let repo = super::repo::open(path)?;
     let mut index = repo.index()?;
     let workdir = repo
         .workdir()
         .ok_or_else(|| AppError::other("bare repository"))?;
-    if workdir.join(file).symlink_metadata().is_ok() {
-        index.add_path(Path::new(file))?;
-    } else {
-        index.remove_path(Path::new(file))?;
+    for file in files {
+        if workdir.join(file).symlink_metadata().is_ok() {
+            index.add_path(Path::new(file))?;
+        } else {
+            index.remove_path(Path::new(file))?;
+        }
     }
     index.write()?;
     Ok(())
 }
 
 pub fn unstage_file(path: &str, file: &str) -> AppResult<()> {
+    unstage_files(path, &[file.to_string()])
+}
+
+pub fn unstage_files(path: &str, files: &[String]) -> AppResult<()> {
+    if files.is_empty() {
+        return Ok(());
+    }
     let repo = super::repo::open(path)?;
     match repo.head() {
         Ok(head) => {
             let obj = head.peel(git2::ObjectType::Commit)?;
-            repo.reset_default(Some(&obj), [file])?;
+            repo.reset_default(Some(&obj), files)?;
         }
         Err(_) => {
             let mut index = repo.index()?;
-            index.remove_path(Path::new(file))?;
+            for file in files {
+                index.remove_path(Path::new(file))?;
+            }
             index.write()?;
         }
     }
