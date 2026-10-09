@@ -47,7 +47,8 @@ pub mod test_api {
     pub use crate::core::scan::{scan as scan_repositories, SCAN_MAX_DEPTH};
     pub use crate::core::stage::{
         discard_all, discard_line, discard_staged_all, discard_staged_file, stage_all, stage_file,
-        stage_hunk, stage_line, unstage_all, unstage_file, unstage_hunk, unstage_line,
+        stage_files, stage_hunk, stage_line, unstage_all, unstage_file, unstage_files,
+        unstage_hunk, unstage_line,
     };
     pub use crate::core::types::HistoryQuery;
     pub use crate::core::types::HistorySearchQuery;
@@ -128,7 +129,9 @@ pub fn run() {
             commands::config_get,
             commands::config_set,
             commands::stage_file,
+            commands::stage_files,
             commands::unstage_file,
+            commands::unstage_files,
             commands::stage_all,
             commands::unstage_all,
             commands::discard_file,

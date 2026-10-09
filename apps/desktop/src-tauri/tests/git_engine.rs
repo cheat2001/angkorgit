@@ -130,6 +130,58 @@ fn unstage_and_amend() {
 }
 
 #[test]
+fn stage_and_unstage_many_files() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    repo.write("b.txt", "two\n");
+    commit_all(&repo, "first");
+
+    repo.write("a.txt", "one changed\n");
+    repo.write("c.txt", "three\n");
+    std::fs::remove_file(repo.dir.join("b.txt")).unwrap();
+
+    core::stage_files(
+        repo.path(),
+        &[
+            "a.txt".to_string(),
+            "b.txt".to_string(),
+            "c.txt".to_string(),
+        ],
+    )
+    .unwrap();
+    let status = core::status(repo.path()).unwrap();
+    assert_eq!(status.files.len(), 3);
+    let by_path = |p: &str| {
+        status
+            .files
+            .iter()
+            .find(|f| f.path == p)
+            .unwrap_or_else(|| panic!("{p} missing"))
+    };
+    assert_eq!(by_path("a.txt").staged.as_deref(), Some("modified"));
+    assert_eq!(by_path("b.txt").staged.as_deref(), Some("deleted"));
+    assert_eq!(by_path("c.txt").staged.as_deref(), Some("new"));
+    assert!(status.files.iter().all(|f| f.unstaged.is_none()));
+
+    core::unstage_files(repo.path(), &["a.txt".to_string(), "b.txt".to_string()]).unwrap();
+    let status = core::status(repo.path()).unwrap();
+    let staged: Vec<&str> = status
+        .files
+        .iter()
+        .filter(|f| f.staged.is_some())
+        .map(|f| f.path.as_str())
+        .collect();
+    assert_eq!(staged, vec!["c.txt"]);
+
+    core::unstage_files(repo.path(), &[]).unwrap();
+    let status = core::status(repo.path()).unwrap();
+    assert_eq!(
+        status.files.iter().filter(|f| f.staged.is_some()).count(),
+        1
+    );
+}
+
+#[test]
 fn branch_create_checkout_merge_ff_and_normal() {
     let repo = TempRepo::new();
     repo.write("a.txt", "base\n");

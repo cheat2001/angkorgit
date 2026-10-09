@@ -446,7 +446,7 @@ export function WorkingCopyPanel() {
 
   const stageMany = (paths: string[], staged: boolean) =>
     run(
-      () => Promise.all(paths.map((file) => (staged ? ipc.unstageFile(path, file) : ipc.stageFile(path, file)))),
+      () => (staged ? ipc.unstageFiles(path, paths) : ipc.stageFiles(path, paths)),
       staged ? 'Unstage failed' : 'Stage failed',
     );
 

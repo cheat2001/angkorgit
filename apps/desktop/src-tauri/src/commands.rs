@@ -112,8 +112,18 @@ pub async fn stage_file(path: String, file: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub async fn stage_files(path: String, files: Vec<String>) -> AppResult<()> {
+    blocking(move || stage::stage_files(&path, &files)).await
+}
+
+#[tauri::command]
 pub async fn unstage_file(path: String, file: String) -> AppResult<()> {
     blocking(move || stage::unstage_file(&path, &file)).await
+}
+
+#[tauri::command]
+pub async fn unstage_files(path: String, files: Vec<String>) -> AppResult<()> {
+    blocking(move || stage::unstage_files(&path, &files)).await
 }
 
 #[tauri::command]

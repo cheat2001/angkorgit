@@ -6,6 +6,12 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Staging or unstaging a multi-file selection no longer fails with "the index is
+  locked": the selection goes to the engine as one call with a single index write
+  instead of one call per file racing for the lock (#66)
+
 ## [0.22.0] — 2026-10-08
 
 The remotes release. Repositories with more than one remote get a "Pull from" and a

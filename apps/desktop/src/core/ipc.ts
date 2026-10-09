@@ -195,9 +195,17 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('stage_file', { path, file });
   },
+  async stageFiles(path: string, files: string[]): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('stage_files', { path, files });
+  },
   async unstageFile(path: string, file: string): Promise<void> {
     if (!isTauri()) return;
     return invoke('unstage_file', { path, file });
+  },
+  async unstageFiles(path: string, files: string[]): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('unstage_files', { path, files });
   },
   async stageAll(path: string): Promise<void> {
     if (!isTauri()) return;
