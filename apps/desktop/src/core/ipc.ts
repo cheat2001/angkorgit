@@ -1,4 +1,5 @@
 import type {
+  GroupUpdateResult,
   BranchInfo,
   CliAgentInfo,
   CliRunRequest,
@@ -449,6 +450,13 @@ export const ipc = {
       return { status: 'ok', message: `Fetched ${remote} (demo)` };
     }
     return invoke('remote_fetch', { path, remote, tags, prune });
+  },
+  async groupUpdate(path: string, pull: boolean): Promise<GroupUpdateResult> {
+    if (!isTauri()) {
+      await delay(400);
+      return { status: 'up_to_date', message: pull ? 'main is already up to date (demo)' : 'Fetched origin; no refs moved (demo)', changes: [] };
+    }
+    return invoke('repository_group_update', { path, pull });
   },
   async pull(path: string, remote: string, mode?: 'merge' | 'rebase'): Promise<OpOutcome> {
     if (!isTauri()) {

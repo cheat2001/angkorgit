@@ -22,6 +22,12 @@ impl TempRepo {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.to_str().unwrap();
         core::init(path).unwrap();
+        // Tests use master and unsigned commits regardless of the developer's Git defaults.
+        git2::Repository::open(path)
+            .unwrap()
+            .set_head("refs/heads/master")
+            .unwrap();
+        core::set_config(Some(path), "commit.gpgsign", "false", false).unwrap();
         core::set_config(Some(path), "user.name", "Test User", false).unwrap();
         core::set_config(Some(path), "user.email", "test@angkorgit.dev", false).unwrap();
         core::set_config(Some(path), "core.autocrlf", "false", false).unwrap();
@@ -2395,6 +2401,7 @@ fn clone_of(origin: &std::path::Path, local: &TempRepo, suffix: &str) -> TempRep
         .unwrap();
     assert!(status.success());
     let clone = TempRepo { dir };
+    core::set_config(Some(clone.path()), "commit.gpgsign", "false", false).unwrap();
     core::set_config(Some(clone.path()), "user.name", "Other User", false).unwrap();
     core::set_config(
         Some(clone.path()),
@@ -2910,4 +2917,169 @@ fn scan_finds_every_repository_and_skips_noise() {
 
     assert!(core::scan_repositories(root.join("missing").to_str().unwrap(), 4).is_err());
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn group_pull_fast_forwards_configured_upstream_without_merging() {
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    let old = commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let other = clone_of(&origin, &local, "group");
+    // A differently named local branch must still follow its configured upstream.
+    let repo = git2::Repository::open(other.path()).unwrap();
+    repo.find_branch("master", git2::BranchType::Local)
+        .unwrap()
+        .rename("topic", false)
+        .unwrap();
+    core::set_config(Some(other.path()), "pull.rebase", "true", false).unwrap();
+    local.write("a.txt", "updated\n");
+    let new = commit_all(&local, "updated");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let result = core::group_update(other.path(), true).unwrap();
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.changes[0].name, "topic");
+    assert_eq!(result.changes[0].old_oid.as_deref(), Some(old.as_str()));
+    assert_eq!(result.changes[0].new_oid.as_deref(), Some(new.as_str()));
+    assert_eq!(result.changes[0].commits, Some(1));
+    assert_eq!(other.read("a.txt"), "updated\n");
+    assert_eq!(head_summary_and_parents(&other).1, 1);
+    assert_eq!(
+        core::group_update(other.path(), true).unwrap().status,
+        "up_to_date"
+    );
+    // Divergence must not use merge or configured rebase.
+    other.write("mine.txt", "mine\n");
+    let mine = commit_all(&other, "mine");
+    local.write("a.txt", "remote again\n");
+    commit_all(&local, "remote again");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let result = core::group_update(other.path(), true).unwrap();
+    assert_eq!(result.status, "skipped");
+    assert!(result.message.contains("diverged"));
+    assert_eq!(repo.head().unwrap().target().unwrap().to_string(), mine);
+    assert_eq!(repo.state(), git2::RepositoryState::Clean);
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn group_pull_skips_dirty_detached_missing_upstream_and_unfinished_repos() {
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    let old = commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let other = clone_of(&origin, &local, "group-skip");
+    local.write("a.txt", "remote\n");
+    commit_all(&local, "remote");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    for staged in [false, true] {
+        other.write("a.txt", "dirty\n");
+        if staged {
+            core::stage_all(other.path()).unwrap();
+        }
+        let result = core::group_update(other.path(), true).unwrap();
+        assert_eq!(result.status, "skipped");
+        assert!(result.message.contains("local changes"));
+        assert_eq!(other.read("a.txt"), "dirty\n");
+    }
+    let repo = git2::Repository::open(other.path()).unwrap();
+    repo.reset(
+        &repo
+            .find_object(git2::Oid::from_str(&old).unwrap(), None)
+            .unwrap(),
+        git2::ResetType::Hard,
+        None,
+    )
+    .unwrap();
+    other.write("new.txt", "keep\n");
+    assert_eq!(
+        core::group_update(other.path(), true).unwrap().status,
+        "skipped"
+    );
+    std::fs::remove_file(other.dir.join("new.txt")).unwrap();
+    std::fs::write(repo.path().join("MERGE_HEAD"), &old).unwrap();
+    assert!(core::group_update(other.path(), true)
+        .unwrap()
+        .message
+        .contains("unfinished"));
+    std::fs::remove_file(repo.path().join("MERGE_HEAD")).unwrap();
+    repo.set_head_detached(git2::Oid::from_str(&old).unwrap())
+        .unwrap();
+    assert!(core::group_update(other.path(), true)
+        .unwrap()
+        .message
+        .contains("detached"));
+    repo.set_head("refs/heads/master").unwrap();
+    repo.find_branch("master", git2::BranchType::Local)
+        .unwrap()
+        .set_upstream(None)
+        .unwrap();
+    assert!(core::group_update(other.path(), true)
+        .unwrap()
+        .message
+        .contains("no upstream"));
+    assert_eq!(repo.head().unwrap().target().unwrap().to_string(), old);
+    assert_eq!(
+        core::group_update(other.dir.join("missing").to_str().unwrap(), true)
+            .unwrap()
+            .status,
+        "skipped"
+    );
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn group_fetch_reports_moved_refs_and_continues_after_remote_failure() {
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    let old = commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let other = clone_of(&origin, &local, "group-fetch");
+    core::remote_add(
+        other.path(),
+        "broken",
+        other.dir.join("missing.git").to_str().unwrap(),
+    )
+    .unwrap();
+    local.write("a.txt", "new\n");
+    let new = commit_all(&local, "new");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let result = core::group_update(other.path(), false).unwrap();
+    assert_eq!(result.status, "failed");
+    assert!(result.message.contains("broken"));
+    let moved = result
+        .changes
+        .iter()
+        .find(|r| r.name == "refs/remotes/origin/master")
+        .unwrap();
+    assert_eq!(moved.old_oid.as_deref(), Some(old.as_str()));
+    assert_eq!(moved.new_oid.as_deref(), Some(new.as_str()));
+    assert_eq!(other.read("a.txt"), "base\n");
+    assert_eq!(
+        git2::Repository::open(other.path())
+            .unwrap()
+            .head()
+            .unwrap()
+            .target()
+            .unwrap()
+            .to_string(),
+        old
+    );
+    assert!(core::group_update(other.path(), false)
+        .unwrap()
+        .changes
+        .is_empty());
+    let empty = TempRepo::new();
+    assert_eq!(
+        core::group_update(empty.path(), false).unwrap().status,
+        "skipped"
+    );
+    assert!(core::group_update(empty.path(), true)
+        .unwrap()
+        .message
+        .contains("no commits"));
+    std::fs::remove_dir_all(origin).unwrap();
 }

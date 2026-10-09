@@ -16,11 +16,13 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  Download,
   FolderGit2,
   FolderOpen,
   FolderSearch,
   FolderTree,
   GitBranchPlus,
+  GitPullRequestArrow,
   MoreHorizontal,
   Pencil,
   Search,
@@ -59,6 +61,8 @@ import { CloneDialog } from './CloneDialog';
 import { RepoShortcutDialog } from './RepoShortcutDialog';
 import { RepoGroupDialog } from './RepoGroupDialog';
 import { GroupDot, GroupTile, RepoGroupSubmenu } from './RepoGroupMenu';
+import { GroupUpdateDialog, type GroupUpdateProgress } from './GroupUpdateDialog';
+import { updateGroupRepositories } from './groupUpdate';
 import { closeRepoGroup, deleteRepoGroup, openRepoGroup } from './groups';
 import { ScanRepositoriesDialog, startRepositoryScan } from './ScanRepositoriesDialog';
 import { SettingsDialog } from '@/features/settings/SettingsDialog';
@@ -83,6 +87,8 @@ export function WelcomePage() {
   const groupOf = useSettings((s) => s.repoGroupOf);
   const setRepoGroup = useSettings((s) => s.setRepoGroup);
   const moveRepoGroup = useSettings((s) => s.moveRepoGroup);
+  const busy = useRepo((s) => s.busy);
+  const [groupProgress, setGroupProgress] = useState<GroupUpdateProgress | null>(null);
   const [query, setQuery] = useState('');
   const [activePath, setActivePath] = useState<string | null>(null);
   const [missing, setMissing] = useState<Set<string>>(new Set());
@@ -93,6 +99,25 @@ export function WelcomePage() {
   const [dragGroupId, setDragGroupId] = useState<string | null>(null);
   const [groupDrop, setGroupDrop] = useState<{ id: string; position: RepoGroupDropPosition } | null>(null);
   const [version, setVersion] = useState('');
+
+  async function updateGroup(group: RepoGroup, repos: RecentRepository[], pull: boolean) {
+    if (useRepo.getState().busy || useRepo.getState().opening || repos.length === 0) return;
+    useRepo.getState().setBusy(pull ? 'Pulling group…' : 'Fetching group…');
+    setGroupProgress({ name: group.name, pull, total: repos.length, results: [], running: true });
+    try {
+      await updateGroupRepositories(repos, (path) => ipc.groupUpdate(path, pull), (result) => {
+        setGroupProgress((current) => current ? { ...current, results: [...current.results, result] } : current);
+      });
+      if (repos.some((r) => r.path === useRepo.getState().repo?.path)) {
+        await useRepo.getState().refresh();
+      }
+    } catch (error) {
+      toast.error(`Could not refresh repository: ${(error as { message?: string })?.message ?? error}`);
+    } finally {
+      useRepo.getState().setBusy(null);
+      setGroupProgress((current) => current ? { ...current, running: false } : current);
+    }
+  }
 
   useEffect(() => {
     void appVersion()
@@ -617,6 +642,19 @@ export function WelcomePage() {
               <span className="truncate">{groupMenu.group.name}</span>
             </DropdownMenuLabel>
             <DropdownMenuItem
+              disabled={groupMenu.repos.length === 0 || !!busy || !!opening}
+              onClick={() => void updateGroup(groupMenu.group, groupMenu.repos, false)}
+            >
+              <Download /> Fetch all
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={groupMenu.repos.length === 0 || !!busy || !!opening}
+              onClick={() => void updateGroup(groupMenu.group, groupMenu.repos, true)}
+            >
+              <GitPullRequestArrow /> Pull all (fast-forward only)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
               disabled={groupMenu.repos.length === 0}
               onClick={() =>
                 void openRepoGroup(
@@ -671,6 +709,7 @@ export function WelcomePage() {
         </DropdownMenu>
       )}
 
+      <GroupUpdateDialog progress={groupProgress} onClose={() => setGroupProgress(null)} />
       <CloneDialog onCloned={(path) => void openRepository(path)} />
       <SettingsDialog />
       <RepoShortcutDialog />

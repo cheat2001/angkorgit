@@ -2741,6 +2741,20 @@ test('repositories can be grouped on the welcome page and a group opens as tabs'
   const frontend = page.locator('[data-group-header]', { hasText: 'Frontend' });
   await expect(frontend).toBeVisible();
   await expect(frontend.getByText('1', { exact: true })).toBeVisible();
+  await frontend.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Fetch all', exact: true }).click();
+  await expect(dialog.getByRole('heading', { name: 'Fetch all — Frontend' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+  await expect(dialog.locator('[data-group-update-results]')).toContainText('temple-ui');
+  await expect(dialog).toContainText('0 skipped · 0 failed');
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await frontend.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).click();
+  await expect(dialog.getByRole('heading', { name: 'Pull all (fast-forward only) — Frontend' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+  await expect(dialog).toContainText('Up to date');
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+
   const other = page.locator('[data-group-header]', { hasText: 'Other' });
   await expect(other.getByText('3', { exact: true })).toBeVisible();
 
@@ -2876,4 +2890,41 @@ test('repositories can be grouped on the welcome page and a group opens as tabs'
   await expect(frontend).toBeHidden();
   await expect(page.locator('[data-recent-row="/Users/demo/projects/angkorgit"]')).toBeVisible();
   await expect(backend.getByText('2', { exact: true })).toBeVisible();
+});
+
+
+test('group pull summary shows moved refs, skips, failures and unchanged repositories', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const [{ ipc }, { useSettings }, { useRepo }] = await Promise.all([
+      import('/src/core/ipc.ts'), import('/src/features/settings/store.ts'), import('/src/features/repository/store.ts'),
+    ]);
+    const repos = ['updated', 'skipped', 'failed', 'current'].map((name) => ({ path: `/projects/${name}`, name, lastOpenedAt: 0 }));
+    useRepo.setState({ recents: repos });
+    useSettings.getState().addRepoGroup('Projects', 0, repos.map((r) => r.path));
+    ipc.groupUpdate = async (path, pull) => {
+      if (!pull) throw new Error('Expected fast-forward pull');
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      if (path.endsWith('/failed')) throw { message: 'Authentication failed' };
+      if (path.endsWith('/skipped')) return { status: 'skipped', message: 'main has diverged; fast-forward unavailable', changes: [] };
+      if (path.endsWith('/current')) return { status: 'up_to_date', message: 'main is already up to date', changes: [] };
+      return { status: 'ok', message: 'Fast-forwarded main by 2 commits', changes: [{ name: 'main', oldOid: '1234567890', newOid: 'abcdef0123', commits: 2 }] };
+    };
+  });
+  await page.locator('[data-group-header]', { hasText: 'Projects' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('status')).toContainText('1 updated · 1 up to date · 1 skipped · 1 failed');
+  await expect(dialog).toContainText('main: 1234567 → abcdef0 (2 commits)');
+  await expect(dialog).toContainText('main has diverged');
+  await expect(dialog).toContainText('Authentication failed');
+  await expect(dialog).toContainText('main is already up to date');
+  await page.screenshot({ path: '/tmp/angkorgit-group-summary.png' });
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(dialog).toBeHidden();
 });

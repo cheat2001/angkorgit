@@ -488,6 +488,14 @@ pub async fn remote_fetch(
 }
 
 #[tauri::command]
+pub async fn repository_group_update(
+    path: String,
+    pull: bool,
+) -> AppResult<crate::core::types::GroupUpdateResult> {
+    blocking(move || remote::group_update(&path, pull)).await
+}
+
+#[tauri::command]
 pub async fn remote_pull(
     path: String,
     remote: String,
