@@ -428,6 +428,7 @@ export function AccountsTab() {
 
   return (
     <SettingCard
+      settingId="accounts"
       title="Accounts"
       description="Used automatically when a remote's host matches — push and pull over HTTPS with no SSH setup. Several accounts per host are fine; one is the default and profiles can pick another."
       action={

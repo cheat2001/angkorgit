@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Check,
@@ -16,6 +16,7 @@ import {
   Plus,
   RefreshCw,
   Sparkles,
+  Search,
   SquareTerminal,
   Sun,
   Trash2,
@@ -36,6 +37,10 @@ import {
   type CommitStylePreset,
   chordLabels,
   parseChordId,
+  filterSettingsCards,
+  SETTINGS_SECTION_LABELS,
+  type SettingsSectionId,
+  type SettingsCardId,
 } from '@angkorgit/core';
 import {
   Badge,
@@ -72,12 +77,12 @@ import { applyProfileToRepo } from './profiles';
 import { installCliTool } from './cliTool';
 import { useEditors } from './editors';
 import { AccountsTab, providerIcon } from './AccountsTab';
-import { Field, SettingCard, SettingEmpty, SettingRow } from './SettingCard';
+import { Field, SettingCard, SettingEmpty, SettingRow, SettingsFilterContext } from './SettingCard';
 import { FontsCard } from './FontsCard';
 import { getAiProvider } from '@/features/ai/client';
 import { basename, isMac, modKey, shortenHome } from '@/shared/utils';
 
-type SectionId = 'appearance' | 'git' | 'accounts' | 'ai' | 'shortcuts';
+type SectionId = SettingsSectionId;
 
 const SECTIONS: Array<{
   id: SectionId;
@@ -85,11 +90,11 @@ const SECTIONS: Array<{
   description: string;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
-  { id: 'appearance', label: 'Appearance', description: 'Theme, accent color, zoom and motion', icon: Palette },
-  { id: 'git', label: 'Git', description: 'Auto fetch, pull requests, command line, identity and profiles', icon: User },
-  { id: 'accounts', label: 'Authentication', description: 'https:// remotes use accounts · git@ remotes use SSH keys', icon: Github },
-  { id: 'ai', label: 'AI Assistant', description: 'Provider, connection and message style', icon: Sparkles },
-  { id: 'shortcuts', label: 'Shortcuts', description: 'Keyboard reference', icon: Keyboard },
+  { id: 'appearance', label: SETTINGS_SECTION_LABELS.appearance, description: 'Theme, accent color, zoom and motion', icon: Palette },
+  { id: 'git', label: SETTINGS_SECTION_LABELS.git, description: 'Auto fetch, pull requests, command line, identity and profiles', icon: User },
+  { id: 'accounts', label: SETTINGS_SECTION_LABELS.accounts, description: 'https:// remotes use accounts · git@ remotes use SSH keys', icon: Github },
+  { id: 'ai', label: SETTINGS_SECTION_LABELS.ai, description: 'Provider, connection and message style', icon: Sparkles },
+  { id: 'shortcuts', label: SETTINGS_SECTION_LABELS.shortcuts, description: 'Keyboard reference', icon: Keyboard },
 ];
 
 function SshCard() {
@@ -130,6 +135,7 @@ function SshCard() {
 
   return (
     <SettingCard
+      settingId="ssh"
       title="SSH"
       description="Used for git@… remotes; https:// remotes use the accounts above instead."
     >
@@ -203,6 +209,7 @@ function CredentialHelperCard() {
   const setUseCredentialHelper = useSettings((s) => s.setUseCredentialHelper);
   return (
     <SettingCard
+      settingId="credential-helper"
       title="System credential helper"
       description="After your accounts, fall back to credentials saved by git or another client. Turn off to test the accounts on their own."
       action={<Switch checked={useCredentialHelper} onCheckedChange={setUseCredentialHelper} />}
@@ -428,6 +435,7 @@ function CommitStyleCard() {
 
   return (
     <SettingCard
+      settingId="commit-style"
       title="Commit message style"
       description={COMMIT_STYLE_PRESETS[commit.preset].description}
       action={
@@ -549,6 +557,7 @@ function CloneFolderCard() {
   };
   return (
     <SettingCard
+      settingId="clone"
       title="Clone destination"
       description="The folder the clone dialog starts from. The last folder you cloned into is remembered here automatically."
       action={
@@ -605,6 +614,7 @@ function CliToolCard() {
 
   return (
     <SettingCard
+      settingId="cli"
       title="Command line tool"
       description="Open or clone a repository from the terminal as angkorgit or the short akg. Run akg --help for the full usage."
       action={
@@ -648,6 +658,7 @@ function EditorCard() {
 
   return (
     <SettingCard
+      settingId="editor"
       title="External editor"
       description="Open the repository or a file in an editor installed on this machine, from the toolbar, the palette and the file menus."
       action={
@@ -720,6 +731,7 @@ function ReviewStyleCard() {
 
   return (
     <SettingCard
+      settingId="review"
       title="AI review conventions"
       description="What the AI reviewer pays attention to when it reviews staged changes. Applies to every repository."
     >
@@ -752,6 +764,7 @@ function RepoShortcutsCard() {
     .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <SettingCard
+      settingId="repo-shortcuts"
       title="Repository shortcuts"
       description="A key combination that switches to a repository from anywhere in the app, opening it if it is not already open. Right-click a tab or a recent repository and choose Keyboard shortcut… to add one."
     >
@@ -830,7 +843,71 @@ export function SettingsDialog() {
   const settings = useSettings();
   const aiStatus = settings.aiStatus;
 
-  const [section, setSection] = useState<SectionId>('appearance');
+  const [selectedSection, setSection] = useState<SectionId>('appearance');
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [locate, setLocate] = useState<{ id: SettingsCardId; sequence: number } | null>(null);
+  const [located, setLocated] = useState<SettingsCardId | null>(null);
+  const filtering = query.trim().length > 0;
+  const matches = useMemo(() => filterSettingsCards(query), [query]);
+  const visible = useMemo(() => filtering ? new Set(matches.map((card) => card.id)) : null, [filtering, matches]);
+  const sections = SECTIONS.filter((entry) => !filtering || matches.some((card) => card.section === entry.id));
+  const section = sections.some((entry) => entry.id === selectedSection)
+    ? selectedSection
+    : sections[0]?.id ?? selectedSection;
+
+  useEffect(() => {
+    if (open) return;
+    setQuery('');
+    setLocate(null);
+    setLocated(null);
+  }, [open]);
+
+  useEffect(() => {
+    setLocate(null);
+    setLocated(null);
+  }, [query]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [query, section]);
+
+  useEffect(() => {
+    if (!open || !locate) return;
+    const scroller = scrollRef.current;
+    const card = scroller?.querySelector<HTMLElement>(`[data-settings-card="${locate.id}"]`);
+    if (!scroller || !card) return;
+    setLocated(null);
+    const bounds = scroller.getBoundingClientRect();
+    const cardBounds = card.getBoundingClientRect();
+    const alreadyVisible = cardBounds.top >= bounds.top && cardBounds.bottom <= bounds.bottom;
+    const destination = Math.max(0, Math.min(
+      scroller.scrollHeight - scroller.clientHeight,
+      scroller.scrollTop + cardBounds.top - bounds.top,
+    ));
+    if (!alreadyVisible) scroller.scrollTo({ top: destination, behavior: settings.reduceMotion ? 'auto' : 'smooth' });
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const started = performance.now();
+    const measure = () => {
+      const current = card.getBoundingClientRect();
+      const viewport = scroller.getBoundingClientRect();
+      const visibleNow = current.top >= viewport.top - 1 && current.bottom <= viewport.bottom + 1;
+      if (alreadyVisible || visibleNow || Math.abs(scroller.scrollTop - destination) < 1) {
+        setLocated(locate.id);
+        timer = setTimeout(() => setLocated(null), 1200);
+      } else {
+        if (performance.now() - started > 1600) scroller.scrollTo({ top: destination, behavior: 'auto' });
+        frame = requestAnimationFrame(measure);
+      }
+    };
+    frame = requestAnimationFrame(measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [open, locate, settings.reduceMotion]);
   const [gitName, setGitName] = useState('');
   const [gitEmail, setGitEmail] = useState('');
   const [testing, setTesting] = useState(false);
@@ -948,18 +1025,70 @@ export function SettingsDialog() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && closeDialog()}>
-      <DialogContent className="max-w-3xl overflow-hidden p-0">
+      <DialogContent
+        className="max-w-3xl overflow-hidden p-0"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          searchRef.current?.focus();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (!query) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setQuery('');
+          searchRef.current?.focus();
+        }}
+      >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <div className="flex h-[560px] max-h-[80vh]">
           <nav className="flex w-52 shrink-0 flex-col border-r border-border-subtle bg-surface">
             <p className="px-4 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-faint">
               Settings
             </p>
+            <div className="px-3 pb-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-2 size-3.5 text-faint" />
+                <Input
+                  ref={searchRef}
+                  aria-label="Filter settings"
+                  placeholder="Filter settings…"
+                  className="h-8 pl-7 pr-7 text-xs"
+                  value={query}
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' || event.nativeEvent.isComposing || !filtering || !matches.length) return;
+                    event.preventDefault();
+                    setSection(matches[0].section);
+                    setLocate((previous) => ({ id: matches[0].id, sequence: (previous?.sequence ?? 0) + 1 }));
+                  }}
+                />
+                {query && (
+                  <Hint label="Clear settings filter">
+                    <button
+                      type="button"
+                      aria-label="Clear settings filter"
+                      className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-md text-muted hover:text-foreground"
+                      onClick={() => { setQuery(''); searchRef.current?.focus(); }}
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </Hint>
+                )}
+              </div>
+            </div>
             <div className="flex-1 px-2">
-              {SECTIONS.map(({ id, label, icon: Icon }) => (
+              {sections.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
-                  onClick={() => setSection(id)}
+                  onClick={() => {
+                    setSection(id);
+                    setLocate(null);
+                    setLocated(null);
+                  }}
+                  aria-current={section === id ? 'page' : undefined}
                   className={cn(
                     'mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
                     section === id
@@ -982,13 +1111,25 @@ export function SettingsDialog() {
 
           <div className="flex min-w-0 flex-1 flex-col bg-background">
             <header className="shrink-0 border-b border-border-subtle px-6 pb-4 pt-5">
-              <h2 className="text-base font-semibold">{active.label}</h2>
-              <p className="mt-0.5 text-xs text-muted">{active.description}</p>
+              <h2 className="text-base font-semibold">{sections.length ? active.label : 'Settings'}</h2>
+              <p className="mt-0.5 text-xs text-muted" role={filtering ? 'status' : undefined}>
+                {filtering ? `${matches.length} matching ${matches.length === 1 ? 'setting' : 'settings'}` : active.description}
+              </p>
             </header>
-            <div className="min-h-0 flex-1 overflow-y-auto p-6">
-              {section === 'appearance' && (
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-6">
+              <SettingsFilterContext.Provider value={{ visible, located }}>
+              {filtering && matches.length === 0 && (
+                <SettingEmpty
+                  icon={<Search className="size-4" />}
+                  title="No matching settings"
+                  description="Try another title or keyword."
+                  action={<Button variant="secondary" size="sm" onClick={() => { setQuery(''); searchRef.current?.focus(); }}>Clear filter</Button>}
+                />
+              )}
+              {sections.length > 0 && section === 'appearance' && (
                 <div className="flex flex-col gap-4">
                   <SettingCard
+                    settingId="theme"
                     title="Theme"
                     description="Popular editor palettes — surfaces and syntax colors follow the theme."
                   >
@@ -1042,6 +1183,7 @@ export function SettingsDialog() {
                   </SettingCard>
 
                   <SettingCard
+                    settingId="accent"
                     title="Accent color"
                     description="Buttons, highlights and focus follow your accent. Graph and diff colors keep their meaning."
                   >
@@ -1066,6 +1208,7 @@ export function SettingsDialog() {
                   </SettingCard>
 
                   <SettingCard
+                    settingId="zoom"
                     title="Zoom"
                     description={
                       <>
@@ -1104,6 +1247,7 @@ export function SettingsDialog() {
                   />
 
                   <SettingCard
+                    settingId="motion"
                     title="Reduce motion"
                     description="Minimize animations across the app"
                     action={<Switch checked={settings.reduceMotion} onCheckedChange={settings.setReduceMotion} />}
@@ -1113,9 +1257,10 @@ export function SettingsDialog() {
                 </div>
               )}
 
-              {section === 'git' && (
+              {sections.length > 0 && section === 'git' && (
                 <div className="flex flex-col gap-4">
                   <SettingCard
+                    settingId="auto-fetch"
                     title="Auto fetch"
                     description="Fetch from the first remote in the background so teammates' commits show up by themselves. Failures stay silent."
                     action={
@@ -1137,6 +1282,7 @@ export function SettingsDialog() {
                   />
 
                   <SettingCard
+                    settingId="pull-requests"
                     title="Pull requests"
                     description="Show the pull requests section in the sidebar, loaded through your connected account."
                     action={
@@ -1154,6 +1300,7 @@ export function SettingsDialog() {
                   <EditorCard />
 
                   <SettingCard
+                    settingId="identity"
                     title={repo ? 'Identity for this repository' : 'Global identity'}
                     description={
                       repo
@@ -1191,6 +1338,7 @@ export function SettingsDialog() {
                   </SettingCard>
 
                   <SettingCard
+                    settingId="profiles"
                     title="Profiles"
                     description="Work and personal identities, each with the hosting accounts linked to it. A repository is assigned to one profile the first time you commit or push, and that choice stays with the repository."
                     action={
@@ -1373,7 +1521,7 @@ export function SettingsDialog() {
                 </div>
               )}
 
-              {section === 'accounts' && (
+              {sections.length > 0 && section === 'accounts' && (
                 <div className="flex flex-col gap-4">
                   <AccountsTab />
                   <CredentialHelperCard />
@@ -1381,9 +1529,10 @@ export function SettingsDialog() {
                 </div>
               )}
 
-              {section === 'ai' && (
+              {sections.length > 0 && section === 'ai' && (
                 <div className="flex flex-col gap-4">
                   <SettingCard
+                    settingId="provider"
                     title="Provider"
                     description={
                       settings.ai.provider === 'cli'
@@ -1471,9 +1620,9 @@ export function SettingsDialog() {
                 </div>
               )}
 
-              {section === 'shortcuts' && (
+              {sections.length > 0 && section === 'shortcuts' && (
                 <div className="flex flex-col gap-4">
-                  <SettingCard title="Keyboard shortcuts">
+                  <SettingCard settingId="keyboard" title="Keyboard shortcuts">
                     <div className="flex flex-col">
                       {SHORTCUTS.map(([label, keys], index) => (
                         <div key={label}>
@@ -1493,6 +1642,7 @@ export function SettingsDialog() {
                   <RepoShortcutsCard />
                 </div>
               )}
+              </SettingsFilterContext.Provider>
             </div>
           </div>
         </div>
