@@ -122,6 +122,7 @@ export function FontsCard() {
 
   return (
     <SettingCard
+      settingId="fonts"
       title="Fonts"
       description={
         <>

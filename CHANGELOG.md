@@ -6,6 +6,12 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Filter settings by title or keyword.** The search field focuses when Settings
+  opens, hides non-matching cards and sections, and accepts multiple terms. Enter
+  lands on the first match with a locate flash. Escape clears the filter before
+  closing; closing resets it, and opening a specific section still works. (#33)
+
 ## [0.22.0] — 2026-10-08
 
 The remotes release. Repositories with more than one remote get a "Pull from" and a

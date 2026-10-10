@@ -1,4 +1,11 @@
+import { createContext, useContext } from 'react';
+import type { SettingsCardId } from '@angkorgit/core';
 import { cn } from '@angkorgit/design-system';
+
+export const SettingsFilterContext = createContext<{
+  visible: ReadonlySet<SettingsCardId> | null;
+  located: SettingsCardId | null;
+}>({ visible: null, located: null });
 
 export function Field({
   label,
@@ -21,20 +28,27 @@ export function Field({
 }
 
 export function SettingCard({
+  settingId,
   title,
   description,
   action,
   className,
   children,
 }: {
+  settingId: SettingsCardId;
   title: React.ReactNode;
   description?: React.ReactNode;
   action?: React.ReactNode;
   className?: string;
   children?: React.ReactNode;
 }) {
+  const filter = useContext(SettingsFilterContext);
+  if (filter.visible && !filter.visible.has(settingId)) return null;
   return (
-    <section className={cn('rounded-lg border border-border bg-surface p-4', className)}>
+    <section
+      data-settings-card={settingId}
+      className={cn('rounded-lg border border-border bg-surface p-4', filter.located === settingId && 'animate-locate', className)}
+    >
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-medium">{title}</h3>
