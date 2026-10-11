@@ -902,6 +902,36 @@ test('commit box separates a summary line from a smaller description', async ({ 
   await expect(summary).toBeFocused();
 });
 
+test('mod+enter with nothing staged asks to stage instead of committing', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-nothing-staged', '1'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const summary = page.getByLabel('Commit summary');
+  await summary.fill('fix: nothing staged');
+  await expect(page.getByRole('button', { name: 'Commit', exact: true })).toBeDisabled();
+
+  await summary.press('ControlOrMeta+Enter');
+  await expect(page.getByText('Stage some changes first')).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(page.getByText('Committed', { exact: true })).toHaveCount(0);
+  await expect(summary).toHaveValue('fix: nothing staged');
+});
+
+test('a file filter that hides the staged files leaves Commit enabled with the full count', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const staged = demoStatus.files.filter((file) => file.staged);
+  expect(filterFiles(staged, (file) => file.path, 'ipc.ts')).toHaveLength(0);
+
+  await page.getByLabel('Commit summary').fill('fix: filtered');
+  await page.getByRole('button', { name: 'Filter files' }).click();
+  await page.getByPlaceholder('Filter changed files…').fill('ipc.ts');
+  await expect(page.getByText(/^Staged/).locator('..')).toContainText(`0 of ${staged.length}`);
+  await expect(page.getByRole('button', { name: `Commit ${staged.length} files` })).toBeEnabled();
+});
+
 test('the commit box grows when its top edge is dragged and resets on double-click', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();

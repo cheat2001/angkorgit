@@ -550,7 +550,7 @@ export function WorkingCopyPanel() {
       toast.info('Configure an AI provider in Settings first');
       return;
     }
-    if (stagedFiles.length === 0) {
+    if (allStaged.length === 0) {
       toast.info('Stage some changes first');
       return;
     }
@@ -580,7 +580,7 @@ export function WorkingCopyPanel() {
       toast.info('Configure an AI provider in Settings first');
       return;
     }
-    if (stagedFiles.length === 0) {
+    if (allStaged.length === 0) {
       toast.info('Stage some changes first');
       return;
     }
@@ -638,6 +638,10 @@ export function WorkingCopyPanel() {
 
   const commit = async () => {
     if (!summary.trim() && !amend) return;
+    if (allStaged.length === 0 && !amend && repo?.state !== 'merge') {
+      toast.info('Stage some changes first');
+      return;
+    }
     if (committingRef.current) return;
     committingRef.current = true;
     setCommitting(true);
@@ -1402,7 +1406,7 @@ export function WorkingCopyPanel() {
             </label>
             <Hint
               label={
-                stagedFiles.length === 0
+                allStaged.length === 0
                   ? 'Stage some changes to review them with AI'
                   : 'Review staged changes with AI before committing'
               }
@@ -1411,7 +1415,7 @@ export function WorkingCopyPanel() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={reviewBusy || committing || aiBusy || stagedFiles.length === 0}
+                disabled={reviewBusy || committing || aiBusy || allStaged.length === 0}
                 onClick={() => void reviewStaged()}
               >
                 {reviewBusy ? (
@@ -1438,7 +1442,7 @@ export function WorkingCopyPanel() {
             <Hint
               label={
                 <span className="flex items-center gap-1">
-                  {stagedFiles.length === 0 && !amend && repo?.state !== 'merge'
+                  {allStaged.length === 0 && !amend && repo?.state !== 'merge'
                     ? 'Stage a file to commit'
                     : 'Commit'}{' '}
                   <Kbd>{modKey()}</Kbd>
@@ -1452,12 +1456,12 @@ export function WorkingCopyPanel() {
                 disabled={
                   committing ||
                   (!summary.trim() && !amend) ||
-                  (stagedFiles.length === 0 && !amend && repo?.state !== 'merge')
+                  (allStaged.length === 0 && !amend && repo?.state !== 'merge')
                 }
                 onClick={() => void commit()}
               >
                 {committing && <Spinner className="text-primary-foreground" />}
-                {amend ? 'Amend commit' : `Commit${stagedFiles.length > 0 ? ` ${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'}` : ''}`}
+                {amend ? 'Amend commit' : `Commit${allStaged.length > 0 ? ` ${allStaged.length} file${allStaged.length === 1 ? '' : 's'}` : ''}`}
               </Button>
               </span>
             </Hint>

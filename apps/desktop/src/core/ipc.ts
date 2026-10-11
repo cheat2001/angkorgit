@@ -107,6 +107,15 @@ const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
 const DEMO_AI_KEYS = 'angkorgit-demo-ai-keys';
 const DEMO_SEARCH_DELAY = 'angkorgit-demo-search-delay';
+const DEMO_NOTHING_STAGED = 'angkorgit-demo-nothing-staged';
+
+function demoNothingStaged(): boolean {
+  try {
+    return localStorage.getItem(DEMO_NOTHING_STAGED) === '1';
+  } catch {
+    return false;
+  }
+}
 let demoCli: CliToolStatus | null = null;
 
 function demoAiKeys(): Record<string, string> {
@@ -158,7 +167,7 @@ export const ipc = {
     return invoke('repo_clone', { url, into, branch: branch ?? null });
   },
   async status(path: string): Promise<StatusSummary> {
-    if (!isTauri()) return demo.demoStatus;
+    if (!isTauri()) return demoNothingStaged() ? demo.demoUnstagedStatus() : demo.demoStatus;
     return invoke('repo_status', { path });
   },
   async stateCleanup(path: string): Promise<void> {

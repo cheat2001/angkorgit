@@ -182,6 +182,67 @@ fn merge_conflict_detect_and_resolve() {
     assert_eq!(repo.read("a.txt"), "resolved content\n");
 }
 
+fn head_commit(repo: &TempRepo) -> (String, usize) {
+    let page = core::history(
+        repo.path(),
+        core::HistoryQuery {
+            skip: 0,
+            limit: 1,
+            search: None,
+            author: None,
+            branch: None,
+        },
+    )
+    .unwrap();
+    let head = &page.commits[0];
+    (head.oid.clone(), head.parents.len())
+}
+
+#[test]
+fn commit_with_nothing_staged_is_refused_and_head_stays() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let base = commit_all(&repo, "base");
+    repo.write("a.txt", "unstaged edit\n");
+
+    let err = core::commit(repo.path(), "empty").unwrap_err();
+    assert!(err.to_string().contains("Nothing staged to commit"));
+    let head = head_commit(&repo);
+    assert_eq!(head.0, base);
+    assert_eq!(repo.read("a.txt"), "unstaged edit\n");
+}
+
+#[test]
+fn first_commit_with_an_empty_index_is_refused() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "untracked\n");
+    let err = core::commit(repo.path(), "empty").unwrap_err();
+    assert!(err.to_string().contains("Nothing staged to commit"));
+    core::stage_file(repo.path(), "a.txt").unwrap();
+    core::commit(repo.path(), "first").unwrap();
+}
+
+#[test]
+fn merge_that_keeps_head_tree_still_commits() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "line\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "other", None, true).unwrap();
+    repo.write("a.txt", "other change\n");
+    commit_all(&repo, "other");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("a.txt", "master change\n");
+    let master = commit_all(&repo, "master");
+
+    let outcome = core::merge(repo.path(), "other", false).unwrap();
+    assert_eq!(outcome.status, "conflicts");
+    core::conflict_resolve(repo.path(), "a.txt", "master change\n").unwrap();
+    let merged = core::commit(repo.path(), "merge other, keep ours").unwrap();
+    assert_ne!(merged, master);
+    let head = head_commit(&repo);
+    assert_eq!(head.1, 2);
+}
+
 #[test]
 fn unstage_all_and_discard_all() {
     let repo = TempRepo::new();

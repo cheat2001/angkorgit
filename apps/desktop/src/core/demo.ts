@@ -227,6 +227,15 @@ export const demoStatus: StatusSummary = {
   behind: 0,
 };
 
+export function demoUnstagedStatus(): StatusSummary {
+  return {
+    ...demoStatus,
+    files: demoStatus.files.map((file) =>
+      file.staged ? { ...file, staged: null, unstaged: file.unstaged ?? file.staged } : file,
+    ),
+  };
+}
+
 export const demoBranches: BranchInfo[] = [
   { name: 'main', isHead: true, isRemote: false, upstream: 'origin/main', ahead: 2, behind: 0, targetOid: ALL_COMMITS[0].oid },
   { name: 'develop', isHead: false, isRemote: false, upstream: null, ahead: 0, behind: 0, targetOid: ALL_COMMITS[20].oid },

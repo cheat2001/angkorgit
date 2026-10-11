@@ -24,8 +24,24 @@ pub fn commit(path: &str, message: &str) -> AppResult<String> {
     }
 
     let mut index = repo.index()?;
+    let index_is_empty = index.is_empty();
     let tree_oid = index.write_tree()?;
     drop(index);
+
+    if !is_merge {
+        let head_tree = repo
+            .head()
+            .ok()
+            .and_then(|h| h.peel_to_tree().ok())
+            .map(|t| t.id());
+        let nothing_staged = match head_tree {
+            Some(head_tree) => head_tree == tree_oid,
+            None => index_is_empty,
+        };
+        if nothing_staged {
+            return Err(AppError::other("Nothing staged to commit"));
+        }
+    }
 
     let oid = {
         let tree = repo.find_tree(tree_oid)?;

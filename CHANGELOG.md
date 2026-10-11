@@ -6,6 +6,12 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **⌘⏎ no longer makes an empty commit.** With nothing staged the Commit button was
+  disabled, but the shortcut still committed; it now asks you to stage first, and the
+  engine refuses a commit that changes nothing (a merge still commits). A file filter
+  that hides the staged files no longer disables Commit or drops its file count.
+
 ## [0.22.0] — 2026-10-08
 
 The remotes release. Repositories with more than one remote get a "Pull from" and a
