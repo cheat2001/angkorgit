@@ -3158,7 +3158,7 @@ fn group_fetch_reports_moved_refs_and_continues_after_remote_failure() {
     let new = commit_all(&local, "new");
     core::push(local.path(), "origin", None, false, false, true).unwrap();
     let result = core::group_update(other.path(), false).unwrap();
-    assert_eq!(result.status, "failed");
+    assert_eq!(result.status, "partial");
     assert!(result.message.contains("broken"));
     let moved = result
         .changes
@@ -3178,10 +3178,9 @@ fn group_fetch_reports_moved_refs_and_continues_after_remote_failure() {
             .to_string(),
         old
     );
-    assert!(core::group_update(other.path(), false)
-        .unwrap()
-        .changes
-        .is_empty());
+    let unchanged_partial = core::group_update(other.path(), false).unwrap();
+    assert_eq!(unchanged_partial.status, "partial");
+    assert!(unchanged_partial.changes.is_empty());
     let empty = TempRepo::new();
     assert_eq!(
         core::group_update(empty.path(), false).unwrap().status,
@@ -3403,4 +3402,64 @@ fn group_run_registry_keeps_cancellation_on_in_flight_handles_after_finish() {
         .with_active::<()>(|| panic!("finished handles cannot mutate"))
         .is_err());
     core::group_update_finish(id).unwrap();
+}
+
+#[test]
+fn group_pull_checks_filters_only_on_changed_paths() {
+    let local = TempRepo::new();
+    for i in 0..1000 {
+        local.write(&format!("unchanged-{i}.txt"), "unchanged\n");
+    }
+    local.write("README.md", "base\n");
+    commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let other = clone_of(&origin, &local, "changed-attrs");
+    let repo = git2::Repository::open(other.path()).unwrap();
+    std::fs::write(
+        repo.path().join("info/attributes"),
+        "*.txt filter=external\n",
+    )
+    .unwrap();
+    local.write("README.md", "updated\n");
+    let updated = commit_all(&local, "update readme");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
+    assert_eq!(other.read("README.md"), "updated\n");
+    local.write("unchanged-1.txt", "requires filter\n");
+    commit_all(&local, "update filtered file");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let result = core::group_update(other.path(), true).unwrap();
+    assert_eq!(result.status, "skipped");
+    assert!(result.message.contains("external filters"));
+    assert_eq!(other.read("unchanged-1.txt"), "unchanged\n");
+    assert_eq!(repo.head().unwrap().target().unwrap().to_string(), updated);
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn group_pull_explains_when_checkout_succeeds_but_branch_update_fails() {
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    let old = commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let other = clone_of(&origin, &local, "locked-ref");
+    let repo = git2::Repository::open(other.path()).unwrap();
+    std::fs::write(repo.path().join("refs/heads/master.lock"), "locked").unwrap();
+    local.write("a.txt", "updated\n");
+    let new = commit_all(&local, "updated");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let error = core::group_update(other.path(), true)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("Checkout completed, but branch update failed"),
+        "{error}"
+    );
+    assert!(error.contains(&old));
+    assert!(error.contains(&new));
+    assert_eq!(repo.head().unwrap().target().unwrap().to_string(), old);
+    assert_eq!(other.read("a.txt"), "updated\n");
+    std::fs::remove_dir_all(origin).unwrap();
 }

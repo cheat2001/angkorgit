@@ -505,12 +505,14 @@ fn group_update_inner(
         }
         let before = fetched_refs(&repo)?;
         let mut failures = Vec::new();
+        let mut succeeded = 0;
         for name in &names {
             if control.is_cancelled() {
                 break;
             }
-            if let Err(error) = group_fetch(path, name, control, None) {
-                failures.push(format!("{name}: {error}"));
+            match group_fetch(path, name, control, None) {
+                Ok(()) => succeeded += 1,
+                Err(error) => failures.push(format!("{name}: {error}")),
             }
         }
         let after = fetched_refs(&repo)?;
@@ -537,13 +539,20 @@ fn group_update_inner(
             })
             .collect();
         return Ok(GroupUpdateResult {
-            status: if failures.is_empty() { "ok" } else { "failed" }.into(),
+            status: if failures.is_empty() {
+                "ok"
+            } else if succeeded > 0 {
+                "partial"
+            } else {
+                "failed"
+            }
+            .into(),
             message: if failures.is_empty() {
                 format!("Fetched {} remote(s)", names.len())
             } else {
                 format!(
                     "Fetched {} of {} remotes. Failed: {}",
-                    names.len() - failures.len(),
+                    succeeded,
                     names.len(),
                     failures.join("; ")
                 )
@@ -660,15 +669,25 @@ fn group_update_inner(
             "Working tree changed during fetch; try again".into(),
         ));
     }
-    if let Some(reason) = unsupported_group_checkout(&repo, &target.tree()?)? {
+    let old_tree = repo.find_commit(old)?.tree()?;
+    if let Some(reason) = unsupported_group_checkout(&repo, &old_tree, &target.tree()?)? {
         return Ok(result("skipped", reason));
     }
     let checkout = control.with_active(|| {
         let mut checkout = CheckoutBuilder::new();
         checkout.safe();
         repo.checkout_tree(target.as_object(), Some(&mut checkout))?;
-        repo.find_reference(&refname)?
-            .set_target(new, &format!("pull: fast-forward to {upstream_ref}"))?;
+        repo.find_reference(&refname)
+            .and_then(|mut reference| {
+                reference.set_target(new, &format!("pull: fast-forward to {upstream_ref}"))
+            })
+            .map_err(|error| {
+                AppError::other(format!(
+                    "Checkout completed, but branch update failed for {branch_name}: {error}. \
+                 The working tree is at {new}; the branch may still point at {old}. \
+                 Inspect HEAD and working-tree changes before retrying."
+                ))
+            })?;
         Ok(())
     });
     if let Err(error) = checkout {
@@ -748,7 +767,11 @@ fn group_fetch(
     })
 }
 
-fn unsupported_group_checkout(repo: &Repository, tree: &git2::Tree) -> AppResult<Option<String>> {
+fn unsupported_group_checkout(
+    repo: &Repository,
+    old_tree: &git2::Tree,
+    tree: &git2::Tree,
+) -> AppResult<Option<String>> {
     let config = repo.config()?;
     let hooks = config
         .get_path("core.hooksPath")
@@ -775,16 +798,13 @@ fn unsupported_group_checkout(repo: &Repository, tree: &git2::Tree) -> AppResult
     }
     let mut reason = None;
     let mut error = None;
-    let walked = tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
-        let path = format!("{root}{}", entry.name().unwrap_or(""));
+    let walked = tree.walk(git2::TreeWalkMode::PreOrder, |_, entry| {
         if entry.filemode() == 0o160000 || entry.name() == Some(".gitmodules") {
             reason = Some("Repository uses submodules; pull with Git CLI to update them".into());
             return git2::TreeWalkResult::Abort;
         }
         if entry.kind() != Some(git2::ObjectType::Blob) { return git2::TreeWalkResult::Ok; }
         let check = || -> AppResult<bool> {
-            let attr = repo.get_attr_bytes(Path::new(&path), "filter", git2::AttrCheckFlags::FILE_THEN_INDEX)?;
-            if matches!(git2::AttrValue::from_bytes(attr), git2::AttrValue::String(_) | git2::AttrValue::Bytes(_)) { return Ok(true); }
             if entry.name() == Some(".gitattributes") {
                 let blob = repo.find_blob(entry.id())?;
                 let text = String::from_utf8_lossy(blob.content());
@@ -807,7 +827,26 @@ fn unsupported_group_checkout(repo: &Repository, tree: &git2::Tree) -> AppResult
     if reason.is_none() {
         walked?;
     }
-    Ok(reason)
+    if reason.is_some() {
+        return Ok(reason);
+    }
+    let diff = repo.diff_tree_to_tree(Some(old_tree), Some(tree), None)?;
+    for delta in diff.deltas() {
+        if delta.status() == git2::Delta::Deleted {
+            continue;
+        }
+        if let Some(path) = delta.new_file().path() {
+            let attr =
+                repo.get_attr_bytes(path, "filter", git2::AttrCheckFlags::FILE_THEN_INDEX)?;
+            if matches!(
+                git2::AttrValue::from_bytes(attr),
+                git2::AttrValue::String(_) | git2::AttrValue::Bytes(_)
+            ) {
+                return Ok(Some("Repository uses external filters (such as Git LFS); pull with Git CLI so files are processed".into()));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn executable_hook(path: &Path) -> bool {

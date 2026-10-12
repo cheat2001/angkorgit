@@ -18,7 +18,8 @@ it('runs in order, preserves partial results, and continues after a repository f
 
 it('gives partial success one outcome shared by counters and badges', () => {
   const changes = [{ name: 'origin/main', oldOid: 'one', newOid: 'two', commits: 1 }];
-  expect(classify({ status: 'failed', message: 'origin fetched, backup failed', changes })).toBe('partial');
+  expect(classify({ status: 'partial', message: 'origin fetched, backup failed', changes })).toBe('partial');
+  expect(classify({ status: 'partial', message: 'origin unchanged, backup failed', changes: [] })).toBe('partial');
   expect(classify({ status: 'failed', message: 'offline', changes: [] })).toBe('failed');
   expect(classify({ status: 'ok', message: 'fetched', changes })).toBe('updated');
   expect(classify({ status: 'ok', message: 'fetched', changes: [] })).toBe('unchanged');
@@ -53,4 +54,17 @@ it('does not start any operation when already cancelled', async () => {
   await updateGroupRepositories([{ name: 'repo', path: '/repo', lastOpenedAt: 0 }], update, (r) => results.push(r), controller.signal);
   expect(update).not.toHaveBeenCalled();
   expect(results[0].status).toBe('cancelled');
+});
+
+it('delivers one cancellation when aborted before the pending microtask starts', async () => {
+  const controller = new AbortController();
+  const update = vi.fn();
+  const onResult = vi.fn();
+  const run = updateGroupRepositories([{ name: 'repo', path: '/repo', lastOpenedAt: 0 }], update, onResult, controller.signal);
+  controller.abort();
+  await run;
+  await Promise.resolve();
+  expect(update).not.toHaveBeenCalled();
+  expect(onResult).toHaveBeenCalledTimes(1);
+  expect(onResult.mock.calls[0][0].status).toBe('cancelled');
 });

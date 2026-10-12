@@ -8,7 +8,8 @@ export type GroupResultKind = 'updated' | 'unchanged' | 'skipped' | 'failed' | '
 
 export function classify(result: GroupUpdateResult): GroupResultKind {
   if (result.status === 'cancelled') return 'cancelled';
-  if (result.status === 'failed') return result.changes.length > 0 ? 'partial' : 'failed';
+  if (result.status === 'partial') return 'partial';
+  if (result.status === 'failed') return 'failed';
   if (result.status === 'skipped') return 'skipped';
   return result.changes.length > 0 ? 'updated' : 'unchanged';
 }
@@ -25,7 +26,12 @@ export async function updateGroupRepositories(
       onResult({ ...cancelled, repo });
       continue;
     }
-    const pending = Promise.resolve().then(() => signal?.aborted ? cancelled : update(repo.path)).catch((error): GroupUpdateResult => ({
+    let updateStarted = false;
+    const pending = Promise.resolve().then(() => {
+      if (signal?.aborted) return cancelled;
+      updateStarted = true;
+      return update(repo.path);
+    }).catch((error): GroupUpdateResult => ({
       status: 'failed', message: (error as { message?: string })?.message ?? String(error), changes: [],
     }));
     let onAbort: (() => void) | undefined;
@@ -34,10 +40,13 @@ export async function updateGroupRepositories(
       signal?.addEventListener('abort', onAbort, { once: true });
       if (signal?.aborted) onAbort();
     });
-    const result = await Promise.race([pending, aborted]);
+    const winner = await Promise.race([
+      pending.then((result) => ({ source: 'pending' as const, result })),
+      aborted.then((result) => ({ source: 'abort' as const, result })),
+    ]);
     if (onAbort) signal?.removeEventListener('abort', onAbort);
-    onResult({ ...result, repo });
-    if (result === cancelled) {
+    onResult({ ...winner.result, repo });
+    if (winner.source === 'abort' && updateStarted) {
       void pending.then((settled) => onResult({ ...settled, repo }));
     }
   }

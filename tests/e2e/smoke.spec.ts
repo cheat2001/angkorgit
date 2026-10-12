@@ -3117,7 +3117,7 @@ test('group fetch classifies partial failures once and cancellation releases a h
     ipc.groupUpdate = async (path) => {
       tracker.__groupCalls.push(path);
       if (path.endsWith('/partial')) return {
-        status: 'failed', message: 'origin fetched; backup authentication failed',
+        status: 'partial', message: 'origin fetched; backup authentication failed',
         changes: [{ name: 'origin/main', oldOid: '1234567890', newOid: 'abcdef0123', commits: 2 }],
       };
       return new Promise((resolve) => { tracker.__finishGroup = () => resolve({ status: 'cancelled', message: 'Cancelled', changes: [] }); });

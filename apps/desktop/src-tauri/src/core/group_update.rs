@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::error::{AppError, AppResult};
 
@@ -25,6 +26,7 @@ impl GroupUpdateControl {
     }
 
     pub fn with_active<T>(&self, action: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
+        // Cancel waits for this local write phase to finish so no writes can occur after its acknowledgement.
         let cancelled = self
             .cancelled
             .lock()
@@ -36,44 +38,138 @@ impl GroupUpdateControl {
     }
 }
 
-type Runs = HashMap<String, Arc<GroupUpdateControl>>;
+struct Run {
+    control: Arc<GroupUpdateControl>,
+    last_used: Instant,
+}
+
+type Runs = HashMap<String, Run>;
 static RUNS: OnceLock<Mutex<Runs>> = OnceLock::new();
+const RUN_TTL: Duration = Duration::from_secs(60 * 60);
 
 fn runs() -> &'static Mutex<Runs> {
     RUNS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn prune_expired(runs: &mut Runs, now: Instant) {
+    runs.retain(|_, run| {
+        if now.saturating_duration_since(run.last_used) < RUN_TTL {
+            return true;
+        }
+        match run.control.cancelled.try_lock() {
+            Ok(mut cancelled) => {
+                *cancelled = true;
+                false
+            }
+            Err(std::sync::TryLockError::WouldBlock) => true,
+            Err(std::sync::TryLockError::Poisoned(_)) => false,
+        }
+    });
 }
 
 pub fn start(id: &str) -> AppResult<()> {
     let mut runs = runs()
         .lock()
         .map_err(|_| AppError::other("Group update registry poisoned"))?;
+    let now = Instant::now();
+    prune_expired(&mut runs, now);
     if runs.contains_key(id) {
         return Err(AppError::other("Group update already exists"));
     }
-    runs.insert(id.into(), Arc::new(GroupUpdateControl::default()));
+    runs.insert(
+        id.into(),
+        Run {
+            control: Arc::new(GroupUpdateControl::default()),
+            last_used: now,
+        },
+    );
     Ok(())
 }
 
 pub fn control(id: &str) -> AppResult<Arc<GroupUpdateControl>> {
-    runs()
+    let mut runs = runs()
         .lock()
-        .map_err(|_| AppError::other("Group update registry poisoned"))?
-        .get(id)
-        .cloned()
-        .ok_or_else(|| AppError::other("Group update is no longer active"))
+        .map_err(|_| AppError::other("Group update registry poisoned"))?;
+    let now = Instant::now();
+    let control = runs.get_mut(id).map(|run| {
+        run.last_used = now;
+        run.control.clone()
+    });
+    prune_expired(&mut runs, now);
+    control.ok_or_else(|| AppError::other("Group update is no longer active"))
 }
 
 pub fn cancel(id: &str) -> AppResult<()> {
-    control(id)?.cancel()
-}
-
-pub fn finish(id: &str) -> AppResult<()> {
-    let control = runs()
+    let mut runs = runs()
         .lock()
-        .map_err(|_| AppError::other("Group update registry poisoned"))?
-        .remove(id);
+        .map_err(|_| AppError::other("Group update registry poisoned"))?;
+    let now = Instant::now();
+    let control = runs.get_mut(id).map(|run| {
+        run.last_used = now;
+        run.control.clone()
+    });
+    prune_expired(&mut runs, now);
+    drop(runs);
     if let Some(control) = control {
         control.cancel()?;
     }
     Ok(())
+}
+
+pub fn finish(id: &str) -> AppResult<()> {
+    let mut runs = runs()
+        .lock()
+        .map_err(|_| AppError::other("Group update registry poisoned"))?;
+    let control = runs.remove(id).map(|run| run.control);
+    prune_expired(&mut runs, Instant::now());
+    drop(runs);
+    if let Some(control) = control {
+        control.cancel()?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_runs_are_removed_and_cancel_their_in_flight_downloads() {
+        let now = Instant::now();
+        let control = Arc::new(GroupUpdateControl::default());
+        let mut runs = HashMap::from([(
+            "stale".into(),
+            Run {
+                control: control.clone(),
+                last_used: now - RUN_TTL,
+            },
+        )]);
+        prune_expired(&mut runs, now);
+        assert!(runs.is_empty());
+        assert!(control.is_cancelled());
+        assert!(control
+            .with_active::<()>(|| panic!("expired run cannot mutate"))
+            .is_err());
+    }
+
+    #[test]
+    fn expiry_never_blocks_or_interrupts_an_active_checkout() {
+        let now = Instant::now();
+        let control = Arc::new(GroupUpdateControl::default());
+        let mut runs = HashMap::from([(
+            "active".into(),
+            Run {
+                control: control.clone(),
+                last_used: now - RUN_TTL,
+            },
+        )]);
+        let guard = control.cancelled.lock().unwrap();
+        prune_expired(&mut runs, now);
+        assert_eq!(runs.len(), 1);
+        assert!(!*guard);
+        drop(guard);
+        prune_expired(&mut runs, now);
+        assert!(runs.is_empty());
+        assert!(control.is_cancelled());
+    }
 }

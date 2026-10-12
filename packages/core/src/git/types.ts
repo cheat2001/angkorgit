@@ -246,7 +246,7 @@ export interface FileBlame {
 }
 
 export interface GroupUpdateResult {
-  status: 'ok' | 'up_to_date' | 'skipped' | 'failed' | 'cancelled';
+  status: 'ok' | 'up_to_date' | 'skipped' | 'failed' | 'partial' | 'cancelled';
   message: string;
   changes: RefMovement[];
 }
