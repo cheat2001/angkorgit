@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   chordText,
   groupRepos,
@@ -88,6 +88,7 @@ export function WelcomePage() {
   const setRepoGroup = useSettings((s) => s.setRepoGroup);
   const moveRepoGroup = useSettings((s) => s.moveRepoGroup);
   const busy = useRepo((s) => s.busy);
+  const groupRun = useRef<{ id: string; controller: AbortController; cancelling: boolean; ready: Promise<void> } | null>(null);
   const [groupProgress, setGroupProgress] = useState<GroupUpdateProgress | null>(null);
   const [query, setQuery] = useState('');
   const [activePath, setActivePath] = useState<string | null>(null);
@@ -100,22 +101,58 @@ export function WelcomePage() {
   const [groupDrop, setGroupDrop] = useState<{ id: string; position: RepoGroupDropPosition } | null>(null);
   const [version, setVersion] = useState('');
 
-  async function updateGroup(group: RepoGroup, repos: RecentRepository[], pull: boolean) {
-    if (useRepo.getState().busy || useRepo.getState().opening || repos.length === 0) return;
-    useRepo.getState().setBusy(pull ? 'Pulling group…' : 'Fetching group…');
-    setGroupProgress({ name: group.name, pull, total: repos.length, results: [], running: true });
+  useEffect(() => () => {
+    const run = groupRun.current;
+    if (run) void run.ready.then(() => ipc.groupCancel(run.id)).then(() => run.controller.abort()).catch(() => undefined);
+  }, []);
+
+  async function cancelGroup() {
+    const run = groupRun.current;
+    if (!run || run.cancelling) return;
+    run.cancelling = true;
+    setGroupProgress((current) => current?.runId === run.id ? { ...current, cancelling: true } : current);
     try {
-      await updateGroupRepositories(repos, (path) => ipc.groupUpdate(path, pull), (result) => {
-        setGroupProgress((current) => current ? { ...current, results: [...current.results, result] } : current);
-      });
+      await run.ready;
+      await ipc.groupCancel(run.id);
+      run.controller.abort();
+    } catch (error) {
+      run.cancelling = false;
+      setGroupProgress((current) => current?.runId === run.id ? { ...current, cancelling: false } : current);
+      toast.error(`Could not cancel group: ${(error as { message?: string })?.message ?? error}`);
+    }
+  }
+
+  async function updateGroup(group: RepoGroup, repos: RecentRepository[], pull: boolean) {
+    if (groupRun.current || useRepo.getState().busy || useRepo.getState().opening || repos.length === 0) return;
+    const id = crypto.randomUUID();
+    const run = { id, controller: new AbortController(), cancelling: false, ready: ipc.groupStart(id) };
+    groupRun.current = run;
+    useRepo.getState().setBusy(pull ? 'Pulling group…' : 'Fetching group…');
+    setGroupProgress({ runId: run.id, name: group.name, pull, total: repos.length, results: [], running: true, cancelling: false });
+    try {
+      await run.ready;
+      await updateGroupRepositories(repos, (path) => ipc.groupUpdate(path, pull, run.id), (result) => {
+        setGroupProgress((current) => {
+          if (current?.runId !== run.id) return current;
+          const existing = current.results.some((r) => r.repo.path === result.repo.path);
+          return { ...current, results: existing
+            ? current.results.map((r) => r.repo.path === result.repo.path ? result : r)
+            : [...current.results, result] };
+        });
+      }, run.controller.signal);
       if (repos.some((r) => r.path === useRepo.getState().repo?.path)) {
-        await useRepo.getState().refresh();
+        if (run.controller.signal.aborted) void useRepo.getState().refresh().catch(() => undefined);
+        else await useRepo.getState().refresh();
       }
     } catch (error) {
-      toast.error(`Could not refresh repository: ${(error as { message?: string })?.message ?? error}`);
+      toast.error(`Group update failed: ${(error as { message?: string })?.message ?? error}`);
     } finally {
-      useRepo.getState().setBusy(null);
-      setGroupProgress((current) => current ? { ...current, running: false } : current);
+      await ipc.groupFinish(run.id).catch(() => undefined);
+      if (groupRun.current === run) {
+        groupRun.current = null;
+        useRepo.getState().setBusy(null);
+      }
+      setGroupProgress((current) => current?.runId === run.id ? { ...current, running: false, cancelling: false } : current);
     }
   }
 
@@ -709,7 +746,7 @@ export function WelcomePage() {
         </DropdownMenu>
       )}
 
-      <GroupUpdateDialog progress={groupProgress} onClose={() => setGroupProgress(null)} />
+      <GroupUpdateDialog progress={groupProgress} onClose={() => setGroupProgress(null)} onCancel={() => void cancelGroup()} />
       <CloneDialog onCloned={(path) => void openRepository(path)} />
       <SettingsDialog />
       <RepoShortcutDialog />

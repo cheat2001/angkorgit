@@ -11,7 +11,12 @@ All notable changes to AngKorGit are documented here. The format follows
   (fast-forward only)**. A live summary lists moved refs and commit ranges, unchanged
   repositories, skipped repositories with reasons, and failures. Pull follows each
   checked-out branch's configured upstream and skips local changes, detached HEADs,
-  unfinished operations, and diverged history. (#69)
+  unfinished operations, and diverged history. Cancel stops the remaining batch,
+  prevents later ref/worktree updates, and releases the app even if a network read is
+  stalled; completed updates are kept. Partial fetches have a single outcome in the
+  summary. Missing upstream refs are reported separately from unconfigured upstreams.
+  Repositories requiring hooks, submodule updates, or external filters such as Git LFS
+  are skipped with guidance to use Git CLI. (#69)
 
 ## [0.23.0] — 2026-10-13
 

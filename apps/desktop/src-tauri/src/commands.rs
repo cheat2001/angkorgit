@@ -501,8 +501,25 @@ pub async fn remote_fetch(
 pub async fn repository_group_update(
     path: String,
     pull: bool,
+    runId: String,
 ) -> AppResult<crate::core::types::GroupUpdateResult> {
-    blocking(move || remote::group_update(&path, pull)).await
+    let control = crate::core::group_update::control(&runId)?;
+    blocking(move || remote::group_update_controlled(&path, pull, &control)).await
+}
+
+#[tauri::command]
+pub fn repository_group_start(runId: String) -> AppResult<()> {
+    crate::core::group_update::start(&runId)
+}
+
+#[tauri::command]
+pub async fn repository_group_cancel(runId: String) -> AppResult<()> {
+    blocking(move || crate::core::group_update::cancel(&runId)).await
+}
+
+#[tauri::command]
+pub async fn repository_group_finish(runId: String) -> AppResult<()> {
+    blocking(move || crate::core::group_update::finish(&runId)).await
 }
 
 #[tauri::command]

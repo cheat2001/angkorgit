@@ -468,12 +468,24 @@ export const ipc = {
     }
     return invoke('remote_fetch', { path, remote, tags, prune });
   },
-  async groupUpdate(path: string, pull: boolean): Promise<GroupUpdateResult> {
+  async groupStart(runId: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('repository_group_start', { runId });
+  },
+  async groupCancel(runId: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('repository_group_cancel', { runId });
+  },
+  async groupFinish(runId: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke('repository_group_finish', { runId });
+  },
+  async groupUpdate(path: string, pull: boolean, runId: string): Promise<GroupUpdateResult> {
     if (!isTauri()) {
       await delay(400);
       return { status: 'up_to_date', message: pull ? 'main is already up to date (demo)' : 'Fetched origin; no refs moved (demo)', changes: [] };
     }
-    return invoke('repository_group_update', { path, pull });
+    return invoke('repository_group_update', { path, pull, runId });
   },
   async pull(path: string, remote: string, mode?: 'merge' | 'rebase'): Promise<OpOutcome> {
     if (!isTauri()) {

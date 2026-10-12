@@ -3100,3 +3100,48 @@ test('group pull summary shows moved refs, skips, failures and unchanged reposit
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(dialog).toBeHidden();
 });
+
+
+test('group fetch classifies partial failures once and cancellation releases a hanging run', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const [{ ipc }, { useSettings }, { useRepo }] = await Promise.all([
+      import('/src/core/ipc.ts'), import('/src/features/settings/store.ts'), import('/src/features/repository/store.ts'),
+    ]);
+    const repos = ['partial', 'slow', 'remaining'].map((name) => ({ path: `/projects/${name}`, name, lastOpenedAt: 0 }));
+    useRepo.setState({ recents: repos });
+    useSettings.getState().addRepoGroup('Projects', 0, repos.map((r) => r.path));
+    const tracker = window as unknown as { __groupCalls: string[]; __finishGroup: () => void };
+    tracker.__groupCalls = [];
+    ipc.groupUpdate = async (path) => {
+      tracker.__groupCalls.push(path);
+      if (path.endsWith('/partial')) return {
+        status: 'failed', message: 'origin fetched; backup authentication failed',
+        changes: [{ name: 'origin/main', oldOid: '1234567890', newOid: 'abcdef0123', commits: 2 }],
+      };
+      return new Promise((resolve) => { tracker.__finishGroup = () => resolve({ status: 'cancelled', message: 'Cancelled', changes: [] }); });
+    };
+  });
+  await page.locator('[data-group-header]', { hasText: 'Projects' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Fetch all', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Partial');
+  await expect(dialog.getByRole('status')).toContainText('0 updated · 0 unchanged · 0 skipped · 0 failed · 1 partial');
+  await dialog.getByRole('button', { name: 'Cancel run', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('status')).toContainText('1 partial · 2 cancelled');
+  await page.screenshot({ path: '/tmp/angkorgit-group-cancel-summary.png' });
+  await page.evaluate(async () => {
+    const { useRepo } = await import('/src/features/repository/store.ts');
+    if (useRepo.getState().busy !== null) throw new Error('Cancellation kept the app busy');
+    const tracker = window as unknown as { __groupCalls: string[] };
+    if (tracker.__groupCalls.join(',') !== '/projects/partial,/projects/slow') throw new Error('Started a repository after cancellation');
+  });
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await page.evaluate(() => (window as unknown as { __finishGroup: () => void }).__finishGroup());
+  await expect(dialog).toBeHidden();
+  await page.locator('[data-group-header]', { hasText: 'Projects' }).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Fetch all', exact: true })).toBeEnabled();
+});

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
 
 use git2::{
@@ -11,6 +11,7 @@ use git2::{
 
 use crate::error::{AppError, AppResult};
 
+use super::group_update::GroupUpdateControl;
 use super::types::{GeneratedKey, GroupUpdateResult, OpOutcome, RefMovement, RemoteInfo};
 
 static CREDENTIAL_PREFS: OnceLock<RwLock<CredentialPrefs>> = OnceLock::new();
@@ -458,8 +459,32 @@ pub fn fetch(path: &str, remote_name: &str, tags: bool, prune: bool) -> AppResul
     })
 }
 
-// This deliberately does not call pull/merge: group pulls must never merge or rebase.
 pub fn group_update(path: &str, pull: bool) -> AppResult<GroupUpdateResult> {
+    group_update_controlled(path, pull, &GroupUpdateControl::default())
+}
+
+pub fn group_update_controlled(
+    path: &str,
+    pull: bool,
+    control: &GroupUpdateControl,
+) -> AppResult<GroupUpdateResult> {
+    let result = group_update_inner(path, pull, control);
+    if control.is_cancelled() {
+        return Ok(GroupUpdateResult {
+            status: "cancelled".into(),
+            message: "Cancelled; completed updates were kept".into(),
+            changes: result.map(|result| result.changes).unwrap_or_default(),
+        });
+    }
+    result
+}
+
+fn group_update_inner(
+    path: &str,
+    pull: bool,
+    control: &GroupUpdateControl,
+) -> AppResult<GroupUpdateResult> {
+    control.with_active(|| Ok(()))?;
     if !Path::new(path).is_dir() {
         return Ok(GroupUpdateResult {
             status: "skipped".into(),
@@ -481,7 +506,10 @@ pub fn group_update(path: &str, pull: bool) -> AppResult<GroupUpdateResult> {
         let before = fetched_refs(&repo)?;
         let mut failures = Vec::new();
         for name in &names {
-            if let Err(error) = fetch(path, name, false, false) {
+            if control.is_cancelled() {
+                break;
+            }
+            if let Err(error) = group_fetch(path, name, control, None) {
                 failures.push(format!("{name}: {error}"));
             }
         }
@@ -550,16 +578,19 @@ pub fn group_update(path: &str, pull: bool) -> AppResult<GroupUpdateResult> {
         .ok_or_else(|| AppError::other("Invalid HEAD name"))?
         .to_string();
     let branch_name = head.shorthand().unwrap_or(&refname).to_string();
-    let branch = repo.find_branch(&branch_name, git2::BranchType::Local)?;
-    let upstream = match branch.upstream() {
-        Ok(upstream) => upstream,
-        Err(_) => return Ok(result("skipped", format!("{branch_name} has no upstream"))),
+    let upstream_ref = match repo.branch_upstream_name(&refname) {
+        Ok(name) => name
+            .as_str()
+            .ok_or_else(|| AppError::other("Invalid upstream name"))?
+            .to_string(),
+        Err(error) if error.code() == git2::ErrorCode::NotFound => {
+            return Ok(result(
+                "skipped",
+                format!("{branch_name} has no upstream configured"),
+            ));
+        }
+        Err(error) => return Err(error.into()),
     };
-    let upstream_ref = upstream
-        .get()
-        .name()
-        .ok_or_else(|| AppError::other("Invalid upstream name"))?
-        .to_string();
     let remote = repo.branch_upstream_remote(&refname)?;
     let remote = remote
         .as_str()
@@ -574,10 +605,30 @@ pub fn group_update(path: &str, pull: bool) -> AppResult<GroupUpdateResult> {
     }
     let old = head.peel_to_commit()?.id();
     if remote != "." {
-        fetch(path, remote, false, false)?;
+        let merge_ref = repo
+            .config()?
+            .get_string(&format!("branch.{branch_name}.merge"))?;
+        if let Err(error) = group_fetch(path, remote, control, Some((&merge_ref, &upstream_ref))) {
+            if matches!(&error, AppError::Git(error) if error.code() == git2::ErrorCode::NotFound) {
+                return Ok(result(
+                    "skipped",
+                    format!("Configured upstream {upstream_ref} is missing on remote {remote}"),
+                ));
+            }
+            return Err(error);
+        }
     }
-    // Re-read the configured ref after fetching, never guess a same-named branch.
-    let target = repo.find_reference(&upstream_ref)?.peel_to_commit()?;
+    control.with_active(|| Ok(()))?;
+    let target = match repo.find_reference(&upstream_ref) {
+        Ok(reference) => reference.peel_to_commit()?,
+        Err(error) if error.code() == git2::ErrorCode::NotFound => {
+            return Ok(result(
+                "skipped",
+                format!("Configured upstream {upstream_ref} is missing after fetch"),
+            ));
+        }
+        Err(error) => return Err(error.into()),
+    };
     let new = target.id();
     let (ahead, behind) = repo.graph_ahead_behind(old, new)?;
     if behind == 0 {
@@ -593,8 +644,6 @@ pub fn group_update(path: &str, pull: bool) -> AppResult<GroupUpdateResult> {
     if ahead > 0 {
         return Ok(result("skipped", format!("{branch_name} has diverged ({ahead} ahead, {behind} behind); fast-forward unavailable")));
     }
-    // A network fetch can take a while; an external Git client may have changed
-    // HEAD or the working tree in the meantime. Do not apply the stale plan.
     let current = repo.head()?;
     if current.name() != Some(refname.as_str())
         || current.target() != Some(old)
@@ -611,19 +660,26 @@ pub fn group_update(path: &str, pull: bool) -> AppResult<GroupUpdateResult> {
             "Working tree changed during fetch; try again".into(),
         ));
     }
-    let mut checkout = CheckoutBuilder::new();
-    checkout.safe();
-    if let Err(error) = repo.checkout_tree(target.as_object(), Some(&mut checkout)) {
-        if error.code() == git2::ErrorCode::Conflict {
+    if let Some(reason) = unsupported_group_checkout(&repo, &target.tree()?)? {
+        return Ok(result("skipped", reason));
+    }
+    let checkout = control.with_active(|| {
+        let mut checkout = CheckoutBuilder::new();
+        checkout.safe();
+        repo.checkout_tree(target.as_object(), Some(&mut checkout))?;
+        repo.find_reference(&refname)?
+            .set_target(new, &format!("pull: fast-forward to {upstream_ref}"))?;
+        Ok(())
+    });
+    if let Err(error) = checkout {
+        if matches!(&error, AppError::Git(error) if error.code() == git2::ErrorCode::Conflict) {
             return Ok(result(
                 "skipped",
                 format!("Local changes prevent checkout: {error}"),
             ));
         }
-        return Err(error.into());
+        return Err(error);
     }
-    repo.find_reference(&refname)?
-        .set_target(new, &format!("pull: fast-forward to {upstream_ref}"))?;
     Ok(GroupUpdateResult {
         status: "ok".into(),
         message: format!("Fast-forwarded {branch_name} by {behind} commit(s)"),
@@ -634,6 +690,142 @@ pub fn group_update(path: &str, pull: bool) -> AppResult<GroupUpdateResult> {
             commits: Some(behind),
         }],
     })
+}
+
+fn group_fetch(
+    path: &str,
+    name: &str,
+    control: &GroupUpdateControl,
+    upstream: Option<(&str, &str)>,
+) -> AppResult<()> {
+    control.with_active(|| Ok(()))?;
+    let repo = super::repo::open(path)?;
+    prime_account_bindings(Some(&repo));
+    let mut remote = repo.find_remote(name)?;
+    let mut callbacks = make_callbacks();
+    callbacks.transfer_progress(|_| !control.is_cancelled());
+    callbacks.sideband_progress(|_| !control.is_cancelled());
+    let mut options = FetchOptions::new();
+    options.remote_callbacks(callbacks);
+    let refspecs: Vec<String> = upstream
+        .map(|(source, target)| format!("+{source}:{target}"))
+        .into_iter()
+        .collect();
+    remote.download(&refspecs, Some(&mut options))?;
+    remote.disconnect()?;
+    control.with_active(|| {
+        let received = AtomicBool::new(upstream.is_none());
+        let mut updates = RemoteCallbacks::new();
+        updates.update_tips(|name, _, _| {
+            if upstream.is_some_and(|(_, target)| name == target) {
+                received.store(true, Ordering::SeqCst);
+            }
+            true
+        });
+        remote.update_tips(
+            Some(&mut updates),
+            git2::RemoteUpdateFlags::UPDATE_FETCHHEAD | git2::RemoteUpdateFlags::REPORT_UNCHANGED,
+            AutotagOption::Unspecified,
+            None,
+        )?;
+        if !received.load(Ordering::SeqCst) {
+            return Err(git2::Error::new(
+                git2::ErrorCode::NotFound,
+                git2::ErrorClass::Reference,
+                "Configured upstream was not received from the remote",
+            )
+            .into());
+        }
+        if repo
+            .config()?
+            .get_bool(&format!("remote.{name}.prune"))
+            .unwrap_or(false)
+            || repo.config()?.get_bool("fetch.prune").unwrap_or(false)
+        {
+            remote.prune(None)?;
+        }
+        Ok(())
+    })
+}
+
+fn unsupported_group_checkout(repo: &Repository, tree: &git2::Tree) -> AppResult<Option<String>> {
+    let config = repo.config()?;
+    let hooks = config
+        .get_path("core.hooksPath")
+        .ok()
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                repo.workdir().unwrap_or(repo.path()).join(path)
+            }
+        })
+        .unwrap_or_else(|| repo.commondir().join("hooks"));
+    for hook in ["post-merge", "post-checkout"] {
+        if executable_hook(&hooks.join(hook)) {
+            return Ok(Some(format!(
+                "Repository uses {hook}; pull with Git CLI so hooks run"
+            )));
+        }
+    }
+    if !repo.submodules()?.is_empty() {
+        return Ok(Some(
+            "Repository uses submodules; pull with Git CLI to update them".into(),
+        ));
+    }
+    let mut reason = None;
+    let mut error = None;
+    let walked = tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+        let path = format!("{root}{}", entry.name().unwrap_or(""));
+        if entry.filemode() == 0o160000 || entry.name() == Some(".gitmodules") {
+            reason = Some("Repository uses submodules; pull with Git CLI to update them".into());
+            return git2::TreeWalkResult::Abort;
+        }
+        if entry.kind() != Some(git2::ObjectType::Blob) { return git2::TreeWalkResult::Ok; }
+        let check = || -> AppResult<bool> {
+            let attr = repo.get_attr_bytes(Path::new(&path), "filter", git2::AttrCheckFlags::FILE_THEN_INDEX)?;
+            if matches!(git2::AttrValue::from_bytes(attr), git2::AttrValue::String(_) | git2::AttrValue::Bytes(_)) { return Ok(true); }
+            if entry.name() == Some(".gitattributes") {
+                let blob = repo.find_blob(entry.id())?;
+                let text = String::from_utf8_lossy(blob.content());
+                return Ok(text.lines().filter(|line| !line.trim_start().starts_with('#')).any(|line| line.split_whitespace().skip(1).any(|attr| attr.starts_with("filter="))));
+            }
+            Ok(false)
+        };
+        match check() {
+            Ok(true) => {
+                reason = Some("Repository uses external filters (such as Git LFS); pull with Git CLI so files are processed".into());
+                git2::TreeWalkResult::Abort
+            }
+            Ok(false) => git2::TreeWalkResult::Ok,
+            Err(err) => { error = Some(err); git2::TreeWalkResult::Abort }
+        }
+    });
+    if let Some(error) = error {
+        return Err(error);
+    }
+    if reason.is_none() {
+        walked?;
+    }
+    Ok(reason)
+}
+
+fn executable_hook(path: &Path) -> bool {
+    let Ok(metadata) = path.metadata() else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 fn fetched_refs(repo: &Repository) -> AppResult<HashMap<String, git2::Oid>> {

@@ -6,6 +6,7 @@ pub mod commit;
 pub mod conflict;
 pub mod diff;
 pub mod files;
+pub mod group_update;
 pub mod history;
 pub mod misc;
 pub mod remote;

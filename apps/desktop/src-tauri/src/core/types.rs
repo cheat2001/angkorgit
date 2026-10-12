@@ -280,7 +280,6 @@ pub struct GeneratedKey {
     pub public_key: String,
 }
 
-/// Result of a group action for one repository, including partial fetch failures.
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupUpdateResult {
