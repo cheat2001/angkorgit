@@ -3588,7 +3588,7 @@ fn group_pull_accepts_url_upstreams_without_leaving_temporary_refs() {
         false,
     )
     .unwrap();
-    let url = format!("file://{}", origin.display());
+    let url = reqwest::Url::from_file_path(&origin).unwrap().to_string();
     core::set_config(Some(other.path()), "branch.work/topic.remote", &url, false).unwrap();
     local.write("a.txt", "updated\n");
     let new = commit_all(&local, "updated");
@@ -3791,13 +3791,13 @@ fn group_pull_fetches_an_upstream_outside_the_remote_fetch_refspec() {
 }
 
 #[test]
-fn group_cancel_preserves_other_receipts_when_a_fetch_repository_moves() {
+fn group_cancel_preserves_other_receipts_when_a_fetch_repository_path_becomes_invalid() {
     let local = TempRepo::new();
     local.write("a.txt", "base\n");
     commit_all(&local, "base");
     let origin = bare_origin(&local);
     core::push(local.path(), "origin", None, false, false, true).unwrap();
-    let mut other = clone_of(&origin, &local, "moved-fetch");
+    let other = clone_of(&origin, &local, "moved-fetch");
     local.write("a.txt", "updated\n");
     commit_all(&local, "updated");
     core::push(local.path(), "origin", None, false, false, true).unwrap();
@@ -3814,9 +3814,7 @@ fn group_cancel_preserves_other_receipts_when_a_fetch_repository_moves() {
         let (socket, _) = listener.accept().unwrap();
         drop(listener);
         accepted_tx.send(()).unwrap();
-        release_rx
-            .recv_timeout(std::time::Duration::from_secs(30))
-            .unwrap();
+        let _ = release_rx.recv_timeout(std::time::Duration::from_secs(30));
         drop(socket);
     });
     let control = std::sync::Arc::new(core::GroupUpdateControl::default());
@@ -3827,8 +3825,20 @@ fn group_cancel_preserves_other_receipts_when_a_fetch_repository_moves() {
             .status,
         "skipped"
     );
+    let alias = TempRepo::new();
+    std::fs::remove_dir_all(alias.dir.join(".git")).unwrap();
+    let gitdir = format!(
+        "gitdir: {}\n",
+        other
+            .dir
+            .join(".git")
+            .display()
+            .to_string()
+            .replace('\\', "/")
+    );
+    alias.write(".git", &gitdir);
     let worker_control = control.clone();
-    let path = other.path().to_string();
+    let path = alias.path().to_string();
     let worker_path = path.clone();
     let worker = std::thread::spawn(move || {
         core::group_update_controlled(&worker_path, false, &worker_control)
@@ -3836,10 +3846,8 @@ fn group_cancel_preserves_other_receipts_when_a_fetch_repository_moves() {
     accepted_rx
         .recv_timeout(std::time::Duration::from_secs(10))
         .unwrap();
-    let original = other.dir.clone();
-    let moved = original.with_extension("moved");
-    std::fs::rename(&original, &moved).unwrap();
-    other.dir = moved;
+    alias.write(".git", "gitdir: missing-repository\n");
+    assert!(git2::Repository::open(alias.path()).is_err());
     let receipts = control.cancel_results().unwrap();
     assert!(control.is_cancelled());
     assert!(!worker.is_finished());
@@ -3862,8 +3870,7 @@ fn group_cancel_preserves_other_receipts_when_a_fetch_repository_moves() {
         .result
         .message
         .contains("Could not inspect moved refs"));
-    std::fs::rename(&other.dir, &original).unwrap();
-    other.dir = original;
+    alias.write(".git", &gitdir);
     release_tx.send(()).unwrap();
     server.join().unwrap();
     assert_eq!(worker.join().unwrap().unwrap().status, "partial");

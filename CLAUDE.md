@@ -1091,6 +1091,10 @@ features/
 │   │                           builds receipts independently: if ref inspection fails, it retains
 │   │                           fetch counts and prior errors with a diagnostic on that row, while
 │   │                           preserving every other completed receipt and acknowledging Cancel.
+│   │                           The unreadable-path integration fixture invalidates a gitdir alias
+│   │                           file while the worker keeps the real clone open; it never renames
+│   │                           open pack files, which Windows refuses. File-URL fixtures use
+│   │                           Url::from_file_path for drive letters, slashes and escaping.
 │   │                           URL/path upstreams use anonymous remotes and a unique temporary
 │   │                           refs/angkorgit/group-pull ref; its OID is captured and the ref deleted
 │   │                           in the same guarded write phase, without changing branch config.
