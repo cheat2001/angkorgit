@@ -25,7 +25,9 @@ All notable changes to AngKorGit are documented here. The format follows
   result when cancelling; settled summary rows ignore late responses and errors.
   URL-based upstreams are supported. Fetch cancellation keeps successful remotes and
   errors together, with ref summaries calculated outside the write guard; queued
-  repositories say they never started, and unchanged fetch badges match the counts. (#69)
+  repositories say they never started, and unchanged fetch badges match the counts.
+  Pull also handles upstreams outside a remote's fetch refspec. Cancellation preserves
+  completed results if one repository's ref summary becomes unavailable. (#69)
 
 ## [0.23.0] — 2026-10-13
 

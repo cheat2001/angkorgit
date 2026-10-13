@@ -517,7 +517,7 @@ fn group_update_inner(
             if control.is_cancelled() {
                 break;
             }
-            match group_fetch(path, name, control, None, Some(&progress)) {
+            match group_fetch(&repo, path, name, control, None, Some(&progress)) {
                 Ok(_) => progress.succeeded += 1,
                 Err(error) => {
                     if !control.is_cancelled() {
@@ -533,7 +533,7 @@ fn group_update_inner(
             }
             control.record_fetch(path, progress.clone())?;
         }
-        return fetch_progress_result(path, &progress, control.is_cancelled());
+        return fetch_progress_result(&repo, &progress, control.is_cancelled());
     }
 
     if repo.is_bare() {
@@ -589,33 +589,39 @@ fn group_update_inner(
     let remote = remote
         .as_str()
         .ok_or_else(|| AppError::other("Invalid upstream remote"))?;
-    let upstream_ref = if remote == "." {
-        merge_ref.clone()
+    let tracking_ref = if remote == "." {
+        Some(merge_ref.clone())
     } else {
         match repo.find_remote(remote) {
-            Ok(_) => repo
-                .branch_upstream_name(&refname)?
-                .as_str()
-                .ok_or_else(|| AppError::other("Invalid upstream name"))?
-                .to_string(),
+            Ok(_) => match repo.branch_upstream_name(&refname) {
+                Ok(name) => Some(
+                    name.as_str()
+                        .ok_or_else(|| AppError::other("Invalid upstream name"))?
+                        .to_string(),
+                ),
+                Err(error) if error.code() == git2::ErrorCode::NotFound => None,
+                Err(error) => return Err(error.into()),
+            },
             Err(error)
                 if matches!(
                     error.code(),
                     git2::ErrorCode::NotFound | git2::ErrorCode::InvalidSpec
                 ) =>
             {
-                merge_ref.clone()
+                None
             }
             Err(error) => return Err(error.into()),
         }
     };
+    let upstream_ref = tracking_ref.as_deref().unwrap_or(&merge_ref);
     let old = head.peel_to_commit()?.id();
     let fetched = if remote != "." {
         match group_fetch(
+            &repo,
             path,
             remote,
             control,
-            Some((&merge_ref, &upstream_ref)),
+            Some((&merge_ref, tracking_ref.as_deref())),
             None,
         ) {
             Ok(oid) => oid,
@@ -636,7 +642,7 @@ fn group_update_inner(
     control.ensure_active()?;
     let target = match fetched {
         Some(oid) => repo.find_commit(oid)?,
-        None => match repo.find_reference(&upstream_ref) {
+        None => match repo.find_reference(upstream_ref) {
             Ok(reference) => reference.peel_to_commit()?,
             Err(error) if error.code() == git2::ErrorCode::NotFound => {
                 return Ok(result(
@@ -710,15 +716,15 @@ fn group_update_inner(
 }
 
 fn group_fetch(
+    repo: &Repository,
     path: &str,
     name: &str,
     control: &GroupUpdateControl,
-    upstream: Option<(&str, &str)>,
+    upstream: Option<(&str, Option<&str>)>,
     progress: Option<&FetchProgress>,
 ) -> AppResult<Option<git2::Oid>> {
     control.ensure_active()?;
-    let repo = super::repo::open(path)?;
-    prime_account_bindings(Some(&repo));
+    prime_account_bindings(Some(repo));
     let (mut remote, anonymous) = match repo.find_remote(name) {
         Ok(remote) => (remote, false),
         Err(error)
@@ -732,15 +738,21 @@ fn group_fetch(
         Err(error) => return Err(error.into()),
     };
     static NEXT_FETCH: AtomicUsize = AtomicUsize::new(0);
-    let temporary = anonymous.then(|| {
-        format!(
-            "refs/angkorgit/group-pull/{}-{}",
-            std::process::id(),
-            NEXT_FETCH.fetch_add(1, Ordering::Relaxed)
-        )
+    let temporary = upstream
+        .is_some_and(|(_, target)| target.is_none())
+        .then(|| {
+            format!(
+                "refs/angkorgit/group-pull/{}-{}",
+                std::process::id(),
+                NEXT_FETCH.fetch_add(1, Ordering::Relaxed)
+            )
+        });
+    let upstream = upstream.map(|(source, target)| {
+        let target = target
+            .or(temporary.as_deref())
+            .expect("upstream fetch has a destination");
+        (source, target)
     });
-    let upstream =
-        upstream.map(|(source, target)| (source, temporary.as_deref().unwrap_or(target)));
     let mut callbacks = make_callbacks();
     callbacks.transfer_progress(|_| !control.is_cancelled());
     callbacks.sideband_progress(|_| !control.is_cancelled());
@@ -818,12 +830,19 @@ fn group_fetch(
 }
 
 pub(super) fn fetch_progress_result(
-    path: &str,
+    repo: &Repository,
     progress: &FetchProgress,
     cancelled: bool,
 ) -> AppResult<GroupUpdateResult> {
-    let repo = super::repo::open(path)?;
-    let changes = ref_movements(&repo, &progress.before)?;
+    let changes = ref_movements(repo, &progress.before)?;
+    Ok(fetch_progress_summary(progress, cancelled, changes))
+}
+
+pub(super) fn fetch_progress_summary(
+    progress: &FetchProgress,
+    cancelled: bool,
+    changes: Vec<RefMovement>,
+) -> GroupUpdateResult {
     let status = if progress.succeeded == progress.total {
         "ok"
     } else if progress.succeeded > 0 || !changes.is_empty() {
@@ -845,11 +864,11 @@ pub(super) fn fetch_progress_result(
     if !progress.failures.is_empty() {
         message.push_str(&format!(". Failed: {}", progress.failures.join("; ")));
     }
-    Ok(GroupUpdateResult {
+    GroupUpdateResult {
         status: status.into(),
         message,
         changes,
-    })
+    }
 }
 
 fn ref_movements(

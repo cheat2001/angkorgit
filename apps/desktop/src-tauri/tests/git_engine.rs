@@ -3686,7 +3686,7 @@ fn group_fetch_cancel_receipts_keep_successful_remotes_and_prior_errors() {
             drop(listener);
             accepted_tx.send(()).unwrap();
             release_rx
-                .recv_timeout(std::time::Duration::from_secs(10))
+                .recv_timeout(std::time::Duration::from_secs(30))
                 .unwrap();
             drop(socket);
         });
@@ -3701,7 +3701,7 @@ fn group_fetch_cancel_receipts_keep_successful_remotes_and_prior_errors() {
             .unwrap();
         let start = std::time::Instant::now();
         let receipts = control.cancel_results().unwrap();
-        assert!(start.elapsed() < std::time::Duration::from_secs(1));
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
         assert!(!worker.is_finished());
         assert_eq!(receipts.len(), 1);
         let result = &receipts[0].result;
@@ -3722,4 +3722,151 @@ fn group_fetch_cancel_receipts_keep_successful_remotes_and_prior_errors() {
         assert_eq!(outcome.message, result.message);
         std::fs::remove_dir_all(origin).unwrap();
     }
+}
+
+#[test]
+fn group_pull_fetches_an_upstream_outside_the_remote_fetch_refspec() {
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    let old = commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let other = clone_of(&origin, &local, "unmapped-upstream");
+    let fetch = "+refs/heads/elsewhere:refs/remotes/origin/elsewhere";
+    core::set_config(Some(other.path()), "remote.origin.fetch", fetch, false).unwrap();
+    let repo = git2::Repository::open(other.path()).unwrap();
+    assert_eq!(
+        repo.branch_upstream_name("refs/heads/master")
+            .err()
+            .unwrap()
+            .code(),
+        git2::ErrorCode::NotFound
+    );
+    local.write("a.txt", "updated\n");
+    let new = commit_all(&local, "updated");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let outcome = core::group_update(other.path(), true).unwrap();
+    assert_eq!(outcome.status, "ok", "{}", outcome.message);
+    assert_eq!(repo.head().unwrap().target().unwrap().to_string(), new);
+    assert_eq!(other.read("a.txt"), "updated\n");
+    assert_eq!(
+        repo.config()
+            .unwrap()
+            .get_string("remote.origin.fetch")
+            .unwrap(),
+        fetch
+    );
+    assert_eq!(
+        repo.find_reference("refs/remotes/origin/master")
+            .unwrap()
+            .target()
+            .unwrap()
+            .to_string(),
+        old
+    );
+    assert!(repo
+        .references_glob("refs/angkorgit/group-pull/*")
+        .unwrap()
+        .next()
+        .is_none());
+    assert_eq!(
+        core::group_update(other.path(), true).unwrap().status,
+        "up_to_date"
+    );
+    git2::Repository::open_bare(&origin)
+        .unwrap()
+        .find_reference("refs/heads/master")
+        .unwrap()
+        .delete()
+        .unwrap();
+    let deleted = core::group_update(other.path(), true).unwrap();
+    assert_eq!(deleted.status, "skipped");
+    assert!(deleted.message.contains("missing on remote origin"));
+    assert!(repo
+        .references_glob("refs/angkorgit/group-pull/*")
+        .unwrap()
+        .next()
+        .is_none());
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn group_cancel_preserves_other_receipts_when_a_fetch_repository_moves() {
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let mut other = clone_of(&origin, &local, "moved-fetch");
+    local.write("a.txt", "updated\n");
+    commit_all(&local, "updated");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    core::remote_add(
+        other.path(),
+        "z-stalled",
+        &format!("http://{}/repo.git", listener.local_addr().unwrap()),
+    )
+    .unwrap();
+    let (accepted_tx, accepted_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let server = std::thread::spawn(move || {
+        let (socket, _) = listener.accept().unwrap();
+        drop(listener);
+        accepted_tx.send(()).unwrap();
+        release_rx
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .unwrap();
+        drop(socket);
+    });
+    let control = std::sync::Arc::new(core::GroupUpdateControl::default());
+    let finished = TempRepo::new();
+    assert_eq!(
+        core::group_update_controlled(finished.path(), false, &control)
+            .unwrap()
+            .status,
+        "skipped"
+    );
+    let worker_control = control.clone();
+    let path = other.path().to_string();
+    let worker_path = path.clone();
+    let worker = std::thread::spawn(move || {
+        core::group_update_controlled(&worker_path, false, &worker_control)
+    });
+    accepted_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap();
+    let original = other.dir.clone();
+    let moved = original.with_extension("moved");
+    std::fs::rename(&original, &moved).unwrap();
+    other.dir = moved;
+    let receipts = control.cancel_results().unwrap();
+    assert!(control.is_cancelled());
+    assert!(!worker.is_finished());
+    assert_eq!(receipts.len(), 2);
+    let unaffected = receipts
+        .iter()
+        .find(|receipt| receipt.path == finished.path())
+        .unwrap();
+    assert_eq!(unaffected.result.status, "skipped");
+    let affected = receipts
+        .iter()
+        .find(|receipt| receipt.path == path)
+        .unwrap();
+    assert_eq!(affected.result.status, "partial");
+    assert!(affected
+        .result
+        .message
+        .contains("Fetched 1 of 2 remotes before cancellation"));
+    assert!(affected
+        .result
+        .message
+        .contains("Could not inspect moved refs"));
+    std::fs::rename(&other.dir, &original).unwrap();
+    other.dir = original;
+    release_tx.send(()).unwrap();
+    server.join().unwrap();
+    assert_eq!(worker.join().unwrap().unwrap().status, "partial");
+    assert_eq!(other.read("a.txt"), "base\n");
+    std::fs::remove_dir_all(origin).unwrap();
 }

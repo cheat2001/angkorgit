@@ -41,18 +41,36 @@ impl GroupUpdateControl {
             .lock()
             .map_err(|_| AppError::other("Group results lock poisoned"))?
             .clone();
-        completed
+        Ok(completed
             .into_iter()
             .map(|(path, completed)| {
                 let result = match completed {
                     Completed::Result(result) => result,
                     Completed::Fetch(progress) => {
-                        super::remote::fetch_progress_result(&path, &progress, true)?
+                        match super::repo::open(&path).and_then(|repo| {
+                            super::remote::fetch_progress_result(&repo, &progress, true)
+                        }) {
+                            Ok(result) => result,
+                            Err(error) => {
+                                let mut result = super::remote::fetch_progress_summary(
+                                    &progress,
+                                    true,
+                                    Vec::new(),
+                                );
+                                if progress.succeeded > 0 {
+                                    result.status = "partial".into();
+                                }
+                                result
+                                    .message
+                                    .push_str(&format!(". Could not inspect moved refs: {error}"));
+                                result
+                            }
+                        }
                     }
                 };
-                Ok(GroupUpdateReceipt { path, result })
+                GroupUpdateReceipt { path, result }
             })
-            .collect()
+            .collect())
     }
 
     pub(super) fn record_fetch(&self, path: &str, progress: FetchProgress) -> AppResult<()> {
