@@ -3074,7 +3074,7 @@ fn group_pull_fast_forwards_configured_upstream_without_merging() {
 }
 
 #[test]
-fn group_pull_skips_dirty_detached_missing_upstream_and_unfinished_repos() {
+fn group_pull_skips_conflicting_changes_detached_missing_upstream_and_unfinished_repos() {
     let local = TempRepo::new();
     local.write("a.txt", "base\n");
     let old = commit_all(&local, "base");
@@ -3091,7 +3091,7 @@ fn group_pull_skips_dirty_detached_missing_upstream_and_unfinished_repos() {
         }
         let result = core::group_update(other.path(), true).unwrap();
         assert_eq!(result.status, "skipped");
-        assert!(result.message.contains("local changes"));
+        assert!(result.message.contains("Local changes prevent checkout"));
         assert_eq!(other.read("a.txt"), "dirty\n");
     }
     let repo = git2::Repository::open(other.path()).unwrap();
@@ -3103,12 +3103,16 @@ fn group_pull_skips_dirty_detached_missing_upstream_and_unfinished_repos() {
         None,
     )
     .unwrap();
-    other.write("new.txt", "keep\n");
-    assert_eq!(
-        core::group_update(other.path(), true).unwrap().status,
-        "skipped"
-    );
-    std::fs::remove_file(other.dir.join("new.txt")).unwrap();
+    local.write("incoming.txt", "remote file\n");
+    commit_all(&local, "add incoming file");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    other.write("incoming.txt", "untracked file\n");
+    let result = core::group_update(other.path(), true).unwrap();
+    assert_eq!(result.status, "skipped");
+    assert!(result.message.contains("Local changes prevent checkout"));
+    assert_eq!(other.read("incoming.txt"), "untracked file\n");
+    assert_eq!(repo.head().unwrap().target().unwrap().to_string(), old);
+    std::fs::remove_file(other.dir.join("incoming.txt")).unwrap();
     std::fs::write(repo.path().join("MERGE_HEAD"), &old).unwrap();
     assert!(core::group_update(other.path(), true)
         .unwrap()
@@ -3236,36 +3240,32 @@ fn group_pull_restores_missing_tracking_refs_and_reports_deleted_upstreams() {
 }
 
 #[test]
-fn group_pull_skips_submodules_and_external_filters_before_checkout() {
-    for (file, content, reason) in [
+fn group_pull_matches_toolbar_pull_with_submodule_metadata_and_lfs_attributes() {
+    for (file, content) in [
         (
             ".gitmodules",
             "[submodule \"sub\"]\npath = sub\nurl = ../sub.git\n",
-            "submodules",
         ),
-        (
-            ".gitattributes",
-            "*.txt filter=lfs diff=lfs -text\n",
-            "external filters",
-        ),
+        (".gitattributes", "*.txt filter=lfs diff=lfs -text\n"),
     ] {
         let local = TempRepo::new();
         local.write("a.txt", "base\n");
-        let old = commit_all(&local, "base");
+        commit_all(&local, "base");
         let origin = bare_origin(&local);
         core::push(local.path(), "origin", None, false, false, true).unwrap();
-        let other = clone_of(&origin, &local, "unsupported");
+        let other = clone_of(&origin, &local, "group-compatible");
+        let toolbar = clone_of(&origin, &local, "toolbar-compatible");
         local.write(file, content);
         local.write(
             "a.txt",
             "version https://git-lfs.github.com/spec/v1\noid sha256:123\nsize 1\n",
         );
-        commit_all(&local, "special checkout");
+        let new = commit_all(&local, "special checkout");
         core::push(local.path(), "origin", None, false, false, true).unwrap();
-        let result = core::group_update(other.path(), true).unwrap();
-        assert_eq!(result.status, "skipped", "{}", result.message);
-        assert!(result.message.contains(reason), "{}", result.message);
-        assert_eq!(other.read("a.txt"), "base\n");
+        assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
+        core::pull(toolbar.path(), "origin", Some("merge")).unwrap();
+        assert_eq!(other.read("a.txt"), toolbar.read("a.txt"));
+        assert_eq!(other.read(file), toolbar.read(file));
         assert_eq!(
             git2::Repository::open(other.path())
                 .unwrap()
@@ -3274,48 +3274,45 @@ fn group_pull_skips_submodules_and_external_filters_before_checkout() {
                 .target()
                 .unwrap()
                 .to_string(),
-            old
+            new
         );
         std::fs::remove_dir_all(origin).unwrap();
     }
 }
 
 #[test]
-fn group_pull_skips_active_hooks_in_the_configured_directory() {
+fn group_pull_matches_toolbar_pull_with_active_hooks() {
     let local = TempRepo::new();
     local.write("a.txt", "base\n");
-    let old = commit_all(&local, "base");
+    commit_all(&local, "base");
     let origin = bare_origin(&local);
     core::push(local.path(), "origin", None, false, false, true).unwrap();
-    let other = clone_of(&origin, &local, "hooks");
+    let other = clone_of(&origin, &local, "group-hooks");
+    let toolbar = clone_of(&origin, &local, "toolbar-hooks");
     let repo = git2::Repository::open(other.path()).unwrap();
     let hooks = repo.path().join("custom-hooks");
     std::fs::create_dir_all(&hooks).unwrap();
-    core::set_config(
-        Some(other.path()),
-        "core.hooksPath",
-        hooks.to_str().unwrap(),
-        false,
-    )
-    .unwrap();
-    local.write("a.txt", "updated\n");
-    commit_all(&local, "updated");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    for path in [other.path(), toolbar.path()] {
+        core::set_config(Some(path), "core.hooksPath", hooks.to_str().unwrap(), false).unwrap();
+    }
     for name in ["post-checkout", "post-merge"] {
         let hook = hooks.join(name);
-        std::fs::write(&hook, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::write(&hook, "#!/bin/sh\nprintf invoked > hook-ran\n").unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        let result = core::group_update(other.path(), true).unwrap();
-        assert_eq!(result.status, "skipped");
-        assert!(result.message.contains(name));
-        assert_eq!(repo.head().unwrap().target().unwrap().to_string(), old);
-        std::fs::remove_file(hook).unwrap();
     }
+    local.write("a.txt", "updated\n");
+    let new = commit_all(&local, "updated");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
     assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
+    core::pull(toolbar.path(), "origin", Some("merge")).unwrap();
+    assert_eq!(other.read("a.txt"), toolbar.read("a.txt"));
+    assert_eq!(repo.head().unwrap().target().unwrap().to_string(), new);
+    assert!(!other.dir.join("hook-ran").exists());
+    assert!(!toolbar.dir.join("hook-ran").exists());
     std::fs::remove_dir_all(origin).unwrap();
 }
 
@@ -3405,35 +3402,48 @@ fn group_run_registry_keeps_cancellation_on_in_flight_handles_after_finish() {
 }
 
 #[test]
-fn group_pull_checks_filters_only_on_changed_paths() {
+fn group_pull_preserves_unrelated_untracked_unstaged_and_staged_changes() {
     let local = TempRepo::new();
-    for i in 0..1000 {
-        local.write(&format!("unchanged-{i}.txt"), "unchanged\n");
-    }
-    local.write("README.md", "base\n");
+    local.write("a.txt", "base\n");
+    local.write("notes.txt", "notes\n");
     commit_all(&local, "base");
     let origin = bare_origin(&local);
     core::push(local.path(), "origin", None, false, false, true).unwrap();
-    let other = clone_of(&origin, &local, "changed-attrs");
-    let repo = git2::Repository::open(other.path()).unwrap();
-    std::fs::write(
-        repo.path().join("info/attributes"),
-        "*.txt filter=external\n",
-    )
-    .unwrap();
-    local.write("README.md", "updated\n");
-    let updated = commit_all(&local, "update readme");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
-    assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
-    assert_eq!(other.read("README.md"), "updated\n");
-    local.write("unchanged-1.txt", "requires filter\n");
-    commit_all(&local, "update filtered file");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
-    let result = core::group_update(other.path(), true).unwrap();
-    assert_eq!(result.status, "skipped");
-    assert!(result.message.contains("external filters"));
-    assert_eq!(other.read("unchanged-1.txt"), "unchanged\n");
-    assert_eq!(repo.head().unwrap().target().unwrap().to_string(), updated);
+    for mode in ["untracked", "unstaged", "staged"] {
+        let other = clone_of(&origin, &local, mode);
+        other.write("scratch.txt", "untracked notes\n");
+        if mode != "untracked" {
+            other.write("notes.txt", "local notes\n");
+        }
+        if mode == "staged" {
+            core::stage_file(other.path(), "notes.txt").unwrap();
+        }
+        local.write("a.txt", mode);
+        let new = commit_all(&local, mode);
+        core::push(local.path(), "origin", None, false, false, true).unwrap();
+        assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
+        assert_eq!(other.read("scratch.txt"), "untracked notes\n");
+        assert_eq!(
+            other.read("notes.txt"),
+            if mode == "untracked" {
+                "notes\n"
+            } else {
+                "local notes\n"
+            }
+        );
+        assert_eq!(other.read("a.txt"), mode);
+        let repo = git2::Repository::open(other.path()).unwrap();
+        assert_eq!(repo.head().unwrap().target().unwrap().to_string(), new);
+        let status = repo.status_file(std::path::Path::new("notes.txt")).unwrap();
+        assert_eq!(
+            status.contains(git2::Status::INDEX_MODIFIED),
+            mode == "staged"
+        );
+        assert_eq!(
+            status.contains(git2::Status::WT_MODIFIED),
+            mode == "unstaged"
+        );
+    }
     std::fs::remove_dir_all(origin).unwrap();
 }
 

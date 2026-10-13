@@ -22,7 +22,7 @@ import {
   FolderSearch,
   FolderTree,
   GitBranchPlus,
-  GitPullRequestArrow,
+  ArrowDownToLine,
   MoreHorizontal,
   Pencil,
   Search,
@@ -688,7 +688,7 @@ export function WelcomePage() {
               disabled={groupMenu.repos.length === 0 || !!busy || !!opening}
               onClick={() => void updateGroup(groupMenu.group, groupMenu.repos, true)}
             >
-              <GitPullRequestArrow /> Pull all (fast-forward only)
+              <ArrowDownToLine /> Pull all (fast-forward only)
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

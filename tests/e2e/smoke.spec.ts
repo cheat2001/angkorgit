@@ -2786,6 +2786,7 @@ test('repositories can be grouped on the welcome page and a group opens as tabs'
   await expect(dialog).toContainText('0 skipped · 0 failed');
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await frontend.click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).locator('svg')).toHaveClass(/lucide-arrow-down-to-line/);
   await page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).click();
   await expect(dialog.getByRole('heading', { name: 'Pull all (fast-forward only) — Frontend' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
@@ -3085,6 +3086,7 @@ test('group pull summary shows moved refs, skips, failures and unchanged reposit
     };
   });
   await page.locator('[data-group-header]', { hasText: 'Projects' }).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).locator('svg')).toHaveClass(/lucide-arrow-down-to-line/);
   await page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeDisabled();
@@ -3096,7 +3098,18 @@ test('group pull summary shows moved refs, skips, failures and unchanged reposit
   await expect(dialog).toContainText('main has diverged');
   await expect(dialog).toContainText('Authentication failed');
   await expect(dialog).toContainText('main is already up to date');
+  await expect(dialog.getByText('Updated', { exact: true })).toHaveClass(/text-success/);
+  await expect(dialog.getByText('Failed', { exact: true })).toHaveClass(/text-danger/);
+  await expect(dialog).toContainText('preserving unrelated local changes');
+  expect(await dialog.locator('[data-group-update-row]').first().evaluate((row) => getComputedStyle(row).borderTopWidth)).toBe('0px');
+  expect(await dialog.getByRole('status').evaluate((status) => getComputedStyle(status).whiteSpace)).toBe('nowrap');
   await page.screenshot({ path: '/tmp/angkorgit-group-summary.png' });
+  await page.evaluate(async () => {
+    const { useSettings } = await import('/src/features/settings/store.ts');
+    useSettings.getState().setTheme('light');
+  });
+  await expect(page.locator('html')).toHaveClass(/light/);
+  await page.screenshot({ path: '/tmp/angkorgit-group-summary-light.png' });
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(dialog).toBeHidden();
 });

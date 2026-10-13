@@ -604,14 +604,6 @@ fn group_update_inner(
     let remote = remote
         .as_str()
         .ok_or_else(|| AppError::other("Invalid upstream remote"))?;
-    let mut options = git2::StatusOptions::new();
-    options.include_untracked(true).recurse_untracked_dirs(true);
-    if !repo.statuses(Some(&mut options))?.is_empty() {
-        return Ok(result(
-            "skipped",
-            "Working tree has local changes (including untracked files)".into(),
-        ));
-    }
     let old = head.peel_to_commit()?.id();
     if remote != "." {
         let merge_ref = repo
@@ -662,16 +654,6 @@ fn group_update_inner(
             "skipped",
             "Repository changed during fetch; try again".into(),
         ));
-    }
-    if !repo.statuses(Some(&mut options))?.is_empty() {
-        return Ok(result(
-            "skipped",
-            "Working tree changed during fetch; try again".into(),
-        ));
-    }
-    let old_tree = repo.find_commit(old)?.tree()?;
-    if let Some(reason) = unsupported_group_checkout(&repo, &old_tree, &target.tree()?)? {
-        return Ok(result("skipped", reason));
     }
     let checkout = control.with_active(|| {
         let mut checkout = CheckoutBuilder::new();
@@ -765,106 +747,6 @@ fn group_fetch(
         }
         Ok(())
     })
-}
-
-fn unsupported_group_checkout(
-    repo: &Repository,
-    old_tree: &git2::Tree,
-    tree: &git2::Tree,
-) -> AppResult<Option<String>> {
-    let config = repo.config()?;
-    let hooks = config
-        .get_path("core.hooksPath")
-        .ok()
-        .map(|path| {
-            if path.is_absolute() {
-                path
-            } else {
-                repo.workdir().unwrap_or(repo.path()).join(path)
-            }
-        })
-        .unwrap_or_else(|| repo.commondir().join("hooks"));
-    for hook in ["post-merge", "post-checkout"] {
-        if executable_hook(&hooks.join(hook)) {
-            return Ok(Some(format!(
-                "Repository uses {hook}; pull with Git CLI so hooks run"
-            )));
-        }
-    }
-    if !repo.submodules()?.is_empty() {
-        return Ok(Some(
-            "Repository uses submodules; pull with Git CLI to update them".into(),
-        ));
-    }
-    let mut reason = None;
-    let mut error = None;
-    let walked = tree.walk(git2::TreeWalkMode::PreOrder, |_, entry| {
-        if entry.filemode() == 0o160000 || entry.name() == Some(".gitmodules") {
-            reason = Some("Repository uses submodules; pull with Git CLI to update them".into());
-            return git2::TreeWalkResult::Abort;
-        }
-        if entry.kind() != Some(git2::ObjectType::Blob) { return git2::TreeWalkResult::Ok; }
-        let check = || -> AppResult<bool> {
-            if entry.name() == Some(".gitattributes") {
-                let blob = repo.find_blob(entry.id())?;
-                let text = String::from_utf8_lossy(blob.content());
-                return Ok(text.lines().filter(|line| !line.trim_start().starts_with('#')).any(|line| line.split_whitespace().skip(1).any(|attr| attr.starts_with("filter="))));
-            }
-            Ok(false)
-        };
-        match check() {
-            Ok(true) => {
-                reason = Some("Repository uses external filters (such as Git LFS); pull with Git CLI so files are processed".into());
-                git2::TreeWalkResult::Abort
-            }
-            Ok(false) => git2::TreeWalkResult::Ok,
-            Err(err) => { error = Some(err); git2::TreeWalkResult::Abort }
-        }
-    });
-    if let Some(error) = error {
-        return Err(error);
-    }
-    if reason.is_none() {
-        walked?;
-    }
-    if reason.is_some() {
-        return Ok(reason);
-    }
-    let diff = repo.diff_tree_to_tree(Some(old_tree), Some(tree), None)?;
-    for delta in diff.deltas() {
-        if delta.status() == git2::Delta::Deleted {
-            continue;
-        }
-        if let Some(path) = delta.new_file().path() {
-            let attr =
-                repo.get_attr_bytes(path, "filter", git2::AttrCheckFlags::FILE_THEN_INDEX)?;
-            if matches!(
-                git2::AttrValue::from_bytes(attr),
-                git2::AttrValue::String(_) | git2::AttrValue::Bytes(_)
-            ) {
-                return Ok(Some("Repository uses external filters (such as Git LFS); pull with Git CLI so files are processed".into()));
-            }
-        }
-    }
-    Ok(None)
-}
-
-fn executable_hook(path: &Path) -> bool {
-    let Ok(metadata) = path.metadata() else {
-        return false;
-    };
-    if !metadata.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
 }
 
 fn fetched_refs(repo: &Repository) -> AppResult<HashMap<String, git2::Oid>> {

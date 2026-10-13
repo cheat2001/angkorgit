@@ -1072,17 +1072,21 @@ features/
 │   │                           ref can be restored), fetching the exact configured merge ref
 │   │                           into that tracking ref, requiring its update callback (with
 │   │                           REPORT_UNCHANGED) so stale refs never hide a deleted upstream.
-│   │                           It skips dirty/untracked trees, detached/unborn HEAD, bare repos,
-│   │                           unfinished operations, divergence, active post-merge/post-checkout
-│   │                           hooks (including core.hooksPath), submodules and external filters
-│   │                           (including LFS and .gitattributes in the target commit). The last
-│   │                           three require Git CLI; libgit2's checkout does not provide those
-│   │                           semantics. Attribute lookups cover only non-deleted paths in the
-│   │                           old→new tree diff; the full target tree still supplies .gitattributes
-│   │                           and submodule checks. Safe checkout precedes the ref update; a ref
-│   │                           failure explicitly reports that checkout completed and gives both
-│   │                           commit IDs for inspection. Never merges/rebases. Results carry
-│   │                           status/message + name/oldOid/newOid/commits.
+│   │                           It skips detached/unborn HEAD, bare repos, unfinished operations
+│   │                           and divergence. Safe checkout alone decides whether local changes
+│   │                           conflict; unrelated untracked, staged and unstaged changes survive.
+│   │                           Hooks, submodules and external filters have exactly the toolbar
+│   │                           Pull behavior: libgit2 checkout, no extra compatibility skips or
+│   │                           hook/submodule/filter processing. Owner request before merging #70.
+│   │                           Safe checkout precedes the ref update; a ref failure explicitly
+│   │                           reports that checkout completed and gives both commit IDs for
+│   │                           inspection. Never merges/rebases. Results carry status/message +
+│   │                           name/oldOid/newOid/commits. GroupUpdateDialog uses flat borderless
+│   │                           rows, token-toned badges (success for Updated, danger for Failed,
+│   │                           primary for Partial), and one non-wrapping scrollable counts line.
+│   │                           Pull uses ArrowDownToLine, matching the toolbar. The mutex holds
+│   │                           through a local write phase; cancellation waits for it to finish
+│   │                           before acknowledging. Keep this rationale here, not in source.
 │   │                           closeRepoGroup, deleteRepoGroup (confirm
 │   │                           only when the group has repos; the repos stay in recents),
 │   │                           plural(count, noun) handles -y → -ies. DRAG: rows are

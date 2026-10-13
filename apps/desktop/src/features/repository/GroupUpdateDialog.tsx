@@ -35,29 +35,33 @@ export function GroupUpdateDialog({ progress, onClose, onCancel }: {
     updated: 'Updated', unchanged: pull ? 'Up to date' : 'Fetched', skipped: 'Skipped',
     failed: 'Failed', partial: 'Partial', cancelled: 'Cancelled',
   };
+  const tones: Record<GroupResultKind, 'success' | 'danger' | 'primary' | 'neutral'> = {
+    updated: 'success', unchanged: 'neutral', skipped: 'neutral',
+    failed: 'danger', partial: 'primary', cancelled: 'neutral',
+  };
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !running) onClose(); }}>
       <DialogContent
-        className="max-w-2xl"
+        className="max-w-2xl outline-none"
         onEscapeKeyDown={(e) => { if (running) e.preventDefault(); }}
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle>{pull ? 'Pull all (fast-forward only)' : 'Fetch all'} — {name}</DialogTitle>
           <DialogDescription>
-            {pull ? 'Pulls the checked-out branch from its upstream. Repositories with local changes are skipped.' : 'Fetches every configured remote in the group.'}
+            {pull ? 'Fast-forwards the checked-out branch from its upstream, preserving unrelated local changes.' : 'Fetches every configured remote in the group.'}
           </DialogDescription>
         </DialogHeader>
-        <div className="mb-3 flex items-center gap-2 text-sm" role="status" aria-live="polite">
-          {running && <Spinner className="size-4" />}
-          <span>{cancelling ? 'Cancelling…' : running ? `${results.length} of ${total} repositories complete` : `${total} repositories complete`} · {counts.updated} updated · {counts.unchanged} {pull ? 'up to date' : 'unchanged'} · {counts.skipped} skipped · {counts.failed} failed{counts.partial > 0 && ` · ${counts.partial} partial`}{counts.cancelled > 0 && ` · ${counts.cancelled} cancelled`}</span>
+        <div className="mb-3 flex items-center gap-2 overflow-x-auto whitespace-nowrap text-xs" role="status" aria-live="polite">
+          {running && <Spinner className="size-4 shrink-0" />}
+          <span className="shrink-0">{cancelling ? 'Cancelling…' : running ? `${results.length} of ${total} repositories complete` : `${total} repositories complete`} · {counts.updated} updated · {counts.unchanged} {pull ? 'up to date' : 'unchanged'} · {counts.skipped} skipped · {counts.failed} failed{counts.partial > 0 && ` · ${counts.partial} partial`}{counts.cancelled > 0 && ` · ${counts.cancelled} cancelled`}</span>
         </div>
-        <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1" data-group-update-results>
+        <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1" data-group-update-results>
           {results.map((result) => (
-            <div key={result.repo.path} className="rounded-md border border-border p-3 text-sm">
+            <div key={result.repo.path} className="text-sm" data-group-update-row>
               <div className="flex items-center justify-between gap-3">
                 <span className="min-w-0 truncate font-semibold" title={result.repo.path}>{result.repo.name}</span>
-                <Badge>{labels[classify(result)]}</Badge>
+                <Badge tone={tones[classify(result)]}>{labels[classify(result)]}</Badge>
               </div>
               <p className="break-all text-xs text-muted">{shortenHome(result.repo.path)}</p>
               <p className="mt-1 break-words">{result.message}</p>

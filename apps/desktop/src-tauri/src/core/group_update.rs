@@ -26,7 +26,6 @@ impl GroupUpdateControl {
     }
 
     pub fn with_active<T>(&self, action: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
-        // Cancel waits for this local write phase to finish so no writes can occur after its acknowledgement.
         let cancelled = self
             .cancelled
             .lock()

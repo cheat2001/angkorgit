@@ -10,17 +10,17 @@ All notable changes to AngKorGit are documented here. The format follows
 - Right-click a group header on the start page to **Fetch all** or **Pull all
   (fast-forward only)**. A live summary lists moved refs and commit ranges, unchanged
   repositories, skipped repositories with reasons, and failures. Pull follows each
-  checked-out branch's configured upstream and skips local changes, detached HEADs,
-  unfinished operations, and diverged history. Cancel stops the remaining batch,
+  checked-out branch's configured upstream and skips detached HEADs, unfinished
+  operations, diverged history, and local changes that conflict with safe checkout.
+  Unrelated untracked files and staged or unstaged edits are preserved. Cancel stops the remaining batch,
   prevents later ref/worktree updates, and releases the app even if a network read is
   stalled; completed updates are kept. Partial fetches have a single outcome in the
   summary, including when a remote succeeds without moving refs. Missing upstream
-  refs are reported separately from unconfigured upstreams. Attribute checks inspect
-  changed file paths while retaining incoming attribute-rule checks. Ref-update errors
+  refs are reported separately from unconfigured upstreams. Ref-update errors
   after checkout explicitly explain the working-tree/branch mismatch; abandoned run
   entries expire on later registry activity.
-  Repositories requiring hooks, submodule updates, or external filters such as Git LFS
-  are skipped with guidance to use Git CLI. (#69)
+  Group pull uses the same checkout behavior as toolbar Pull. The summary has flat
+  rows, toned badges, and a single-line counts strip. (#69)
 
 ## [0.23.0] — 2026-10-13
 
