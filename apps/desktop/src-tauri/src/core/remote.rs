@@ -469,14 +469,18 @@ pub fn group_update_controlled(
     control: &GroupUpdateControl,
 ) -> AppResult<GroupUpdateResult> {
     let result = group_update_inner(path, pull, control);
-    if control.is_cancelled() {
-        return Ok(GroupUpdateResult {
+    match result {
+        Ok(result) => {
+            let _ = control.with_active_result(path, || Ok(result.clone()));
+            Ok(result)
+        }
+        Err(_) if control.is_cancelled() && !control.has_completed(path) => Ok(GroupUpdateResult {
             status: "cancelled".into(),
-            message: "Cancelled; completed updates were kept".into(),
-            changes: result.map(|result| result.changes).unwrap_or_default(),
-        });
+            message: "Cancelled before completing the repository update".into(),
+            changes: Vec::new(),
+        }),
+        Err(error) => Err(error),
     }
-    result
 }
 
 fn group_update_inner(
@@ -510,44 +514,35 @@ fn group_update_inner(
             if control.is_cancelled() {
                 break;
             }
-            match group_fetch(path, name, control, None) {
+            match group_fetch(
+                path,
+                name,
+                control,
+                None,
+                Some((&before, succeeded + 1, names.len())),
+            ) {
                 Ok(()) => succeeded += 1,
                 Err(error) => failures.push(format!("{name}: {error}")),
             }
         }
-        let after = fetched_refs(&repo)?;
-        let mut keys: Vec<_> = before.keys().chain(after.keys()).cloned().collect();
-        keys.sort();
-        keys.dedup();
-        let changes = keys
-            .into_iter()
-            .filter_map(|name| {
-                let old = before.get(&name).copied();
-                let new = after.get(&name).copied();
-                if old == new {
-                    return None;
-                }
-                Some(RefMovement {
-                    name,
-                    old_oid: old.map(|oid| oid.to_string()),
-                    new_oid: new.map(|oid| oid.to_string()),
-                    commits: old
-                        .zip(new)
-                        .and_then(|(old, new)| repo.graph_ahead_behind(new, old).ok())
-                        .map(|(ahead, _)| ahead),
-                })
-            })
-            .collect();
+        let changes = ref_movements(&repo, &before)?;
         return Ok(GroupUpdateResult {
-            status: if failures.is_empty() {
+            status: if succeeded == names.len() {
                 "ok"
             } else if succeeded > 0 {
                 "partial"
+            } else if control.is_cancelled() {
+                "cancelled"
             } else {
                 "failed"
             }
             .into(),
-            message: if failures.is_empty() {
+            message: if control.is_cancelled() && succeeded < names.len() {
+                format!(
+                    "Fetched {succeeded} of {} remotes before cancellation; completed updates kept",
+                    names.len()
+                )
+            } else if failures.is_empty() {
                 format!("Fetched {} remote(s)", names.len())
             } else {
                 format!(
@@ -609,7 +604,13 @@ fn group_update_inner(
         let merge_ref = repo
             .config()?
             .get_string(&format!("branch.{branch_name}.merge"))?;
-        if let Err(error) = group_fetch(path, remote, control, Some((&merge_ref, &upstream_ref))) {
+        if let Err(error) = group_fetch(
+            path,
+            remote,
+            control,
+            Some((&merge_ref, &upstream_ref)),
+            None,
+        ) {
             if matches!(&error, AppError::Git(error) if error.code() == git2::ErrorCode::NotFound) {
                 return Ok(result(
                     "skipped",
@@ -655,10 +656,18 @@ fn group_update_inner(
             "Repository changed during fetch; try again".into(),
         ));
     }
-    let checkout = control.with_active(|| {
+    let checkout = control.with_active_result(path, || {
         let mut checkout = CheckoutBuilder::new();
         checkout.safe();
-        repo.checkout_tree(target.as_object(), Some(&mut checkout))?;
+        if let Err(error) = repo.checkout_tree(target.as_object(), Some(&mut checkout)) {
+            if error.code() == git2::ErrorCode::Conflict {
+                return Ok(result(
+                    "skipped",
+                    format!("Local changes prevent checkout: {error}"),
+                ));
+            }
+            return Err(error.into());
+        }
         repo.find_reference(&refname)
             .and_then(|mut reference| {
                 reference.set_target(new, &format!("pull: fast-forward to {upstream_ref}"))
@@ -670,27 +679,18 @@ fn group_update_inner(
                  Inspect HEAD and working-tree changes before retrying."
                 ))
             })?;
-        Ok(())
+        Ok(GroupUpdateResult {
+            status: "ok".into(),
+            message: format!("Fast-forwarded {branch_name} by {behind} commit(s)"),
+            changes: vec![RefMovement {
+                name: branch_name,
+                old_oid: Some(old.to_string()),
+                new_oid: Some(new.to_string()),
+                commits: Some(behind),
+            }],
+        })
     });
-    if let Err(error) = checkout {
-        if matches!(&error, AppError::Git(error) if error.code() == git2::ErrorCode::Conflict) {
-            return Ok(result(
-                "skipped",
-                format!("Local changes prevent checkout: {error}"),
-            ));
-        }
-        return Err(error);
-    }
-    Ok(GroupUpdateResult {
-        status: "ok".into(),
-        message: format!("Fast-forwarded {branch_name} by {behind} commit(s)"),
-        changes: vec![RefMovement {
-            name: branch_name,
-            old_oid: Some(old.to_string()),
-            new_oid: Some(new.to_string()),
-            commits: Some(behind),
-        }],
-    })
+    checkout
 }
 
 fn group_fetch(
@@ -698,6 +698,7 @@ fn group_fetch(
     name: &str,
     control: &GroupUpdateControl,
     upstream: Option<(&str, &str)>,
+    progress: Option<(&HashMap<String, git2::Oid>, usize, usize)>,
 ) -> AppResult<()> {
     control.with_active(|| Ok(()))?;
     let repo = super::repo::open(path)?;
@@ -714,7 +715,7 @@ fn group_fetch(
         .collect();
     remote.download(&refspecs, Some(&mut options))?;
     remote.disconnect()?;
-    control.with_active(|| {
+    let mut apply = || {
         let received = AtomicBool::new(upstream.is_none());
         let mut updates = RemoteCallbacks::new();
         updates.update_tips(|name, _, _| {
@@ -737,16 +738,64 @@ fn group_fetch(
             )
             .into());
         }
-        if repo
-            .config()?
-            .get_bool(&format!("remote.{name}.prune"))
-            .unwrap_or(false)
-            || repo.config()?.get_bool("fetch.prune").unwrap_or(false)
-        {
+        let config = repo.config()?;
+        let prune = match config.get_bool(&format!("remote.{name}.prune")) {
+            Ok(prune) => prune,
+            Err(error) if error.code() == git2::ErrorCode::NotFound => {
+                config.get_bool("fetch.prune").unwrap_or(false)
+            }
+            Err(error) => return Err(error.into()),
+        };
+        if prune {
             remote.prune(None)?;
         }
         Ok(())
-    })
+    };
+    match progress {
+        Some((before, succeeded, total)) => control
+            .with_active_result(path, || {
+                apply()?;
+                Ok(GroupUpdateResult {
+                    status: if succeeded == total { "ok" } else { "partial" }.into(),
+                    message: format!(
+                        "Fetched {succeeded} of {total} remotes; completed updates kept"
+                    ),
+                    changes: ref_movements(&repo, before)?,
+                })
+            })
+            .map(|_| ()),
+        None => control.with_active(apply),
+    }
+}
+
+fn ref_movements(
+    repo: &Repository,
+    before: &HashMap<String, git2::Oid>,
+) -> AppResult<Vec<RefMovement>> {
+    let after = fetched_refs(repo)?;
+    let mut keys: Vec<_> = before.keys().chain(after.keys()).cloned().collect();
+    keys.sort();
+    keys.dedup();
+    let changes = keys
+        .into_iter()
+        .filter_map(|name| {
+            let old = before.get(&name).copied();
+            let new = after.get(&name).copied();
+            if old == new {
+                return None;
+            }
+            Some(RefMovement {
+                name,
+                old_oid: old.map(|oid| oid.to_string()),
+                new_oid: new.map(|oid| oid.to_string()),
+                commits: old
+                    .zip(new)
+                    .and_then(|(old, new)| repo.graph_ahead_behind(new, old).ok())
+                    .map(|(ahead, _)| ahead),
+            })
+        })
+        .collect();
+    Ok(changes)
 }
 
 fn fetched_refs(repo: &Repository) -> AppResult<HashMap<String, git2::Oid>> {

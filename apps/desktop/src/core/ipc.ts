@@ -1,5 +1,6 @@
 import type {
   GroupUpdateResult,
+  GroupUpdateReceipt,
   BranchInfo,
   CliAgentInfo,
   CliRunRequest,
@@ -472,8 +473,8 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('repository_group_start', { runId });
   },
-  async groupCancel(runId: string): Promise<void> {
-    if (!isTauri()) return;
+  async groupCancel(runId: string): Promise<GroupUpdateReceipt[]> {
+    if (!isTauri()) return [];
     return invoke('repository_group_cancel', { runId });
   },
   async groupFinish(runId: string): Promise<void> {

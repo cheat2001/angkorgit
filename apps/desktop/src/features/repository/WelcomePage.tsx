@@ -5,6 +5,7 @@ import {
   parseChordId,
   repoGroupIdFor,
   type RepoGroup,
+  type GroupUpdateResult,
   type RepoGroupDropPosition,
 } from '@angkorgit/core';
 import { useNavigate } from 'react-router-dom';
@@ -88,7 +89,7 @@ export function WelcomePage() {
   const setRepoGroup = useSettings((s) => s.setRepoGroup);
   const moveRepoGroup = useSettings((s) => s.moveRepoGroup);
   const busy = useRepo((s) => s.busy);
-  const groupRun = useRef<{ id: string; controller: AbortController; cancelling: boolean; ready: Promise<void> } | null>(null);
+  const groupRun = useRef<{ id: string; controller: AbortController; cancelling: boolean; ready: Promise<void>; completed: Map<string, GroupUpdateResult> } | null>(null);
   const [groupProgress, setGroupProgress] = useState<GroupUpdateProgress | null>(null);
   const [query, setQuery] = useState('');
   const [activePath, setActivePath] = useState<string | null>(null);
@@ -103,7 +104,10 @@ export function WelcomePage() {
 
   useEffect(() => () => {
     const run = groupRun.current;
-    if (run) void run.ready.then(() => ipc.groupCancel(run.id)).then(() => run.controller.abort()).catch(() => undefined);
+    if (run) void run.ready.then(() => ipc.groupCancel(run.id)).then((receipts) => {
+      run.completed = new Map(receipts.map(({ path, result }) => [path, result]));
+      run.controller.abort();
+    }).catch(() => undefined);
   }, []);
 
   async function cancelGroup() {
@@ -113,7 +117,8 @@ export function WelcomePage() {
     setGroupProgress((current) => current?.runId === run.id ? { ...current, cancelling: true } : current);
     try {
       await run.ready;
-      await ipc.groupCancel(run.id);
+      const receipts = await ipc.groupCancel(run.id);
+      run.completed = new Map(receipts.map(({ path, result }) => [path, result]));
       run.controller.abort();
     } catch (error) {
       run.cancelling = false;
@@ -125,7 +130,7 @@ export function WelcomePage() {
   async function updateGroup(group: RepoGroup, repos: RecentRepository[], pull: boolean) {
     if (groupRun.current || useRepo.getState().busy || useRepo.getState().opening || repos.length === 0) return;
     const id = crypto.randomUUID();
-    const run = { id, controller: new AbortController(), cancelling: false, ready: ipc.groupStart(id) };
+    const run = { id, controller: new AbortController(), cancelling: false, ready: ipc.groupStart(id), completed: new Map<string, GroupUpdateResult>() };
     groupRun.current = run;
     useRepo.getState().setBusy(pull ? 'Pulling group…' : 'Fetching group…');
     setGroupProgress({ runId: run.id, name: group.name, pull, total: repos.length, results: [], running: true, cancelling: false });
@@ -139,7 +144,7 @@ export function WelcomePage() {
             ? current.results.map((r) => r.repo.path === result.repo.path ? result : r)
             : [...current.results, result] };
         });
-      }, run.controller.signal);
+      }, run.controller.signal, () => run.completed);
       if (repos.some((r) => r.path === useRepo.getState().repo?.path)) {
         if (run.controller.signal.aborted) void useRepo.getState().refresh().catch(() => undefined);
         else await useRepo.getState().refresh();

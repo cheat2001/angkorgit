@@ -3158,3 +3158,45 @@ test('group fetch classifies partial failures once and cancellation releases a h
   await page.locator('[data-group-header]', { hasText: 'Projects' }).click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: 'Fetch all', exact: true })).toBeEnabled();
 });
+
+
+test('cancel counts a completed checkout and ignores a delayed inactive-run error', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const [{ ipc }, { useSettings }, { useRepo }] = await Promise.all([
+      import('/src/core/ipc.ts'), import('/src/features/settings/store.ts'), import('/src/features/repository/store.ts'),
+    ]);
+    const repos = ['updated', 'queued'].map((name) => ({ name, path: `/projects/${name}`, lastOpenedAt: 0 }));
+    useRepo.setState({ recents: repos });
+    useSettings.getState().addRepoGroup('Projects', 0, repos.map((r) => r.path));
+    const tracker = window as unknown as { __rejectLateGroup: () => void; __groupCalls: number };
+    tracker.__groupCalls = 0;
+    ipc.groupUpdate = async () => {
+      tracker.__groupCalls++;
+      return new Promise((_, reject) => { tracker.__rejectLateGroup = () => reject({ message: 'Group update is no longer active' }); });
+    };
+    ipc.groupCancel = async () => [{ path: repos[0].path, result: {
+      status: 'ok', message: 'Fast-forwarded main', changes: [{ name: 'main', oldOid: '1234567', newOid: 'abcdef0', commits: 1 }],
+    } }];
+  });
+  await page.locator('[data-group-header]', { hasText: 'Projects' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Cancel run', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('status')).toContainText('1 updated · 0 up to date · 0 skipped · 0 failed · 1 cancelled');
+  await expect(dialog.getByText('Updated', { exact: true })).toBeVisible();
+  await page.evaluate(async () => {
+    const tracker = window as unknown as { __rejectLateGroup: () => void; __groupCalls: number };
+    if (tracker.__groupCalls !== 1) throw new Error('Queued repository started');
+    tracker.__rejectLateGroup();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  await expect(dialog.getByText('Updated', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Group update is no longer active', { exact: true })).toBeHidden();
+  await expect(dialog.getByRole('status')).toContainText('1 updated · 0 up to date · 0 skipped · 0 failed · 1 cancelled');
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+});

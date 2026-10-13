@@ -513,7 +513,7 @@ pub fn repository_group_start(runId: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn repository_group_cancel(runId: String) -> AppResult<()> {
+pub async fn repository_group_cancel(runId: String) -> AppResult<Vec<GroupUpdateReceipt>> {
     blocking(move || crate::core::group_update::cancel(&runId)).await
 }
 

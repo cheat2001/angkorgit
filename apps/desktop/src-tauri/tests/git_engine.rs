@@ -3473,3 +3473,126 @@ fn group_pull_explains_when_checkout_succeeds_but_branch_update_fails() {
     assert_eq!(other.read("a.txt"), "updated\n");
     std::fs::remove_dir_all(origin).unwrap();
 }
+
+#[test]
+fn group_fetch_remote_prune_setting_overrides_global_setting() {
+    for (global, remote, pruned) in [
+        (true, Some(false), false),
+        (false, Some(true), true),
+        (true, None, true),
+        (false, None, false),
+    ] {
+        let local = TempRepo::new();
+        local.write("a.txt", "base\n");
+        commit_all(&local, "base");
+        let origin = bare_origin(&local);
+        core::push(local.path(), "origin", None, false, false, true).unwrap();
+        let repo = git2::Repository::open(local.path()).unwrap();
+        repo.branch(
+            "obsolete",
+            &repo.head().unwrap().peel_to_commit().unwrap(),
+            false,
+        )
+        .unwrap();
+        core::push(local.path(), "origin", Some("obsolete"), false, false, true).unwrap();
+        let other = clone_of(&origin, &local, "prune");
+        core::set_config(
+            Some(other.path()),
+            "fetch.prune",
+            &global.to_string(),
+            false,
+        )
+        .unwrap();
+        if let Some(remote) = remote {
+            core::set_config(
+                Some(other.path()),
+                "remote.origin.prune",
+                &remote.to_string(),
+                false,
+            )
+            .unwrap();
+        }
+        git2::Repository::open_bare(&origin)
+            .unwrap()
+            .find_reference("refs/heads/obsolete")
+            .unwrap()
+            .delete()
+            .unwrap();
+        let outcome = core::group_update(other.path(), false).unwrap();
+        assert_eq!(outcome.status, "ok");
+        let other_repo = git2::Repository::open(other.path()).unwrap();
+        assert_eq!(
+            other_repo
+                .find_reference("refs/remotes/origin/obsolete")
+                .is_err(),
+            pruned
+        );
+        assert_eq!(
+            outcome
+                .changes
+                .iter()
+                .any(|change| change.name == "refs/remotes/origin/obsolete"
+                    && change.new_oid.is_none()),
+            pruned
+        );
+        std::fs::remove_dir_all(origin).unwrap();
+    }
+}
+
+#[test]
+fn group_cancel_reports_a_completed_checkout_before_acknowledging() {
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    let old = commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let other = clone_of(&origin, &local, "cancel-checkout");
+    local.write("a.txt", "updated\n");
+    let new = commit_all(&local, "updated");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let control = std::sync::Arc::new(core::GroupUpdateControl::default());
+    let worker_control = control.clone();
+    let path = other.path().to_string();
+    let (written_tx, written_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        worker_control.with_active_result(&path, || {
+            let result = core::group_update(&path, true)?;
+            written_tx.send(()).unwrap();
+            release_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            Ok(result)
+        })
+    });
+    written_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    let cancel_control = control.clone();
+    let (cancel_tx, cancel_rx) = std::sync::mpsc::channel();
+    let cancel = std::thread::spawn(move || {
+        cancel_tx.send(()).unwrap();
+        cancel_control.cancel_results().unwrap()
+    });
+    cancel_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert!(!cancel.is_finished());
+    release_tx.send(()).unwrap();
+    assert_eq!(worker.join().unwrap().unwrap().status, "ok");
+    let receipts = cancel.join().unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].path, other.path());
+    assert_eq!(receipts[0].result.status, "ok");
+    assert_eq!(
+        receipts[0].result.changes[0].old_oid.as_deref(),
+        Some(old.as_str())
+    );
+    assert_eq!(
+        receipts[0].result.changes[0].new_oid.as_deref(),
+        Some(new.as_str())
+    );
+    assert_eq!(other.read("a.txt"), "updated\n");
+    assert!(control.is_cancelled());
+    std::fs::remove_dir_all(origin).unwrap();
+}

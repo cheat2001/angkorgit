@@ -257,3 +257,8 @@ export interface RefMovement {
   newOid: string | null;
   commits: number | null;
 }
+
+export interface GroupUpdateReceipt {
+  path: string;
+  result: GroupUpdateResult;
+}

@@ -2,11 +2,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use super::types::{GroupUpdateReceipt, GroupUpdateResult};
 use crate::error::{AppError, AppResult};
 
 #[derive(Default)]
 pub struct GroupUpdateControl {
     cancelled: Mutex<bool>,
+    completed: Mutex<HashMap<String, GroupUpdateResult>>,
 }
 
 impl GroupUpdateControl {
@@ -16,6 +18,51 @@ impl GroupUpdateControl {
             .lock()
             .map_err(|_| AppError::other("Group update lock poisoned"))? = true;
         Ok(())
+    }
+
+    pub fn cancel_results(&self) -> AppResult<Vec<GroupUpdateReceipt>> {
+        self.cancel()?;
+        let completed = self
+            .completed
+            .lock()
+            .map_err(|_| AppError::other("Group results lock poisoned"))?;
+        Ok(completed
+            .iter()
+            .map(|(path, result)| GroupUpdateReceipt {
+                path: path.clone(),
+                result: result.clone(),
+            })
+            .collect())
+    }
+
+    pub fn with_active_result(
+        &self,
+        path: &str,
+        action: impl FnOnce() -> AppResult<GroupUpdateResult>,
+    ) -> AppResult<GroupUpdateResult> {
+        self.with_active(|| {
+            let result = action();
+            let receipt = match &result {
+                Ok(result) => result.clone(),
+                Err(error) => GroupUpdateResult {
+                    status: "failed".into(),
+                    message: error.to_string(),
+                    changes: Vec::new(),
+                },
+            };
+            self.completed
+                .lock()
+                .map_err(|_| AppError::other("Group results lock poisoned"))?
+                .insert(path.into(), receipt);
+            result
+        })
+    }
+
+    pub fn has_completed(&self, path: &str) -> bool {
+        self.completed
+            .lock()
+            .map(|completed| completed.contains_key(path))
+            .unwrap_or(false)
     }
 
     pub fn is_cancelled(&self) -> bool {
@@ -98,7 +145,7 @@ pub fn control(id: &str) -> AppResult<Arc<GroupUpdateControl>> {
     control.ok_or_else(|| AppError::other("Group update is no longer active"))
 }
 
-pub fn cancel(id: &str) -> AppResult<()> {
+pub fn cancel(id: &str) -> AppResult<Vec<GroupUpdateReceipt>> {
     let mut runs = runs()
         .lock()
         .map_err(|_| AppError::other("Group update registry poisoned"))?;
@@ -109,10 +156,10 @@ pub fn cancel(id: &str) -> AppResult<()> {
     });
     prune_expired(&mut runs, now);
     drop(runs);
-    if let Some(control) = control {
-        control.cancel()?;
+    match control {
+        Some(control) => control.cancel_results(),
+        None => Ok(Vec::new()),
     }
-    Ok(())
 }
 
 pub fn finish(id: &str) -> AppResult<()> {

@@ -20,7 +20,9 @@ All notable changes to AngKorGit are documented here. The format follows
   after checkout explicitly explain the working-tree/branch mismatch; abandoned run
   entries expire on later registry activity.
   Group pull uses the same checkout behavior as toolbar Pull. The summary has flat
-  rows, toned badges, and a single-line counts strip. (#69)
+  rows, toned badges, and a single-line counts strip. Per-remote prune settings
+  override fetch.prune, including an explicit false. Completed checkouts retain their
+  result when cancelling; settled summary rows ignore late responses and errors. (#69)
 
 ## [0.23.0] — 2026-10-13
 

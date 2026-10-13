@@ -28,11 +28,12 @@ it('gives partial success one outcome shared by counters and badges', () => {
   expect(classify({ status: 'cancelled', message: 'stopped', changes })).toBe('cancelled');
 });
 
-it('cancels a hanging operation without starting the remaining repositories and retains late results', async () => {
+it.each(['resolve', 'reject'] as const)('cancels a hanging operation and ignores a late %s', async (late) => {
   const repos = ['slow', 'next'].map((name) => ({ name, path: `/${name}`, lastOpenedAt: 0 }));
   const controller = new AbortController();
   let finish!: (result: GroupRepositoryResult) => void;
-  const pending = new Promise<GroupRepositoryResult>((resolve) => { finish = resolve; });
+  let fail!: (error: Error) => void;
+  const pending = new Promise<GroupRepositoryResult>((resolve, reject) => { finish = resolve; fail = reject; });
   const update = vi.fn(() => pending);
   const results: GroupRepositoryResult[] = [];
   const run = updateGroupRepositories(repos, update, (result) => results.push(result), controller.signal);
@@ -41,9 +42,29 @@ it('cancels a hanging operation without starting the remaining repositories and 
   await run;
   expect(update).toHaveBeenCalledTimes(1);
   expect(results.map((r) => r.status)).toEqual(['cancelled', 'cancelled']);
-  finish({ repo: repos[0], status: 'cancelled', message: 'Kept completed remote fetch', changes: [{ name: 'origin/main', oldOid: 'one', newOid: 'two', commits: 1 }] });
-  await vi.waitFor(() => expect(results).toHaveLength(3));
-  expect(results[2].changes).toHaveLength(1);
+  if (late === 'resolve') finish({ repo: repos[0], status: 'ok', message: 'Late response', changes: [] });
+  else fail(new Error('Group update is no longer active'));
+  await pending.catch(() => undefined);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(results).toHaveLength(2);
+  expect(results.map((r) => r.status)).toEqual(['cancelled', 'cancelled']);
+});
+
+it('uses the cancel acknowledgement for a completed checkout whose response is delayed', async () => {
+  const repos = ['updated', 'next'].map((name) => ({ name, path: `/${name}`, lastOpenedAt: 0 }));
+  const controller = new AbortController();
+  const completed = new Map<string, GroupRepositoryResult>();
+  const results: GroupRepositoryResult[] = [];
+  const update = vi.fn(() => new Promise<GroupRepositoryResult>(() => undefined));
+  const run = updateGroupRepositories(repos, update, (result) => results.push(result), controller.signal, () => completed);
+  await Promise.resolve();
+  completed.set('/updated', { repo: repos[0], status: 'ok', message: 'Fast-forwarded main', changes: [{ name: 'main', oldOid: 'one', newOid: 'two', commits: 1 }] });
+  controller.abort();
+  await run;
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(results.map((r) => classify(r))).toEqual(['updated', 'cancelled']);
+  expect(results).toHaveLength(2);
 });
 
 it('does not start any operation when already cancelled', async () => {
