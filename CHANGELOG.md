@@ -22,7 +22,10 @@ All notable changes to AngKorGit are documented here. The format follows
   Group pull uses the same checkout behavior as toolbar Pull. The summary has flat
   rows, toned badges, and a single-line counts strip. Per-remote prune settings
   override fetch.prune, including an explicit false. Completed checkouts retain their
-  result when cancelling; settled summary rows ignore late responses and errors. (#69)
+  result when cancelling; settled summary rows ignore late responses and errors.
+  URL-based upstreams are supported. Fetch cancellation keeps successful remotes and
+  errors together, with ref summaries calculated outside the write guard; queued
+  repositories say they never started, and unchanged fetch badges match the counts. (#69)
 
 ## [0.23.0] — 2026-10-13
 

@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use git2::{
     build::CheckoutBuilder, AutotagOption, Cred, CredentialType, FetchOptions, PushOptions,
@@ -11,7 +11,7 @@ use git2::{
 
 use crate::error::{AppError, AppResult};
 
-use super::group_update::GroupUpdateControl;
+use super::group_update::{FetchProgress, GroupUpdateControl};
 use super::types::{GeneratedKey, GroupUpdateResult, OpOutcome, RefMovement, RemoteInfo};
 
 static CREDENTIAL_PREFS: OnceLock<RwLock<CredentialPrefs>> = OnceLock::new();
@@ -488,7 +488,7 @@ fn group_update_inner(
     pull: bool,
     control: &GroupUpdateControl,
 ) -> AppResult<GroupUpdateResult> {
-    control.with_active(|| Ok(()))?;
+    control.ensure_active()?;
     if !Path::new(path).is_dir() {
         return Ok(GroupUpdateResult {
             status: "skipped".into(),
@@ -507,54 +507,35 @@ fn group_update_inner(
         if names.is_empty() {
             return Ok(result("skipped", "No remotes configured".into()));
         }
-        let before = fetched_refs(&repo)?;
-        let mut failures = Vec::new();
-        let mut succeeded = 0;
+        let mut progress = FetchProgress {
+            before: Arc::new(fetched_refs(&repo)?),
+            succeeded: 0,
+            total: names.len(),
+            failures: Vec::new(),
+        };
         for name in &names {
             if control.is_cancelled() {
                 break;
             }
-            match group_fetch(
-                path,
-                name,
-                control,
-                None,
-                Some((&before, succeeded + 1, names.len())),
-            ) {
-                Ok(()) => succeeded += 1,
-                Err(error) => failures.push(format!("{name}: {error}")),
+            match group_fetch(path, name, control, None, Some(&progress)) {
+                Ok(_) => progress.succeeded += 1,
+                Err(error) => {
+                    if !control.is_cancelled() {
+                        progress.failures.push(format!("{name}: {error}"));
+                    }
+                }
             }
+            if control.is_cancelled() {
+                if let Some(saved) = control.fetch_progress(path) {
+                    progress = saved;
+                }
+                break;
+            }
+            control.record_fetch(path, progress.clone())?;
         }
-        let changes = ref_movements(&repo, &before)?;
-        return Ok(GroupUpdateResult {
-            status: if succeeded == names.len() {
-                "ok"
-            } else if succeeded > 0 {
-                "partial"
-            } else if control.is_cancelled() {
-                "cancelled"
-            } else {
-                "failed"
-            }
-            .into(),
-            message: if control.is_cancelled() && succeeded < names.len() {
-                format!(
-                    "Fetched {succeeded} of {} remotes before cancellation; completed updates kept",
-                    names.len()
-                )
-            } else if failures.is_empty() {
-                format!("Fetched {} remote(s)", names.len())
-            } else {
-                format!(
-                    "Fetched {} of {} remotes. Failed: {}",
-                    succeeded,
-                    names.len(),
-                    failures.join("; ")
-                )
-            },
-            changes,
-        });
+        return fetch_progress_result(path, &progress, control.is_cancelled());
     }
+
     if repo.is_bare() {
         return Ok(result(
             "skipped",
@@ -582,10 +563,10 @@ fn group_update_inner(
         .ok_or_else(|| AppError::other("Invalid HEAD name"))?
         .to_string();
     let branch_name = head.shorthand().unwrap_or(&refname).to_string();
-    let upstream_ref = match repo.branch_upstream_name(&refname) {
+    let merge_ref = match repo.branch_upstream_merge(&refname) {
         Ok(name) => name
             .as_str()
-            .ok_or_else(|| AppError::other("Invalid upstream name"))?
+            .ok_or_else(|| AppError::other("Invalid upstream merge ref"))?
             .to_string(),
         Err(error) if error.code() == git2::ErrorCode::NotFound => {
             return Ok(result(
@@ -595,41 +576,76 @@ fn group_update_inner(
         }
         Err(error) => return Err(error.into()),
     };
-    let remote = repo.branch_upstream_remote(&refname)?;
+    let remote = match repo.branch_upstream_remote(&refname) {
+        Ok(remote) => remote,
+        Err(error) if error.code() == git2::ErrorCode::NotFound => {
+            return Ok(result(
+                "skipped",
+                format!("{branch_name} has no upstream configured"),
+            ));
+        }
+        Err(error) => return Err(error.into()),
+    };
     let remote = remote
         .as_str()
         .ok_or_else(|| AppError::other("Invalid upstream remote"))?;
+    let upstream_ref = if remote == "." {
+        merge_ref.clone()
+    } else {
+        match repo.find_remote(remote) {
+            Ok(_) => repo
+                .branch_upstream_name(&refname)?
+                .as_str()
+                .ok_or_else(|| AppError::other("Invalid upstream name"))?
+                .to_string(),
+            Err(error)
+                if matches!(
+                    error.code(),
+                    git2::ErrorCode::NotFound | git2::ErrorCode::InvalidSpec
+                ) =>
+            {
+                merge_ref.clone()
+            }
+            Err(error) => return Err(error.into()),
+        }
+    };
     let old = head.peel_to_commit()?.id();
-    if remote != "." {
-        let merge_ref = repo
-            .config()?
-            .get_string(&format!("branch.{branch_name}.merge"))?;
-        if let Err(error) = group_fetch(
+    let fetched = if remote != "." {
+        match group_fetch(
             path,
             remote,
             control,
             Some((&merge_ref, &upstream_ref)),
             None,
         ) {
-            if matches!(&error, AppError::Git(error) if error.code() == git2::ErrorCode::NotFound) {
+            Ok(oid) => oid,
+            Err(error) => {
+                if matches!(&error, AppError::Git(error) if error.code() == git2::ErrorCode::NotFound)
+                {
+                    return Ok(result(
+                        "skipped",
+                        format!("Configured upstream {upstream_ref} is missing on remote {remote}"),
+                    ));
+                }
+                return Err(error);
+            }
+        }
+    } else {
+        None
+    };
+    control.ensure_active()?;
+    let target = match fetched {
+        Some(oid) => repo.find_commit(oid)?,
+        None => match repo.find_reference(&upstream_ref) {
+            Ok(reference) => reference.peel_to_commit()?,
+            Err(error) if error.code() == git2::ErrorCode::NotFound => {
                 return Ok(result(
                     "skipped",
-                    format!("Configured upstream {upstream_ref} is missing on remote {remote}"),
+                    format!("Configured upstream {upstream_ref} is missing after fetch"),
                 ));
             }
-            return Err(error);
-        }
-    }
-    control.with_active(|| Ok(()))?;
-    let target = match repo.find_reference(&upstream_ref) {
-        Ok(reference) => reference.peel_to_commit()?,
-        Err(error) if error.code() == git2::ErrorCode::NotFound => {
-            return Ok(result(
-                "skipped",
-                format!("Configured upstream {upstream_ref} is missing after fetch"),
-            ));
-        }
-        Err(error) => return Err(error.into()),
+            Err(error) => return Err(error.into()),
+        },
     };
     let new = target.id();
     let (ahead, behind) = repo.graph_ahead_behind(old, new)?;
@@ -698,12 +714,33 @@ fn group_fetch(
     name: &str,
     control: &GroupUpdateControl,
     upstream: Option<(&str, &str)>,
-    progress: Option<(&HashMap<String, git2::Oid>, usize, usize)>,
-) -> AppResult<()> {
-    control.with_active(|| Ok(()))?;
+    progress: Option<&FetchProgress>,
+) -> AppResult<Option<git2::Oid>> {
+    control.ensure_active()?;
     let repo = super::repo::open(path)?;
     prime_account_bindings(Some(&repo));
-    let mut remote = repo.find_remote(name)?;
+    let (mut remote, anonymous) = match repo.find_remote(name) {
+        Ok(remote) => (remote, false),
+        Err(error)
+            if matches!(
+                error.code(),
+                git2::ErrorCode::NotFound | git2::ErrorCode::InvalidSpec
+            ) && upstream.is_some() =>
+        {
+            (repo.remote_anonymous(name)?, true)
+        }
+        Err(error) => return Err(error.into()),
+    };
+    static NEXT_FETCH: AtomicUsize = AtomicUsize::new(0);
+    let temporary = anonymous.then(|| {
+        format!(
+            "refs/angkorgit/group-pull/{}-{}",
+            std::process::id(),
+            NEXT_FETCH.fetch_add(1, Ordering::Relaxed)
+        )
+    });
+    let upstream =
+        upstream.map(|(source, target)| (source, temporary.as_deref().unwrap_or(target)));
     let mut callbacks = make_callbacks();
     callbacks.transfer_progress(|_| !control.is_cancelled());
     callbacks.sideband_progress(|_| !control.is_cancelled());
@@ -715,7 +752,7 @@ fn group_fetch(
         .collect();
     remote.download(&refspecs, Some(&mut options))?;
     remote.disconnect()?;
-    let mut apply = || {
+    let mut apply = || -> AppResult<()> {
         let received = AtomicBool::new(upstream.is_none());
         let mut updates = RemoteCallbacks::new();
         updates.update_tips(|name, _, _| {
@@ -738,34 +775,81 @@ fn group_fetch(
             )
             .into());
         }
-        let config = repo.config()?;
-        let prune = match config.get_bool(&format!("remote.{name}.prune")) {
-            Ok(prune) => prune,
-            Err(error) if error.code() == git2::ErrorCode::NotFound => {
-                config.get_bool("fetch.prune").unwrap_or(false)
+        if !anonymous {
+            let config = repo.config()?;
+            let prune = match config.get_bool(&format!("remote.{name}.prune")) {
+                Ok(prune) => prune,
+                Err(error) if error.code() == git2::ErrorCode::NotFound => {
+                    config.get_bool("fetch.prune").unwrap_or(false)
+                }
+                Err(error) => return Err(error.into()),
+            };
+            if prune {
+                remote.prune(None)?;
             }
-            Err(error) => return Err(error.into()),
-        };
-        if prune {
-            remote.prune(None)?;
         }
         Ok(())
     };
-    match progress {
-        Some((before, succeeded, total)) => control
-            .with_active_result(path, || {
-                apply()?;
-                Ok(GroupUpdateResult {
-                    status: if succeeded == total { "ok" } else { "partial" }.into(),
-                    message: format!(
-                        "Fetched {succeeded} of {total} remotes; completed updates kept"
-                    ),
-                    changes: ref_movements(&repo, before)?,
-                })
-            })
-            .map(|_| ()),
-        None => control.with_active(apply),
+    control.with_active(|| {
+        let applied = apply();
+        let oid = upstream.and_then(|(_, target)| {
+            repo.find_reference(target)
+                .ok()
+                .and_then(|reference| reference.target())
+        });
+        if let Some(temporary) = &temporary {
+            match repo.find_reference(temporary) {
+                Ok(mut reference) => reference.delete()?,
+                Err(error) if error.code() == git2::ErrorCode::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        if let Some(progress) = progress {
+            let mut progress = progress.clone();
+            match &applied {
+                Ok(()) => progress.succeeded += 1,
+                Err(error) => progress.failures.push(format!("{name}: {error}")),
+            }
+            control.record_fetch(path, progress)?;
+        }
+        applied?;
+        Ok(oid)
+    })
+}
+
+pub(super) fn fetch_progress_result(
+    path: &str,
+    progress: &FetchProgress,
+    cancelled: bool,
+) -> AppResult<GroupUpdateResult> {
+    let repo = super::repo::open(path)?;
+    let changes = ref_movements(&repo, &progress.before)?;
+    let status = if progress.succeeded == progress.total {
+        "ok"
+    } else if progress.succeeded > 0 || !changes.is_empty() {
+        "partial"
+    } else if !progress.failures.is_empty() {
+        "failed"
+    } else if cancelled {
+        "cancelled"
+    } else {
+        "failed"
+    };
+    let mut message = format!(
+        "Fetched {} of {} remotes",
+        progress.succeeded, progress.total
+    );
+    if cancelled && progress.succeeded < progress.total {
+        message.push_str(" before cancellation");
     }
+    if !progress.failures.is_empty() {
+        message.push_str(&format!(". Failed: {}", progress.failures.join("; ")));
+    }
+    Ok(GroupUpdateResult {
+        status: status.into(),
+        message,
+        changes,
+    })
 }
 
 fn ref_movements(

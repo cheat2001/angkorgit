@@ -22,20 +22,23 @@ export async function updateGroupRepositories(
   completedOnCancel: () => ReadonlyMap<string, GroupUpdateResult> = () => new Map(),
 ): Promise<void> {
   for (const repo of repos) {
-    const cancelled: GroupUpdateResult = { status: 'cancelled', message: 'Cancelled; completed updates are kept', changes: [] };
+    const cancelled: GroupUpdateResult = { status: 'cancelled', message: 'Cancelled before this repository started', changes: [] };
     if (signal?.aborted) {
       onResult({ ...(completedOnCancel().get(repo.path) ?? cancelled), repo });
       continue;
     }
+    let started = false;
     const pending = Promise.resolve().then(() => {
       if (signal?.aborted) return cancelled;
+      started = true;
       return update(repo.path);
     }).catch((error): GroupUpdateResult => ({
       status: 'failed', message: (error as { message?: string })?.message ?? String(error), changes: [],
     }));
+    const interrupted = { ...cancelled, message: 'Cancelled before completing this repository' };
     let onAbort: (() => void) | undefined;
     const aborted = new Promise<GroupUpdateResult>((resolve) => {
-      onAbort = () => resolve(completedOnCancel().get(repo.path) ?? cancelled);
+      onAbort = () => resolve(completedOnCancel().get(repo.path) ?? (started ? interrupted : cancelled));
       signal?.addEventListener('abort', onAbort, { once: true });
       if (signal?.aborted) onAbort();
     });

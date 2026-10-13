@@ -32,7 +32,7 @@ export function GroupUpdateDialog({ progress, onClose, onCancel }: {
   const counts: Record<GroupResultKind, number> = { updated: 0, unchanged: 0, skipped: 0, failed: 0, partial: 0, cancelled: 0 };
   for (const result of results) counts[classify(result)]++;
   const labels: Record<GroupResultKind, string> = {
-    updated: 'Updated', unchanged: pull ? 'Up to date' : 'Fetched', skipped: 'Skipped',
+    updated: 'Updated', unchanged: pull ? 'Up to date' : 'Unchanged', skipped: 'Skipped',
     failed: 'Failed', partial: 'Partial', cancelled: 'Cancelled',
   };
   const tones: Record<GroupResultKind, 'success' | 'danger' | 'primary' | 'neutral'> = {

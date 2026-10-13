@@ -42,6 +42,7 @@ it.each(['resolve', 'reject'] as const)('cancels a hanging operation and ignores
   await run;
   expect(update).toHaveBeenCalledTimes(1);
   expect(results.map((r) => r.status)).toEqual(['cancelled', 'cancelled']);
+  expect(results.map((r) => r.message)).toEqual(['Cancelled before completing this repository', 'Cancelled before this repository started']);
   if (late === 'resolve') finish({ repo: repos[0], status: 'ok', message: 'Late response', changes: [] });
   else fail(new Error('Group update is no longer active'));
   await pending.catch(() => undefined);
@@ -75,6 +76,7 @@ it('does not start any operation when already cancelled', async () => {
   await updateGroupRepositories([{ name: 'repo', path: '/repo', lastOpenedAt: 0 }], update, (r) => results.push(r), controller.signal);
   expect(update).not.toHaveBeenCalled();
   expect(results[0].status).toBe('cancelled');
+  expect(results[0].message).toBe('Cancelled before this repository started');
 });
 
 it('delivers one cancellation when aborted before the pending microtask starts', async () => {
@@ -88,4 +90,5 @@ it('delivers one cancellation when aborted before the pending microtask starts',
   expect(update).not.toHaveBeenCalled();
   expect(onResult).toHaveBeenCalledTimes(1);
   expect(onResult.mock.calls[0][0].status).toBe('cancelled');
+  expect(onResult.mock.calls[0][0].message).toBe('Cancelled before this repository started');
 });

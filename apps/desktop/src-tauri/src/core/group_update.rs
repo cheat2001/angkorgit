@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use super::types::{GroupUpdateReceipt, GroupUpdateResult};
@@ -8,7 +8,21 @@ use crate::error::{AppError, AppResult};
 #[derive(Default)]
 pub struct GroupUpdateControl {
     cancelled: Mutex<bool>,
-    completed: Mutex<HashMap<String, GroupUpdateResult>>,
+    completed: Mutex<HashMap<String, Completed>>,
+}
+
+#[derive(Clone)]
+enum Completed {
+    Result(GroupUpdateResult),
+    Fetch(FetchProgress),
+}
+
+#[derive(Clone)]
+pub(super) struct FetchProgress {
+    pub before: Arc<HashMap<String, git2::Oid>>,
+    pub succeeded: usize,
+    pub total: usize,
+    pub failures: Vec<String>,
 }
 
 impl GroupUpdateControl {
@@ -25,14 +39,38 @@ impl GroupUpdateControl {
         let completed = self
             .completed
             .lock()
-            .map_err(|_| AppError::other("Group results lock poisoned"))?;
-        Ok(completed
-            .iter()
-            .map(|(path, result)| GroupUpdateReceipt {
-                path: path.clone(),
-                result: result.clone(),
+            .map_err(|_| AppError::other("Group results lock poisoned"))?
+            .clone();
+        completed
+            .into_iter()
+            .map(|(path, completed)| {
+                let result = match completed {
+                    Completed::Result(result) => result,
+                    Completed::Fetch(progress) => {
+                        super::remote::fetch_progress_result(&path, &progress, true)?
+                    }
+                };
+                Ok(GroupUpdateReceipt { path, result })
             })
-            .collect())
+            .collect()
+    }
+
+    pub(super) fn record_fetch(&self, path: &str, progress: FetchProgress) -> AppResult<()> {
+        self.completed
+            .lock()
+            .map_err(|_| AppError::other("Group results lock poisoned"))?
+            .insert(path.into(), Completed::Fetch(progress));
+        Ok(())
+    }
+
+    pub(super) fn fetch_progress(&self, path: &str) -> Option<FetchProgress> {
+        self.completed
+            .lock()
+            .ok()
+            .and_then(|completed| match completed.get(path) {
+                Some(Completed::Fetch(progress)) => Some(progress.clone()),
+                _ => None,
+            })
     }
 
     pub fn with_active_result(
@@ -53,7 +91,7 @@ impl GroupUpdateControl {
             self.completed
                 .lock()
                 .map_err(|_| AppError::other("Group results lock poisoned"))?
-                .insert(path.into(), receipt);
+                .insert(path.into(), Completed::Result(receipt));
             result
         })
     }
@@ -72,7 +110,7 @@ impl GroupUpdateControl {
             .unwrap_or(true)
     }
 
-    pub fn with_active<T>(&self, action: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
+    fn active_guard(&self) -> AppResult<MutexGuard<'_, bool>> {
         let cancelled = self
             .cancelled
             .lock()
@@ -80,6 +118,16 @@ impl GroupUpdateControl {
         if *cancelled {
             return Err(AppError::other("Group update cancelled"));
         }
+        Ok(cancelled)
+    }
+
+    pub fn ensure_active(&self) -> AppResult<()> {
+        drop(self.active_guard()?);
+        Ok(())
+    }
+
+    pub fn with_active<T>(&self, action: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
+        let _guard = self.active_guard()?;
         action()
     }
 }

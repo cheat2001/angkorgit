@@ -3122,13 +3122,14 @@ test('group fetch classifies partial failures once and cancellation releases a h
     const [{ ipc }, { useSettings }, { useRepo }] = await Promise.all([
       import('/src/core/ipc.ts'), import('/src/features/settings/store.ts'), import('/src/features/repository/store.ts'),
     ]);
-    const repos = ['partial', 'slow', 'remaining'].map((name) => ({ path: `/projects/${name}`, name, lastOpenedAt: 0 }));
+    const repos = ['unchanged', 'partial', 'slow', 'remaining'].map((name) => ({ path: `/projects/${name}`, name, lastOpenedAt: 0 }));
     useRepo.setState({ recents: repos });
     useSettings.getState().addRepoGroup('Projects', 0, repos.map((r) => r.path));
     const tracker = window as unknown as { __groupCalls: string[]; __finishGroup: () => void };
     tracker.__groupCalls = [];
     ipc.groupUpdate = async (path) => {
       tracker.__groupCalls.push(path);
+      if (path.endsWith('/unchanged')) return { status: 'ok', message: 'Fetched origin without ref changes', changes: [] };
       if (path.endsWith('/partial')) return {
         status: 'partial', message: 'origin fetched; backup authentication failed',
         changes: [{ name: 'origin/main', oldOid: '1234567890', newOid: 'abcdef0123', commits: 2 }],
@@ -3140,7 +3141,8 @@ test('group fetch classifies partial failures once and cancellation releases a h
   await page.getByRole('menuitem', { name: 'Fetch all', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Partial');
-  await expect(dialog.getByRole('status')).toContainText('0 updated · 0 unchanged · 0 skipped · 0 failed · 1 partial');
+  await expect(dialog.getByText('Unchanged', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('status')).toContainText('0 updated · 1 unchanged · 0 skipped · 0 failed · 1 partial');
   await dialog.getByRole('button', { name: 'Cancel run', exact: true }).click();
   await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
   await expect(dialog.getByRole('status')).toContainText('1 partial · 2 cancelled');
@@ -3149,7 +3151,7 @@ test('group fetch classifies partial failures once and cancellation releases a h
     const { useRepo } = await import('/src/features/repository/store.ts');
     if (useRepo.getState().busy !== null) throw new Error('Cancellation kept the app busy');
     const tracker = window as unknown as { __groupCalls: string[] };
-    if (tracker.__groupCalls.join(',') !== '/projects/partial,/projects/slow') throw new Error('Started a repository after cancellation');
+    if (tracker.__groupCalls.join(',') !== '/projects/unchanged,/projects/partial,/projects/slow') throw new Error('Started a repository after cancellation');
   });
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(dialog).toBeHidden();

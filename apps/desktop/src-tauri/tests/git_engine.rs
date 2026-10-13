@@ -3322,7 +3322,9 @@ fn group_cancel_prevents_all_future_updates() {
     local.write("a.txt", "base\n");
     let old = commit_all(&local, "base");
     let control = core::GroupUpdateControl::default();
+    control.ensure_active().unwrap();
     control.cancel().unwrap();
+    assert!(control.ensure_active().is_err());
     assert!(control
         .with_active::<()>(|| panic!("cancelled action must not run"))
         .is_err());
@@ -3550,37 +3552,10 @@ fn group_cancel_reports_a_completed_checkout_before_acknowledging() {
     local.write("a.txt", "updated\n");
     let new = commit_all(&local, "updated");
     core::push(local.path(), "origin", None, false, false, true).unwrap();
-    let control = std::sync::Arc::new(core::GroupUpdateControl::default());
-    let worker_control = control.clone();
-    let path = other.path().to_string();
-    let (written_tx, written_rx) = std::sync::mpsc::channel();
-    let (release_tx, release_rx) = std::sync::mpsc::channel();
-    let worker = std::thread::spawn(move || {
-        worker_control.with_active_result(&path, || {
-            let result = core::group_update(&path, true)?;
-            written_tx.send(()).unwrap();
-            release_rx
-                .recv_timeout(std::time::Duration::from_secs(5))
-                .unwrap();
-            Ok(result)
-        })
-    });
-    written_rx
-        .recv_timeout(std::time::Duration::from_secs(5))
-        .unwrap();
-    let cancel_control = control.clone();
-    let (cancel_tx, cancel_rx) = std::sync::mpsc::channel();
-    let cancel = std::thread::spawn(move || {
-        cancel_tx.send(()).unwrap();
-        cancel_control.cancel_results().unwrap()
-    });
-    cancel_rx
-        .recv_timeout(std::time::Duration::from_secs(5))
-        .unwrap();
-    assert!(!cancel.is_finished());
-    release_tx.send(()).unwrap();
-    assert_eq!(worker.join().unwrap().unwrap().status, "ok");
-    let receipts = cancel.join().unwrap();
+    let control = core::GroupUpdateControl::default();
+    let outcome = core::group_update_controlled(other.path(), true, &control).unwrap();
+    assert_eq!(outcome.status, "ok");
+    let receipts = control.cancel_results().unwrap();
     assert_eq!(receipts.len(), 1);
     assert_eq!(receipts[0].path, other.path());
     assert_eq!(receipts[0].result.status, "ok");
@@ -3595,4 +3570,156 @@ fn group_cancel_reports_a_completed_checkout_before_acknowledging() {
     assert_eq!(other.read("a.txt"), "updated\n");
     assert!(control.is_cancelled());
     std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn group_pull_accepts_url_upstreams_without_leaving_temporary_refs() {
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let other = clone_of(&origin, &local, "url-upstream");
+    core::branch_create(other.path(), "work/topic", None, true).unwrap();
+    core::set_config(
+        Some(other.path()),
+        "branch.work/topic.merge",
+        "refs/heads/master",
+        false,
+    )
+    .unwrap();
+    let url = format!("file://{}", origin.display());
+    core::set_config(Some(other.path()), "branch.work/topic.remote", &url, false).unwrap();
+    local.write("a.txt", "updated\n");
+    let new = commit_all(&local, "updated");
+    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let outcome = core::group_update(other.path(), true).unwrap();
+    assert_eq!(outcome.status, "ok", "{}", outcome.message);
+    assert_eq!(other.read("a.txt"), "updated\n");
+    let repo = git2::Repository::open(other.path()).unwrap();
+    assert_eq!(repo.head().unwrap().target().unwrap().to_string(), new);
+    assert_eq!(
+        repo.config()
+            .unwrap()
+            .get_string("branch.work/topic.remote")
+            .unwrap(),
+        url
+    );
+    assert!(repo
+        .references_glob("refs/angkorgit/group-pull/*")
+        .unwrap()
+        .next()
+        .is_none());
+    assert_eq!(
+        core::group_update(other.path(), true).unwrap().status,
+        "up_to_date"
+    );
+    core::set_config(
+        Some(other.path()),
+        "branch.work/topic.remote",
+        origin.to_str().unwrap(),
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        core::group_update(other.path(), true).unwrap().status,
+        "up_to_date"
+    );
+    git2::Repository::open_bare(&origin)
+        .unwrap()
+        .find_reference("refs/heads/master")
+        .unwrap()
+        .delete()
+        .unwrap();
+    assert_eq!(
+        core::group_update(other.path(), true).unwrap().status,
+        "skipped"
+    );
+    assert!(repo
+        .references_glob("refs/angkorgit/group-pull/*")
+        .unwrap()
+        .next()
+        .is_none());
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn group_fetch_cancel_receipts_keep_successful_remotes_and_prior_errors() {
+    for successful in [true, false] {
+        let local = TempRepo::new();
+        local.write("a.txt", "base\n");
+        commit_all(&local, "base");
+        let origin = bare_origin(&local);
+        core::push(local.path(), "origin", None, false, false, true).unwrap();
+        let other = clone_of(&origin, &local, "cancel-partial");
+        git2::Repository::open(other.path())
+            .unwrap()
+            .remote_delete("origin")
+            .unwrap();
+        if successful {
+            core::remote_add(other.path(), "a-good", origin.to_str().unwrap()).unwrap();
+        }
+        core::remote_add(
+            other.path(),
+            "b-error",
+            if successful {
+                origin.to_str().unwrap()
+            } else {
+                "/nonexistent/angkorgit-remote.git"
+            },
+        )
+        .unwrap();
+        if successful {
+            core::set_config(Some(other.path()), "remote.b-error.prune", "invalid", false).unwrap();
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        core::remote_add(
+            other.path(),
+            "c-stalled",
+            &format!("http://{}/repo.git", listener.local_addr().unwrap()),
+        )
+        .unwrap();
+        let (accepted_tx, accepted_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            drop(listener);
+            accepted_tx.send(()).unwrap();
+            release_rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .unwrap();
+            drop(socket);
+        });
+        let control = std::sync::Arc::new(core::GroupUpdateControl::default());
+        let worker_control = control.clone();
+        let path = other.path().to_string();
+        let worker = std::thread::spawn(move || {
+            core::group_update_controlled(&path, false, &worker_control)
+        });
+        accepted_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        let start = std::time::Instant::now();
+        let receipts = control.cancel_results().unwrap();
+        assert!(start.elapsed() < std::time::Duration::from_secs(1));
+        assert!(!worker.is_finished());
+        assert_eq!(receipts.len(), 1);
+        let result = &receipts[0].result;
+        assert_eq!(result.status, if successful { "partial" } else { "failed" });
+        assert!(result.message.contains("b-error"), "{}", result.message);
+        assert!(result.message.contains("before cancellation"));
+        assert_eq!(
+            result
+                .changes
+                .iter()
+                .any(|change| change.name == "refs/remotes/a-good/master"),
+            successful
+        );
+        release_tx.send(()).unwrap();
+        server.join().unwrap();
+        let outcome = worker.join().unwrap().unwrap();
+        assert_eq!(outcome.status, result.status);
+        assert_eq!(outcome.message, result.message);
+        std::fs::remove_dir_all(origin).unwrap();
+    }
 }
