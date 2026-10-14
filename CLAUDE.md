@@ -1046,73 +1046,21 @@ features/
 │   │                           first, skips missing folders and says so in the toast
 │   │                           description, addRepoTab for every present path, opens the
 │   │                           first only when the current repo is not in the group, then
-│   │                           ensureRepoRoute). GroupUpdateDialog + groupUpdate.ts run group
-│   │                           fetch/pull sequentially (shared worktree refs) and show live
-│   │                           per-repo results. classify() is shared by counters and badges:
-│   │                           Rust returns an explicit partial status when some remotes fail
-│   │                           but others succeed, even when no refs move; counters never overlap.
-│   │                           groupStart/groupCancel/groupFinish manage a native runId token.
-│   │                           remote::group_update_controlled separates remote.download from
-│   │                           update_tips; core/group_update.rs guards ref and checkout writes
-│   │                           with the cancellation mutex. Cancel acknowledges without waiting
-│   │                           on socket I/O, aborts the frontend wait and remaining repos, and
-│   │                           releases useRepo.busy; already completed changes are retained.
-│   │                           Cancel intentionally waits for an active local checkout/ref-write
-│   │                           phase to finish; the button can show Cancelling… during that phase.
-│   │                           Registry entries record last use: one-hour stale runs are cancelled
-│   │                           and pruned on subsequent registry activity using try_lock, so expiry
-│   │                           never waits for or interrupts an active local checkout. Expired
-│   │                           download handles remain cancelled after their registry entry goes.
-│   │                           Network reads may wind down in the background, but no ref or
-│   │                           working-tree updates run after cancellation acknowledges. The batch
-│   │                           native guard records per-repo outcomes before releasing a local
-│   │                           write phase. groupCancel returns these completed-result receipts,
-│   │                           so a checkout completed while Cancel waited still counts as Updated.
-│   │                           The runner settles each row once from the response or acknowledgement,
-│   │                           consumes but ignores late responses/errors, and never overwrites settled
-│   │                           rows. Cancelled queued requests cannot become inactive-run failures;
-│   │                           unmount cancels too. Fetch pruning reads remote.<name>.prune first,
-│   │                           falling back to fetch.prune only when the remote key is absent.
-│   │                           ensure_active() names read-only cancellation checks. Fetch receipts
-│   │                           store an Arc of the initial refs and small success/failure counts;
-│   │                           moved-ref discovery and commit counting happen outside the cancel
-│   │                           mutex when the response or acknowledgement is built. Errors retain
-│   │                           earlier fetch progress and remain visible after Cancel; queued repos
-│   │                           explicitly say they never started. Fetch badges say Unchanged like
-│   │                           the counts. Pull reads branch_upstream_merge via git2 and resolves
-│   │                           branch_upstream_name before fetching named remotes (a missing tracking
-│   │                           ref can be restored), fetching the exact configured merge ref
-│   │                           into that tracking ref, requiring its update callback (with
-│   │                           REPORT_UNCHANGED) so stale refs never hide a deleted upstream.
-│   │                           Named upstreams outside the remote fetch refspec also use a temporary
-│   │                           destination, fetching the exact merge source without changing fetch
-│   │                           configuration or overwriting existing tracking refs. One repository
-│   │                           handle serves all remotes and the final ref summary. Cancellation
-│   │                           builds receipts independently: if ref inspection fails, it retains
-│   │                           fetch counts and prior errors with a diagnostic on that row, while
-│   │                           preserving every other completed receipt and acknowledging Cancel.
-│   │                           The unreadable-path integration fixture invalidates a gitdir alias
-│   │                           file while the worker keeps the real clone open; it never renames
-│   │                           open pack files, which Windows refuses. File-URL fixtures use
-│   │                           Url::from_file_path for drive letters, slashes and escaping.
-│   │                           URL/path upstreams use anonymous remotes and a unique temporary
-│   │                           refs/angkorgit/group-pull ref; its OID is captured and the ref deleted
-│   │                           in the same guarded write phase, without changing branch config.
-│   │                           It skips detached/unborn HEAD, bare repos, unfinished operations
-│   │                           and divergence. Safe checkout alone decides whether local changes
-│   │                           conflict; unrelated untracked, staged and unstaged changes survive.
-│   │                           Hooks, submodules and external filters have exactly the toolbar
-│   │                           Pull behavior: libgit2 checkout, no extra compatibility skips or
-│   │                           hook/submodule/filter processing. Owner request before merging #70.
-│   │                           Safe checkout precedes the ref update; a ref failure explicitly
-│   │                           reports that checkout completed and gives both commit IDs for
-│   │                           inspection. Never merges/rebases. Results carry status/message +
-│   │                           name/oldOid/newOid/commits. GroupUpdateDialog uses flat borderless
-│   │                           rows, token-toned badges (success for Updated, danger for Failed,
-│   │                           primary for Partial), and one non-wrapping scrollable counts line.
-│   │                           Pull uses ArrowDownToLine, matching the toolbar. The mutex holds
-│   │                           through a local write phase; cancellation waits for it to finish
-│   │                           before acknowledging. Keep this rationale here, not in source.
+│   │                           ensureRepoRoute). GroupUpdateDialog + groupUpdate.ts run Fetch all
+│   │                           and Pull all sequentially with live per-repo results: moved refs,
+│   │                           commit counts, unchanged repos, skips and failures. The dialog uses
+│   │                           flat rows, toned badges and one non-wrapping counts line;
+│   │                           classify() keeps badges and counters consistent. Fetch uses
+│   │                           RefreshCw and Pull uses ArrowDownToLine, matching the toolbar.
+│   │                           groupStart(runId) starts the native run; groupUpdate uses that token.
+│   │                           groupCancel returns completed-result receipts before the frontend
+│   │                           aborts its wait; groupFinish cleans up. Leaving the page cancels too.
+│   │                           Cancel retains completed work, stops queued repos and permits no
+│   │                           ref/worktree writes after acknowledgement. It waits for active local
+│   │                           writes, not socket I/O; settled rows ignore late responses/errors.
+│   │                           Pull's checkout behavior matches toolbar Pull exactly. Group pull
+│   │                           follows the configured upstream and only fast-forwards, never
+│   │                           merges or rebases.
 │   │                           closeRepoGroup, deleteRepoGroup (confirm
 │   │                           only when the group has repos; the repos stay in recents),
 │   │                           plural(count, noun) handles -y → -ies. DRAG: rows are

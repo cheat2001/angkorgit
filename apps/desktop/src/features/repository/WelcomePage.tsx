@@ -17,7 +17,7 @@ import {
   ChevronRight,
   Clock,
   Copy,
-  Download,
+  RefreshCw,
   FolderGit2,
   FolderOpen,
   FolderSearch,
@@ -687,7 +687,7 @@ export function WelcomePage() {
               disabled={groupMenu.repos.length === 0 || !!busy || !!opening}
               onClick={() => void updateGroup(groupMenu.group, groupMenu.repos, false)}
             >
-              <Download /> Fetch all
+              <RefreshCw /> Fetch all
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={groupMenu.repos.length === 0 || !!busy || !!opening}
