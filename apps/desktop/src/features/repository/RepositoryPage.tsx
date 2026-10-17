@@ -167,7 +167,7 @@ export function RepositoryPage() {
     return () => {
       cancelled = true;
       unlisten?.();
-      void ipc.watchStop();
+      void ipc.watchStop(repoPath);
     };
   }, [repoPath, reload, navigate]);
 

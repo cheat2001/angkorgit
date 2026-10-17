@@ -1270,6 +1270,7 @@ test('a stash file never offers the all files layout, even when it is the rememb
   await page.keyboard.press('Escape');
 
   await page.getByRole('row').nth(2).click();
+  await expect(inspector.getByText('This is a stash.', { exact: false })).toHaveCount(0);
   await page.getByLabel('Commit files').getByRole('button', { name: /GraphRow\.tsx/ }).click();
   await expect(page.locator('[data-all-changes]')).toBeVisible();
 });
@@ -2322,17 +2323,20 @@ test('dragging a diff selection past the bottom edge keeps growing it and copies
   });
   const box = await scroller.boundingBox();
   if (!box) throw new Error('diff scroller not laid out');
-  const start = await scroller.evaluate((el) => {
-    const bounds = el.getBoundingClientRect();
-    const rows = [...el.querySelectorAll<HTMLElement>('[data-diff-row]')];
-    const row = rows.find((r) => {
-      const rect = r.getBoundingClientRect();
-      return rect.top > bounds.top + 40 && rect.bottom < bounds.bottom - 140;
+  const findStart = () =>
+    scroller.evaluate((el) => {
+      const bounds = el.getBoundingClientRect();
+      const rows = [...el.querySelectorAll<HTMLElement>('[data-diff-row]')];
+      const row = rows.find((r) => {
+        const rect = r.getBoundingClientRect();
+        return rect.top > bounds.top + 40 && rect.bottom < bounds.bottom - 140;
+      });
+      if (!row) return null;
+      const rect = row.getBoundingClientRect();
+      return { text: row.textContent ?? '', x: rect.left + 30, y: rect.top + rect.height / 2 };
     });
-    if (!row) return null;
-    const rect = row.getBoundingClientRect();
-    return { text: row.textContent ?? '', x: rect.left + 30, y: rect.top + rect.height / 2 };
-  });
+  await expect.poll(findStart).not.toBeNull();
+  const start = await findStart();
   if (!start) throw new Error('no diff row to start from');
 
   const below = { x: start.x + 200, y: box.y + box.height + 30 };
