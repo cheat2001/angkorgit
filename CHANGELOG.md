@@ -6,6 +6,22 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Submodules follow the commit your repository records.** A pull, checkout,
+  merge, rebase, cherry-pick, revert, hard reset or stash pop that moves a
+  submodule's recorded commit now checks the submodule out at the new commit,
+  fetching it first when it is missing, and the group Pull all does the same. A
+  submodule you had moved to another commit yourself, or one with edited files, is
+  left alone. Before, the submodule stayed on the old commit and showed up as an
+  uncommitted change, and committing everything would have undone the update.
+
+### Fixed
+- A submodule checked out at a different commit than the repository records (after
+  a pull in the terminal, say) gets an **Update submodule** button on its row and in
+  its menu, and its tooltip names both commits. Discard on that row checks out the
+  recorded commit instead of failing with "Submodule changes must be discarded
+  inside the submodule repository".
+
 ## [0.24.0] — 2026-10-16
 
 The tab strip release. A repository group fetches or pulls every repository in it

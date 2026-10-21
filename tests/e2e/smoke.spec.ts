@@ -918,6 +918,28 @@ test('mod+enter with nothing staged asks to stage instead of committing', async 
   await expect(summary).toHaveValue('fix: nothing staged');
 });
 
+test('a submodule left at an older commit offers Update submodule instead of Discard', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-submodule-drift', '1'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const row = page.locator('[data-submodule-drift]');
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('libfoo');
+  await expect(row.getByRole('button', { name: 'Discard vendor/libfoo' })).toHaveCount(0);
+
+  await row.click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Update submodule to efec64c' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Discard changes…' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  await row.hover();
+  await row.getByRole('button', { name: 'Update submodule vendor/libfoo' }).click();
+  await expect(page.getByText('Checked out efec64c in vendor/libfoo')).toBeVisible();
+  await expect(page.locator('[data-submodule-drift]')).toHaveCount(0);
+});
+
 test('a file filter that hides the staged files leaves Commit enabled with the full count', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();

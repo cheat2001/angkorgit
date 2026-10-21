@@ -108,6 +108,8 @@ pub fn discard_file(path: &str, file: &str) -> AppResult<bool> {
         if full.is_file() {
             std::fs::remove_file(full)?;
         }
+    } else if let Some(mut sub) = super::submodule::drifted(&repo, file) {
+        super::submodule::checkout_recorded(&mut sub)?;
     } else {
         let mut builder = git2::build::CheckoutBuilder::new();
         builder.path(file).force().update_index(false);
@@ -140,6 +142,11 @@ pub fn discard_all(path: &str) -> AppResult<Vec<String>> {
     builder.force().update_index(false);
     repo.checkout_index(None, Some(&mut builder))?;
 
+    for leftover in unstaged_paths(&repo)? {
+        if let Some(mut sub) = super::submodule::drifted(&repo, &leftover) {
+            let _ = super::submodule::checkout_recorded(&mut sub);
+        }
+    }
     unstaged_paths(&repo)
 }
 

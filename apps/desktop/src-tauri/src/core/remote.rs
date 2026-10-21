@@ -615,6 +615,7 @@ fn group_update_inner(
     };
     let upstream_ref = tracking_ref.as_deref().unwrap_or(&merge_ref);
     let old = head.peel_to_commit()?.id();
+    let submodules = super::submodule::at_recorded_commit(&repo);
     let fetched = if remote != "." {
         match group_fetch(
             &repo,
@@ -668,6 +669,12 @@ fn group_update_inner(
     if ahead > 0 {
         return Ok(result("skipped", format!("{branch_name} has diverged ({ahead} ahead, {behind} behind); fast-forward unavailable")));
     }
+    if !submodules.is_empty() {
+        super::submodule::download_missing(&repo, &target.tree()?, &submodules, &|| {
+            !control.is_cancelled()
+        });
+        control.ensure_active()?;
+    }
     let current = repo.head()?;
     if current.name() != Some(refname.as_str())
         || current.target() != Some(old)
@@ -701,6 +708,7 @@ fn group_update_inner(
                  Inspect HEAD and working-tree changes before retrying."
                 ))
             })?;
+        super::submodule::follow_recorded(path, &submodules, false);
         Ok(GroupUpdateResult {
             status: "ok".into(),
             message: format!("Fast-forwarded {branch_name} by {behind} commit(s)"),

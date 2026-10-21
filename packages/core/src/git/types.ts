@@ -126,11 +126,17 @@ export type FileStatusKind =
   | 'conflicted'
   | 'untracked';
 
+export interface SubmoduleCommits {
+  recorded: string;
+  checkedOut: string;
+}
+
 export interface FileStatus {
   path: string;
   origPath: string | null;
   staged: FileStatusKind | null;
   unstaged: FileStatusKind | null;
+  submodule?: SubmoduleCommits;
 }
 
 export interface StatusSummary {

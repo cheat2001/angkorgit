@@ -129,6 +129,29 @@ function demoNothingStaged(): boolean {
     return false;
   }
 }
+const DEMO_SUBMODULE_DRIFT = 'angkorgit-demo-submodule-drift';
+
+function demoSubmoduleDrift(): boolean {
+  try {
+    return localStorage.getItem(DEMO_SUBMODULE_DRIFT) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function clearDemoSubmoduleDrift(): void {
+  try {
+    localStorage.removeItem(DEMO_SUBMODULE_DRIFT);
+  } catch {
+    return;
+  }
+}
+
+function demoStatusNow(): StatusSummary {
+  const status = demoNothingStaged() ? demo.demoUnstagedStatus() : demo.demoStatus;
+  return demoSubmoduleDrift() ? { ...status, files: [...status.files, demo.demoDriftedSubmodule] } : status;
+}
+
 let demoCli: CliToolStatus | null = null;
 
 function demoAiKeys(): Record<string, string> {
@@ -180,7 +203,7 @@ export const ipc = {
     return invoke('repo_clone', { url, into, branch: branch ?? null });
   },
   async status(path: string): Promise<StatusSummary> {
-    if (!isTauri()) return demoNothingStaged() ? demo.demoUnstagedStatus() : demo.demoStatus;
+    if (!isTauri()) return demoStatusNow();
     return invoke('repo_status', { path });
   },
   async stateCleanup(path: string): Promise<void> {
@@ -581,7 +604,7 @@ export const ipc = {
     return invoke('submodule_list', { path });
   },
   async submoduleUpdate(path: string, name: string): Promise<void> {
-    if (!isTauri()) return;
+    if (!isTauri()) return clearDemoSubmoduleDrift();
     return invoke('submodule_update', { path, name });
   },
 

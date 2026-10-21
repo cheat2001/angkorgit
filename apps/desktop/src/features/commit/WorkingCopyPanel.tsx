@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
-import { AlertTriangle, Archive, Check, Code, Copy, ExternalLink, File as FileIcon, FolderOpen, History, UserRoundSearch, Minus, Pencil, Plus, SearchCheck, Sparkles, SquareCheck, Trash2, Undo2 } from 'lucide-react';
+import { AlertTriangle, Archive, Check, Code, Copy, ExternalLink, File as FileIcon, FolderOpen, History, ListRestart, UserRoundSearch, Minus, Pencil, Plus, SearchCheck, Sparkles, SquareCheck, Trash2, Undo2 } from 'lucide-react';
 import type { AllFilesEntry, FileStatus } from '@angkorgit/core';
 import { aiCapabilities, allFiles, buildStagedReviewSignature, filterFiles, foldersWithChanges, hasCommittedHistory, hashText, PROJECT_REVIEW_FILE, joinCommitMessage, splitCommitMessage } from '@angkorgit/core';
 import {
@@ -71,6 +71,11 @@ function statusBadge(kind: string | null) {
   }
 }
 
+function submoduleDrift(file: FileStatus, staged: boolean): string | null {
+  if (staged || !file.submodule) return null;
+  return `Submodule checked out at ${file.submodule.checkedOut.slice(0, 7)}, this repository records ${file.submodule.recorded.slice(0, 7)}`;
+}
+
 const FileRow = memo(function FileRow({
   file,
   staged,
@@ -78,6 +83,7 @@ const FileRow = memo(function FileRow({
   onClick,
   onPrimary,
   onDiscard,
+  onUpdateSubmodule,
   onContextMenu,
   indent,
   treeMode,
@@ -88,16 +94,19 @@ const FileRow = memo(function FileRow({
   onClick: (file: FileStatus, staged: boolean, event: React.MouseEvent) => void;
   onPrimary: (file: FileStatus, staged: boolean) => void;
   onDiscard?: (file: FileStatus) => void;
+  onUpdateSubmodule?: (file: FileStatus) => void;
   onContextMenu?: (event: React.MouseEvent, file: FileStatus, staged: boolean) => void;
   indent?: number;
   treeMode?: boolean;
 }) {
   const kind = staged ? file.staged : file.unstaged;
   const conflicted = file.unstaged === 'conflicted';
+  const drift = submoduleDrift(file, staged);
   const row = (
       <div
         data-selected-file-row={selected || undefined}
-        title={treeMode ? file.path : undefined}
+        data-submodule-drift={drift ? true : undefined}
+        title={treeMode ? (drift ? `${file.path}\n${drift}` : file.path) : undefined}
         className={cn(
           'group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors',
           selected ? 'bg-primary/10' : 'hover:bg-surface-raised',
@@ -117,7 +126,20 @@ const FileRow = memo(function FileRow({
           <span className="max-w-full shrink-0 truncate text-foreground">{basename(file.path)}</span>
           {!treeMode && <DirName path={file.path} />}
         </span>
-        {onDiscard && (
+        {drift && onUpdateSubmodule ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Update submodule ${file.path}`}
+            className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdateSubmodule(file);
+            }}
+          >
+            <ListRestart className="size-3 text-primary" />
+          </Button>
+        ) : onDiscard && (
           <Button
             variant="ghost"
             size="icon-sm"
@@ -135,7 +157,20 @@ const FileRow = memo(function FileRow({
   );
   if (treeMode) return row;
   return (
-    <Hint label={file.path} side="left" className="max-w-[34rem] font-mono">
+    <Hint
+      label={
+        drift ? (
+          <span className="flex flex-col gap-0.5">
+            <span>{file.path}</span>
+            <span className="font-sans text-muted">{drift}</span>
+          </span>
+        ) : (
+          file.path
+        )
+      }
+      side="left"
+      className="max-w-[34rem] font-mono"
+    >
       {row}
     </Hint>
   );
@@ -416,6 +451,20 @@ export function WorkingCopyPanel() {
         }
       } catch (error) {
         toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
+      }
+    },
+    [path, refreshStatus],
+  );
+
+  const updateSubmodule = useCallback(
+    async (file: FileStatus) => {
+      const target = file.submodule?.recorded.slice(0, 7);
+      try {
+        await ipc.submoduleUpdate(path, file.path);
+        await refreshStatus();
+        toast.success(target ? `Checked out ${target} in ${file.path}` : `Updated ${file.path}`);
+      } catch (error) {
+        toast.error(`Could not update ${file.path}: ${(error as { message?: string }).message ?? error}`);
       }
     },
     [path, refreshStatus],
@@ -841,6 +890,7 @@ export function WorkingCopyPanel() {
       onPrimary={toggleStage}
       onContextMenu={openFileMenu}
       onDiscard={requestDiscard}
+      onUpdateSubmodule={updateSubmodule}
     />
   );
 
@@ -1241,6 +1291,11 @@ export function WorkingCopyPanel() {
                 >
                   <Plus /> Stage file
                 </DropdownMenuItem>
+                {fileMenu.file.submodule && (
+                  <DropdownMenuItem onClick={() => void updateSubmodule(fileMenu.file)}>
+                    <ListRestart /> Update submodule to {fileMenu.file.submodule.recorded.slice(0, 7)}
+                  </DropdownMenuItem>
+                )}
               </>
             )}
             <DropdownMenuItem
@@ -1309,9 +1364,11 @@ export function WorkingCopyPanel() {
               <Copy /> Copy absolute path
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem destructive onClick={() => requestDiscard(fileMenu.file, fileMenu.staged)}>
-              <Trash2 /> Discard changes…
-            </DropdownMenuItem>
+            {!submoduleDrift(fileMenu.file, fileMenu.staged) && (
+              <DropdownMenuItem destructive onClick={() => requestDiscard(fileMenu.file, fileMenu.staged)}>
+                <Trash2 /> Discard changes…
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               destructive
               onClick={() => {

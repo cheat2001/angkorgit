@@ -4,7 +4,7 @@ use git2::{Oid, Repository, StashApplyOptions, StashFlags, Tree};
 
 use crate::error::{AppError, AppResult};
 
-use super::types::{CommitFileInfo, StashInfo, SubmoduleInfo, TagInfo};
+use super::types::{CommitFileInfo, StashInfo, TagInfo};
 
 pub fn stash_list(path: &str) -> AppResult<Vec<StashInfo>> {
     let mut repo = super::repo::open(path)?;
@@ -462,30 +462,5 @@ pub fn tag_create(
 pub fn tag_delete(path: &str, name: &str) -> AppResult<()> {
     let repo = super::repo::open(path)?;
     repo.tag_delete(name)?;
-    Ok(())
-}
-
-pub fn submodule_list(path: &str) -> AppResult<Vec<SubmoduleInfo>> {
-    let repo = super::repo::open(path)?;
-    let mut result = Vec::new();
-    for sub in repo.submodules()? {
-        result.push(SubmoduleInfo {
-            name: sub.name().unwrap_or("").to_string(),
-            path: sub.path().to_string_lossy().to_string(),
-            url: sub.url().map(String::from),
-            head_oid: sub.head_id().as_ref().map(Oid::to_string),
-        });
-    }
-    Ok(result)
-}
-
-pub fn submodule_update(path: &str, name: &str) -> AppResult<()> {
-    let repo = super::repo::open(path)?;
-    let mut sub = repo.find_submodule(name)?;
-    let mut fetch = git2::FetchOptions::new();
-    fetch.remote_callbacks(super::remote::make_callbacks());
-    let mut opts = git2::SubmoduleUpdateOptions::new();
-    opts.fetch(fetch);
-    sub.update(true, Some(&mut opts))?;
     Ok(())
 }

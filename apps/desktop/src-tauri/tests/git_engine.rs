@@ -3877,3 +3877,207 @@ fn group_cancel_preserves_other_receipts_when_a_fetch_repository_path_becomes_in
     assert_eq!(other.read("a.txt"), "base\n");
     std::fs::remove_dir_all(origin).unwrap();
 }
+
+fn git_in(dir: &std::path::Path, args: &[&str]) -> String {
+    let out = Command::new("git")
+        .args([
+            "-c",
+            "protocol.file.allow=always",
+            "-c",
+            "core.autocrlf=false",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.name=Test User",
+            "-c",
+            "user.email=test@angkorgit.dev",
+        ])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+struct SubmoduleFixture {
+    _library: TempRepo,
+    _upstream: TempRepo,
+    local: TempRepo,
+    first: String,
+    second: String,
+    added: String,
+}
+
+impl SubmoduleFixture {
+    fn new() -> Self {
+        let library = TempRepo::new();
+        library.write("lib.txt", "one\n");
+        let first = commit_all(&library, "lib one");
+
+        let upstream = TempRepo::new();
+        upstream.write("README.md", "parent\n");
+        commit_all(&upstream, "base");
+        git_in(
+            &upstream.dir,
+            &[
+                "submodule",
+                "add",
+                "-q",
+                "--name",
+                "library",
+                library.path(),
+                "deps/lib",
+            ],
+        );
+        git_in(&upstream.dir, &["commit", "-qm", "add lib"]);
+        let added = git_in(&upstream.dir, &["rev-parse", "HEAD"]);
+
+        let local = clone_of(&upstream.dir, &upstream, "local");
+        git_in(&local.dir, &["submodule", "update", "--init", "-q"]);
+
+        library.write("lib.txt", "two\n");
+        let second = commit_all(&library, "lib two");
+        let upstream_lib = upstream.dir.join("deps/lib");
+        git_in(&upstream_lib, &["fetch", "-q", "origin"]);
+        git_in(&upstream_lib, &["checkout", "-q", &second]);
+        git_in(&upstream.dir, &["add", "deps/lib"]);
+        git_in(&upstream.dir, &["commit", "-qm", "bump lib"]);
+
+        Self {
+            _library: library,
+            _upstream: upstream,
+            local,
+            first,
+            second,
+            added,
+        }
+    }
+
+    fn local_sub(&self) -> PathBuf {
+        self.local.dir.join("deps/lib")
+    }
+
+    fn checked_out(&self) -> String {
+        git_in(&self.local_sub(), &["rev-parse", "HEAD"])
+    }
+}
+
+#[test]
+fn pull_moves_a_submodule_that_was_at_the_recorded_commit() {
+    let fx = SubmoduleFixture::new();
+    assert_eq!(fx.checked_out(), fx.first);
+
+    let path = fx.local.path();
+    core::submodule_synced(path, || core::pull(path, "origin", None)).unwrap();
+
+    assert_eq!(fx.checked_out(), fx.second);
+    assert_eq!(fx.local.read("deps/lib/lib.txt"), "two\n");
+    assert!(core::status(path).unwrap().files.is_empty());
+    assert_eq!(
+        git_in(&fx.local.dir, &["status", "--porcelain"]),
+        "",
+        "git status agrees the submodule is at the recorded commit"
+    );
+}
+
+#[test]
+fn group_pull_moves_an_in_sync_submodule_like_the_toolbar_pull() {
+    let fx = SubmoduleFixture::new();
+    let result = core::group_update(fx.local.path(), true).unwrap();
+
+    assert_eq!(result.status, "ok", "{}", result.message);
+    assert_eq!(fx.checked_out(), fx.second);
+    assert!(core::status(fx.local.path()).unwrap().files.is_empty());
+}
+
+#[test]
+fn checkout_takes_an_in_sync_submodule_back_with_the_branch() {
+    let fx = SubmoduleFixture::new();
+    let path = fx.local.path();
+    core::submodule_synced(path, || core::pull(path, "origin", None)).unwrap();
+    core::branch_create(path, "before-bump", Some(&fx.added), false).unwrap();
+
+    core::submodule_synced(path, || core::checkout_branch(path, "before-bump")).unwrap();
+
+    assert_eq!(fx.checked_out(), fx.first);
+    assert!(core::status(path).unwrap().files.is_empty());
+}
+
+#[test]
+fn a_submodule_moved_on_purpose_stays_where_it_is() {
+    let fx = SubmoduleFixture::new();
+    git_in(
+        &fx.local_sub(),
+        &["commit", "-q", "--allow-empty", "-m", "local work"],
+    );
+    let work = fx.checked_out();
+
+    let path = fx.local.path();
+    core::submodule_synced(path, || core::pull(path, "origin", None)).unwrap();
+
+    assert_eq!(fx.checked_out(), work);
+}
+
+#[test]
+fn a_submodule_with_local_edits_stays_where_it_is() {
+    let fx = SubmoduleFixture::new();
+    fx.local.write("deps/lib/lib.txt", "edited\n");
+
+    let path = fx.local.path();
+    core::submodule_synced(path, || core::pull(path, "origin", None)).unwrap();
+
+    assert_eq!(fx.checked_out(), fx.first);
+    assert_eq!(fx.local.read("deps/lib/lib.txt"), "edited\n");
+}
+
+#[test]
+fn status_reports_a_submodule_left_at_an_older_commit_and_discard_updates_it() {
+    let fx = SubmoduleFixture::new();
+    let path = fx.local.path();
+    core::pull(path, "origin", None).unwrap();
+
+    let status = core::status(path).unwrap();
+    let entry = status.files.iter().find(|f| f.path == "deps/lib").unwrap();
+    assert_eq!(entry.unstaged.as_deref(), Some("modified"));
+    let commits = entry.submodule.as_ref().unwrap();
+    assert_eq!(commits.recorded, fx.second);
+    assert_eq!(commits.checked_out, fx.first);
+
+    assert!(core::discard_file(path, "deps/lib").unwrap());
+    assert_eq!(fx.checked_out(), fx.second);
+    assert!(core::status(path).unwrap().files.is_empty());
+}
+
+#[test]
+fn discard_all_and_update_bring_a_drifted_submodule_to_the_recorded_commit() {
+    let fx = SubmoduleFixture::new();
+    let path = fx.local.path();
+    core::pull(path, "origin", None).unwrap();
+    fx.local.write("README.md", "edited\n");
+
+    let leftovers = core::discard_all(path).unwrap();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+    assert_eq!(fx.checked_out(), fx.second);
+
+    git_in(&fx.local_sub(), &["checkout", "-q", &fx.first]);
+    let entry = core::status(path).unwrap().files.remove(0);
+    assert_eq!(entry.submodule.unwrap().checked_out, fx.first);
+    core::submodule_update(path, "deps/lib").unwrap();
+    assert_eq!(fx.checked_out(), fx.second);
+}
+
+#[test]
+fn a_submodule_with_only_edited_files_reports_no_commit_drift() {
+    let fx = SubmoduleFixture::new();
+    fx.local.write("deps/lib/lib.txt", "edited\n");
+
+    let entry = core::status(fx.local.path()).unwrap().files.remove(0);
+    assert_eq!(entry.path, "deps/lib");
+    assert_eq!(entry.unstaged.as_deref(), Some("modified"));
+    assert!(entry.submodule.is_none());
+}

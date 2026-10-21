@@ -7,6 +7,7 @@ import type {
   CommitFileInfo,
   CommitInfo,
   FileDiff,
+  FileStatus,
   HistoryPage,
   HistoryQuery,
   HttpRequest,
@@ -225,6 +226,17 @@ export const demoStatus: StatusSummary = {
   branch: 'main',
   ahead: 2,
   behind: 0,
+};
+
+export const demoDriftedSubmodule: FileStatus = {
+  path: 'vendor/libfoo',
+  origPath: null,
+  staged: null,
+  unstaged: 'modified',
+  submodule: {
+    recorded: 'efec64ccb163d16cdc069fd9bb4c747660b4db68',
+    checkedOut: 'd0da29a09729307ba78cc0dfe69a439b95f068fd',
+  },
 };
 
 export function demoUnstagedStatus(): StatusSummary {

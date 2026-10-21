@@ -193,11 +193,20 @@ pub struct SubmoduleInfo {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct SubmoduleCommits {
+    pub recorded: String,
+    pub checked_out: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct FileStatus {
     pub path: String,
     pub orig_path: Option<String>,
     pub staged: Option<String>,
     pub unstaged: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub submodule: Option<SubmoduleCommits>,
 }
 
 #[derive(Serialize)]

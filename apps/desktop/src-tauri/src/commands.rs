@@ -2,7 +2,8 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::core::types::*;
 use crate::core::{
-    branch, commit, conflict, diff, files, history, misc, remote, repo, scan, stage, worktree,
+    branch, commit, conflict, diff, files, history, misc, remote, repo, scan, stage, submodule,
+    worktree,
 };
 use crate::error::AppResult;
 use crate::terminal::TerminalState;
@@ -330,7 +331,7 @@ pub async fn merge_can_ff(path: String, target: String, source: String) -> AppRe
 
 #[tauri::command]
 pub async fn commit_revert(path: String, oid: String) -> AppResult<OpOutcome> {
-    blocking(move || commit::revert(&path, &oid)).await
+    blocking(move || submodule::synced(&path, || commit::revert(&path, &oid))).await
 }
 
 #[tauri::command]
@@ -381,7 +382,12 @@ pub async fn branch_create(
     fromOid: Option<String>,
     checkout: bool,
 ) -> AppResult<()> {
-    blocking(move || branch::create(&path, &name, fromOid.as_deref(), checkout)).await
+    blocking(move || {
+        submodule::synced(&path, || {
+            branch::create(&path, &name, fromOid.as_deref(), checkout)
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -396,37 +402,40 @@ pub async fn branch_rename(path: String, oldName: String, newName: String) -> Ap
 
 #[tauri::command]
 pub async fn branch_checkout(path: String, name: String) -> AppResult<()> {
-    blocking(move || branch::checkout_branch(&path, &name)).await
+    blocking(move || submodule::synced(&path, || branch::checkout_branch(&path, &name))).await
 }
 
 #[tauri::command]
 pub async fn checkout_detached(path: String, rev: String) -> AppResult<()> {
-    blocking(move || branch::checkout_detached(&path, &rev)).await
+    blocking(move || submodule::synced(&path, || branch::checkout_detached(&path, &rev))).await
 }
 
 #[tauri::command]
 pub async fn branch_merge(path: String, name: String, noFf: Option<bool>) -> AppResult<OpOutcome> {
-    blocking(move || branch::merge(&path, &name, noFf.unwrap_or(false))).await
+    blocking(move || {
+        submodule::synced(&path, || branch::merge(&path, &name, noFf.unwrap_or(false)))
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn merge_abort(path: String) -> AppResult<()> {
-    blocking(move || branch::abort_merge(&path)).await
+    blocking(move || submodule::synced(&path, || branch::abort_merge(&path))).await
 }
 
 #[tauri::command]
 pub async fn branch_rebase(path: String, upstream: String) -> AppResult<OpOutcome> {
-    blocking(move || branch::rebase(&path, &upstream)).await
+    blocking(move || submodule::synced(&path, || branch::rebase(&path, &upstream))).await
 }
 
 #[tauri::command]
 pub async fn rebase_continue(path: String) -> AppResult<OpOutcome> {
-    blocking(move || branch::rebase_continue(&path)).await
+    blocking(move || submodule::synced(&path, || branch::rebase_continue(&path))).await
 }
 
 #[tauri::command]
 pub async fn rebase_abort(path: String) -> AppResult<()> {
-    blocking(move || branch::rebase_abort(&path)).await
+    blocking(move || submodule::synced(&path, || branch::rebase_abort(&path))).await
 }
 
 #[tauri::command]
@@ -440,12 +449,16 @@ pub async fn rebase_interactive(
     baseOid: String,
     todo: Vec<RebaseTodoEntry>,
 ) -> AppResult<String> {
-    blocking(move || branch::rebase_interactive(&path, &baseOid, &todo)).await
+    blocking(move || {
+        submodule::synced(&path, || branch::rebase_interactive(&path, &baseOid, &todo))
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn cherry_pick(path: String, oid: String, recordOrigin: bool) -> AppResult<OpOutcome> {
-    blocking(move || branch::cherry_pick(&path, &oid, recordOrigin)).await
+    blocking(move || submodule::synced(&path, || branch::cherry_pick(&path, &oid, recordOrigin)))
+        .await
 }
 
 #[tauri::command]
@@ -454,12 +467,24 @@ pub async fn cherry_pick_many(
     oids: Vec<String>,
     recordOrigin: bool,
 ) -> AppResult<OpOutcome> {
-    blocking(move || branch::cherry_pick_many(&path, &oids, recordOrigin)).await
+    blocking(move || {
+        submodule::synced(&path, || {
+            branch::cherry_pick_many(&path, &oids, recordOrigin)
+        })
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn reset_to(path: String, oid: String, mode: String) -> AppResult<()> {
-    blocking(move || branch::reset(&path, &oid, &mode)).await
+    blocking(move || {
+        if mode == "hard" {
+            submodule::synced(&path, || branch::reset(&path, &oid, &mode))
+        } else {
+            branch::reset(&path, &oid, &mode)
+        }
+    })
+    .await
 }
 
 #[tauri::command]
@@ -528,7 +553,8 @@ pub async fn remote_pull(
     remote: String,
     mode: Option<String>,
 ) -> AppResult<OpOutcome> {
-    blocking(move || remote::pull(&path, &remote, mode.as_deref())).await
+    blocking(move || submodule::synced(&path, || remote::pull(&path, &remote, mode.as_deref())))
+        .await
 }
 
 #[tauri::command]
@@ -588,12 +614,12 @@ pub async fn stash_create(
 
 #[tauri::command]
 pub async fn stash_apply(path: String, index: usize) -> AppResult<()> {
-    blocking(move || misc::stash_apply(&path, index)).await
+    blocking(move || submodule::synced(&path, || misc::stash_apply(&path, index))).await
 }
 
 #[tauri::command]
 pub async fn stash_pop(path: String, index: usize) -> AppResult<()> {
-    blocking(move || misc::stash_pop(&path, index)).await
+    blocking(move || submodule::synced(&path, || misc::stash_pop(&path, index))).await
 }
 
 #[tauri::command]
@@ -637,12 +663,12 @@ pub async fn tag_delete(path: String, name: String) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn submodule_list(path: String) -> AppResult<Vec<SubmoduleInfo>> {
-    blocking(move || misc::submodule_list(&path)).await
+    blocking(move || submodule::list(&path)).await
 }
 
 #[tauri::command]
 pub async fn submodule_update(path: String, name: String) -> AppResult<()> {
-    blocking(move || misc::submodule_update(&path, &name)).await
+    blocking(move || submodule::update(&path, &name)).await
 }
 
 #[tauri::command]
@@ -902,7 +928,12 @@ pub async fn pr_checkout(
     branch: String,
     track: bool,
 ) -> AppResult<()> {
-    blocking(move || remote::checkout_remote_ref(&path, &remote, &sourceRef, &branch, track)).await
+    blocking(move || {
+        submodule::synced(&path, || {
+            remote::checkout_remote_ref(&path, &remote, &sourceRef, &branch, track)
+        })
+    })
+    .await
 }
 
 #[tauri::command]

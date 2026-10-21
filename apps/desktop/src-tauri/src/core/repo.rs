@@ -147,11 +147,17 @@ pub fn status(path: &str) -> AppResult<StatusSummary> {
             .and_then(|d| d.old_file().path())
             .map(|p| p.to_string_lossy().to_string())
             .filter(|old| *old != path);
+        let unstaged = status_kind(s, false);
+        let submodule = entry
+            .index_to_workdir()
+            .filter(|delta| unstaged.is_some() && delta.new_file().mode() == git2::FileMode::Commit)
+            .and_then(|_| super::submodule::commits(&repo, &path));
         files.push(FileStatus {
             path,
             orig_path,
             staged: status_kind(s, true),
-            unstaged: status_kind(s, false),
+            unstaged,
+            submodule,
         });
     }
 
