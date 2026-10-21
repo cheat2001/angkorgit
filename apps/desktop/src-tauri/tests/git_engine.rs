@@ -3934,11 +3934,19 @@ impl SubmoduleFixture {
                 "deps/lib",
             ],
         );
+        git_in(
+            &upstream.dir.join("deps/lib"),
+            &["config", "core.autocrlf", "false"],
+        );
         git_in(&upstream.dir, &["commit", "-qm", "add lib"]);
         let added = git_in(&upstream.dir, &["rev-parse", "HEAD"]);
 
         let local = clone_of(&upstream.dir, &upstream, "local");
         git_in(&local.dir, &["submodule", "update", "--init", "-q"]);
+        git_in(
+            &local.dir.join("deps/lib"),
+            &["config", "core.autocrlf", "false"],
+        );
 
         library.write("lib.txt", "two\n");
         let second = commit_all(&library, "lib two");
