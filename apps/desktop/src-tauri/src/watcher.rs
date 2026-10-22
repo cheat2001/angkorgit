@@ -12,7 +12,55 @@ use tauri::{AppHandle, Emitter};
 
 use crate::error::{AppError, AppResult};
 
-pub type WatcherSlot = Mutex<Option<Debouncer<RecommendedWatcher>>>;
+pub struct Slot<T> {
+    generation: u64,
+    target: Option<String>,
+    active: Option<T>,
+}
+
+impl<T> Default for Slot<T> {
+    fn default() -> Self {
+        Self {
+            generation: 0,
+            target: None,
+            active: None,
+        }
+    }
+}
+
+impl<T> Slot<T> {
+    pub fn begin(&mut self, path: &str) -> u64 {
+        self.generation += 1;
+        self.target = Some(path.to_string());
+        self.active = None;
+        self.generation
+    }
+
+    pub fn install(&mut self, token: u64, value: T) -> bool {
+        if token != self.generation {
+            return false;
+        }
+        self.active = Some(value);
+        true
+    }
+
+    pub fn fail(&mut self, token: u64) {
+        if token == self.generation {
+            self.target = None;
+        }
+    }
+
+    pub fn stop(&mut self, path: &str) {
+        if self.target.as_deref() != Some(path) {
+            return;
+        }
+        self.generation += 1;
+        self.target = None;
+        self.active = None;
+    }
+}
+
+pub type WatcherSlot = Mutex<Slot<Debouncer<RecommendedWatcher>>>;
 
 #[derive(Default)]
 pub struct WatcherState(Arc<WatcherSlot>);
@@ -93,6 +141,20 @@ fn extra_watch_roots(root: &Path, gitdirs: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 pub fn watch(app: &AppHandle, slot: &WatcherSlot, path: &str) -> AppResult<()> {
+    let token = slot.lock().unwrap().begin(path);
+    match build(app, path) {
+        Ok(debouncer) => {
+            slot.lock().unwrap().install(token, debouncer);
+            Ok(())
+        }
+        Err(err) => {
+            slot.lock().unwrap().fail(token);
+            Err(err)
+        }
+    }
+}
+
+fn build(app: &AppHandle, path: &str) -> AppResult<Debouncer<RecommendedWatcher>> {
     let root = PathBuf::from(path);
     let emitter = app.clone();
     let filter_root = root.clone();
@@ -123,17 +185,49 @@ pub fn watch(app: &AppHandle, slot: &WatcherSlot, path: &str) -> AppResult<()> {
         let _ = debouncer.watcher().watch(&extra, RecursiveMode::Recursive);
     }
 
-    *slot.lock().unwrap() = Some(debouncer);
-    Ok(())
+    Ok(debouncer)
 }
 
-pub fn stop(slot: &WatcherSlot) {
-    *slot.lock().unwrap() = None;
+pub fn stop(slot: &WatcherSlot, path: &str) {
+    slot.lock().unwrap().stop(path);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_slow_watch_for_the_previous_repo_never_replaces_the_current_one() {
+        let mut slot: Slot<&str> = Slot::default();
+        let slow = slot.begin("/a");
+        slot.stop("/a");
+        let current = slot.begin("/b");
+        assert!(slot.install(current, "b"));
+        assert!(!slot.install(slow, "a"));
+        assert_eq!(slot.active, Some("b"));
+    }
+
+    #[test]
+    fn stopping_the_previous_repo_after_the_next_watch_started_keeps_it() {
+        let mut slot: Slot<&str> = Slot::default();
+        let first = slot.begin("/a");
+        assert!(slot.install(first, "a"));
+        let next = slot.begin("/b");
+        slot.stop("/a");
+        assert!(slot.install(next, "b"));
+        assert!(slot.active.is_some());
+        slot.stop("/b");
+        assert!(slot.active.is_none());
+    }
+
+    #[test]
+    fn stopping_a_watch_still_in_flight_drops_it() {
+        let mut slot: Slot<&str> = Slot::default();
+        let token = slot.begin("/a");
+        slot.stop("/a");
+        assert!(!slot.install(token, "a"));
+        assert!(slot.active.is_none());
+    }
 
     #[test]
     fn main_repo_metadata_filter_matches_previous_behaviour() {

@@ -21,6 +21,10 @@ All notable changes to AngKorGit are documented here. The format follows
   its menu, and its tooltip names both commits. Discard on that row checks out the
   recorded commit instead of failing with "Submodule changes must be discarded
   inside the submodule repository".
+- **A repository tab stopped updating when files changed.** Switching tabs while
+  the previous repository was still setting up its file watcher (slow for a repo
+  with a large `node_modules`) could leave the new tab watching the old folder, or
+  watching nothing, until it was reopened.
 
 ## [0.24.0] — 2026-10-16
 

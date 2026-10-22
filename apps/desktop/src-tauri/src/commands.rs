@@ -809,10 +809,13 @@ pub async fn watch_repo(
 }
 
 #[tauri::command]
-pub async fn watch_stop(state: State<'_, crate::watcher::WatcherState>) -> AppResult<()> {
+pub async fn watch_stop(
+    state: State<'_, crate::watcher::WatcherState>,
+    path: String,
+) -> AppResult<()> {
     let slot = state.slot();
     blocking(move || {
-        crate::watcher::stop(&slot);
+        crate::watcher::stop(&slot, &path);
         Ok(())
     })
     .await

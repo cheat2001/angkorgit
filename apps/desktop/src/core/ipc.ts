@@ -734,9 +734,9 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('watch_repo', { path });
   },
-  async watchStop(): Promise<void> {
+  async watchStop(path: string): Promise<void> {
     if (!isTauri()) return;
-    return invoke('watch_stop');
+    return invoke('watch_stop', { path });
   },
 
   async credentialStore(host: string, username: string, password: string): Promise<void> {
