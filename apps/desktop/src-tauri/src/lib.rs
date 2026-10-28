@@ -39,6 +39,7 @@ pub mod test_api {
         file_history, list as history, position as history_position, search as history_search,
         unpushed,
     };
+    pub use crate::core::hooks::{repo_hooks, runner_available as hook_runner_available};
     pub use crate::core::misc::{
         stash_create, stash_files, stash_list, stash_pop, stash_restore_files, tag_create,
         tag_delete, tag_list,
@@ -46,7 +47,7 @@ pub mod test_api {
     pub use crate::core::pull_preview::pull_preview;
     pub use crate::core::remote::{
         add as remote_add, checkout_remote_ref, fetch, group_update, group_update_controlled,
-        list as remote_list, pull, push,
+        list as remote_list, pull, push, push_specs, push_tag,
     };
     pub use crate::core::repo::{
         cleanup_state, discover, info as repo_info, init, ref_fingerprint, set_config, status,
@@ -162,6 +163,7 @@ pub fn run() {
             commands::delete_file,
             commands::commit_create,
             commands::commit_amend,
+            commands::repo_hooks,
             commands::commit_reword,
             commands::history_unpushed,
             commands::fonts_list,

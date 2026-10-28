@@ -286,7 +286,14 @@ pub struct PullPreview {
     pub local_changes: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitOutcome {
+    pub oid: String,
+    pub hook_warning: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct OpOutcome {
     pub status: String, // "ok" | "conflicts" | "up_to_date" | "fast_forward"

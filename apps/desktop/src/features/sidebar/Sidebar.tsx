@@ -59,6 +59,7 @@ import {
 } from '@angkorgit/design-system';
 import { ipc, openExternal } from '@/core/ipc';
 import { confirmDialog } from '@/components/confirm';
+import { isHookFailure, reportHookFailure } from '@/components/hookFailure';
 import { EmptyCard } from '@/components/EmptyCard';
 import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
@@ -303,6 +304,7 @@ export function Sidebar() {
     label: string,
     op: () => Promise<unknown>,
     undoable?: { kind: UndoKind; extra?: Record<string, string> },
+    retryWithoutHooks?: () => void,
   ) => {
     try {
       const result = undoable
@@ -318,9 +320,29 @@ export function Sidebar() {
       toastOutcome(result as { status?: string; message?: string } | undefined, `${label} done`);
       await refreshAll();
     } catch (error) {
+      if (retryWithoutHooks && isHookFailure(error)) {
+        reportHookFailure({ repoPath: path, operation: 'push', error, retry: retryWithoutHooks });
+        return;
+      }
       toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
     }
   };
+
+  const pushTag = (tag: string, noVerify = false): void =>
+    void act(
+      `Push tag ${tag}`,
+      () => ipc.pushTag(path, remotes[0]?.name ?? 'origin', tag, noVerify),
+      undefined,
+      () => pushTag(tag, true),
+    );
+
+  const pushBranch = (branch: string, noVerify = false): void =>
+    void act(
+      `Push ${branch}`,
+      () => ipc.push(path, remotes[0]?.name ?? 'origin', false, false, true, branch, noVerify),
+      undefined,
+      () => pushBranch(branch, true),
+    );
 
   const removeWorktree = async (wt: WorktreeInfo) => {
     if (wt.isMain) return;
@@ -1338,8 +1360,7 @@ export function Sidebar() {
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => {
-                const tag = tagMenu.tag;
-                void act(`Push tag ${tag.name}`, () => ipc.pushTag(path, remotes[0]?.name ?? 'origin', tag.name));
+                pushTag(tagMenu.tag.name);
               }}
             >
               <Cloud /> Push to remote
@@ -1619,11 +1640,7 @@ export function Sidebar() {
                   {branchMenu.branch.behind > 0 && <Badge tone="info">↓{capCount(branchMenu.branch.behind)}</Badge>}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() =>
-                    void act(`Push ${branchMenu.branch.name}`, () =>
-                      ipc.push(path, remotes[0]?.name ?? 'origin', false, false, true, branchMenu.branch.name),
-                    )
-                  }
+                  onClick={() => pushBranch(branchMenu.branch.name)}
                 >
                   <ArrowUpFromLine /> Push
                   {branchMenu.branch.ahead > 0 && <Badge tone="primary">↑{capCount(branchMenu.branch.ahead)}</Badge>}

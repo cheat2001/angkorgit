@@ -33,13 +33,19 @@ import type { FileBlame } from '@angkorgit/core';
 let demo = null as unknown as typeof import('./demo');
 
 export interface OpOutcome {
-  status: 'ok' | 'conflicts' | 'up_to_date' | 'fast_forward';
+  status: 'ok' | 'conflicts' | 'up_to_date' | 'fast_forward' | 'hooks_skipped';
   message: string;
 }
 
 export interface IpcError {
   code: string;
   message: string;
+  detail?: string;
+}
+
+export interface CommitOutcome {
+  oid: string;
+  hookWarning: string | null;
 }
 
 export interface GeneratedKey {
@@ -130,6 +136,67 @@ function demoNothingStaged(): boolean {
     return false;
   }
 }
+const DEMO_HOOKS = 'angkorgit-demo-hooks';
+const DEMO_HOOKS_DELAY = 'angkorgit-demo-hooks-delay';
+
+function demoHooks(): 'pass' | 'fail' | null {
+  try {
+    const value = localStorage.getItem(DEMO_HOOKS);
+    return value === 'pass' || value === 'fail' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function demoHooksDelay(): number {
+  try {
+    const ms = Number(localStorage.getItem(DEMO_HOOKS_DELAY));
+    return ms > 0 ? ms : 200;
+  } catch {
+    return 200;
+  }
+}
+
+async function demoPushOutcome(message: string, noVerify: boolean): Promise<OpOutcome> {
+  await delay(demoHooks() && !noVerify ? demoHooksDelay() : 400);
+  if (demoHooks() === 'fail' && !noVerify) {
+    const failure: IpcError = {
+      code: 'hook_failed',
+      message: 'The pre-push hook failed (exit code 1).',
+      detail: [
+        'Running the test suite before pushing…',
+        '\u001b[31mFAIL\u001b[39m tests/unit/graphLayout.test.ts > keeps lanes stable across pages',
+        '',
+        'Tests  1 failed | 286 passed (287)',
+        'husky - pre-push script failed (code 1)',
+      ].join('\n'),
+    };
+    throw failure;
+  }
+  return { status: 'ok', message };
+}
+
+async function demoCommitOutcome(oid: string, noVerify: boolean): Promise<CommitOutcome> {
+  await delay(demoHooks() && !noVerify ? demoHooksDelay() : 200);
+  if (demoHooks() === 'fail' && !noVerify) {
+    const failure: IpcError = {
+      code: 'hook_failed',
+      message: 'The pre-commit hook failed (exit code 1).',
+      detail: [
+        '\u001b[31m✖\u001b[39m eslint --fix:',
+        '',
+        'src/features/graph/CommitGraph.tsx',
+        "  42:7  error  'unusedLane' is assigned a value but never used  no-unused-vars",
+        '',
+        '✖ 1 problem (1 error, 0 warnings)',
+        'husky - pre-commit script failed (code 1)',
+      ].join('\n'),
+    };
+    throw failure;
+  }
+  return { oid, hookWarning: null };
+}
+
 const DEMO_SUBMODULE_DRIFT = 'angkorgit-demo-submodule-drift';
 
 function demoSubmoduleDrift(): boolean {
@@ -333,16 +400,17 @@ export const ipc = {
     if (!isTauri()) return;
     return invoke('delete_file', { path, file });
   },
-  async commit(path: string, message: string): Promise<string> {
-    if (!isTauri()) {
-      await delay(200);
-      return 'demo-commit-oid';
-    }
-    return invoke('commit_create', { path, message });
+  async commit(path: string, message: string, noVerify = false): Promise<CommitOutcome> {
+    if (!isTauri()) return demoCommitOutcome('demo-commit-oid', noVerify);
+    return invoke('commit_create', { path, message, noVerify });
   },
-  async amend(path: string, message: string | null): Promise<string> {
-    if (!isTauri()) return 'demo-amend-oid';
-    return invoke('commit_amend', { path, message });
+  async amend(path: string, message: string | null, noVerify = false): Promise<CommitOutcome> {
+    if (!isTauri()) return demoCommitOutcome('demo-amend-oid', noVerify);
+    return invoke('commit_amend', { path, message, noVerify });
+  },
+  async repoHooks(path: string): Promise<string[]> {
+    if (!isTauri()) return demoHooks() ? ['pre-commit', 'pre-push'] : [];
+    return invoke('repo_hooks', { path });
   },
   async reword(path: string, oid: string, message: string): Promise<string> {
     if (!isTauri()) {
@@ -553,20 +621,18 @@ export const ipc = {
     withTags: boolean,
     setUpstream: boolean,
     branch?: string,
+    noVerify = false,
   ): Promise<OpOutcome> {
-    if (!isTauri()) {
-      await delay(400);
-      return { status: 'ok', message: `Pushed to ${remote} (demo)` };
-    }
-    return invoke('remote_push', { path, remote, branch: branch ?? null, force, withTags, setUpstream });
+    if (!isTauri()) return demoPushOutcome(`Pushed to ${remote} (demo)`, noVerify);
+    return invoke('remote_push', { path, remote, branch: branch ?? null, force, withTags, setUpstream, noVerify });
   },
   async pullBranch(path: string, branch: string): Promise<OpOutcome> {
     if (!isTauri()) return { status: 'ok', message: `Pulled ${branch} (demo)` };
     return invoke('remote_pull_branch', { path, branch });
   },
-  async pushTag(path: string, remote: string, tag: string): Promise<OpOutcome> {
-    if (!isTauri()) return { status: 'ok', message: `Pushed tag ${tag} (demo)` };
-    return invoke('remote_push_tag', { path, remote, tag });
+  async pushTag(path: string, remote: string, tag: string, noVerify = false): Promise<OpOutcome> {
+    if (!isTauri()) return demoPushOutcome(`Pushed tag ${tag} (demo)`, noVerify);
+    return invoke('remote_push_tag', { path, remote, tag, noVerify });
   },
 
   async stashes(path: string): Promise<StashInfo[]> {

@@ -58,7 +58,7 @@ impl Drop for TempRepo {
 
 fn commit_all(repo: &TempRepo, message: &str) -> String {
     core::stage_all(repo.path()).unwrap();
-    core::commit(repo.path(), message).unwrap()
+    core::commit(repo.path(), message, false).unwrap().oid
 }
 
 #[test]
@@ -85,7 +85,9 @@ fn stage_commit_and_history() {
     assert_eq!(status.files.len(), 1);
     assert_eq!(status.files[0].staged.as_deref(), Some("new"));
 
-    let oid = core::commit(repo.path(), "feat: initial commit").unwrap();
+    let oid = core::commit(repo.path(), "feat: initial commit", false)
+        .unwrap()
+        .oid;
     assert_eq!(oid.len(), 40);
 
     let page = core::history(
@@ -118,7 +120,7 @@ fn unstage_and_amend() {
     assert_eq!(status.files[0].unstaged.as_deref(), Some("modified"));
 
     core::stage_file(repo.path(), "a.txt").unwrap();
-    core::amend(repo.path(), Some("first (amended)")).unwrap();
+    core::amend(repo.path(), Some("first (amended)"), false).unwrap();
     let page = core::history(
         repo.path(),
         core::HistoryQuery {
@@ -235,7 +237,7 @@ fn merge_conflict_detect_and_resolve() {
 
     core::conflict_resolve(repo.path(), "a.txt", "resolved content\n").unwrap();
     assert_eq!(core::conflict_list(repo.path()).unwrap().len(), 0);
-    core::commit(repo.path(), "merge other").unwrap();
+    core::commit(repo.path(), "merge other", false).unwrap();
     assert_eq!(repo.read("a.txt"), "resolved content\n");
 }
 
@@ -262,7 +264,7 @@ fn commit_with_nothing_staged_is_refused_and_head_stays() {
     let base = commit_all(&repo, "base");
     repo.write("a.txt", "unstaged edit\n");
 
-    let err = core::commit(repo.path(), "empty").unwrap_err();
+    let err = core::commit(repo.path(), "empty", false).unwrap_err();
     assert!(err.to_string().contains("Nothing staged to commit"));
     let head = head_commit(&repo);
     assert_eq!(head.0, base);
@@ -273,10 +275,10 @@ fn commit_with_nothing_staged_is_refused_and_head_stays() {
 fn first_commit_with_an_empty_index_is_refused() {
     let repo = TempRepo::new();
     repo.write("a.txt", "untracked\n");
-    let err = core::commit(repo.path(), "empty").unwrap_err();
+    let err = core::commit(repo.path(), "empty", false).unwrap_err();
     assert!(err.to_string().contains("Nothing staged to commit"));
     core::stage_file(repo.path(), "a.txt").unwrap();
-    core::commit(repo.path(), "first").unwrap();
+    core::commit(repo.path(), "first", false).unwrap();
 }
 
 #[test]
@@ -294,7 +296,9 @@ fn merge_that_keeps_head_tree_still_commits() {
     let outcome = core::merge(repo.path(), "other", false).unwrap();
     assert_eq!(outcome.status, "conflicts");
     core::conflict_resolve(repo.path(), "a.txt", "master change\n").unwrap();
-    let merged = core::commit(repo.path(), "merge other, keep ours").unwrap();
+    let merged = core::commit(repo.path(), "merge other, keep ours", false)
+        .unwrap()
+        .oid;
     assert_ne!(merged, master);
     let head = head_commit(&repo);
     assert_eq!(head.1, 2);
@@ -1275,7 +1279,7 @@ fn cleanup_state_clears_a_stale_rebase_without_touching_files() {
     assert_eq!(core::repo_info(repo.path()).unwrap().state, "rebase");
 
     core::conflict_resolve(repo.path(), "f.txt", "resolved\n").unwrap();
-    core::commit(repo.path(), "resolved by hand").unwrap();
+    core::commit(repo.path(), "resolved by hand", false).unwrap();
     assert_eq!(core::repo_info(repo.path()).unwrap().state, "rebase");
 
     core::cleanup_state(repo.path()).unwrap();
@@ -1594,7 +1598,7 @@ fn merge_message_available_during_conflicted_merge_only() {
     assert!(!message.contains('#'));
 
     core::conflict_resolve(repo.path(), "a.txt", "resolved\n").unwrap();
-    core::commit(repo.path(), &message).unwrap();
+    core::commit(repo.path(), &message, false).unwrap();
     assert_eq!(core::merge_message(repo.path()).unwrap(), None);
 }
 
@@ -1727,7 +1731,7 @@ fn amend_re_signs_the_commit() {
     commit_all(&repo, "feat: original");
     repo.write("a.txt", "two\n");
     core::stage_all(repo.path()).unwrap();
-    core::amend(repo.path(), Some("feat: amended")).unwrap();
+    core::amend(repo.path(), Some("feat: amended"), false).unwrap();
 
     let header = commit_header(&repo, "HEAD");
     assert!(header.contains("SSH SIGNATURE"));
@@ -1776,7 +1780,7 @@ fn signing_failure_blocks_the_commit_and_leaves_the_repo_untouched() {
 
     repo.write("a.txt", "two\n");
     core::stage_all(repo.path()).unwrap();
-    let err = core::commit(repo.path(), "second").unwrap_err();
+    let err = core::commit(repo.path(), "second", false).unwrap_err();
     assert!(err.to_string().contains("user.signingKey"));
 
     let head = Command::new("git")
@@ -2432,7 +2436,7 @@ fn push_reports_up_to_date_instead_of_pushing_again() {
     let first_tip = commit_all(&local, "one");
     let origin = bare_origin(&local);
 
-    let first = core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let first = core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     assert_eq!(first.status, "ok");
     let remote_tip = |name: &str| {
         let out = Command::new("git")
@@ -2444,7 +2448,7 @@ fn push_reports_up_to_date_instead_of_pushing_again() {
     };
     assert_eq!(remote_tip("master"), first_tip);
 
-    let again = core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let again = core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     assert_eq!(again.status, "up_to_date", "{}", again.message);
     assert!(
         again.message.contains("already up to date"),
@@ -2465,7 +2469,7 @@ fn push_reports_up_to_date_instead_of_pushing_again() {
 
     local.write("a.txt", "two\n");
     let second_tip = commit_all(&local, "two");
-    let moved = core::push(local.path(), "origin", None, false, false, true).unwrap();
+    let moved = core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     assert_eq!(moved.status, "ok");
     assert_eq!(remote_tip("master"), second_tip);
 
@@ -2480,7 +2484,7 @@ fn push_with_tags_sends_named_tag_refs() {
     let origin = bare_origin(&local);
 
     core::tag_create(local.path(), "v1.0.0", None, None).unwrap();
-    let outcome = core::push(local.path(), "origin", None, false, true, true).unwrap();
+    let outcome = core::push(local.path(), "origin", None, false, true, true, false).unwrap();
     assert_eq!(outcome.status, "ok");
 
     let listed = Command::new("git")
@@ -2543,7 +2547,7 @@ fn pull_from_a_remote_other_than_the_upstream_merges_its_same_name_branch() {
     local.write("a.txt", "base\n");
     commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
 
     let mirror = local.dir.with_file_name(format!(
         "{}-mirror.git",
@@ -2551,11 +2555,11 @@ fn pull_from_a_remote_other_than_the_upstream_merges_its_same_name_branch() {
     ));
     git2::Repository::init_bare(&mirror).unwrap();
     core::remote_add(local.path(), "mirror", mirror.to_str().unwrap()).unwrap();
-    core::push(local.path(), "mirror", None, false, false, false).unwrap();
+    core::push(local.path(), "mirror", None, false, false, false, false).unwrap();
     let other = clone_of(&mirror, &local, "other");
     other.write("b.txt", "only on the mirror\n");
     commit_all(&other, "mirror commit");
-    core::push(other.path(), "origin", None, false, false, true).unwrap();
+    core::push(other.path(), "origin", None, false, false, true, false).unwrap();
 
     let outcome = core::pull(local.path(), "mirror", Some("merge")).unwrap();
     assert_eq!(outcome.status, "fast_forward", "{}", outcome.message);
@@ -2576,8 +2580,7 @@ fn pull_from_a_remote_other_than_the_upstream_merges_its_same_name_branch() {
     git2::Repository::init_bare(&empty).unwrap();
     core::remote_add(local.path(), "empty", empty.to_str().unwrap()).unwrap();
     let err = core::pull(local.path(), "empty", Some("merge"))
-        .err()
-        .expect("pulling a branch the remote lacks fails");
+        .expect_err("pulling a branch the remote lacks fails");
     assert!(
         err.to_string().contains("empty has no branch master"),
         "{err}"
@@ -2594,12 +2597,12 @@ fn pull_rebases_when_asked_or_configured_and_merges_otherwise() {
     local.write("a.txt", "base\n");
     commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "other");
 
     local.write("a.txt", "two\n");
     commit_all(&local, "two");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     other.write("b.txt", "mine\n");
     commit_all(&other, "mine");
     let outcome = core::pull(other.path(), "origin", Some("rebase")).unwrap();
@@ -2609,7 +2612,7 @@ fn pull_rebases_when_asked_or_configured_and_merges_otherwise() {
 
     local.write("a.txt", "three\n");
     commit_all(&local, "three");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     other.write("c.txt", "again\n");
     commit_all(&other, "again");
     core::set_config(Some(other.path()), "pull.rebase", "true", false).unwrap();
@@ -2619,7 +2622,7 @@ fn pull_rebases_when_asked_or_configured_and_merges_otherwise() {
 
     local.write("a.txt", "four\n");
     commit_all(&local, "four");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     other.write("d.txt", "merge me\n");
     commit_all(&other, "merge me");
     let outcome = core::pull(other.path(), "origin", Some("merge")).unwrap();
@@ -3037,7 +3040,7 @@ fn group_pull_fast_forwards_configured_upstream_without_merging() {
     local.write("a.txt", "base\n");
     let old = commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "group");
     let repo = git2::Repository::open(other.path()).unwrap();
     repo.find_branch("master", git2::BranchType::Local)
@@ -3047,7 +3050,7 @@ fn group_pull_fast_forwards_configured_upstream_without_merging() {
     core::set_config(Some(other.path()), "pull.rebase", "true", false).unwrap();
     local.write("a.txt", "updated\n");
     let new = commit_all(&local, "updated");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let result = core::group_update(other.path(), true).unwrap();
     assert_eq!(result.status, "ok");
     assert_eq!(result.changes[0].name, "topic");
@@ -3064,7 +3067,7 @@ fn group_pull_fast_forwards_configured_upstream_without_merging() {
     let mine = commit_all(&other, "mine");
     local.write("a.txt", "remote again\n");
     commit_all(&local, "remote again");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let result = core::group_update(other.path(), true).unwrap();
     assert_eq!(result.status, "skipped");
     assert!(result.message.contains("diverged"));
@@ -3079,11 +3082,11 @@ fn group_pull_skips_conflicting_changes_detached_missing_upstream_and_unfinished
     local.write("a.txt", "base\n");
     let old = commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "group-skip");
     local.write("a.txt", "remote\n");
     commit_all(&local, "remote");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     for staged in [false, true] {
         other.write("a.txt", "dirty\n");
         if staged {
@@ -3105,7 +3108,7 @@ fn group_pull_skips_conflicting_changes_detached_missing_upstream_and_unfinished
     .unwrap();
     local.write("incoming.txt", "remote file\n");
     commit_all(&local, "add incoming file");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     other.write("incoming.txt", "untracked file\n");
     let result = core::group_update(other.path(), true).unwrap();
     assert_eq!(result.status, "skipped");
@@ -3150,7 +3153,7 @@ fn group_fetch_reports_moved_refs_and_continues_after_remote_failure() {
     local.write("a.txt", "base\n");
     let old = commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "group-fetch");
     core::remote_add(
         other.path(),
@@ -3160,7 +3163,7 @@ fn group_fetch_reports_moved_refs_and_continues_after_remote_failure() {
     .unwrap();
     local.write("a.txt", "new\n");
     let new = commit_all(&local, "new");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let result = core::group_update(other.path(), false).unwrap();
     assert_eq!(result.status, "partial");
     assert!(result.message.contains("broken"));
@@ -3203,7 +3206,7 @@ fn group_pull_restores_missing_tracking_refs_and_reports_deleted_upstreams() {
     local.write("a.txt", "base\n");
     let old = commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "missing-upstream");
     let repo = git2::Repository::open(other.path()).unwrap();
     repo.find_reference("refs/remotes/origin/master")
@@ -3252,7 +3255,7 @@ fn group_pull_matches_toolbar_pull_with_submodule_metadata_and_lfs_attributes() 
         local.write("a.txt", "base\n");
         commit_all(&local, "base");
         let origin = bare_origin(&local);
-        core::push(local.path(), "origin", None, false, false, true).unwrap();
+        core::push(local.path(), "origin", None, false, false, true, false).unwrap();
         let other = clone_of(&origin, &local, "group-compatible");
         let toolbar = clone_of(&origin, &local, "toolbar-compatible");
         local.write(file, content);
@@ -3261,7 +3264,7 @@ fn group_pull_matches_toolbar_pull_with_submodule_metadata_and_lfs_attributes() 
             "version https://git-lfs.github.com/spec/v1\noid sha256:123\nsize 1\n",
         );
         let new = commit_all(&local, "special checkout");
-        core::push(local.path(), "origin", None, false, false, true).unwrap();
+        core::push(local.path(), "origin", None, false, false, true, false).unwrap();
         assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
         core::pull(toolbar.path(), "origin", Some("merge")).unwrap();
         assert_eq!(other.read("a.txt"), toolbar.read("a.txt"));
@@ -3286,7 +3289,7 @@ fn group_pull_matches_toolbar_pull_with_active_hooks() {
     local.write("a.txt", "base\n");
     commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "group-hooks");
     let toolbar = clone_of(&origin, &local, "toolbar-hooks");
     let repo = git2::Repository::open(other.path()).unwrap();
@@ -3306,7 +3309,7 @@ fn group_pull_matches_toolbar_pull_with_active_hooks() {
     }
     local.write("a.txt", "updated\n");
     let new = commit_all(&local, "updated");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
     core::pull(toolbar.path(), "origin", Some("merge")).unwrap();
     assert_eq!(other.read("a.txt"), toolbar.read("a.txt"));
@@ -3410,7 +3413,7 @@ fn group_pull_preserves_unrelated_untracked_unstaged_and_staged_changes() {
     local.write("notes.txt", "notes\n");
     commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     for mode in ["untracked", "unstaged", "staged"] {
         let other = clone_of(&origin, &local, mode);
         other.write("scratch.txt", "untracked notes\n");
@@ -3422,7 +3425,7 @@ fn group_pull_preserves_unrelated_untracked_unstaged_and_staged_changes() {
         }
         local.write("a.txt", mode);
         let new = commit_all(&local, mode);
-        core::push(local.path(), "origin", None, false, false, true).unwrap();
+        core::push(local.path(), "origin", None, false, false, true, false).unwrap();
         assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
         assert_eq!(other.read("scratch.txt"), "untracked notes\n");
         assert_eq!(
@@ -3455,13 +3458,13 @@ fn group_pull_explains_when_checkout_succeeds_but_branch_update_fails() {
     local.write("a.txt", "base\n");
     let old = commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "locked-ref");
     let repo = git2::Repository::open(other.path()).unwrap();
     std::fs::write(repo.path().join("refs/heads/master.lock"), "locked").unwrap();
     local.write("a.txt", "updated\n");
     let new = commit_all(&local, "updated");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let error = core::group_update(other.path(), true)
         .unwrap_err()
         .to_string();
@@ -3488,7 +3491,7 @@ fn group_fetch_remote_prune_setting_overrides_global_setting() {
         local.write("a.txt", "base\n");
         commit_all(&local, "base");
         let origin = bare_origin(&local);
-        core::push(local.path(), "origin", None, false, false, true).unwrap();
+        core::push(local.path(), "origin", None, false, false, true, false).unwrap();
         let repo = git2::Repository::open(local.path()).unwrap();
         repo.branch(
             "obsolete",
@@ -3496,7 +3499,16 @@ fn group_fetch_remote_prune_setting_overrides_global_setting() {
             false,
         )
         .unwrap();
-        core::push(local.path(), "origin", Some("obsolete"), false, false, true).unwrap();
+        core::push(
+            local.path(),
+            "origin",
+            Some("obsolete"),
+            false,
+            false,
+            true,
+            false,
+        )
+        .unwrap();
         let other = clone_of(&origin, &local, "prune");
         core::set_config(
             Some(other.path()),
@@ -3547,11 +3559,11 @@ fn group_cancel_reports_a_completed_checkout_before_acknowledging() {
     local.write("a.txt", "base\n");
     let old = commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "cancel-checkout");
     local.write("a.txt", "updated\n");
     let new = commit_all(&local, "updated");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let control = core::GroupUpdateControl::default();
     let outcome = core::group_update_controlled(other.path(), true, &control).unwrap();
     assert_eq!(outcome.status, "ok");
@@ -3578,7 +3590,7 @@ fn group_pull_accepts_url_upstreams_without_leaving_temporary_refs() {
     local.write("a.txt", "base\n");
     commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "url-upstream");
     core::branch_create(other.path(), "work/topic", None, true).unwrap();
     core::set_config(
@@ -3592,7 +3604,7 @@ fn group_pull_accepts_url_upstreams_without_leaving_temporary_refs() {
     core::set_config(Some(other.path()), "branch.work/topic.remote", &url, false).unwrap();
     local.write("a.txt", "updated\n");
     let new = commit_all(&local, "updated");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let outcome = core::group_update(other.path(), true).unwrap();
     assert_eq!(outcome.status, "ok", "{}", outcome.message);
     assert_eq!(other.read("a.txt"), "updated\n");
@@ -3650,7 +3662,7 @@ fn group_fetch_cancel_receipts_keep_successful_remotes_and_prior_errors() {
         local.write("a.txt", "base\n");
         commit_all(&local, "base");
         let origin = bare_origin(&local);
-        core::push(local.path(), "origin", None, false, false, true).unwrap();
+        core::push(local.path(), "origin", None, false, false, true, false).unwrap();
         let other = clone_of(&origin, &local, "cancel-partial");
         git2::Repository::open(other.path())
             .unwrap()
@@ -3730,7 +3742,7 @@ fn group_pull_fetches_an_upstream_outside_the_remote_fetch_refspec() {
     local.write("a.txt", "base\n");
     let old = commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "unmapped-upstream");
     let fetch = "+refs/heads/elsewhere:refs/remotes/origin/elsewhere";
     core::set_config(Some(other.path()), "remote.origin.fetch", fetch, false).unwrap();
@@ -3744,7 +3756,7 @@ fn group_pull_fetches_an_upstream_outside_the_remote_fetch_refspec() {
     );
     local.write("a.txt", "updated\n");
     let new = commit_all(&local, "updated");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let outcome = core::group_update(other.path(), true).unwrap();
     assert_eq!(outcome.status, "ok", "{}", outcome.message);
     assert_eq!(repo.head().unwrap().target().unwrap().to_string(), new);
@@ -3796,11 +3808,11 @@ fn group_cancel_preserves_other_receipts_when_a_fetch_repository_path_becomes_in
     local.write("a.txt", "base\n");
     commit_all(&local, "base");
     let origin = bare_origin(&local);
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let other = clone_of(&origin, &local, "moved-fetch");
     local.write("a.txt", "updated\n");
     commit_all(&local, "updated");
-    core::push(local.path(), "origin", None, false, false, true).unwrap();
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     core::remote_add(
         other.path(),
@@ -4102,7 +4114,7 @@ impl PullScene {
         local.write("b.txt", "bee\n");
         commit_all(&local, "base");
         let origin = bare_origin(&local);
-        core::push(local.path(), "origin", None, false, false, true).unwrap();
+        core::push(local.path(), "origin", None, false, false, true, false).unwrap();
         let other = clone_of(&origin, &local, "other");
         Self { local, other }
     }
@@ -4110,7 +4122,7 @@ impl PullScene {
     fn upstream_commit(&self, file: &str, content: &str, message: &str) {
         self.local.write(file, content);
         commit_all(&self.local, message);
-        core::push(self.local.path(), "origin", None, false, false, true).unwrap();
+        core::push(self.local.path(), "origin", None, false, false, true, false).unwrap();
         core::fetch(self.other.path(), "origin", false, false).unwrap();
     }
 
@@ -4268,4 +4280,686 @@ fn pull_preview_catches_a_rebase_conflict_that_a_merge_would_not_have() {
 
     let outcome = core::pull(scene.other.path(), "origin", None).unwrap();
     assert_eq!(outcome.status, "conflicts", "{}", outcome.message);
+}
+
+fn write_hook(dir: &std::path::Path, name: &str, body: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    let hook = dir.join(name);
+    std::fs::write(&hook, format!("#!/bin/sh\n{body}\n")).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+fn default_hooks(repo: &TempRepo) -> PathBuf {
+    repo.dir.join(".git").join("hooks")
+}
+
+fn hooks_runnable() -> bool {
+    if core::hook_runner_available() {
+        return true;
+    }
+    eprintln!("skipping: git 2.36 or newer is not on PATH");
+    false
+}
+
+fn head_message_at(path: &str) -> String {
+    let repo = git2::Repository::open(path).unwrap();
+    let commit = repo.head().unwrap().peel_to_commit().unwrap();
+    commit.message().unwrap().to_string()
+}
+
+fn head_file(repo: &TempRepo, file: &str) -> String {
+    let git = git2::Repository::open(repo.path()).unwrap();
+    let tree = git.head().unwrap().peel_to_tree().unwrap();
+    let blob = git
+        .find_blob(tree.get_path(std::path::Path::new(file)).unwrap().id())
+        .unwrap();
+    String::from_utf8(blob.content().to_vec()).unwrap()
+}
+
+fn hook_failure(err: impl serde::Serialize) -> (String, String, String) {
+    let payload = serde_json::to_value(&err).unwrap();
+    (
+        payload["code"].as_str().unwrap_or_default().to_string(),
+        payload["message"].as_str().unwrap_or_default().to_string(),
+        payload["detail"].as_str().unwrap_or_default().to_string(),
+    )
+}
+
+#[test]
+fn passing_pre_commit_hook_lets_the_commit_through() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    write_hook(
+        &default_hooks(&repo),
+        "pre-commit",
+        "printf '%s' \"$GIT_INDEX_FILE\" > .git/pre-commit-index",
+    );
+    repo.write("a.txt", "one\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let outcome = core::commit(repo.path(), "first", false).unwrap();
+    assert_eq!(head_commit(&repo).0, outcome.oid);
+    assert!(outcome.hook_warning.is_none());
+    let seen = repo.read(".git/pre-commit-index");
+    assert!(!seen.is_empty());
+    #[cfg(unix)]
+    {
+        let index = git2::Repository::open(repo.path())
+            .unwrap()
+            .path()
+            .join("index");
+        assert_eq!(canonical(&seen), std::fs::canonicalize(index).unwrap());
+    }
+}
+
+#[test]
+fn failing_pre_commit_hook_blocks_the_commit_and_returns_its_output() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    write_hook(
+        &default_hooks(&repo),
+        "pre-commit",
+        "echo 'lint: a.txt is not formatted'\necho 'second line' >&2\nexit 3",
+    );
+    repo.write("a.txt", "changed\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::commit(repo.path(), "second", false).unwrap_err();
+    let (code, message, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert_eq!(message, "The pre-commit hook failed (exit code 3).");
+    assert!(detail.contains("lint: a.txt is not formatted"), "{detail}");
+    assert!(detail.contains("second line"), "{detail}");
+    assert_eq!(head_commit(&repo).0, base);
+    let status = core::status(repo.path()).unwrap();
+    assert_eq!(status.files[0].staged.as_deref(), Some("modified"));
+}
+
+#[test]
+fn pre_commit_hook_that_restages_a_file_commits_the_new_content() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    write_hook(
+        &default_hooks(&repo),
+        "pre-commit",
+        "printf 'formatted\\n' > a.txt\ngit add a.txt",
+    );
+    repo.write("a.txt", "raw\n");
+    core::stage_all(repo.path()).unwrap();
+
+    core::commit(repo.path(), "format on commit", false).unwrap();
+    assert_eq!(head_file(&repo, "a.txt"), "formatted\n");
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
+}
+
+#[test]
+fn commit_msg_hook_edits_the_message_that_gets_committed() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    write_hook(
+        &default_hooks(&repo),
+        "commit-msg",
+        "printf '\\nSigned-off-by: Test User <test@angkorgit.dev>\\n' >> \"$1\"",
+    );
+    repo.write("a.txt", "one\n");
+    core::stage_all(repo.path()).unwrap();
+
+    core::commit(repo.path(), "feat: first\n\nBody line", false).unwrap();
+    assert_eq!(
+        head_message_at(repo.path()),
+        "feat: first\n\nBody line\n\nSigned-off-by: Test User <test@angkorgit.dev>"
+    );
+    assert!(repo.dir.join(".git").join("COMMIT_EDITMSG").exists());
+}
+
+#[test]
+fn commit_msg_hook_that_leaves_the_message_alone_keeps_it_byte_for_byte() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    write_hook(&default_hooks(&repo), "commit-msg", "exit 0");
+    repo.write("a.txt", "one\n");
+    core::stage_all(repo.path()).unwrap();
+
+    core::commit(repo.path(), "keep  me  ", false).unwrap();
+    assert_eq!(head_message_at(repo.path()), "keep  me  ");
+}
+
+#[test]
+fn failing_commit_msg_hook_blocks_the_commit() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    write_hook(
+        &default_hooks(&repo),
+        "commit-msg",
+        "echo 'subject must start with a type' >&2\nexit 1",
+    );
+    repo.write("a.txt", "changed\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::commit(repo.path(), "no type here", false).unwrap_err();
+    let (code, message, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert_eq!(message, "The commit-msg hook failed (exit code 1).");
+    assert!(
+        detail.contains("subject must start with a type"),
+        "{detail}"
+    );
+    assert_eq!(head_commit(&repo).0, base);
+}
+
+#[test]
+fn commit_msg_hook_that_empties_the_message_blocks_the_commit() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    write_hook(&default_hooks(&repo), "commit-msg", ": > \"$1\"");
+    repo.write("a.txt", "changed\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::commit(repo.path(), "about to vanish", false).unwrap_err();
+    assert!(err.to_string().contains("empty commit message"), "{err}");
+    assert_eq!(head_commit(&repo).0, base);
+}
+
+#[test]
+fn no_verify_skips_failing_commit_hooks() {
+    let repo = TempRepo::new();
+    write_hook(&default_hooks(&repo), "pre-commit", "exit 1");
+    write_hook(&default_hooks(&repo), "commit-msg", "exit 1");
+    repo.write("a.txt", "one\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let outcome = core::commit(repo.path(), "skip the hooks", true).unwrap();
+    assert!(outcome.hook_warning.is_none());
+    assert_eq!(head_message_at(repo.path()), "skip the hooks");
+
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+    core::amend(repo.path(), None, true).unwrap();
+    assert_eq!(head_file(&repo, "a.txt"), "two\n");
+}
+
+#[test]
+fn amend_runs_the_commit_hooks() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let first = commit_all(&repo, "first");
+    let hooks = default_hooks(&repo);
+    write_hook(&hooks, "pre-commit", "echo 'tests failed'\nexit 1");
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::amend(repo.path(), None, false).unwrap_err();
+    let (code, message, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert_eq!(message, "The pre-commit hook failed (exit code 1).");
+    assert!(detail.contains("tests failed"), "{detail}");
+    assert_eq!(head_commit(&repo).0, first);
+
+    write_hook(&hooks, "pre-commit", "exit 0");
+    write_hook(
+        &hooks,
+        "commit-msg",
+        "printf '\\nReviewed-by: Hook\\n' >> \"$1\"",
+    );
+    core::amend(repo.path(), None, false).unwrap();
+    assert_eq!(head_message_at(repo.path()), "first\n\nReviewed-by: Hook");
+    assert_eq!(head_file(&repo, "a.txt"), "two\n");
+
+    write_hook(&hooks, "commit-msg", "printf 'fix: rewritten\\n' > \"$1\"");
+    core::amend(repo.path(), Some("fix: typo"), false).unwrap();
+    assert_eq!(head_message_at(repo.path()), "fix: rewritten");
+    assert_eq!(head_commit(&repo).1, 0);
+}
+
+#[test]
+fn commit_hooks_follow_core_hooks_path_and_ignore_samples_and_plain_files() {
+    let repo = TempRepo::new();
+    let default = default_hooks(&repo);
+    write_hook(&default, "pre-commit.sample", "exit 1");
+    #[cfg(unix)]
+    std::fs::write(default.join("commit-msg"), "#!/bin/sh\nexit 1\n").unwrap();
+    assert!(core::repo_hooks(repo.path()).unwrap().is_empty());
+    repo.write("a.txt", "one\n");
+    let base = commit_all(&repo, "base");
+
+    core::set_config(Some(repo.path()), "core.hooksPath", ".githooks", false).unwrap();
+    write_hook(&default, "pre-commit", "exit 0");
+    write_hook(
+        &repo.dir.join(".githooks"),
+        "pre-commit",
+        "echo 'from .githooks'\nexit 2",
+    );
+    assert_eq!(core::repo_hooks(repo.path()).unwrap(), vec!["pre-commit"]);
+    if !hooks_runnable() {
+        return;
+    }
+    repo.write("a.txt", "two\n");
+    core::stage_file(repo.path(), "a.txt").unwrap();
+
+    let err = core::commit(repo.path(), "second", false).unwrap_err();
+    let (code, _, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert!(detail.contains("from .githooks"), "{detail}");
+    assert_eq!(head_commit(&repo).0, base);
+}
+
+#[test]
+fn commit_hooks_include_hooks_defined_in_config() {
+    let repo = TempRepo::new();
+    assert!(core::repo_hooks(repo.path()).unwrap().is_empty());
+    core::set_config(Some(repo.path()), "hook.lint.event", "pre-commit", false).unwrap();
+    assert_eq!(core::repo_hooks(repo.path()).unwrap(), vec!["pre-commit"]);
+}
+
+#[test]
+fn commit_msg_hook_runs_in_a_linked_worktree() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, false).unwrap();
+    let (dir, _cleanup) = worktree_target(&repo, "hooks");
+    let created = add_worktree(&repo, &dir, "feature", false);
+    write_hook(
+        &default_hooks(&repo),
+        "commit-msg",
+        "printf 'feat: from the worktree\\n' > \"$1\"",
+    );
+    std::fs::write(dir.join("b.txt"), "b\n").unwrap();
+    core::stage_file(&created, "b.txt").unwrap();
+
+    core::commit(&created, "wip", false).unwrap();
+    assert_eq!(head_message_at(&created), "feat: from the worktree");
+    let linked = git2::Repository::open(&created).unwrap();
+    assert!(linked.path().join("COMMIT_EDITMSG").exists());
+    assert!(!repo.dir.join(".git").join("COMMIT_EDITMSG").exists());
+    assert_eq!(head_message_at(repo.path()), "base");
+}
+
+#[test]
+fn commit_hooks_see_the_author_and_amend_keeps_the_original_one() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    commit_all(&repo, "first");
+    let hooks = default_hooks(&repo);
+    let record = |name: &str| {
+        format!(
+            "printf '%s|%s|%s' \"$GIT_AUTHOR_NAME\" \"$GIT_AUTHOR_EMAIL\" \"$GIT_AUTHOR_DATE\" > .git/{name}-author"
+        )
+    };
+    write_hook(&hooks, "pre-commit", &record("pre-commit"));
+    write_hook(&hooks, "commit-msg", &record("commit-msg"));
+    let author_line = |path: &str| {
+        let git = git2::Repository::open(path).unwrap();
+        let author = git
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .author()
+            .to_owned();
+        let when = author.when();
+        let offset = when.offset_minutes().abs();
+        format!(
+            "{}|{}|@{} {}{:02}{:02}",
+            author.name().unwrap(),
+            author.email().unwrap(),
+            when.seconds(),
+            when.sign(),
+            offset / 60,
+            offset % 60
+        )
+    };
+
+    let original = author_line(repo.path());
+    core::set_config(Some(repo.path()), "user.name", "Other Person", false).unwrap();
+    core::set_config(
+        Some(repo.path()),
+        "user.email",
+        "other@angkorgit.dev",
+        false,
+    )
+    .unwrap();
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+    core::amend(repo.path(), None, false).unwrap();
+    assert!(original.starts_with("Test User|test@angkorgit.dev|@"));
+    assert_eq!(author_line(repo.path()), original);
+    assert_eq!(repo.read(".git/pre-commit-author"), original);
+    assert_eq!(repo.read(".git/commit-msg-author"), original);
+
+    repo.write("a.txt", "three\n");
+    core::stage_all(repo.path()).unwrap();
+    core::commit(repo.path(), "second", false).unwrap();
+    let current = author_line(repo.path());
+    assert!(current.starts_with("Other Person|other@angkorgit.dev|@"));
+    assert_eq!(repo.read(".git/pre-commit-author"), current);
+    assert_eq!(repo.read(".git/commit-msg-author"), current);
+}
+
+const ZERO_OID: &str = "0000000000000000000000000000000000000000";
+
+fn recording_pre_push(repo: &TempRepo, tail: &str) {
+    write_hook(
+        &default_hooks(repo),
+        "pre-push",
+        &format!(
+            "printf '%s\\n%s\\n' \"$1\" \"$2\" > .git/pre-push-args\ncat > .git/pre-push-stdin\n{tail}"
+        ),
+    );
+}
+
+fn pre_push_stdin(repo: &TempRepo) -> Vec<String> {
+    let mut lines: Vec<String> = repo
+        .read(".git/pre-push-stdin")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    lines.sort();
+    lines
+}
+
+fn ref_at(repo: &std::path::Path, name: &str) -> Option<String> {
+    git2::Repository::open(repo)
+        .unwrap()
+        .find_reference(name)
+        .ok()
+        .and_then(|r| r.target())
+        .map(|oid| oid.to_string())
+}
+
+fn object_id(repo: &TempRepo, rev: &str) -> String {
+    git2::Repository::open(repo.path())
+        .unwrap()
+        .revparse_single(rev)
+        .unwrap()
+        .id()
+        .to_string()
+}
+
+#[test]
+fn passing_pre_push_hook_gets_the_remote_name_url_and_a_new_branch_line() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    let first = commit_all(&local, "first");
+    let origin = bare_origin(&local);
+    recording_pre_push(&local, "exit 0");
+
+    let outcome = core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_eq!(ref_at(&origin, "refs/heads/master"), Some(first.clone()));
+    assert_eq!(
+        local.read(".git/pre-push-args"),
+        format!("origin\n{}\n", origin.to_str().unwrap())
+    );
+    assert_eq!(
+        pre_push_stdin(&local),
+        vec![format!(
+            "refs/heads/master {first} refs/heads/master {ZERO_OID}"
+        )]
+    );
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn failing_pre_push_hook_sends_nothing_and_returns_its_output() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    let first = commit_all(&local, "first");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    local.write("a.txt", "two\n");
+    let second = commit_all(&local, "second");
+    recording_pre_push(&local, "echo 'push blocked: tests failed'\nexit 1");
+
+    let err = core::push(local.path(), "origin", None, false, false, true, false).unwrap_err();
+    let (code, message, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert_eq!(message, "The pre-push hook failed (exit code 1).");
+    assert!(detail.contains("push blocked: tests failed"), "{detail}");
+    assert_eq!(ref_at(&origin, "refs/heads/master"), Some(first.clone()));
+    let bare = git2::Repository::open(&origin).unwrap();
+    assert!(bare
+        .find_commit(git2::Oid::from_str(&second).unwrap())
+        .is_err());
+    assert_eq!(
+        pre_push_stdin(&local),
+        vec![format!(
+            "refs/heads/master {second} refs/heads/master {first}"
+        )]
+    );
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn pre_push_stdin_lists_every_ref_of_a_push_with_tags() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    let first = commit_all(&local, "first");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    local.write("a.txt", "two\n");
+    let second = commit_all(&local, "second");
+    core::tag_create(local.path(), "light", None, None).unwrap();
+    core::tag_create(local.path(), "v1.0.0", None, Some("release 1.0.0")).unwrap();
+    let annotated = object_id(&local, "refs/tags/v1.0.0");
+    assert_ne!(annotated, second);
+    recording_pre_push(&local, "exit 0");
+
+    core::push(local.path(), "origin", None, false, true, true, false).unwrap();
+    assert_eq!(
+        pre_push_stdin(&local),
+        vec![
+            format!("refs/heads/master {second} refs/heads/master {first}"),
+            format!("refs/tags/light {second} refs/tags/light {ZERO_OID}"),
+            format!("refs/tags/v1.0.0 {annotated} refs/tags/v1.0.0 {ZERO_OID}"),
+        ]
+    );
+    assert_eq!(ref_at(&origin, "refs/tags/v1.0.0"), Some(annotated));
+
+    core::push(local.path(), "origin", None, false, true, true, false).unwrap();
+    assert!(pre_push_stdin(&local).is_empty());
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn pre_push_runs_for_a_tag_push() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    let first = commit_all(&local, "first");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    core::tag_create(local.path(), "v2", None, None).unwrap();
+    recording_pre_push(&local, "exit 0");
+
+    let outcome = core::push_tag(local.path(), "origin", "v2", false).unwrap();
+    assert_eq!(outcome.message, "Pushed tag v2 to origin");
+    assert_eq!(
+        pre_push_stdin(&local),
+        vec![format!("refs/tags/v2 {first} refs/tags/v2 {ZERO_OID}")]
+    );
+    assert_eq!(ref_at(&origin, "refs/tags/v2"), Some(first));
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn pre_push_stdin_marks_a_deleted_remote_branch() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    let first = commit_all(&local, "first");
+    let origin = bare_origin(&local);
+    core::branch_create(local.path(), "feature", None, false).unwrap();
+    core::push(
+        local.path(),
+        "origin",
+        Some("feature"),
+        false,
+        false,
+        false,
+        false,
+    )
+    .unwrap();
+    assert_eq!(ref_at(&origin, "refs/heads/feature"), Some(first.clone()));
+    recording_pre_push(&local, "exit 0");
+
+    core::push_specs(
+        local.path(),
+        "origin",
+        &[":refs/heads/feature".to_string()],
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        pre_push_stdin(&local),
+        vec![format!("(delete) {ZERO_OID} refs/heads/feature {first}")]
+    );
+    assert_eq!(ref_at(&origin, "refs/heads/feature"), None);
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn pre_push_leaves_out_a_rejected_non_fast_forward_and_sees_the_remote_sha_on_force() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    let first = commit_all(&local, "first");
+    let origin = bare_origin(&local);
+    local.write("a.txt", "two\n");
+    let second = commit_all(&local, "second");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    core::reset(local.path(), &first, "hard").unwrap();
+    local.write("a.txt", "three\n");
+    let rewritten = commit_all(&local, "rewritten");
+    recording_pre_push(&local, "exit 0");
+
+    assert!(core::push(local.path(), "origin", None, false, false, true, false).is_err());
+    assert!(local.dir.join(".git").join("pre-push-args").exists());
+    assert!(pre_push_stdin(&local).is_empty());
+    assert_eq!(ref_at(&origin, "refs/heads/master"), Some(second.clone()));
+
+    core::push(local.path(), "origin", None, true, false, true, false).unwrap();
+    assert_eq!(
+        pre_push_stdin(&local),
+        vec![format!(
+            "refs/heads/master {rewritten} refs/heads/master {second}"
+        )]
+    );
+    assert_eq!(ref_at(&origin, "refs/heads/master"), Some(rewritten));
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn pre_push_runs_with_empty_stdin_when_nothing_needs_pushing() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    commit_all(&local, "first");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    recording_pre_push(&local, "exit 0");
+
+    let outcome = core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    assert_eq!(outcome.status, "up_to_date");
+    assert!(local.dir.join(".git").join("pre-push-args").exists());
+    assert!(pre_push_stdin(&local).is_empty());
+
+    recording_pre_push(&local, "exit 1");
+    let err = core::push(local.path(), "origin", None, false, false, true, false).unwrap_err();
+    assert_eq!(hook_failure(err).0, "hook_failed");
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn no_verify_pushes_past_a_failing_pre_push_hook() {
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    let first = commit_all(&local, "first");
+    let origin = bare_origin(&local);
+    core::tag_create(local.path(), "v1", None, None).unwrap();
+    write_hook(&default_hooks(&local), "pre-push", "exit 1");
+
+    let outcome = core::push(local.path(), "origin", None, false, false, true, true).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_eq!(ref_at(&origin, "refs/heads/master"), Some(first.clone()));
+    core::push_tag(local.path(), "origin", "v1", true).unwrap();
+    assert_eq!(ref_at(&origin, "refs/tags/v1"), Some(first));
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn pre_push_follows_core_hooks_path() {
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    commit_all(&local, "first");
+    let origin = bare_origin(&local);
+    core::set_config(Some(local.path()), "core.hooksPath", ".githooks", false).unwrap();
+    write_hook(&default_hooks(&local), "pre-push", "exit 0");
+    write_hook(
+        &local.dir.join(".githooks"),
+        "pre-push",
+        "echo 'from .githooks'\nexit 2",
+    );
+    assert_eq!(core::repo_hooks(local.path()).unwrap(), vec!["pre-push"]);
+    if !hooks_runnable() {
+        std::fs::remove_dir_all(origin).unwrap();
+        return;
+    }
+
+    let err = core::push(local.path(), "origin", None, false, false, true, false).unwrap_err();
+    let (code, _, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert!(detail.contains("from .githooks"), "{detail}");
+    assert_eq!(ref_at(&origin, "refs/heads/master"), None);
+    std::fs::remove_dir_all(origin).unwrap();
 }

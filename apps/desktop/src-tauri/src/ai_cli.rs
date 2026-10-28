@@ -190,15 +190,25 @@ fn is_supported(program: &str) -> bool {
         .any(|(_, _, bins)| bins.contains(&stem.as_str()))
 }
 
-pub(crate) fn capture(mut command: Command, stdin: &str, timeout: Duration) -> AppResult<Captured> {
+pub(crate) fn capture(command: Command, stdin: &str, timeout: Duration) -> AppResult<Captured> {
+    let child =
+        spawn_piped(command).map_err(|e| AppError::other(format!("failed to launch: {e}")))?;
+    capture_child(child, stdin, timeout)
+}
+
+pub(crate) fn spawn_piped(mut command: Command) -> std::io::Result<Child> {
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|e| AppError::other(format!("failed to launch: {e}")))?;
+    command.spawn()
+}
 
+pub(crate) fn capture_child(
+    mut child: Child,
+    stdin: &str,
+    timeout: Duration,
+) -> AppResult<Captured> {
     let stdin_data = stdin.as_bytes().to_vec();
     let mut stdin_pipe = child.stdin.take();
     let stdin_thread = std::thread::spawn(move || {

@@ -6,6 +6,24 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Commits run your Git hooks.** `pre-commit` and `commit-msg` now run when you
+  commit or amend, from `.git/hooks` or `core.hooksPath` (Husky and similar setups
+  included), the same as `git commit` does, with the commit's author in
+  `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL` and `GIT_AUTHOR_DATE`. A failing hook stops the commit and shows
+  its output, a hook that reformats and re-stages files gets its changes committed, and
+  a hook that edits the message is respected. **Skip hooks** next to Amend commits
+  without them, like `--no-verify`, and appears only in repositories that have hooks.
+  Running hooks needs Git 2.36 or newer on your PATH; without it the commit still goes
+  through and AngKorGit tells you the hooks did not run. (#82)
+- **Pushes run your `pre-push` hook.** Every push in the app (toolbar, graph, sidebar,
+  tags, force push and the push in the pull request dialog) runs `pre-push` first with
+  the same arguments and ref lines `git push` gives it, including the remote's current
+  commit for each ref. A failing hook stops the push before anything is sent and shows
+  its output, with **Push without hooks** to go ahead anyway; the Push menu has the same
+  entry when the repository has a `pre-push` hook. With Git 2.36 to 2.39 the hook still
+  runs on macOS and Linux. (#82)
+
 ## [0.25.0] — 2026-10-28
 
 The know-before-you-pull release. Pull now tells you ahead of time when it would

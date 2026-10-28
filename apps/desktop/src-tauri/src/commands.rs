@@ -2,8 +2,8 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::core::types::*;
 use crate::core::{
-    branch, commit, conflict, diff, files, history, misc, pull_preview, remote, repo, scan, stage,
-    submodule, worktree,
+    branch, commit, conflict, diff, files, history, hooks, misc, pull_preview, remote, repo, scan,
+    stage, submodule, worktree,
 };
 use crate::error::AppResult;
 use crate::terminal::TerminalState;
@@ -295,13 +295,26 @@ pub async fn unstage_hunk(path: String, file: String, hunkIndex: usize) -> AppRe
 }
 
 #[tauri::command]
-pub async fn commit_create(path: String, message: String) -> AppResult<String> {
-    blocking(move || commit::commit(&path, &message)).await
+pub async fn commit_create(
+    path: String,
+    message: String,
+    noVerify: Option<bool>,
+) -> AppResult<CommitOutcome> {
+    blocking(move || commit::commit(&path, &message, noVerify.unwrap_or(false))).await
 }
 
 #[tauri::command]
-pub async fn commit_amend(path: String, message: Option<String>) -> AppResult<String> {
-    blocking(move || commit::amend(&path, message.as_deref())).await
+pub async fn commit_amend(
+    path: String,
+    message: Option<String>,
+    noVerify: Option<bool>,
+) -> AppResult<CommitOutcome> {
+    blocking(move || commit::amend(&path, message.as_deref(), noVerify.unwrap_or(false))).await
+}
+
+#[tauri::command]
+pub async fn repo_hooks(path: String) -> AppResult<Vec<String>> {
+    blocking(move || hooks::repo_hooks(&path)).await
 }
 
 #[tauri::command]
@@ -565,6 +578,7 @@ pub async fn remote_push(
     force: bool,
     withTags: bool,
     setUpstream: bool,
+    noVerify: Option<bool>,
 ) -> AppResult<OpOutcome> {
     blocking(move || {
         remote::push(
@@ -574,6 +588,7 @@ pub async fn remote_push(
             force,
             withTags,
             setUpstream,
+            noVerify.unwrap_or(false),
         )
     })
     .await
@@ -590,8 +605,13 @@ pub async fn remote_pull_branch(path: String, branch: String) -> AppResult<OpOut
 }
 
 #[tauri::command]
-pub async fn remote_push_tag(path: String, remote: String, tag: String) -> AppResult<OpOutcome> {
-    blocking(move || remote::push_tag(&path, &remote, &tag)).await
+pub async fn remote_push_tag(
+    path: String,
+    remote: String,
+    tag: String,
+    noVerify: Option<bool>,
+) -> AppResult<OpOutcome> {
+    blocking(move || remote::push_tag(&path, &remote, &tag, noVerify.unwrap_or(false))).await
 }
 
 #[tauri::command]
