@@ -28,6 +28,7 @@ import {
   Redo2,
   RefreshCw,
   Settings,
+  ShieldOff,
   SquareTerminal,
   Sun,
   Tag as TagIcon,
@@ -40,6 +41,8 @@ import {
 import { Kbd, Spinner } from '@angkorgit/design-system';
 import { ipc, openExternal, pickDirectory } from '@/core/ipc';
 import { confirmDialog } from '@/components/confirm';
+import { isHookFailure, reportHookFailure } from '@/components/hookFailure';
+import { useRepoHooks } from '@/features/repository/useRepoHooks';
 import { useRepo } from '@/features/repository/store';
 import { abortMergeFlow } from '@/features/repository/merge';
 import { sidebarVisible, useUi } from '@/features/ui/store';
@@ -89,6 +92,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
   const path = repo?.path ?? '';
   const repoState = repo?.state ?? 'clean';
   const headUpstream = useMemo(() => branches.find((b) => !b.isRemote && b.isHead)?.upstream ?? null, [branches]);
+  const repoHooks = useRepoHooks(path);
   const remote = pickRemote(remotes, headUpstream)?.name ?? 'origin';
   const locals = useMemo(() => branches.filter((b) => !b.isRemote && !b.isHead), [branches]);
   const otherRepos = useMemo(() => recents.filter((r) => r.path !== path).slice(0, 8), [recents, path]);
@@ -155,7 +159,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
 
   const close = () => setPaletteOpen(false);
 
-  const run = (label: string, op: () => Promise<unknown>) => {
+  const run = (label: string, op: () => Promise<unknown>, retryWithoutHooks?: () => void) => {
     close();
     void (async () => {
       try {
@@ -164,10 +168,17 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
         toastOutcome(result, `${label} done`);
         await onRefresh();
       } catch (error) {
+        if (retryWithoutHooks && isHookFailure(error)) {
+          reportHookFailure({ repoPath: path, operation: 'push', error, retry: retryWithoutHooks });
+          return;
+        }
         toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
       }
     })();
   };
+
+  const runPush = (label: string, push: (noVerify: boolean) => Promise<unknown>, noVerify = false): void =>
+    run(label, () => push(noVerify), () => runPush(label, push, true));
 
   const runHistory = (direction: 'undo' | 'redo') => {
     close();
@@ -314,7 +325,20 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             label="Pull with rebase"
             onSelect={() => run('Pull (rebase)', () => ipc.pull(path, remote, 'rebase'))}
           />
-          <PaletteItem icon={<ArrowUpFromLine />} label="Push" onSelect={() => run('Push', () => ipc.push(path, remote, false, false, true))} />
+          <PaletteItem
+            icon={<ArrowUpFromLine />}
+            label="Push"
+            onSelect={() => runPush('Push', (noVerify) => ipc.push(path, remote, false, false, true, undefined, noVerify))}
+          />
+          {repoHooks.includes('pre-push') && (
+            <PaletteItem
+              icon={<ShieldOff />}
+              label="Push without hooks"
+              onSelect={() =>
+                runPush('Push without hooks', (noVerify) => ipc.push(path, remote, false, false, true, undefined, noVerify), true)
+              }
+            />
+          )}
           {remotes.length > 1 &&
             remotes.map((r) => (
               <PaletteItem
@@ -331,7 +355,9 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
                 icon={<ArrowUpFromLine />}
                 label={`Push to ${r.name}`}
                 onSelect={() =>
-                  run(`Push to ${r.name}`, () => ipc.push(path, r.name, false, false, pushSetsUpstream(headUpstream, r.name)))
+                  runPush(`Push to ${r.name}`, (noVerify) =>
+                    ipc.push(path, r.name, false, false, pushSetsUpstream(headUpstream, r.name), undefined, noVerify),
+                  )
                 }
               />
             ))}

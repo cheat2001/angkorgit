@@ -29,6 +29,8 @@ import {
 } from '@angkorgit/design-system';
 import { aiCapabilities, defaultForgeTarget, forgeNoun, forgeTargets, sameForgeRepo, type ForgeUser } from '@angkorgit/core';
 import { ipc, openExternal } from '@/core/ipc';
+import { isHookFailure, reportHookFailure } from '@/components/hookFailure';
+import { toastOutcome } from '@/shared/toastOutcome';
 import { useRepo } from '@/features/repository/store';
 import { ensureRepoProfile } from '@/features/settings/profiles';
 import { useUi } from '@/features/ui/store';
@@ -115,17 +117,21 @@ export function CreatePrDialog() {
   const unpushed = head?.ahead ?? 0;
   const [pushing, setPushing] = useState(false);
 
-  const pushBranch = async () => {
+  const pushBranch = async (noVerify = false): Promise<void> => {
     if (!repo || !head || pushing) return;
     setPushing(true);
     setError(null);
     try {
       await ensureRepoProfile(repo.path);
-      const outcome = await ipc.push(repo.path, sourceName, false, false, true, head.name);
-      toast.success(outcome.message || `Pushed ${head.name} to ${sourceName}`);
+      const outcome = await ipc.push(repo.path, sourceName, false, false, true, head.name, noVerify);
+      toastOutcome(outcome, `Pushed ${head.name} to ${sourceName}`);
       await useRepo.getState().refresh();
     } catch (err) {
-      setError(`Could not push ${head.name}: ${(err as { message?: string }).message ?? err}`);
+      if (isHookFailure(err)) {
+        reportHookFailure({ repoPath: repo.path, operation: 'push', error: err, retry: () => void pushBranch(true) });
+      } else {
+        setError(`Could not push ${head.name}: ${(err as { message?: string }).message ?? err}`);
+      }
     } finally {
       setPushing(false);
     }

@@ -1059,12 +1059,41 @@ test('Commit without hooks never claims to run hooks and keeps text typed while 
   await expect(description).toHaveValue('typed while the commit ran');
 });
 
+test('a failing pre-push hook shows its output and the push can skip the hooks', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-hooks', 'fail'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByRole('button', { name: 'Push options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Push without hooks' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await page.locator('header').getByRole('button', { name: /^Push\s*\d*$/ }).click();
+  const dialog = page.locator('[data-hook-failed="push"]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('A hook stopped the push');
+  await expect(dialog).toContainText('The pre-push hook failed (exit code 1).');
+  await expect(dialog).toContainText('Nothing was pushed.');
+  const output = dialog.locator('[data-hook-output]');
+  await expect(output).toContainText('keeps lanes stable across pages');
+  expect(await output.textContent()).not.toContain('\u001b');
+  await expect(page.getByText('Pushed to origin (demo)')).toHaveCount(0);
+
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Push without hooks' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('Pushed to origin (demo)')).toBeVisible();
+});
+
 test('the commit box has no Skip hooks box when the repository has no hooks', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByLabel('Commit summary')).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Skip hooks' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Push options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Force push' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Push without hooks' })).toHaveCount(0);
 });
 
 test('a submodule left at an older commit offers Update submodule instead of Discard', async ({ page }) => {

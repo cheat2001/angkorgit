@@ -293,7 +293,7 @@ pub struct CommitOutcome {
     pub hook_warning: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct OpOutcome {
     pub status: String, // "ok" | "conflicts" | "up_to_date" | "fast_forward"

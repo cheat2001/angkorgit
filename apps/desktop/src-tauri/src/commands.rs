@@ -313,8 +313,8 @@ pub async fn commit_amend(
 }
 
 #[tauri::command]
-pub async fn commit_hooks(path: String) -> AppResult<Vec<String>> {
-    blocking(move || hooks::commit_hooks(&path)).await
+pub async fn repo_hooks(path: String) -> AppResult<Vec<String>> {
+    blocking(move || hooks::repo_hooks(&path)).await
 }
 
 #[tauri::command]
@@ -578,6 +578,7 @@ pub async fn remote_push(
     force: bool,
     withTags: bool,
     setUpstream: bool,
+    noVerify: Option<bool>,
 ) -> AppResult<OpOutcome> {
     blocking(move || {
         remote::push(
@@ -587,6 +588,7 @@ pub async fn remote_push(
             force,
             withTags,
             setUpstream,
+            noVerify.unwrap_or(false),
         )
     })
     .await
@@ -603,8 +605,13 @@ pub async fn remote_pull_branch(path: String, branch: String) -> AppResult<OpOut
 }
 
 #[tauri::command]
-pub async fn remote_push_tag(path: String, remote: String, tag: String) -> AppResult<OpOutcome> {
-    blocking(move || remote::push_tag(&path, &remote, &tag)).await
+pub async fn remote_push_tag(
+    path: String,
+    remote: String,
+    tag: String,
+    noVerify: Option<bool>,
+) -> AppResult<OpOutcome> {
+    blocking(move || remote::push_tag(&path, &remote, &tag, noVerify.unwrap_or(false))).await
 }
 
 #[tauri::command]

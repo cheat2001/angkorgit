@@ -48,7 +48,9 @@ import {
   Spinner,
   cn,
 } from '@angkorgit/design-system';
-import { ipc, pickDirectory } from '@/core/ipc';
+import { ipc, pickDirectory, type OpOutcome } from '@/core/ipc';
+import { isHookFailure, reportHookFailure } from '@/components/hookFailure';
+import { useRepoHooks } from '@/features/repository/useRepoHooks';
 import { confirmDialog } from '@/components/confirm';
 import { useRepo } from '@/features/repository/store';
 import { GroupDot } from '@/features/repository/RepoGroupMenu';
@@ -423,6 +425,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const setPaletteOpen = useUi((s) => s.setPaletteOpen);
   const navigate = useNavigate();
   const [spinning, setSpinning] = useState(false);
+  const repoHooks = useRepoHooks(repo?.path);
 
   if (!repo) return null;
   const remote = pickRemote(remotes, headUpstream)?.name ?? 'origin';
@@ -437,7 +440,11 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const pullWarning = pullWarningOf(pullPreview);
   const pullWarningLine = pullPreview ? pullWarningText(pullPreview) : null;
 
-  const run = async (label: string, op: () => Promise<{ status: string; message: string } | void>) => {
+  const run = async (
+    label: string,
+    op: () => Promise<{ status: string; message: string } | void>,
+    retryWithoutHooks?: () => void,
+  ) => {
     if (busy) return;
     setBusy(label);
     try {
@@ -450,6 +457,10 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       }
       await onRefresh();
     } catch (error) {
+      if (retryWithoutHooks && isHookFailure(error)) {
+        reportHookFailure({ repoPath: repo.path, operation: 'push', error, retry: retryWithoutHooks });
+        return;
+      }
       if (label === 'Push' && isNonFastForward(error)) {
         setPushRejected(true);
         return;
@@ -465,11 +476,11 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     }
   };
 
-  const runPush = (label: string, op: () => Promise<{ status: string; message: string } | void>) =>
+  const runPush = (label: string, push: (noVerify: boolean) => Promise<OpOutcome>, noVerify = false): void =>
     void (async () => {
       if (busy) return;
       await ensureRepoProfile(repo.path);
-      await run(label, op);
+      await run(label, () => push(noVerify), () => runPush(label, push, true));
       void import('@/features/forge/store').then(({ useForge }) => useForge.getState().load(true));
     })();
   const confirmForcePush = async () => {
@@ -480,7 +491,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       confirmLabel: 'Force push',
       destructive: true,
     });
-    if (ok) runPush('Push (force)', () => ipc.push(repo.path, remote, true, false, true));
+    if (ok) runPush('Push (force)', (noVerify) => ipc.push(repo.path, remote, true, false, true, undefined, noVerify));
   };
 
   return (
@@ -524,7 +535,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
         }}
         onForcePush={() => {
           setPushRejected(false);
-          runPush('Push (force)', () => ipc.push(repo.path, remote, true, false, true));
+          runPush('Push (force)', (noVerify) => ipc.push(repo.path, remote, true, false, true, undefined, noVerify));
         }}
       />
 
@@ -633,7 +644,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             size="sm"
             className="rounded-r-none"
             disabled={!!busy}
-            onClick={() => runPush('Push', () => ipc.push(repo.path, remote, false, false, true))}
+            onClick={() => runPush('Push', (noVerify) => ipc.push(repo.path, remote, false, false, true, undefined, noVerify))}
           >
             <ArrowUpFromLine />
             Push
@@ -650,9 +661,20 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             <DropdownMenuItem onClick={() => void confirmForcePush()} destructive>
               Force push
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => runPush('Push with tags', () => ipc.push(repo.path, remote, false, true, true))}>
+            <DropdownMenuItem
+              onClick={() => runPush('Push with tags', (noVerify) => ipc.push(repo.path, remote, false, true, true, undefined, noVerify))}
+            >
               Push with tags
             </DropdownMenuItem>
+            {repoHooks.includes('pre-push') && (
+              <DropdownMenuItem
+                onClick={() =>
+                  runPush('Push without hooks', (noVerify) => ipc.push(repo.path, remote, false, false, true, undefined, noVerify), true)
+                }
+              >
+                Push without hooks
+              </DropdownMenuItem>
+            )}
             {remotes.length > 1 && (
               <>
                 <DropdownMenuSeparator />
@@ -662,8 +684,8 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
                     key={r.name}
                     checked={r.name === remote}
                     onSelect={() =>
-                      runPush(`Push to ${r.name}`, () =>
-                        ipc.push(repo.path, r.name, false, false, pushSetsUpstream(headUpstream, r.name)),
+                      runPush(`Push to ${r.name}`, (noVerify) =>
+                        ipc.push(repo.path, r.name, false, false, pushSetsUpstream(headUpstream, r.name), undefined, noVerify),
                       )
                     }
                   >

@@ -17,6 +17,7 @@ const useHookFailures = create<{ pending: Record<string, HookFailureReport> }>((
 const ELSEWHERE: Record<HookOperation, (repo: string) => string> = {
   commit: (repo) => `Nothing was committed in ${repo}. The hook output is waiting there.`,
   amend: (repo) => `The last commit in ${repo} was not changed. The hook output is waiting there.`,
+  push: (repo) => `Nothing was pushed from ${repo}. The hook output is waiting there.`,
 };
 
 export function isHookFailure(error: unknown): error is IpcError {

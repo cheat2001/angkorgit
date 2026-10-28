@@ -3,19 +3,22 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use git2::Repository;
+use git2::{Oid, Repository};
 
-use crate::ai_cli::{capture, capture_tree, search_path};
+use crate::ai_cli::{capture, capture_tree_child, search_path, spawn_tree};
 use crate::error::{AppError, AppResult};
 
 pub const PRE_COMMIT: &str = "pre-commit";
 pub const COMMIT_MSG: &str = "commit-msg";
-const COMMIT_HOOKS: &[&str] = &[PRE_COMMIT, COMMIT_MSG];
+pub const PRE_PUSH: &str = "pre-push";
+const REPO_HOOKS: &[&str] = &[PRE_COMMIT, COMMIT_MSG, PRE_PUSH];
 
 const MIN_GIT_VERSION: (u32, u32) = (2, 36);
+const TO_STDIN_VERSION: (u32, u32) = (2, 40);
 const HOOK_TIMEOUT: Duration = Duration::from_secs(600);
 const VERSION_TIMEOUT: Duration = Duration::from_secs(15);
 const OUTPUT_CAP: usize = 64 * 1024;
+const SHELL_PATH: &str = "/bin/sh";
 
 const REPO_ENV: &[&str] = &[
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -35,7 +38,18 @@ const REPO_ENV: &[&str] = &[
     "GIT_COMMON_DIR",
 ];
 
-static HOOK_GIT: Mutex<Option<PathBuf>> = Mutex::new(None);
+static HOOK_GIT: Mutex<Option<GitCli>> = Mutex::new(None);
+
+#[derive(Clone)]
+struct GitCli {
+    path: PathBuf,
+    version: (u32, u32),
+}
+
+pub(crate) enum Runner {
+    Git(PathBuf),
+    Direct(PathBuf),
+}
 
 pub fn hooks_dir(repo: &Repository) -> AppResult<PathBuf> {
     let config = repo.config()?.snapshot()?;
@@ -52,11 +66,17 @@ pub fn hooks_dir(repo: &Repository) -> AppResult<PathBuf> {
 }
 
 pub fn present(repo: &Repository, name: &str) -> AppResult<bool> {
-    let dir = hooks_dir(repo)?;
-    if hook_candidates(&dir, name).iter().any(|p| is_executable(p)) {
+    if hook_file(repo, name)?.is_some() {
         return Ok(true);
     }
     configured_for(repo, name)
+}
+
+fn hook_file(repo: &Repository, name: &str) -> AppResult<Option<PathBuf>> {
+    let dir = hooks_dir(repo)?;
+    Ok(hook_candidates(&dir, name)
+        .into_iter()
+        .find(|p| is_executable(p)))
 }
 
 fn hook_candidates(dir: &Path, name: &str) -> Vec<PathBuf> {
@@ -89,13 +109,13 @@ fn configured_for(repo: &Repository, name: &str) -> AppResult<bool> {
     Ok(false)
 }
 
-pub fn commit_hooks(path: &str) -> AppResult<Vec<String>> {
+pub fn repo_hooks(path: &str) -> AppResult<Vec<String>> {
     let repo = super::repo::open(path)?;
     if repo.workdir().is_none() {
         return Ok(Vec::new());
     }
     let mut found = Vec::new();
-    for name in COMMIT_HOOKS {
+    for name in REPO_HOOKS {
         if present(&repo, name)? {
             found.push(name.to_string());
         }
@@ -107,7 +127,7 @@ pub fn runner_available() -> bool {
     hook_git(&std::env::temp_dir()).is_ok()
 }
 
-fn hook_git(cwd: &Path) -> Result<PathBuf, String> {
+fn hook_git(cwd: &Path) -> Result<GitCli, String> {
     if let Some(git) = HOOK_GIT.lock().ok().and_then(|cached| cached.clone()) {
         return Ok(git);
     }
@@ -121,6 +141,7 @@ fn hook_git(cwd: &Path) -> Result<PathBuf, String> {
     };
     match git_version(&git) {
         Some(version) if version >= MIN_GIT_VERSION => {
+            let git = GitCli { path: git, version };
             if let Ok(mut cached) = HOOK_GIT.lock() {
                 *cached = Some(git.clone());
             }
@@ -158,27 +179,128 @@ pub(crate) fn parse_git_version(text: &str) -> Option<(u32, u32)> {
     Some((parts.next()??, parts.next()??))
 }
 
+fn runner(
+    repo: &Repository,
+    workdir: &Path,
+    name: &str,
+    with_input: bool,
+) -> Result<Runner, String> {
+    let git = hook_git(workdir)?;
+    let file = if with_input && git.version < TO_STDIN_VERSION {
+        hook_file(repo, name).ok().flatten()
+    } else {
+        None
+    };
+    pick_runner(git, name, with_input, file)
+}
+
+fn pick_runner(
+    git: GitCli,
+    name: &str,
+    with_input: bool,
+    file: Option<PathBuf>,
+) -> Result<Runner, String> {
+    if !with_input || git.version >= TO_STDIN_VERSION {
+        return Ok(Runner::Git(git.path));
+    }
+    if let Some(file) = file.filter(|_| cfg!(unix)) {
+        return Ok(Runner::Direct(file));
+    }
+    let (major, minor) = git.version;
+    Err(format!(
+        "The {name} hook did not run because git {major}.{minor} cannot hand it the refs being \
+         pushed. Git 2.40 or newer is needed to run it."
+    ))
+}
+
+struct InputFile(PathBuf);
+
+impl InputFile {
+    fn write(text: &str) -> AppResult<Self> {
+        static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        let path = std::env::temp_dir().join(format!(
+            "angkorgit-hook-{}-{nanos}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::write(&path, text)?;
+        Ok(InputFile(path))
+    }
+}
+
+impl Drop for InputFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 pub(crate) fn run(
     repo: &Repository,
-    git: &Path,
+    runner: &Runner,
     name: &str,
     args: &[&OsStr],
     env: &[(&str, &OsStr)],
+    input: Option<&str>,
 ) -> AppResult<()> {
     let cwd = repo.workdir().unwrap_or_else(|| repo.path());
-    let mut command = crate::proc::hidden(git);
-    command.args(["hook", "run", "--ignore-missing", name]);
-    if !args.is_empty() {
-        command.arg("--").args(args);
-    }
-    command.current_dir(cwd).env("PATH", search_path(None));
-    for var in REPO_ENV {
-        command.env_remove(var);
-    }
-    for (key, value) in env {
-        command.env(key, value);
-    }
-    let captured = capture_tree(command, "", HOOK_TIMEOUT)
+    let input_file = match (runner, input) {
+        (Runner::Git(_), Some(text)) => Some(InputFile::write(text)?),
+        _ => None,
+    };
+    let configure = |command: &mut std::process::Command| {
+        command.current_dir(cwd).env("PATH", search_path(None));
+        for var in REPO_ENV {
+            command.env_remove(var);
+        }
+        for (key, value) in env {
+            command.env(key, value);
+        }
+    };
+    let spawned = match runner {
+        Runner::Git(git) => {
+            let mut command = crate::proc::hidden(git);
+            command.args(["hook", "run", "--ignore-missing"]);
+            if let Some(file) = &input_file {
+                let mut flag = OsString::from("--to-stdin=");
+                flag.push(file.0.as_os_str());
+                command.arg(flag);
+            }
+            command.arg(name);
+            if !args.is_empty() {
+                command.arg("--").args(args);
+            }
+            configure(&mut command);
+            spawn_tree(command)
+        }
+        Runner::Direct(hook) => {
+            let mut command = crate::proc::hidden(hook);
+            command.args(args);
+            configure(&mut command);
+            match spawn_tree(command) {
+                Err(error) if is_exec_format_error(&error) => {
+                    let mut command = crate::proc::hidden(SHELL_PATH);
+                    command.arg(hook).args(args);
+                    configure(&mut command);
+                    spawn_tree(command)
+                }
+                spawned => spawned,
+            }
+        }
+    };
+    let child = spawned.map_err(|e| {
+        AppError::other(format!(
+            "The {name} hook could not run: failed to launch: {e}"
+        ))
+    })?;
+    let piped = match runner {
+        Runner::Direct(_) => input.unwrap_or(""),
+        Runner::Git(_) => "",
+    };
+    let captured = capture_tree_child(child, piped, HOOK_TIMEOUT)
         .map_err(|e| AppError::other(format!("The {name} hook could not run: {e}")))?;
     if captured.status == 0 {
         return Ok(());
@@ -195,6 +317,16 @@ pub(crate) fn run(
     })
 }
 
+#[cfg(unix)]
+fn is_exec_format_error(error: &std::io::Error) -> bool {
+    error.raw_os_error() == Some(libc::ENOEXEC)
+}
+
+#[cfg(not(unix))]
+fn is_exec_format_error(_error: &std::io::Error) -> bool {
+    false
+}
+
 fn output_tail(output: &str, cap: usize) -> String {
     if output.len() <= cap {
         return output.to_string();
@@ -207,7 +339,7 @@ fn output_tail(output: &str, cap: usize) -> String {
 }
 
 pub(crate) struct CommitHooks {
-    git: Option<PathBuf>,
+    runner: Option<Runner>,
     pre_commit: bool,
     commit_msg: bool,
     env: Vec<(&'static str, OsString)>,
@@ -221,7 +353,7 @@ impl CommitHooks {
         no_verify: bool,
     ) -> AppResult<Self> {
         let mut hooks = CommitHooks {
-            git: None,
+            runner: None,
             pre_commit: false,
             commit_msg: false,
             env: commit_env(repo, author),
@@ -236,8 +368,8 @@ impl CommitHooks {
         hooks.pre_commit = present(repo, PRE_COMMIT)?;
         hooks.commit_msg = present(repo, COMMIT_MSG)?;
         if hooks.pre_commit || hooks.commit_msg {
-            match hook_git(workdir) {
-                Ok(git) => hooks.git = Some(git),
+            match runner(repo, workdir, PRE_COMMIT, false) {
+                Ok(runner) => hooks.runner = Some(runner),
                 Err(warning) => hooks.warning = Some(warning),
             }
         }
@@ -252,15 +384,15 @@ impl CommitHooks {
     }
 
     pub(crate) fn pre_commit(&self, repo: &Repository) -> AppResult<bool> {
-        let Some(git) = self.git.as_deref().filter(|_| self.pre_commit) else {
+        let Some(runner) = self.runner.as_ref().filter(|_| self.pre_commit) else {
             return Ok(false);
         };
-        run(repo, git, PRE_COMMIT, &[], &self.env())?;
+        run(repo, runner, PRE_COMMIT, &[], &self.env(), None)?;
         Ok(true)
     }
 
     pub(crate) fn commit_msg(&self, repo: &Repository, message: &str) -> AppResult<String> {
-        let Some(git) = self.git.as_deref().filter(|_| self.commit_msg) else {
+        let Some(runner) = self.runner.as_ref().filter(|_| self.commit_msg) else {
             return Ok(message.to_string());
         };
         let file = repo.path().join("COMMIT_EDITMSG");
@@ -270,7 +402,14 @@ impl CommitHooks {
             format!("{message}\n")
         };
         std::fs::write(&file, &written)?;
-        run(repo, git, COMMIT_MSG, &[file.as_os_str()], &self.env())?;
+        run(
+            repo,
+            runner,
+            COMMIT_MSG,
+            &[file.as_os_str()],
+            &self.env(),
+            None,
+        )?;
         let edited = std::fs::read_to_string(&file)?;
         if edited == written {
             return Ok(message.to_string());
@@ -282,6 +421,107 @@ impl CommitHooks {
             ));
         }
         Ok(cleaned)
+    }
+}
+
+pub(crate) struct PushedRef {
+    pub(crate) local_ref: String,
+    pub(crate) local: Oid,
+    pub(crate) remote_ref: String,
+    pub(crate) remote: Oid,
+    pub(crate) force: bool,
+}
+
+pub(crate) struct PrePush {
+    runner: Option<Runner>,
+    args: [OsString; 2],
+    pub(crate) warning: Option<String>,
+}
+
+impl PrePush {
+    pub(crate) fn prepare(
+        repo: &Repository,
+        remote: &git2::Remote<'_>,
+        no_verify: bool,
+    ) -> AppResult<Self> {
+        let url = String::from_utf8_lossy(remote.pushurl_bytes().unwrap_or(remote.url_bytes()))
+            .into_owned();
+        let name = remote
+            .name()
+            .map(str::to_string)
+            .unwrap_or_else(|| url.clone());
+        let mut hook = PrePush {
+            runner: None,
+            args: [OsString::from(name), OsString::from(url)],
+            warning: None,
+        };
+        let Some(workdir) = repo.workdir() else {
+            return Ok(hook);
+        };
+        if no_verify || !present(repo, PRE_PUSH)? {
+            return Ok(hook);
+        }
+        match runner(repo, workdir, PRE_PUSH, true) {
+            Ok(runner) => hook.runner = Some(runner),
+            Err(warning) => hook.warning = Some(warning),
+        }
+        Ok(hook)
+    }
+
+    pub(crate) fn active(&self) -> bool {
+        self.runner.is_some()
+    }
+
+    pub(crate) fn run(&self, repo: &Repository, refs: &[PushedRef]) -> AppResult<()> {
+        let Some(runner) = &self.runner else {
+            return Ok(());
+        };
+        let args = [self.args[0].as_os_str(), self.args[1].as_os_str()];
+        run(
+            repo,
+            runner,
+            PRE_PUSH,
+            &args,
+            &[],
+            Some(&pre_push_input(repo, refs)),
+        )
+    }
+}
+
+pub(crate) fn pre_push_input(repo: &Repository, refs: &[PushedRef]) -> String {
+    refs.iter()
+        .filter(|r| r.local != r.remote && !rejected_as_non_fast_forward(repo, r))
+        .map(|r| {
+            if r.local.is_zero() {
+                format!("(delete) {} {} {}\n", Oid::zero(), r.remote_ref, r.remote)
+            } else {
+                format!(
+                    "{} {} {} {}\n",
+                    r.local_ref, r.local, r.remote_ref, r.remote
+                )
+            }
+        })
+        .collect()
+}
+
+fn rejected_as_non_fast_forward(repo: &Repository, r: &PushedRef) -> bool {
+    if r.force || r.local.is_zero() || r.remote.is_zero() || r.remote_ref.starts_with("refs/tags/")
+    {
+        return false;
+    }
+    let commit = |oid: Oid| {
+        repo.find_object(oid, None)
+            .and_then(|object| object.peel_to_commit())
+            .ok()
+    };
+    match (commit(r.local), commit(r.remote)) {
+        (Some(local), Some(remote)) => {
+            local.id() != remote.id()
+                && !repo
+                    .graph_descendant_of(local.id(), remote.id())
+                    .unwrap_or(false)
+        }
+        _ => false,
     }
 }
 
@@ -370,5 +610,163 @@ mod tests {
         assert!(tail.starts_with("…\n"));
         assert!(tail.ends_with("ää"));
         assert!(tail.len() <= 5 + "…\n".len());
+    }
+
+    fn git_at(version: (u32, u32)) -> GitCli {
+        GitCli {
+            path: PathBuf::from("git"),
+            version,
+        }
+    }
+
+    #[test]
+    fn hooks_with_input_need_git_2_40_or_the_hook_file_on_unix() {
+        let hook = PathBuf::from("/repo/.git/hooks/pre-push");
+        assert!(matches!(
+            pick_runner(git_at((2, 36)), PRE_COMMIT, false, None),
+            Ok(Runner::Git(_))
+        ));
+        assert!(matches!(
+            pick_runner(git_at((2, 40)), PRE_PUSH, true, Some(hook.clone())),
+            Ok(Runner::Git(_))
+        ));
+        let old = pick_runner(git_at((2, 39)), PRE_PUSH, true, Some(hook.clone()));
+        if cfg!(unix) {
+            assert!(matches!(old, Ok(Runner::Direct(ref file)) if *file == hook));
+        } else {
+            assert!(old.is_err());
+        }
+        let Err(warning) = pick_runner(git_at((2, 39)), PRE_PUSH, true, None) else {
+            panic!("an old git without a hook file must not run the hook");
+        };
+        assert!(warning.contains("git 2.39"), "{warning}");
+        assert!(warning.contains("Git 2.40 or newer"), "{warning}");
+    }
+
+    fn temp_repo(name: &str) -> (PathBuf, Repository) {
+        let dir = std::env::temp_dir().join(format!(
+            "angkorgit-hooks-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        let repo = Repository::init(&dir).expect("init repo");
+        (dir, repo)
+    }
+
+    #[test]
+    fn pre_push_input_matches_the_git_line_format() {
+        let (dir, repo) = temp_repo("input");
+        let a = Oid::from_str("1111111111111111111111111111111111111111").unwrap();
+        let b = Oid::from_str("2222222222222222222222222222222222222222").unwrap();
+        let line = |local_ref: &str, local: Oid, remote_ref: &str, remote: Oid| PushedRef {
+            local_ref: local_ref.to_string(),
+            local,
+            remote_ref: remote_ref.to_string(),
+            remote,
+            force: false,
+        };
+        let input = pre_push_input(
+            &repo,
+            &[
+                line("refs/heads/new", a, "refs/heads/new", Oid::zero()),
+                line("refs/heads/same", a, "refs/heads/same", a),
+                line("", Oid::zero(), "refs/heads/gone", b),
+                line("refs/heads/unknown", a, "refs/heads/unknown", b),
+            ],
+        );
+        let zero = Oid::zero();
+        assert_eq!(
+            input,
+            format!(
+                "refs/heads/new {a} refs/heads/new {zero}\n\
+                 (delete) {zero} refs/heads/gone {b}\n\
+                 refs/heads/unknown {a} refs/heads/unknown {b}\n"
+            )
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn direct_runner_hands_the_hook_its_args_and_stdin() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, repo) = temp_repo("direct");
+        let hook = dir.join(".git").join("hooks").join("pre-push");
+        std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+        std::fs::write(
+            &hook,
+            "#!/bin/sh\nprintf '%s|%s\\n' \"$1\" \"$2\" > got\ncat >> got\necho refused >&2\nexit 4\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let error = run(
+            &repo,
+            &Runner::Direct(hook),
+            PRE_PUSH,
+            &[OsStr::new("origin"), OsStr::new("/srv/r.git")],
+            &[],
+            Some("refs/heads/main a refs/heads/main b\n"),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&error, AppError::Hook { hook, status: 4, output } if hook == PRE_PUSH && output == "refused"),
+            "{error:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("got")).unwrap(),
+            "origin|/srv/r.git\nrefs/heads/main a refs/heads/main b\n"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_an_exec_format_error_retries_the_hook_through_sh() {
+        let error = |code| std::io::Error::from_raw_os_error(code);
+        assert!(is_exec_format_error(&error(libc::ENOEXEC)));
+        assert!(!is_exec_format_error(&error(libc::ENOENT)));
+        assert!(!is_exec_format_error(&error(libc::EACCES)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn direct_runner_runs_a_hook_without_a_shebang_through_sh_like_git() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, repo) = temp_repo("no-shebang");
+        let hook = dir.join(".git").join("hooks").join("pre-push");
+        std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+        std::fs::write(
+            &hook,
+            "printf '%s|%s|%s|%s\\n' \"$1\" \"$2\" \"$ANGKORGIT_HOOK_PROBE\" \"$(pwd -P)\" > got\ncat >> got\necho refused >&2\nexit 4\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let error = run(
+            &repo,
+            &Runner::Direct(hook),
+            PRE_PUSH,
+            &[OsStr::new("origin"), OsStr::new("/srv/r.git")],
+            &[("ANGKORGIT_HOOK_PROBE", OsStr::new("kept"))],
+            Some("refs/heads/main a refs/heads/main b\n"),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&error, AppError::Hook { hook, status: 4, output } if hook == PRE_PUSH && output == "refused"),
+            "{error:?}"
+        );
+        let workdir = std::fs::canonicalize(&dir).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("got")).unwrap(),
+            format!(
+                "origin|/srv/r.git|kept|{}\nrefs/heads/main a refs/heads/main b\n",
+                workdir.display()
+            )
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

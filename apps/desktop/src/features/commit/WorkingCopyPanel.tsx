@@ -38,6 +38,7 @@ import { FileFilterInput } from '@/components/FileFilterInput';
 import { ChangeMark } from '@/components/ChangeMark';
 import { DirName } from '@/components/DirName';
 import { EmptyCard } from '@/components/EmptyCard';
+import { useRepoHooks } from '@/features/repository/useRepoHooks';
 import {
   FileTree,
   folderFiles,
@@ -68,6 +69,8 @@ function statusBadge(kind: string | null) {
       return null;
   }
 }
+
+const COMMIT_HOOKS = ['pre-commit', 'commit-msg'];
 
 function submoduleDrift(file: FileStatus, staged: boolean): string | null {
   if (staged || !file.submodule) return null;
@@ -350,25 +353,10 @@ export function WorkingCopyPanel() {
   );
   const statusVersion = useRepo((s) => s.statusVersion);
   const statusReady = status !== null;
-  const [commitHooks, setCommitHooks] = useState<string[]>([]);
+  const repoHooks = useRepoHooks(path);
+  const commitHooks = useMemo(() => repoHooks.filter((name) => COMMIT_HOOKS.includes(name)), [repoHooks]);
   const skipHooks = useCommitWork((s) => !!s.skipHooks[path]);
   const setSkipHooks = (skip: boolean) => useCommitWork.getState().setSkipHooks(path, skip);
-  useEffect(() => {
-    setCommitHooks([]);
-  }, [path]);
-  useEffect(() => {
-    if (!path || !statusReady) return;
-    let cancelled = false;
-    void ipc
-      .commitHooks(path)
-      .then((names) => {
-        if (!cancelled) setCommitHooks(names);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [path, statusReady, statusVersion]);
   const [indexPaths, setIndexPaths] = useState<string[] | null>(null);
   const [indexError, setIndexError] = useState<string | null>(null);
   useEffect(() => {

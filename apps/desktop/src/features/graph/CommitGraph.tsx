@@ -28,6 +28,7 @@ import { useUndo, type UndoKind } from '@/features/history/undoStore';
 import { AUTHOR_COL_WIDTH, CommitRow, GUTTER_GAP, GraphTailDefs, REF_COL_WIDTH, ROW_HEIGHT, gutterWidthFor, laneWidthFor } from './GraphRow';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
+import { isHookFailure, reportHookFailure } from '@/components/hookFailure';
 import { useShortcuts } from '@/shared/useShortcuts';
 
 interface MenuState {
@@ -206,6 +207,7 @@ export function CommitGraph() {
       label: string,
       op: () => Promise<unknown>,
       undoable?: { kind: UndoKind; extra?: Record<string, string> },
+      retryWithoutHooks?: () => void,
     ) => {
       try {
         const run = undoable
@@ -227,6 +229,10 @@ export function CommitGraph() {
         await refresh();
         await reload(path);
       } catch (error) {
+        if (retryWithoutHooks && isHookFailure(error)) {
+          reportHookFailure({ repoPath: path, operation: 'push', error, retry: retryWithoutHooks });
+          return;
+        }
         toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
       }
     },
@@ -236,9 +242,14 @@ export function CommitGraph() {
   const pushRemoteFor = (branch: string): string =>
     pickRemote(remotes, branches.find((b) => !b.isRemote && b.name === branch)?.upstream)?.name ?? 'origin';
 
-  const pushBranch = async (branch: string) => {
+  const pushBranch = async (branch: string, noVerify = false): Promise<void> => {
     await ensureRepoProfile(path);
-    await act(`Push ${branch}`, () => ipc.push(path, pushRemoteFor(branch), false, false, true, branch));
+    await act(
+      `Push ${branch}`,
+      () => ipc.push(path, pushRemoteFor(branch), false, false, true, branch, noVerify),
+      undefined,
+      () => void pushBranch(branch, true),
+    );
     void import('@/features/forge/store').then(({ useForge }) => useForge.getState().load(true));
   };
 
