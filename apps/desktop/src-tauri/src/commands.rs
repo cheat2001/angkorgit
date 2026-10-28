@@ -2,8 +2,8 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::core::types::*;
 use crate::core::{
-    branch, commit, conflict, diff, files, history, misc, pull_preview, remote, repo, scan, stage,
-    submodule, worktree,
+    branch, commit, conflict, diff, files, history, hooks, misc, pull_preview, remote, repo, scan,
+    stage, submodule, worktree,
 };
 use crate::error::AppResult;
 use crate::terminal::TerminalState;
@@ -295,13 +295,26 @@ pub async fn unstage_hunk(path: String, file: String, hunkIndex: usize) -> AppRe
 }
 
 #[tauri::command]
-pub async fn commit_create(path: String, message: String) -> AppResult<String> {
-    blocking(move || commit::commit(&path, &message)).await
+pub async fn commit_create(
+    path: String,
+    message: String,
+    noVerify: Option<bool>,
+) -> AppResult<CommitOutcome> {
+    blocking(move || commit::commit(&path, &message, noVerify.unwrap_or(false))).await
 }
 
 #[tauri::command]
-pub async fn commit_amend(path: String, message: Option<String>) -> AppResult<String> {
-    blocking(move || commit::amend(&path, message.as_deref())).await
+pub async fn commit_amend(
+    path: String,
+    message: Option<String>,
+    noVerify: Option<bool>,
+) -> AppResult<CommitOutcome> {
+    blocking(move || commit::amend(&path, message.as_deref(), noVerify.unwrap_or(false))).await
+}
+
+#[tauri::command]
+pub async fn commit_hooks(path: String) -> AppResult<Vec<String>> {
+    blocking(move || hooks::commit_hooks(&path)).await
 }
 
 #[tauri::command]

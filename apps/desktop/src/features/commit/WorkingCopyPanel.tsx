@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
-import { AlertTriangle, Archive, Check, Code, Copy, ExternalLink, File as FileIcon, FolderOpen, History, ListRestart, UserRoundSearch, Minus, Pencil, Plus, SearchCheck, Sparkles, SquareCheck, Trash2, Undo2 } from 'lucide-react';
+import { AlertTriangle, Archive, Check, Code, Copy, ExternalLink, File as FileIcon, FolderOpen, History, ListRestart, UserRoundSearch, Minus, Pencil, Plus, SearchCheck, ShieldOff, Sparkles, SquareCheck, Trash2, Undo2 } from 'lucide-react';
 import type { AllFilesEntry, FileStatus } from '@angkorgit/core';
 import { aiCapabilities, allFiles, buildStagedReviewSignature, filterFiles, foldersWithChanges, hasCommittedHistory, hashText, PROJECT_REVIEW_FILE, joinCommitMessage, splitCommitMessage } from '@angkorgit/core';
 import {
@@ -20,7 +20,7 @@ import {
   Textarea,
   cn,
 } from '@angkorgit/design-system';
-import { ipc } from '@/core/ipc';
+import { ipc, type CommitOutcome, type IpcError } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
 import { useGraph } from '@/features/graph/store';
 import { focusRequests, useUi } from '@/features/ui/store';
@@ -40,6 +40,7 @@ import { FileFilterInput } from '@/components/FileFilterInput';
 import { ChangeMark } from '@/components/ChangeMark';
 import { DirName } from '@/components/DirName';
 import { EmptyCard } from '@/components/EmptyCard';
+import { HookFailedDialog, type CommitRequest, type HookFailure } from '@/components/HookFailedDialog';
 import {
   FileTree,
   folderFiles,
@@ -288,7 +289,8 @@ export function WorkingCopyPanel() {
     window.addEventListener('mouseup', onUp);
   };
   const setAmend = (value: boolean) => useCommitDraft.getState().setAmend(path, value);
-  const [committing, setCommitting] = useState(false);
+  const [committingPaths, setCommittingPaths] = useState<string[]>([]);
+  const committing = committingPaths.includes(path);
   const [aiBusy, setAiBusy] = useState(false);
   const aiRunRef = useRef(0);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; file: FileStatus; staged: boolean } | null>(null);
@@ -352,6 +354,28 @@ export function WorkingCopyPanel() {
   );
   const statusVersion = useRepo((s) => s.statusVersion);
   const statusReady = status !== null;
+  const [commitHooks, setCommitHooks] = useState<string[]>([]);
+  const [skipHooks, setSkipHooks] = useState(false);
+  const [hookFailure, setHookFailure] = useState<HookFailure | null>(null);
+  const hooksActive = commitHooks.length > 0 && !skipHooks;
+  useEffect(() => {
+    setCommitHooks([]);
+    setSkipHooks(false);
+    setHookFailure(null);
+  }, [path]);
+  useEffect(() => {
+    if (!path || !statusReady) return;
+    let cancelled = false;
+    void ipc
+      .commitHooks(path)
+      .then((names) => {
+        if (!cancelled) setCommitHooks(names);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [path, statusReady, statusVersion]);
   const [indexPaths, setIndexPaths] = useState<string[] | null>(null);
   const [indexError, setIndexError] = useState<string | null>(null);
   useEffect(() => {
@@ -693,43 +717,71 @@ export function WorkingCopyPanel() {
     if (path) useAiWork.getState().stopReview(path);
   };
 
-  const committingRef = useRef(false);
+  const committingRef = useRef(new Set<string>());
 
-  const commit = async () => {
+  const reportOutcome = (outcome: CommitOutcome, done: string) => {
+    if (outcome.hookWarning) {
+      toast.warning(`${done} without running hooks`, { description: outcome.hookWarning, duration: 12000 });
+    } else {
+      toast.success(done);
+    }
+  };
+
+  const runCommit = async (request: CommitRequest, noVerify: boolean) => {
+    const target = request.repoPath;
+    if (committingRef.current.has(target)) return;
+    committingRef.current.add(target);
+    setCommittingPaths((paths) => [...paths, target]);
+    const isCurrent = () => useRepo.getState().repo?.path === target;
+    const where = () => (isCurrent() ? '' : ` in ${basename(target)}`);
+    const text = request.message.trim();
+    try {
+      await ensureRepoProfile(target);
+      if (request.amend) {
+        reportOutcome(await ipc.amend(target, text ? text : null, noVerify), `Commit amended${where()}`);
+      } else {
+        const summary = text.split('\n')[0].slice(0, 50);
+        const outcome = await useUndo.getState().tracked({
+          path: target,
+          kind: 'commit',
+          label: `commit "${summary}"`,
+          action: () => ipc.commit(target, text, noVerify),
+        });
+        reportOutcome(outcome, `Committed${where()}`);
+      }
+      const drafts = useCommitDraft.getState();
+      drafts.setDraft(target, '');
+      if (drafts.amendFor === target) drafts.setAmend(target, false);
+      useAiWork.getState().setReview(target, null);
+      if (isCurrent()) {
+        setSkipHooks(false);
+        await refreshStatus();
+        await reloadGraph(target);
+      }
+    } catch (error) {
+      const failure = error as Partial<IpcError> | null;
+      if (failure?.code === 'hook_failed' && isCurrent()) {
+        setHookFailure({ request, message: failure.message ?? '', output: failure.detail ?? '' });
+      } else if (failure?.code === 'hook_failed') {
+        toast.error(failure.message ?? 'A hook stopped the commit.', {
+          description: `Nothing was committed in ${basename(target)}. Commit there again to see the hook output.`,
+        });
+      } else {
+        toast.error(`Commit failed${where()}: ${failure?.message ?? error}`);
+      }
+    } finally {
+      committingRef.current.delete(target);
+      setCommittingPaths((paths) => paths.filter((p) => p !== target));
+    }
+  };
+
+  const commit = async (noVerify = skipHooks) => {
     if (!summary.trim() && !amend) return;
     if (allStaged.length === 0 && !amend && repo?.state !== 'merge') {
       toast.info('Stage some changes first');
       return;
     }
-    if (committingRef.current) return;
-    committingRef.current = true;
-    setCommitting(true);
-    try {
-      await ensureRepoProfile(path);
-      if (amend) {
-        await ipc.amend(path, message.trim() ? message.trim() : null);
-        toast.success('Commit amended');
-      } else {
-        const summary = message.trim().split('\n')[0].slice(0, 50);
-        await useUndo.getState().tracked({
-          path,
-          kind: 'commit',
-          label: `commit "${summary}"`,
-          action: () => ipc.commit(path, message.trim()),
-        });
-        toast.success('Committed');
-      }
-      setMessage('');
-      setAmend(false);
-      useAiWork.getState().setReview(path, null);
-      await refreshStatus();
-      await reloadGraph(path);
-    } catch (error) {
-      toast.error(`Commit failed: ${(error as { message?: string }).message ?? error}`);
-    } finally {
-      committingRef.current = false;
-      setCommitting(false);
-    }
+    await runCommit({ repoPath: path, message, amend }, noVerify);
   };
 
   useEffect(() => {
@@ -1503,10 +1555,24 @@ export function WorkingCopyPanel() {
             />
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
-            <label className="mr-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted">
-              <Checkbox checked={amend} onCheckedChange={(v) => setAmend(v === true)} />
-              <Undo2 className="size-3" /> Amend
-            </label>
+            <div className="mr-auto flex flex-wrap items-center gap-x-3 gap-y-1">
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted">
+                <Checkbox checked={amend} onCheckedChange={(v) => setAmend(v === true)} />
+                <Undo2 className="size-3" /> Amend
+              </label>
+              {commitHooks.length > 0 && (
+                <Hint label={`Commit without running the ${commitHooks.join(' and ')} hook${commitHooks.length === 1 ? '' : 's'}, like --no-verify`}>
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted" data-skip-hooks>
+                    <Checkbox
+                      checked={skipHooks}
+                      onCheckedChange={(v) => setSkipHooks(v === true)}
+                      aria-label="Skip hooks"
+                    />
+                    <ShieldOff className="size-3" /> Skip hooks
+                  </label>
+                </Hint>
+              )}
+            </div>
             <Hint
               label={
                 allStaged.length === 0
@@ -1564,13 +1630,26 @@ export function WorkingCopyPanel() {
                 onClick={() => void commit()}
               >
                 {committing && <Spinner className="text-primary-foreground" />}
-                {amend ? 'Amend commit' : `Commit${allStaged.length > 0 ? ` ${allStaged.length} file${allStaged.length === 1 ? '' : 's'}` : ''}`}
+                {committing && hooksActive
+                  ? 'Running hooks…'
+                  : amend
+                    ? 'Amend commit'
+                    : `Commit${allStaged.length > 0 ? ` ${allStaged.length} file${allStaged.length === 1 ? '' : 's'}` : ''}`}
               </Button>
               </span>
             </Hint>
           </div>
         </div>
       )}
+      <HookFailedDialog
+        failure={hookFailure?.request.repoPath === path ? hookFailure : null}
+        onClose={() => setHookFailure(null)}
+        onCommitWithoutHooks={() => {
+          const failure = hookFailure;
+          setHookFailure(null);
+          if (failure) void runCommit(failure.request, true);
+        }}
+      />
     </div>
   );
 }

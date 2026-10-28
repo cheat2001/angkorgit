@@ -2,7 +2,8 @@ use git2::Repository;
 
 use crate::error::{AppError, AppResult};
 
-use super::types::{OpOutcome, RebaseTodoEntry};
+use super::hooks::CommitHooks;
+use super::types::{CommitOutcome, OpOutcome, RebaseTodoEntry};
 
 pub(crate) fn default_signature(repo: &Repository) -> AppResult<git2::Signature<'static>> {
     repo.signature().map_err(|_| {
@@ -10,7 +11,7 @@ pub(crate) fn default_signature(repo: &Repository) -> AppResult<git2::Signature<
     })
 }
 
-pub fn commit(path: &str, message: &str) -> AppResult<String> {
+pub fn commit(path: &str, message: &str, no_verify: bool) -> AppResult<CommitOutcome> {
     let mut repo = super::repo::open(path)?;
     let sig = default_signature(&repo)?;
 
@@ -23,25 +24,14 @@ pub fn commit(path: &str, message: &str) -> AppResult<String> {
         })?;
     }
 
-    let mut index = repo.index()?;
-    let index_is_empty = index.is_empty();
-    let tree_oid = index.write_tree()?;
-    drop(index);
-
-    if !is_merge {
-        let head_tree = repo
-            .head()
-            .ok()
-            .and_then(|h| h.peel_to_tree().ok())
-            .map(|t| t.id());
-        let nothing_staged = match head_tree {
-            Some(head_tree) => head_tree == tree_oid,
-            None => index_is_empty,
-        };
-        if nothing_staged {
-            return Err(AppError::other("Nothing staged to commit"));
-        }
-    }
+    let tree_oid = staged_tree(&repo, is_merge)?;
+    let hooks = CommitHooks::prepare(&repo, &sig, no_verify)?;
+    let tree_oid = if hooks.pre_commit(&repo)? {
+        staged_tree(&repo, is_merge)?
+    } else {
+        tree_oid
+    };
+    let message = hooks.commit_msg(&repo, message)?;
 
     let oid = {
         let tree = repo.find_tree(tree_oid)?;
@@ -62,7 +52,7 @@ pub fn commit(path: &str, message: &str) -> AppResult<String> {
             Some("HEAD"),
             &sig,
             &sig,
-            message,
+            &message,
             &tree,
             &parent_refs,
         )?
@@ -71,7 +61,32 @@ pub fn commit(path: &str, message: &str) -> AppResult<String> {
     if is_merge {
         repo.cleanup_state()?;
     }
-    Ok(oid.to_string())
+    Ok(CommitOutcome {
+        oid: oid.to_string(),
+        hook_warning: hooks.warning,
+    })
+}
+
+fn staged_tree(repo: &Repository, is_merge: bool) -> AppResult<git2::Oid> {
+    let mut index = repo.index()?;
+    index.read(true)?;
+    let index_is_empty = index.is_empty();
+    let tree_oid = index.write_tree()?;
+    if !is_merge {
+        let head_tree = repo
+            .head()
+            .ok()
+            .and_then(|h| h.peel_to_tree().ok())
+            .map(|t| t.id());
+        let nothing_staged = match head_tree {
+            Some(head_tree) => head_tree == tree_oid,
+            None => index_is_empty,
+        };
+        if nothing_staged {
+            return Err(AppError::other("Nothing staged to commit"));
+        }
+    }
+    Ok(tree_oid)
 }
 
 pub fn merge_message(path: &str) -> AppResult<Option<String>> {
@@ -130,22 +145,42 @@ pub fn revert(path: &str, oid: &str) -> AppResult<OpOutcome> {
     })
 }
 
-pub fn amend(path: &str, message: Option<&str>) -> AppResult<String> {
+pub fn amend(path: &str, message: Option<&str>, no_verify: bool) -> AppResult<CommitOutcome> {
     let repo = super::repo::open(path)?;
     let head = repo
         .head()
         .map_err(|_| AppError::other("nothing to amend: repository has no commits"))?;
     let commit = head.peel_to_commit()?;
+    let hooks = CommitHooks::prepare(&repo, &commit.author(), no_verify)?;
+    hooks.pre_commit(&repo)?;
+    let message = match message {
+        Some(message) => Some(hooks.commit_msg(&repo, message)?),
+        None => {
+            let current = String::from_utf8_lossy(commit.message_bytes()).into_owned();
+            let checked = hooks.commit_msg(&repo, &current)?;
+            (checked != current).then_some(checked)
+        }
+    };
     let mut index = repo.index()?;
+    index.read(true)?;
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
     if super::sign::signing_config(&repo)?.is_none() {
-        let oid = commit.amend(Some("HEAD"), None, None, None, message, Some(&tree))?;
-        return Ok(oid.to_string());
+        let oid = commit.amend(
+            Some("HEAD"),
+            None,
+            None,
+            None,
+            message.as_deref(),
+            Some(&tree),
+        )?;
+        return Ok(CommitOutcome {
+            oid: oid.to_string(),
+            hook_warning: hooks.warning,
+        });
     }
-    let message = message
-        .map(str::to_string)
-        .unwrap_or_else(|| String::from_utf8_lossy(commit.message_bytes()).into_owned());
+    let message =
+        message.unwrap_or_else(|| String::from_utf8_lossy(commit.message_bytes()).into_owned());
     let author = commit.author();
     let committer = commit.committer();
     let parents: Vec<git2::Commit> = commit.parents().collect();
@@ -159,7 +194,10 @@ pub fn amend(path: &str, message: Option<&str>) -> AppResult<String> {
         &tree,
         &parent_refs,
     )?;
-    Ok(oid.to_string())
+    Ok(CommitOutcome {
+        oid: oid.to_string(),
+        hook_warning: hooks.warning,
+    })
 }
 
 pub fn reword(path: &str, oid: &str, message: &str) -> AppResult<String> {

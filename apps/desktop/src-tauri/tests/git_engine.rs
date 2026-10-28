@@ -58,7 +58,7 @@ impl Drop for TempRepo {
 
 fn commit_all(repo: &TempRepo, message: &str) -> String {
     core::stage_all(repo.path()).unwrap();
-    core::commit(repo.path(), message).unwrap()
+    core::commit(repo.path(), message, false).unwrap().oid
 }
 
 #[test]
@@ -85,7 +85,9 @@ fn stage_commit_and_history() {
     assert_eq!(status.files.len(), 1);
     assert_eq!(status.files[0].staged.as_deref(), Some("new"));
 
-    let oid = core::commit(repo.path(), "feat: initial commit").unwrap();
+    let oid = core::commit(repo.path(), "feat: initial commit", false)
+        .unwrap()
+        .oid;
     assert_eq!(oid.len(), 40);
 
     let page = core::history(
@@ -118,7 +120,7 @@ fn unstage_and_amend() {
     assert_eq!(status.files[0].unstaged.as_deref(), Some("modified"));
 
     core::stage_file(repo.path(), "a.txt").unwrap();
-    core::amend(repo.path(), Some("first (amended)")).unwrap();
+    core::amend(repo.path(), Some("first (amended)"), false).unwrap();
     let page = core::history(
         repo.path(),
         core::HistoryQuery {
@@ -235,7 +237,7 @@ fn merge_conflict_detect_and_resolve() {
 
     core::conflict_resolve(repo.path(), "a.txt", "resolved content\n").unwrap();
     assert_eq!(core::conflict_list(repo.path()).unwrap().len(), 0);
-    core::commit(repo.path(), "merge other").unwrap();
+    core::commit(repo.path(), "merge other", false).unwrap();
     assert_eq!(repo.read("a.txt"), "resolved content\n");
 }
 
@@ -262,7 +264,7 @@ fn commit_with_nothing_staged_is_refused_and_head_stays() {
     let base = commit_all(&repo, "base");
     repo.write("a.txt", "unstaged edit\n");
 
-    let err = core::commit(repo.path(), "empty").unwrap_err();
+    let err = core::commit(repo.path(), "empty", false).unwrap_err();
     assert!(err.to_string().contains("Nothing staged to commit"));
     let head = head_commit(&repo);
     assert_eq!(head.0, base);
@@ -273,10 +275,10 @@ fn commit_with_nothing_staged_is_refused_and_head_stays() {
 fn first_commit_with_an_empty_index_is_refused() {
     let repo = TempRepo::new();
     repo.write("a.txt", "untracked\n");
-    let err = core::commit(repo.path(), "empty").unwrap_err();
+    let err = core::commit(repo.path(), "empty", false).unwrap_err();
     assert!(err.to_string().contains("Nothing staged to commit"));
     core::stage_file(repo.path(), "a.txt").unwrap();
-    core::commit(repo.path(), "first").unwrap();
+    core::commit(repo.path(), "first", false).unwrap();
 }
 
 #[test]
@@ -294,7 +296,9 @@ fn merge_that_keeps_head_tree_still_commits() {
     let outcome = core::merge(repo.path(), "other", false).unwrap();
     assert_eq!(outcome.status, "conflicts");
     core::conflict_resolve(repo.path(), "a.txt", "master change\n").unwrap();
-    let merged = core::commit(repo.path(), "merge other, keep ours").unwrap();
+    let merged = core::commit(repo.path(), "merge other, keep ours", false)
+        .unwrap()
+        .oid;
     assert_ne!(merged, master);
     let head = head_commit(&repo);
     assert_eq!(head.1, 2);
@@ -1275,7 +1279,7 @@ fn cleanup_state_clears_a_stale_rebase_without_touching_files() {
     assert_eq!(core::repo_info(repo.path()).unwrap().state, "rebase");
 
     core::conflict_resolve(repo.path(), "f.txt", "resolved\n").unwrap();
-    core::commit(repo.path(), "resolved by hand").unwrap();
+    core::commit(repo.path(), "resolved by hand", false).unwrap();
     assert_eq!(core::repo_info(repo.path()).unwrap().state, "rebase");
 
     core::cleanup_state(repo.path()).unwrap();
@@ -1594,7 +1598,7 @@ fn merge_message_available_during_conflicted_merge_only() {
     assert!(!message.contains('#'));
 
     core::conflict_resolve(repo.path(), "a.txt", "resolved\n").unwrap();
-    core::commit(repo.path(), &message).unwrap();
+    core::commit(repo.path(), &message, false).unwrap();
     assert_eq!(core::merge_message(repo.path()).unwrap(), None);
 }
 
@@ -1727,7 +1731,7 @@ fn amend_re_signs_the_commit() {
     commit_all(&repo, "feat: original");
     repo.write("a.txt", "two\n");
     core::stage_all(repo.path()).unwrap();
-    core::amend(repo.path(), Some("feat: amended")).unwrap();
+    core::amend(repo.path(), Some("feat: amended"), false).unwrap();
 
     let header = commit_header(&repo, "HEAD");
     assert!(header.contains("SSH SIGNATURE"));
@@ -1776,7 +1780,7 @@ fn signing_failure_blocks_the_commit_and_leaves_the_repo_untouched() {
 
     repo.write("a.txt", "two\n");
     core::stage_all(repo.path()).unwrap();
-    let err = core::commit(repo.path(), "second").unwrap_err();
+    let err = core::commit(repo.path(), "second", false).unwrap_err();
     assert!(err.to_string().contains("user.signingKey"));
 
     let head = Command::new("git")
@@ -4268,4 +4272,391 @@ fn pull_preview_catches_a_rebase_conflict_that_a_merge_would_not_have() {
 
     let outcome = core::pull(scene.other.path(), "origin", None).unwrap();
     assert_eq!(outcome.status, "conflicts", "{}", outcome.message);
+}
+
+fn write_hook(dir: &std::path::Path, name: &str, body: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    let hook = dir.join(name);
+    std::fs::write(&hook, format!("#!/bin/sh\n{body}\n")).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+fn default_hooks(repo: &TempRepo) -> PathBuf {
+    repo.dir.join(".git").join("hooks")
+}
+
+fn hooks_runnable() -> bool {
+    if core::hook_runner_available() {
+        return true;
+    }
+    eprintln!("skipping: git 2.36 or newer is not on PATH");
+    false
+}
+
+fn head_message_at(path: &str) -> String {
+    let repo = git2::Repository::open(path).unwrap();
+    let commit = repo.head().unwrap().peel_to_commit().unwrap();
+    commit.message().unwrap().to_string()
+}
+
+fn head_file(repo: &TempRepo, file: &str) -> String {
+    let git = git2::Repository::open(repo.path()).unwrap();
+    let tree = git.head().unwrap().peel_to_tree().unwrap();
+    let blob = git
+        .find_blob(tree.get_path(std::path::Path::new(file)).unwrap().id())
+        .unwrap();
+    String::from_utf8(blob.content().to_vec()).unwrap()
+}
+
+fn hook_failure(err: impl serde::Serialize) -> (String, String, String) {
+    let payload = serde_json::to_value(&err).unwrap();
+    (
+        payload["code"].as_str().unwrap_or_default().to_string(),
+        payload["message"].as_str().unwrap_or_default().to_string(),
+        payload["detail"].as_str().unwrap_or_default().to_string(),
+    )
+}
+
+#[test]
+fn passing_pre_commit_hook_lets_the_commit_through() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    write_hook(
+        &default_hooks(&repo),
+        "pre-commit",
+        "printf '%s' \"$GIT_INDEX_FILE\" > .git/pre-commit-index",
+    );
+    repo.write("a.txt", "one\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let outcome = core::commit(repo.path(), "first", false).unwrap();
+    assert_eq!(head_commit(&repo).0, outcome.oid);
+    assert!(outcome.hook_warning.is_none());
+    let seen = repo.read(".git/pre-commit-index");
+    assert!(!seen.is_empty());
+    #[cfg(unix)]
+    {
+        let index = git2::Repository::open(repo.path())
+            .unwrap()
+            .path()
+            .join("index");
+        assert_eq!(canonical(&seen), std::fs::canonicalize(index).unwrap());
+    }
+}
+
+#[test]
+fn failing_pre_commit_hook_blocks_the_commit_and_returns_its_output() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    write_hook(
+        &default_hooks(&repo),
+        "pre-commit",
+        "echo 'lint: a.txt is not formatted'\necho 'second line' >&2\nexit 3",
+    );
+    repo.write("a.txt", "changed\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::commit(repo.path(), "second", false).unwrap_err();
+    let (code, message, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert_eq!(message, "The pre-commit hook failed (exit code 3).");
+    assert!(detail.contains("lint: a.txt is not formatted"), "{detail}");
+    assert!(detail.contains("second line"), "{detail}");
+    assert_eq!(head_commit(&repo).0, base);
+    let status = core::status(repo.path()).unwrap();
+    assert_eq!(status.files[0].staged.as_deref(), Some("modified"));
+}
+
+#[test]
+fn pre_commit_hook_that_restages_a_file_commits_the_new_content() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    write_hook(
+        &default_hooks(&repo),
+        "pre-commit",
+        "printf 'formatted\\n' > a.txt\ngit add a.txt",
+    );
+    repo.write("a.txt", "raw\n");
+    core::stage_all(repo.path()).unwrap();
+
+    core::commit(repo.path(), "format on commit", false).unwrap();
+    assert_eq!(head_file(&repo, "a.txt"), "formatted\n");
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
+}
+
+#[test]
+fn commit_msg_hook_edits_the_message_that_gets_committed() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    write_hook(
+        &default_hooks(&repo),
+        "commit-msg",
+        "printf '\\nSigned-off-by: Test User <test@angkorgit.dev>\\n' >> \"$1\"",
+    );
+    repo.write("a.txt", "one\n");
+    core::stage_all(repo.path()).unwrap();
+
+    core::commit(repo.path(), "feat: first\n\nBody line", false).unwrap();
+    assert_eq!(
+        head_message_at(repo.path()),
+        "feat: first\n\nBody line\n\nSigned-off-by: Test User <test@angkorgit.dev>"
+    );
+    assert!(repo.dir.join(".git").join("COMMIT_EDITMSG").exists());
+}
+
+#[test]
+fn commit_msg_hook_that_leaves_the_message_alone_keeps_it_byte_for_byte() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    write_hook(&default_hooks(&repo), "commit-msg", "exit 0");
+    repo.write("a.txt", "one\n");
+    core::stage_all(repo.path()).unwrap();
+
+    core::commit(repo.path(), "keep  me  ", false).unwrap();
+    assert_eq!(head_message_at(repo.path()), "keep  me  ");
+}
+
+#[test]
+fn failing_commit_msg_hook_blocks_the_commit() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    write_hook(
+        &default_hooks(&repo),
+        "commit-msg",
+        "echo 'subject must start with a type' >&2\nexit 1",
+    );
+    repo.write("a.txt", "changed\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::commit(repo.path(), "no type here", false).unwrap_err();
+    let (code, message, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert_eq!(message, "The commit-msg hook failed (exit code 1).");
+    assert!(
+        detail.contains("subject must start with a type"),
+        "{detail}"
+    );
+    assert_eq!(head_commit(&repo).0, base);
+}
+
+#[test]
+fn commit_msg_hook_that_empties_the_message_blocks_the_commit() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    write_hook(&default_hooks(&repo), "commit-msg", ": > \"$1\"");
+    repo.write("a.txt", "changed\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::commit(repo.path(), "about to vanish", false).unwrap_err();
+    assert!(err.to_string().contains("empty commit message"), "{err}");
+    assert_eq!(head_commit(&repo).0, base);
+}
+
+#[test]
+fn no_verify_skips_failing_commit_hooks() {
+    let repo = TempRepo::new();
+    write_hook(&default_hooks(&repo), "pre-commit", "exit 1");
+    write_hook(&default_hooks(&repo), "commit-msg", "exit 1");
+    repo.write("a.txt", "one\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let outcome = core::commit(repo.path(), "skip the hooks", true).unwrap();
+    assert!(outcome.hook_warning.is_none());
+    assert_eq!(head_message_at(repo.path()), "skip the hooks");
+
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+    core::amend(repo.path(), None, true).unwrap();
+    assert_eq!(head_file(&repo, "a.txt"), "two\n");
+}
+
+#[test]
+fn amend_runs_the_commit_hooks() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let first = commit_all(&repo, "first");
+    let hooks = default_hooks(&repo);
+    write_hook(&hooks, "pre-commit", "echo 'tests failed'\nexit 1");
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::amend(repo.path(), None, false).unwrap_err();
+    let (code, message, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert_eq!(message, "The pre-commit hook failed (exit code 1).");
+    assert!(detail.contains("tests failed"), "{detail}");
+    assert_eq!(head_commit(&repo).0, first);
+
+    write_hook(&hooks, "pre-commit", "exit 0");
+    write_hook(
+        &hooks,
+        "commit-msg",
+        "printf '\\nReviewed-by: Hook\\n' >> \"$1\"",
+    );
+    core::amend(repo.path(), None, false).unwrap();
+    assert_eq!(head_message_at(repo.path()), "first\n\nReviewed-by: Hook");
+    assert_eq!(head_file(&repo, "a.txt"), "two\n");
+
+    write_hook(&hooks, "commit-msg", "printf 'fix: rewritten\\n' > \"$1\"");
+    core::amend(repo.path(), Some("fix: typo"), false).unwrap();
+    assert_eq!(head_message_at(repo.path()), "fix: rewritten");
+    assert_eq!(head_commit(&repo).1, 0);
+}
+
+#[test]
+fn commit_hooks_follow_core_hooks_path_and_ignore_samples_and_plain_files() {
+    let repo = TempRepo::new();
+    let default = default_hooks(&repo);
+    write_hook(&default, "pre-commit.sample", "exit 1");
+    #[cfg(unix)]
+    std::fs::write(default.join("commit-msg"), "#!/bin/sh\nexit 1\n").unwrap();
+    assert!(core::commit_hooks(repo.path()).unwrap().is_empty());
+    repo.write("a.txt", "one\n");
+    let base = commit_all(&repo, "base");
+
+    core::set_config(Some(repo.path()), "core.hooksPath", ".githooks", false).unwrap();
+    write_hook(&default, "pre-commit", "exit 0");
+    write_hook(
+        &repo.dir.join(".githooks"),
+        "pre-commit",
+        "echo 'from .githooks'\nexit 2",
+    );
+    assert_eq!(core::commit_hooks(repo.path()).unwrap(), vec!["pre-commit"]);
+    if !hooks_runnable() {
+        return;
+    }
+    repo.write("a.txt", "two\n");
+    core::stage_file(repo.path(), "a.txt").unwrap();
+
+    let err = core::commit(repo.path(), "second", false).unwrap_err();
+    let (code, _, detail) = hook_failure(err);
+    assert_eq!(code, "hook_failed");
+    assert!(detail.contains("from .githooks"), "{detail}");
+    assert_eq!(head_commit(&repo).0, base);
+}
+
+#[test]
+fn commit_hooks_include_hooks_defined_in_config() {
+    let repo = TempRepo::new();
+    assert!(core::commit_hooks(repo.path()).unwrap().is_empty());
+    core::set_config(Some(repo.path()), "hook.lint.event", "pre-commit", false).unwrap();
+    assert_eq!(core::commit_hooks(repo.path()).unwrap(), vec!["pre-commit"]);
+}
+
+#[test]
+fn commit_msg_hook_runs_in_a_linked_worktree() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, false).unwrap();
+    let (dir, _cleanup) = worktree_target(&repo, "hooks");
+    let created = add_worktree(&repo, &dir, "feature", false);
+    write_hook(
+        &default_hooks(&repo),
+        "commit-msg",
+        "printf 'feat: from the worktree\\n' > \"$1\"",
+    );
+    std::fs::write(dir.join("b.txt"), "b\n").unwrap();
+    core::stage_file(&created, "b.txt").unwrap();
+
+    core::commit(&created, "wip", false).unwrap();
+    assert_eq!(head_message_at(&created), "feat: from the worktree");
+    let linked = git2::Repository::open(&created).unwrap();
+    assert!(linked.path().join("COMMIT_EDITMSG").exists());
+    assert!(!repo.dir.join(".git").join("COMMIT_EDITMSG").exists());
+    assert_eq!(head_message_at(repo.path()), "base");
+}
+
+#[test]
+fn commit_hooks_see_the_author_and_amend_keeps_the_original_one() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    commit_all(&repo, "first");
+    let hooks = default_hooks(&repo);
+    let record = |name: &str| {
+        format!(
+            "printf '%s|%s|%s' \"$GIT_AUTHOR_NAME\" \"$GIT_AUTHOR_EMAIL\" \"$GIT_AUTHOR_DATE\" > .git/{name}-author"
+        )
+    };
+    write_hook(&hooks, "pre-commit", &record("pre-commit"));
+    write_hook(&hooks, "commit-msg", &record("commit-msg"));
+    let author_line = |path: &str| {
+        let git = git2::Repository::open(path).unwrap();
+        let author = git
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .author()
+            .to_owned();
+        let when = author.when();
+        let offset = when.offset_minutes().abs();
+        format!(
+            "{}|{}|@{} {}{:02}{:02}",
+            author.name().unwrap(),
+            author.email().unwrap(),
+            when.seconds(),
+            when.sign(),
+            offset / 60,
+            offset % 60
+        )
+    };
+
+    let original = author_line(repo.path());
+    core::set_config(Some(repo.path()), "user.name", "Other Person", false).unwrap();
+    core::set_config(
+        Some(repo.path()),
+        "user.email",
+        "other@angkorgit.dev",
+        false,
+    )
+    .unwrap();
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+    core::amend(repo.path(), None, false).unwrap();
+    assert!(original.starts_with("Test User|test@angkorgit.dev|@"));
+    assert_eq!(author_line(repo.path()), original);
+    assert_eq!(repo.read(".git/pre-commit-author"), original);
+    assert_eq!(repo.read(".git/commit-msg-author"), original);
+
+    repo.write("a.txt", "three\n");
+    core::stage_all(repo.path()).unwrap();
+    core::commit(repo.path(), "second", false).unwrap();
+    let current = author_line(repo.path());
+    assert!(current.starts_with("Other Person|other@angkorgit.dev|@"));
+    assert_eq!(repo.read(".git/pre-commit-author"), current);
+    assert_eq!(repo.read(".git/commit-msg-author"), current);
 }
