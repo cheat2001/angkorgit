@@ -119,6 +119,7 @@ export const useRepo = create<RepoState>((set, get) => ({
       })
       .catch(() => undefined);
     void import('@/features/ui/store').then(({ useUi }) => {
+      if (seq !== openSeq || get().repo?.path !== repo.path) return;
       useUi.getState().addRepoTab(repo.path);
       useUi.getState().markWorktreeTab(repo.path, repo.isWorktree, repo.mainPath);
     });

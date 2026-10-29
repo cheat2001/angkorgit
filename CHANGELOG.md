@@ -6,6 +6,22 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Write an earlier commit's message with AI.** The commit message editor in the
+  inspector has the same sparkle button as the commit box: it sends that commit's
+  changes to your AI provider and fills in a new summary and description, following
+  your commit style and branch prefix rules. Edit it, then Save message as before;
+  the button stops a run that is taking too long.
+
+### Fixed
+- **The AI message editor keeps the keyboard while generating.** Clicking the
+  sparkle now moves focus into the summary, so Esc and ⌘⏎ keep working in
+  WebKit-based views (where a clicked button never takes focus), and the summary
+  and description are locked with readOnly instead of disabled, so they no longer
+  dim or lose the editor's ring while the AI runs.
+- Closing a tab right after switching to it (⌘W / Ctrl+W) no longer brings the
+  closed tab back a moment later.
+
 ## [0.25.0] — 2026-10-28
 
 The know-before-you-pull release. Pull now tells you ahead of time when it would
