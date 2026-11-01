@@ -190,15 +190,88 @@ fn is_supported(program: &str) -> bool {
         .any(|(_, _, bins)| bins.contains(&stem.as_str()))
 }
 
-pub(crate) fn capture(mut command: Command, stdin: &str, timeout: Duration) -> AppResult<Captured> {
+pub(crate) fn capture(command: Command, stdin: &str, timeout: Duration) -> AppResult<Captured> {
+    let child =
+        spawn_piped(command).map_err(|e| AppError::other(format!("failed to launch: {e}")))?;
+    capture_child(child, stdin, timeout)
+}
+
+pub(crate) fn capture_tree(
+    command: Command,
+    stdin: &str,
+    timeout: Duration,
+) -> AppResult<Captured> {
+    let child =
+        spawn_tree(command).map_err(|e| AppError::other(format!("failed to launch: {e}")))?;
+    capture_tree_child(child, stdin, timeout)
+}
+
+pub(crate) fn spawn_piped(mut command: Command) -> std::io::Result<Child> {
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|e| AppError::other(format!("failed to launch: {e}")))?;
+    command.spawn()
+}
 
+pub(crate) fn spawn_tree(mut command: Command) -> std::io::Result<Child> {
+    own_process_group(&mut command);
+    spawn_piped(command)
+}
+
+pub(crate) fn capture_child(child: Child, stdin: &str, timeout: Duration) -> AppResult<Captured> {
+    collect(child, stdin, timeout, false)
+}
+
+pub(crate) fn capture_tree_child(
+    child: Child,
+    stdin: &str,
+    timeout: Duration,
+) -> AppResult<Captured> {
+    collect(child, stdin, timeout, true)
+}
+
+#[cfg(unix)]
+fn own_process_group(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn own_process_group(_command: &mut Command) {}
+
+#[cfg(unix)]
+fn kill_tree(child: &mut Child) {
+    if let Ok(group) = libc::pid_t::try_from(child.id()) {
+        unsafe {
+            libc::killpg(group, libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+}
+
+#[cfg(windows)]
+fn kill_tree(child: &mut Child) {
+    let _ = crate::proc::hidden("taskkill")
+        .args(["/F", "/T", "/PID", &child.id().to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = child.kill();
+}
+
+#[cfg(not(any(unix, windows)))]
+fn kill_tree(child: &mut Child) {
+    let _ = child.kill();
+}
+
+fn collect(
+    mut child: Child,
+    stdin: &str,
+    timeout: Duration,
+    whole_tree: bool,
+) -> AppResult<Captured> {
     let stdin_data = stdin.as_bytes().to_vec();
     let mut stdin_pipe = child.stdin.take();
     let stdin_thread = std::thread::spawn(move || {
@@ -226,7 +299,11 @@ pub(crate) fn capture(mut command: Command, stdin: &str, timeout: Duration) -> A
     let status = match wait_with_timeout(&mut child, timeout) {
         Some(status) => status,
         None => {
-            let _ = child.kill();
+            if whole_tree {
+                kill_tree(&mut child);
+            } else {
+                let _ = child.kill();
+            }
             let _ = child.wait();
             drop(stdin_thread);
             drop(stdout_thread);
@@ -584,5 +661,51 @@ mod tests {
         assert!(err.is_err());
         assert!(started.elapsed() < Duration::from_secs(10));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_timed_out_tree_capture_stops_what_the_child_started() {
+        let dir = std::env::temp_dir().join(format!(
+            "angkorgit-ai-test-tree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid_file = dir.join("grandchild");
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg(format!(
+            "sleep 30 & echo $! > '{}'; wait",
+            pid_file.display()
+        ));
+        let started = Instant::now();
+        let Err(err) = capture_tree(command, "", Duration::from_secs(1)) else {
+            panic!("the sleeping shell must time out");
+        };
+        assert!(err.to_string().contains("timed out"), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let grandchild: libc::pid_t = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut alive = true;
+        while alive && Instant::now() < deadline {
+            alive = unsafe { libc::kill(grandchild, 0) } == 0;
+            if alive {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        if alive {
+            unsafe {
+                libc::kill(grandchild, libc::SIGKILL);
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(!alive, "the grandchild outlived the timeout");
     }
 }

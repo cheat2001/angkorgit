@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use git2::Repository;
 
-use crate::ai_cli::{capture, search_path};
+use crate::ai_cli::{capture, capture_tree, search_path};
 use crate::error::{AppError, AppResult};
 
 pub const PRE_COMMIT: &str = "pre-commit";
@@ -178,7 +178,7 @@ pub(crate) fn run(
     for (key, value) in env {
         command.env(key, value);
     }
-    let captured = capture(command, "", HOOK_TIMEOUT)
+    let captured = capture_tree(command, "", HOOK_TIMEOUT)
         .map_err(|e| AppError::other(format!("The {name} hook could not run: {e}")))?;
     if captured.status == 0 {
         return Ok(());
