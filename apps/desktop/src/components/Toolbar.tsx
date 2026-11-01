@@ -48,7 +48,7 @@ import {
   Spinner,
   cn,
 } from '@angkorgit/design-system';
-import { ipc, pickDirectory, type OpOutcome } from '@/core/ipc';
+import { ipc, pickDirectory } from '@/core/ipc';
 import { isHookFailure, reportHookFailure } from '@/components/hookFailure';
 import { useRepoHooks } from '@/features/repository/useRepoHooks';
 import { confirmDialog } from '@/components/confirm';
@@ -404,6 +404,16 @@ function UndoRedoButtons({ onRefresh }: { onRefresh: () => Promise<void> }) {
   );
 }
 
+interface PushRequest {
+  repoPath: string;
+  remote: string;
+  branch: string | undefined;
+  force: boolean;
+  withTags: boolean;
+  setUpstream: boolean;
+  noVerify: boolean;
+}
+
 function isNonFastForward(error: unknown): boolean {
   const e = error as { code?: string; message?: string } | null;
   return e?.code === 'non_fast_forward' || /non-fast-?forward/i.test(e?.message ?? '');
@@ -435,7 +445,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const { editors } = useEditors();
   const editor = preferredEditor(editors, editorId);
 
-  const [pushRejected, setPushRejected] = useState(false);
+  const [pushRejected, setPushRejected] = useState<PushRequest | null>(null);
   const [pullCheck, setPullCheck] = useState(false);
   const pullWarning = pullWarningOf(pullPreview);
   const pullWarningLine = pullPreview ? pullWarningText(pullPreview) : null;
@@ -444,6 +454,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     label: string,
     op: () => Promise<{ status: string; message: string } | void>,
     retryWithoutHooks?: () => void,
+    onNonFastForward?: () => void,
   ) => {
     if (busy) return;
     setBusy(label);
@@ -461,8 +472,8 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
         reportHookFailure({ repoPath: repo.path, operation: 'push', error, retry: retryWithoutHooks });
         return;
       }
-      if (label === 'Push' && isNonFastForward(error)) {
-        setPushRejected(true);
+      if (onNonFastForward && isNonFastForward(error)) {
+        onNonFastForward();
         return;
       }
       const text = String((error as { message?: string }).message ?? error);
@@ -476,11 +487,35 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     }
   };
 
-  const runPush = (label: string, push: (noVerify: boolean) => Promise<OpOutcome>, noVerify = false): void =>
+  const pushRequest = (overrides: Partial<PushRequest> = {}): PushRequest => ({
+    repoPath: repo.path,
+    remote,
+    branch: repo.headBranch ?? undefined,
+    force: false,
+    withTags: false,
+    setUpstream: true,
+    noVerify: false,
+    ...overrides,
+  });
+  const runPush = (label: string, request: PushRequest): void =>
     void (async () => {
       if (busy) return;
-      await ensureRepoProfile(repo.path);
-      await run(label, () => push(noVerify), () => runPush(label, push, true));
+      await ensureRepoProfile(request.repoPath);
+      await run(
+        label,
+        () =>
+          ipc.push(
+            request.repoPath,
+            request.remote,
+            request.force,
+            request.withTags,
+            request.setUpstream,
+            request.branch,
+            request.noVerify,
+          ),
+        () => runPush(label, { ...request, noVerify: true }),
+        !request.force && request.remote === remote ? () => setPushRejected(request) : undefined,
+      );
       void import('@/features/forge/store').then(({ useForge }) => useForge.getState().load(true));
     })();
   const confirmForcePush = async () => {
@@ -491,7 +526,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       confirmLabel: 'Force push',
       destructive: true,
     });
-    if (ok) runPush('Push (force)', (noVerify) => ipc.push(repo.path, remote, true, false, true, undefined, noVerify));
+    if (ok) runPush('Push (force)', pushRequest({ force: true }));
   };
 
   return (
@@ -525,17 +560,18 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       <UndoRedoButtons onRefresh={onRefresh} />
 
       <PushRejectedDialog
-        open={pushRejected}
-        remote={remote}
-        branch={repo.headBranch ?? null}
-        onClose={() => setPushRejected(false)}
+        open={pushRejected !== null}
+        remote={pushRejected?.remote ?? remote}
+        branch={pushRejected?.branch ?? repo.headBranch ?? null}
+        onClose={() => setPushRejected(null)}
         onPullRebase={() => {
-          setPushRejected(false);
+          setPushRejected(null);
           void run('Pull (rebase)', () => ipc.pull(repo.path, remote, 'rebase'));
         }}
         onForcePush={() => {
-          setPushRejected(false);
-          runPush('Push (force)', (noVerify) => ipc.push(repo.path, remote, true, false, true, undefined, noVerify));
+          const rejected = pushRejected;
+          setPushRejected(null);
+          if (rejected) runPush('Push (force)', { ...rejected, force: true });
         }}
       />
 
@@ -644,7 +680,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             size="sm"
             className="rounded-r-none"
             disabled={!!busy}
-            onClick={() => runPush('Push', (noVerify) => ipc.push(repo.path, remote, false, false, true, undefined, noVerify))}
+            onClick={() => runPush('Push', pushRequest())}
           >
             <ArrowUpFromLine />
             Push
@@ -661,16 +697,12 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             <DropdownMenuItem onClick={() => void confirmForcePush()} destructive>
               Force push
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => runPush('Push with tags', (noVerify) => ipc.push(repo.path, remote, false, true, true, undefined, noVerify))}
-            >
+            <DropdownMenuItem onClick={() => runPush('Push with tags', pushRequest({ withTags: true }))}>
               Push with tags
             </DropdownMenuItem>
             {repoHooks.includes('pre-push') && (
               <DropdownMenuItem
-                onClick={() =>
-                  runPush('Push without hooks', (noVerify) => ipc.push(repo.path, remote, false, false, true, undefined, noVerify), true)
-                }
+                onClick={() => runPush('Push without hooks', pushRequest({ noVerify: true }))}
               >
                 Push without hooks
               </DropdownMenuItem>
@@ -684,8 +716,9 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
                     key={r.name}
                     checked={r.name === remote}
                     onSelect={() =>
-                      runPush(`Push to ${r.name}`, (noVerify) =>
-                        ipc.push(repo.path, r.name, false, false, pushSetsUpstream(headUpstream, r.name), undefined, noVerify),
+                      runPush(
+                        `Push to ${r.name}`,
+                        pushRequest({ remote: r.name, setUpstream: pushSetsUpstream(headUpstream, r.name) }),
                       )
                     }
                   >

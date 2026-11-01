@@ -157,7 +157,17 @@ function demoHooksDelay(): number {
   }
 }
 
-async function demoPushOutcome(message: string, noVerify: boolean): Promise<OpOutcome> {
+const DEMO_PUSH_REJECTED = 'angkorgit-demo-push-rejected';
+
+function demoPushRejected(): boolean {
+  try {
+    return localStorage.getItem(DEMO_PUSH_REJECTED) === '1';
+  } catch {
+    return false;
+  }
+}
+
+async function demoPushOutcome(message: string, noVerify: boolean, rejectable: boolean): Promise<OpOutcome> {
   await delay(demoHooks() && !noVerify ? demoHooksDelay() : 400);
   if (demoHooks() === 'fail' && !noVerify) {
     const failure: IpcError = {
@@ -172,6 +182,14 @@ async function demoPushOutcome(message: string, noVerify: boolean): Promise<OpOu
       ].join('\n'),
     };
     throw failure;
+  }
+  if (rejectable && demoPushRejected()) {
+    const rejected: IpcError = {
+      code: 'non_fast_forward',
+      message:
+        'The remote has commits this branch does not have yet. Pull with rebase to bring them in first, or force push if you rewrote commits that were already pushed (amend or rebase).',
+    };
+    throw rejected;
   }
   return { status: 'ok', message };
 }
@@ -623,7 +641,9 @@ export const ipc = {
     branch?: string,
     noVerify = false,
   ): Promise<OpOutcome> {
-    if (!isTauri()) return demoPushOutcome(`Pushed to ${remote} (demo)`, noVerify);
+    if (!isTauri()) {
+      return demoPushOutcome(`Pushed ${branch ?? 'the current branch'} to ${remote}${force ? ' (forced)' : ''} (demo)`, noVerify, !force);
+    }
     return invoke('remote_push', { path, remote, branch: branch ?? null, force, withTags, setUpstream, noVerify });
   },
   async pullBranch(path: string, branch: string): Promise<OpOutcome> {
@@ -631,7 +651,7 @@ export const ipc = {
     return invoke('remote_pull_branch', { path, branch });
   },
   async pushTag(path: string, remote: string, tag: string, noVerify = false): Promise<OpOutcome> {
-    if (!isTauri()) return demoPushOutcome(`Pushed tag ${tag} (demo)`, noVerify);
+    if (!isTauri()) return demoPushOutcome(`Pushed tag ${tag} (demo)`, noVerify, false);
     return invoke('remote_push_tag', { path, remote, tag, noVerify });
   },
 

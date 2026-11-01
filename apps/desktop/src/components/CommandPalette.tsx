@@ -94,6 +94,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
   const headUpstream = useMemo(() => branches.find((b) => !b.isRemote && b.isHead)?.upstream ?? null, [branches]);
   const repoHooks = useRepoHooks(path);
   const remote = pickRemote(remotes, headUpstream)?.name ?? 'origin';
+  const headBranch = repo?.headBranch ?? undefined;
   const locals = useMemo(() => branches.filter((b) => !b.isRemote && !b.isHead), [branches]);
   const otherRepos = useMemo(() => recents.filter((r) => r.path !== path).slice(0, 8), [recents, path]);
   const groupSections = useMemo(
@@ -328,14 +329,14 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
           <PaletteItem
             icon={<ArrowUpFromLine />}
             label="Push"
-            onSelect={() => runPush('Push', (noVerify) => ipc.push(path, remote, false, false, true, undefined, noVerify))}
+            onSelect={() => runPush('Push', (noVerify) => ipc.push(path, remote, false, false, true, headBranch, noVerify))}
           />
           {repoHooks.includes('pre-push') && (
             <PaletteItem
               icon={<ShieldOff />}
               label="Push without hooks"
               onSelect={() =>
-                runPush('Push without hooks', (noVerify) => ipc.push(path, remote, false, false, true, undefined, noVerify), true)
+                runPush('Push without hooks', (noVerify) => ipc.push(path, remote, false, false, true, headBranch, noVerify), true)
               }
             />
           )}
@@ -356,7 +357,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
                 label={`Push to ${r.name}`}
                 onSelect={() =>
                   runPush(`Push to ${r.name}`, (noVerify) =>
-                    ipc.push(path, r.name, false, false, pushSetsUpstream(headUpstream, r.name), undefined, noVerify),
+                    ipc.push(path, r.name, false, false, pushSetsUpstream(headUpstream, r.name), headBranch, noVerify),
                   )
                 }
               />

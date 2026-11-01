@@ -1078,11 +1078,33 @@ test('a failing pre-push hook shows its output and the push can skip the hooks',
   const output = dialog.locator('[data-hook-output]');
   await expect(output).toContainText('keeps lanes stable across pages');
   expect(await output.textContent()).not.toContain('\u001b');
-  await expect(page.getByText('Pushed to origin (demo)')).toHaveCount(0);
+  await expect(page.getByText('Pushed main to origin (demo)')).toHaveCount(0);
 
   await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Push without hooks' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('Pushed to origin (demo)')).toBeVisible();
+  await expect(page.getByText('Pushed main to origin (demo)')).toBeVisible();
+});
+
+test('Force push after a rejected Push without hooks keeps skipping the hook and pushes the same branch', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-push-rejected', '1');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.locator('header').getByRole('button', { name: /^Push\s*\d*$/ }).click();
+  const hookDialog = page.locator('[data-hook-failed="push"]');
+  await expect(hookDialog).toBeVisible();
+  await hookDialog.locator('[data-hook-actions]').getByRole('button', { name: 'Push without hooks' }).click();
+
+  const rejected = page.locator('[data-push-rejected]');
+  await expect(rejected).toBeVisible();
+  await expect(rejected).toContainText('origin/main');
+  await rejected.getByRole('button', { name: /^Force push/ }).click();
+  await expect(page.getByText('Pushed main to origin (forced) (demo)')).toBeVisible();
+  await expect(hookDialog).toHaveCount(0);
 });
 
 test('the commit box has no Skip hooks box when the repository has no hooks', async ({ page }) => {
