@@ -39,6 +39,7 @@ pub mod test_api {
         file_history, list as history, position as history_position, search as history_search,
         unpushed,
     };
+    pub use crate::core::hooks::{commit_hooks, runner_available as hook_runner_available};
     pub use crate::core::misc::{
         stash_create, stash_files, stash_list, stash_pop, stash_restore_files, tag_create,
         tag_delete, tag_list,
@@ -162,6 +163,7 @@ pub fn run() {
             commands::delete_file,
             commands::commit_create,
             commands::commit_amend,
+            commands::commit_hooks,
             commands::commit_reword,
             commands::history_unpushed,
             commands::fonts_list,

@@ -918,6 +918,155 @@ test('mod+enter with nothing staged asks to stage instead of committing', async 
   await expect(summary).toHaveValue('fix: nothing staged');
 });
 
+test('a failing pre-commit hook shows its output and the commit can skip the hooks', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-hooks', 'fail'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const skip = page.getByRole('checkbox', { name: 'Skip hooks' });
+  await expect(skip).not.toBeChecked();
+  const summary = page.getByLabel('Commit summary');
+  const commitButton = page.getByRole('button', { name: /^Commit \d+ files?$/ });
+  await summary.fill('fix: lint me');
+  await commitButton.click();
+
+  const dialog = page.locator('[data-hook-failed]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('The pre-commit hook failed (exit code 1).');
+  await expect(dialog).toContainText('Nothing was committed.');
+  const output = dialog.locator('[data-hook-output]');
+  await expect(output).toContainText("'unusedLane' is assigned a value but never used");
+  expect(await output.textContent()).not.toContain('\u001b');
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(summary).toHaveValue('fix: lint me');
+  await expect(page.getByText('Committed', { exact: true })).toHaveCount(0);
+
+  await commitButton.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Commit without hooks' }).click();
+  await expect(page.getByText('Committed', { exact: true })).toBeVisible();
+  await expect(summary).toHaveValue('');
+
+  await summary.fill('fix: skip on purpose');
+  await skip.check();
+  await commitButton.click();
+  await expect(summary).toHaveValue('');
+  await expect(skip).not.toBeChecked();
+  await expect(dialog).toBeHidden();
+});
+
+test('a hook that fails after a tab switch stays with its repository and offers no retry in the other tab', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-hooks-delay', '2500');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.getByRole('option', { name: 'temple-ui' }).click();
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(2);
+  await page.keyboard.press('ControlOrMeta+1');
+  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+
+  const summary = page.getByLabel('Commit summary');
+  await summary.fill('fix: started in angkorgit');
+  await page.getByRole('button', { name: /^Commit \d+ files?$/ }).click();
+  await expect(page.getByRole('button', { name: 'Running hooks…' })).toBeVisible();
+
+  await page.keyboard.press('ControlOrMeta+2');
+  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('button', { name: 'Running hooks…' })).toHaveCount(0);
+  await summary.fill('feat: temple draft');
+
+  await expect(page.getByText('Nothing was committed in angkorgit.', { exact: false })).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-hook-failed]')).toHaveCount(0);
+  await expect(page.getByText('Committed', { exact: true })).toHaveCount(0);
+  await expect(summary).toHaveValue('feat: temple draft');
+
+  await page.keyboard.press('ControlOrMeta+1');
+  const dialog = page.locator('[data-hook-failed]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('The pre-commit hook failed (exit code 1).');
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expect(summary).toHaveValue('fix: started in angkorgit');
+});
+
+test('a commit hook keeps the commit busy and reports its failure while a graph commit is selected', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-hooks-delay', '3000');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const summary = page.getByLabel('Commit summary');
+  await summary.fill('fix: lint me');
+  await page.getByRole('button', { name: /^Commit \d+ files?$/ }).click();
+  const running = page.getByRole('button', { name: 'Running hooks…' });
+  await expect(running).toBeVisible();
+
+  await page.getByText('feat(graph): virtualize commit rows').first().click();
+  await expect(summary).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back to working copy' }).click();
+  await expect(running).toBeVisible();
+  await expect(running).toBeDisabled();
+
+  await page.getByText('feat(graph): virtualize commit rows').first().click();
+  await expect(summary).toHaveCount(0);
+  const dialog = page.locator('[data-hook-failed]');
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  await expect(dialog).toContainText('The pre-commit hook failed (exit code 1).');
+  await expect(dialog.locator('[data-hook-output]')).toContainText("'unusedLane' is assigned a value but never used");
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole('button', { name: 'Back to working copy' }).click();
+  await expect(summary).toHaveValue('fix: lint me');
+  await expect(page.getByRole('button', { name: /^Commit \d+ files?$/ })).toBeEnabled();
+  await expect(running).toHaveCount(0);
+});
+
+test('Commit without hooks never claims to run hooks and keeps text typed while it runs', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-hooks-delay', '1500');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const summary = page.getByLabel('Commit summary');
+  const description = page.getByLabel('Commit description');
+  const commitButton = page.getByRole('button', { name: /^Commit \d+ files?$/ });
+  await summary.fill('fix: lint me');
+  await commitButton.click();
+  const dialog = page.locator('[data-hook-failed]');
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Commit without hooks' }).click();
+
+  await expect(commitButton).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Running hooks…' })).toHaveCount(0);
+  await description.fill('typed while the commit ran');
+  await expect(page.getByText('Committed', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(summary).toHaveValue('fix: lint me');
+  await expect(description).toHaveValue('typed while the commit ran');
+});
+
+test('the commit box has no Skip hooks box when the repository has no hooks', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel('Commit summary')).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Skip hooks' })).toHaveCount(0);
+});
+
 test('a submodule left at an older commit offers Update submodule instead of Discard', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('angkorgit-demo-submodule-drift', '1'));
   await page.goto('/');

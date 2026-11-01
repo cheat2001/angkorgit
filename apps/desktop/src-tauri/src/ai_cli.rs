@@ -19,6 +19,7 @@ const AGENTS: &[(&str, &str, &[&str])] = &[
 
 const OUTPUT_FILE_PLACEHOLDER: &str = "{OUTPUT_FILE}";
 const VERSION_TIMEOUT: Duration = Duration::from_secs(15);
+const OUTPUT_DRAIN: Duration = Duration::from_secs(1);
 const CURSOR_LAUNCHERS: &[&str] = &["cursor-agent", "agent"];
 
 #[derive(Serialize, Clone)]
@@ -190,15 +191,88 @@ fn is_supported(program: &str) -> bool {
         .any(|(_, _, bins)| bins.contains(&stem.as_str()))
 }
 
-pub(crate) fn capture(mut command: Command, stdin: &str, timeout: Duration) -> AppResult<Captured> {
+pub(crate) fn capture(command: Command, stdin: &str, timeout: Duration) -> AppResult<Captured> {
+    let child =
+        spawn_piped(command).map_err(|e| AppError::other(format!("failed to launch: {e}")))?;
+    capture_child(child, stdin, timeout)
+}
+
+pub(crate) fn capture_tree(
+    command: Command,
+    stdin: &str,
+    timeout: Duration,
+) -> AppResult<Captured> {
+    let child =
+        spawn_tree(command).map_err(|e| AppError::other(format!("failed to launch: {e}")))?;
+    capture_tree_child(child, stdin, timeout)
+}
+
+pub(crate) fn spawn_piped(mut command: Command) -> std::io::Result<Child> {
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|e| AppError::other(format!("failed to launch: {e}")))?;
+    command.spawn()
+}
 
+pub(crate) fn spawn_tree(mut command: Command) -> std::io::Result<Child> {
+    own_process_group(&mut command);
+    spawn_piped(command)
+}
+
+pub(crate) fn capture_child(child: Child, stdin: &str, timeout: Duration) -> AppResult<Captured> {
+    collect(child, stdin, timeout, false)
+}
+
+pub(crate) fn capture_tree_child(
+    child: Child,
+    stdin: &str,
+    timeout: Duration,
+) -> AppResult<Captured> {
+    collect(child, stdin, timeout, true)
+}
+
+#[cfg(unix)]
+fn own_process_group(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn own_process_group(_command: &mut Command) {}
+
+#[cfg(unix)]
+fn kill_tree(child: &mut Child) {
+    if let Ok(group) = libc::pid_t::try_from(child.id()) {
+        unsafe {
+            libc::killpg(group, libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+}
+
+#[cfg(windows)]
+fn kill_tree(child: &mut Child) {
+    let _ = crate::proc::hidden("taskkill")
+        .args(["/F", "/T", "/PID", &child.id().to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = child.kill();
+}
+
+#[cfg(not(any(unix, windows)))]
+fn kill_tree(child: &mut Child) {
+    let _ = child.kill();
+}
+
+fn collect(
+    mut child: Child,
+    stdin: &str,
+    timeout: Duration,
+    whole_tree: bool,
+) -> AppResult<Captured> {
     let stdin_data = stdin.as_bytes().to_vec();
     let mut stdin_pipe = child.stdin.take();
     let stdin_thread = std::thread::spawn(move || {
@@ -206,27 +280,17 @@ pub(crate) fn capture(mut command: Command, stdin: &str, timeout: Duration) -> A
             let _ = pipe.write_all(&stdin_data);
         }
     });
-    let mut stdout_pipe = child.stdout.take();
-    let stdout_thread = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(pipe) = stdout_pipe.as_mut() {
-            let _ = pipe.read_to_end(&mut buf);
-        }
-        buf
-    });
-    let mut stderr_pipe = child.stderr.take();
-    let stderr_thread = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(pipe) = stderr_pipe.as_mut() {
-            let _ = pipe.read_to_end(&mut buf);
-        }
-        buf
-    });
+    let (stdout, stdout_thread) = read_pipe(child.stdout.take());
+    let (stderr, stderr_thread) = read_pipe(child.stderr.take());
 
     let status = match wait_with_timeout(&mut child, timeout) {
         Some(status) => status,
         None => {
-            let _ = child.kill();
+            if whole_tree {
+                kill_tree(&mut child);
+            } else {
+                let _ = child.kill();
+            }
             let _ = child.wait();
             drop(stdin_thread);
             drop(stdout_thread);
@@ -237,14 +301,54 @@ pub(crate) fn capture(mut command: Command, stdin: &str, timeout: Duration) -> A
             )));
         }
     };
-    let _ = stdin_thread.join();
-    let stdout = stdout_thread.join().unwrap_or_default();
-    let stderr = stderr_thread.join().unwrap_or_default();
+    let drain_until = Instant::now() + OUTPUT_DRAIN;
+    while !(stdout_thread.is_finished() && stderr_thread.is_finished())
+        && Instant::now() < drain_until
+    {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    drop(stdin_thread);
     Ok(Captured {
         status,
-        stdout: String::from_utf8_lossy(&stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        stdout: take_output(&stdout),
+        stderr: take_output(&stderr),
     })
+}
+
+type SharedOutput = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
+
+fn read_pipe<R: Read + Send + 'static>(
+    pipe: Option<R>,
+) -> (SharedOutput, std::thread::JoinHandle<()>) {
+    let output = SharedOutput::default();
+    let sink = std::sync::Arc::clone(&output);
+    let handle = std::thread::spawn(move || {
+        let Some(mut pipe) = pipe else {
+            return;
+        };
+        let mut chunk = [0u8; 8192];
+        loop {
+            match pipe.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => {
+                    if let Ok(mut buffer) = sink.lock() {
+                        buffer.extend_from_slice(&chunk[..read]);
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(_) => break,
+            }
+        }
+    });
+    (output, handle)
+}
+
+fn take_output(output: &SharedOutput) -> String {
+    let bytes = output
+        .lock()
+        .map(|mut buffer| std::mem::take(&mut *buffer))
+        .unwrap_or_default();
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Option<i32> {
@@ -584,5 +688,70 @@ mod tests {
         assert!(err.is_err());
         assert!(started.elapsed() < Duration::from_secs(10));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_timed_out_tree_capture_stops_what_the_child_started() {
+        let dir = std::env::temp_dir().join(format!(
+            "angkorgit-ai-test-tree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid_file = dir.join("grandchild");
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg(format!(
+            "sleep 30 & echo $! > '{}'; wait",
+            pid_file.display()
+        ));
+        let started = Instant::now();
+        let Err(err) = capture_tree(command, "", Duration::from_secs(1)) else {
+            panic!("the sleeping shell must time out");
+        };
+        assert!(err.to_string().contains("timed out"), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let grandchild: libc::pid_t = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut alive = true;
+        while alive && Instant::now() < deadline {
+            alive = unsafe { libc::kill(grandchild, 0) } == 0;
+            if alive {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        if alive {
+            unsafe {
+                libc::kill(grandchild, libc::SIGKILL);
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(!alive, "the grandchild outlived the timeout");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_background_process_holding_the_pipes_does_not_hold_up_the_capture() {
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("sleep 30 & echo $!; echo done");
+        let started = Instant::now();
+        let child = spawn_tree(command).unwrap();
+        let captured = capture_tree_child(child, "", Duration::from_secs(60)).unwrap();
+        let elapsed = started.elapsed();
+        let mut lines = captured.stdout.lines();
+        let background: libc::pid_t = lines.next().unwrap().trim().parse().unwrap();
+        unsafe {
+            libc::kill(background, libc::SIGKILL);
+        }
+        assert_eq!(lines.next(), Some("done"));
+        assert_eq!(captured.status, 0);
+        assert!(elapsed < Duration::from_secs(10), "waited {elapsed:?}");
     }
 }

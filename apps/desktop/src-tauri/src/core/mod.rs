@@ -8,6 +8,7 @@ pub mod diff;
 pub mod files;
 pub mod group_update;
 pub mod history;
+pub mod hooks;
 pub mod misc;
 pub mod pull_preview;
 pub mod remote;

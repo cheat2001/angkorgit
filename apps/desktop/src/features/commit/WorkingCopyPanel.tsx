@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
-import { AlertTriangle, Archive, Check, Code, Copy, ExternalLink, File as FileIcon, FolderOpen, History, ListRestart, UserRoundSearch, Minus, Pencil, Plus, SearchCheck, Sparkles, SquareCheck, Trash2, Undo2 } from 'lucide-react';
+import { AlertTriangle, Archive, Check, Code, Copy, ExternalLink, File as FileIcon, FolderOpen, History, ListRestart, UserRoundSearch, Minus, Pencil, Plus, SearchCheck, ShieldOff, Sparkles, SquareCheck, Trash2, Undo2 } from 'lucide-react';
 import type { AllFilesEntry, FileStatus } from '@angkorgit/core';
 import { aiCapabilities, allFiles, buildStagedReviewSignature, filterFiles, foldersWithChanges, hasCommittedHistory, hashText, PROJECT_REVIEW_FILE, joinCommitMessage, splitCommitMessage } from '@angkorgit/core';
 import {
@@ -22,7 +22,6 @@ import {
 } from '@angkorgit/design-system';
 import { ipc } from '@/core/ipc';
 import { useRepo } from '@/features/repository/store';
-import { useGraph } from '@/features/graph/store';
 import { focusRequests, useUi } from '@/features/ui/store';
 import { stepOpenDiffChange } from '@/features/diff/changeNav';
 import { aiConfigured, getAiProvider } from '@/features/ai/client';
@@ -30,11 +29,10 @@ import { AiResultPanel } from '@/features/ai/AiResultPanel';
 import { REVIEW_WAIT_MESSAGES } from '@/features/ai/waitMessages';
 import { useAiWork } from '@/features/ai/workStore';
 import { useSettings } from '@/features/settings/store';
-import { ensureRepoProfile } from '@/features/settings/profiles';
 import { openInEditor, preferredEditor, useEditors } from '@/features/settings/editors';
-import { useUndo } from '@/features/history/undoStore';
 import { abortMergeFlow } from '@/features/repository/merge';
 import { useCommitDraft } from './draftStore';
+import { runCommit, useCommitWork } from './commitWork';
 import { confirmDialog } from '@/components/confirm';
 import { FileFilterInput } from '@/components/FileFilterInput';
 import { ChangeMark } from '@/components/ChangeMark';
@@ -239,7 +237,6 @@ export function WorkingCopyPanel() {
   const conflicts = useRepo((s) => s.conflicts);
   const submodules = useRepo((s) => s.submodules);
   const refreshStatus = useRepo((s) => s.refreshStatus);
-  const reloadGraph = useGraph((s) => s.reload);
   const selectedFile = useUi((s) => s.selectedFile);
   const selectFile = useUi((s) => s.selectFile);
   const openCenterDiff = useUi((s) => s.openCenterDiff);
@@ -288,7 +285,8 @@ export function WorkingCopyPanel() {
     window.addEventListener('mouseup', onUp);
   };
   const setAmend = (value: boolean) => useCommitDraft.getState().setAmend(path, value);
-  const [committing, setCommitting] = useState(false);
+  const committing = useCommitWork((s) => !!s.running[path]);
+  const runningHooks = useCommitWork((s) => !!s.running[path]?.hooks);
   const [aiBusy, setAiBusy] = useState(false);
   const aiRunRef = useRef(0);
   const [fileMenu, setFileMenu] = useState<{ x: number; y: number; file: FileStatus; staged: boolean } | null>(null);
@@ -352,6 +350,25 @@ export function WorkingCopyPanel() {
   );
   const statusVersion = useRepo((s) => s.statusVersion);
   const statusReady = status !== null;
+  const [commitHooks, setCommitHooks] = useState<string[]>([]);
+  const skipHooks = useCommitWork((s) => !!s.skipHooks[path]);
+  const setSkipHooks = (skip: boolean) => useCommitWork.getState().setSkipHooks(path, skip);
+  useEffect(() => {
+    setCommitHooks([]);
+  }, [path]);
+  useEffect(() => {
+    if (!path || !statusReady) return;
+    let cancelled = false;
+    void ipc
+      .commitHooks(path)
+      .then((names) => {
+        if (!cancelled) setCommitHooks(names);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [path, statusReady, statusVersion]);
   const [indexPaths, setIndexPaths] = useState<string[] | null>(null);
   const [indexError, setIndexError] = useState<string | null>(null);
   useEffect(() => {
@@ -693,43 +710,13 @@ export function WorkingCopyPanel() {
     if (path) useAiWork.getState().stopReview(path);
   };
 
-  const committingRef = useRef(false);
-
-  const commit = async () => {
+  const commit = async (noVerify = skipHooks) => {
     if (!summary.trim() && !amend) return;
     if (allStaged.length === 0 && !amend && repo?.state !== 'merge') {
       toast.info('Stage some changes first');
       return;
     }
-    if (committingRef.current) return;
-    committingRef.current = true;
-    setCommitting(true);
-    try {
-      await ensureRepoProfile(path);
-      if (amend) {
-        await ipc.amend(path, message.trim() ? message.trim() : null);
-        toast.success('Commit amended');
-      } else {
-        const summary = message.trim().split('\n')[0].slice(0, 50);
-        await useUndo.getState().tracked({
-          path,
-          kind: 'commit',
-          label: `commit "${summary}"`,
-          action: () => ipc.commit(path, message.trim()),
-        });
-        toast.success('Committed');
-      }
-      setMessage('');
-      setAmend(false);
-      useAiWork.getState().setReview(path, null);
-      await refreshStatus();
-      await reloadGraph(path);
-    } catch (error) {
-      toast.error(`Commit failed: ${(error as { message?: string }).message ?? error}`);
-    } finally {
-      committingRef.current = false;
-      setCommitting(false);
-    }
+    await runCommit({ repoPath: path, message, amend }, noVerify, commitHooks.length > 0);
   };
 
   useEffect(() => {
@@ -1503,10 +1490,24 @@ export function WorkingCopyPanel() {
             />
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
-            <label className="mr-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted">
-              <Checkbox checked={amend} onCheckedChange={(v) => setAmend(v === true)} />
-              <Undo2 className="size-3" /> Amend
-            </label>
+            <div className="mr-auto flex flex-wrap items-center gap-x-3 gap-y-1">
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted">
+                <Checkbox checked={amend} onCheckedChange={(v) => setAmend(v === true)} />
+                <Undo2 className="size-3" /> Amend
+              </label>
+              {commitHooks.length > 0 && (
+                <Hint label={`Commit without running the ${commitHooks.join(' and ')} hook${commitHooks.length === 1 ? '' : 's'}, like --no-verify`}>
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted" data-skip-hooks>
+                    <Checkbox
+                      checked={skipHooks}
+                      onCheckedChange={(v) => setSkipHooks(v === true)}
+                      aria-label="Skip hooks"
+                    />
+                    <ShieldOff className="size-3" /> Skip hooks
+                  </label>
+                </Hint>
+              )}
+            </div>
             <Hint
               label={
                 allStaged.length === 0
@@ -1564,7 +1565,11 @@ export function WorkingCopyPanel() {
                 onClick={() => void commit()}
               >
                 {committing && <Spinner className="text-primary-foreground" />}
-                {amend ? 'Amend commit' : `Commit${allStaged.length > 0 ? ` ${allStaged.length} file${allStaged.length === 1 ? '' : 's'}` : ''}`}
+                {runningHooks
+                  ? 'Running hooks…'
+                  : amend
+                    ? 'Amend commit'
+                    : `Commit${allStaged.length > 0 ? ` ${allStaged.length} file${allStaged.length === 1 ? '' : 's'}` : ''}`}
               </Button>
               </span>
             </Hint>
