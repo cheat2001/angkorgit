@@ -66,10 +66,8 @@ export async function runCommit(request: CommitRequest, noVerify: boolean, hooks
     if (drafts.amendFor === target) drafts.setAmend(target, false);
     useAiWork.getState().setReview(target, null);
     useCommitWork.getState().setSkipHooks(target, false);
-    if (isCurrent()) {
-      await useRepo.getState().refreshStatus();
-      await useGraph.getState().reload(target);
-    }
+    if (isCurrent()) await useRepo.getState().refreshStatus();
+    if (isCurrent()) await useGraph.getState().reload(target);
   } catch (error) {
     if (isHookFailure(error)) {
       reportHookFailure({
