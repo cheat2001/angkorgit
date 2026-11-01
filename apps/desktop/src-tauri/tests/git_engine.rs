@@ -4660,3 +4660,59 @@ fn commit_hooks_see_the_author_and_amend_keeps_the_original_one() {
     assert_eq!(repo.read(".git/pre-commit-author"), current);
     assert_eq!(repo.read(".git/commit-msg-author"), current);
 }
+
+fn branch_tip(repo: &TempRepo, branch: &str) -> String {
+    git2::Repository::open(repo.path())
+        .unwrap()
+        .find_reference(&format!("refs/heads/{branch}"))
+        .unwrap()
+        .target()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn a_commit_hook_that_switches_branch_leaves_both_branches_alone() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let base = commit_all(&repo, "base");
+    core::branch_create(repo.path(), "other", None, false).unwrap();
+    write_hook(&default_hooks(&repo), "pre-commit", "git checkout -q other");
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::commit(repo.path(), "second", false).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("changed while the commit hooks ran"),
+        "{err}"
+    );
+    assert_eq!(branch_tip(&repo, "master"), base);
+    assert_eq!(branch_tip(&repo, "other"), base);
+}
+
+#[test]
+fn an_amend_hook_that_switches_branch_leaves_both_branches_alone() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let base = commit_all(&repo, "base");
+    core::branch_create(repo.path(), "other", None, false).unwrap();
+    write_hook(&default_hooks(&repo), "commit-msg", "git checkout -q other");
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let err = core::amend(repo.path(), None, false).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("changed while the commit hooks ran"),
+        "{err}"
+    );
+    assert_eq!(branch_tip(&repo, "master"), base);
+    assert_eq!(branch_tip(&repo, "other"), base);
+}

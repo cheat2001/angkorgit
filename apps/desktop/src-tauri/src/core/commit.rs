@@ -11,9 +11,36 @@ pub(crate) fn default_signature(repo: &Repository) -> AppResult<git2::Signature<
     })
 }
 
+#[derive(PartialEq)]
+struct HeadState {
+    reference: Option<String>,
+    target: Option<git2::Oid>,
+    state: git2::RepositoryState,
+}
+
+fn head_state(repo: &Repository) -> AppResult<HeadState> {
+    let head = repo.find_reference("HEAD")?;
+    Ok(HeadState {
+        reference: head.symbolic_target().map(str::to_string),
+        target: head.resolve().ok().and_then(|r| r.target()),
+        state: repo.state(),
+    })
+}
+
+fn ensure_head_unchanged(repo: &Repository, before: &HeadState) -> AppResult<()> {
+    if head_state(repo)? == *before {
+        return Ok(());
+    }
+    Err(AppError::other(
+        "The checked-out branch changed while the commit hooks ran, so nothing was written. \
+         Check the branch and try again.",
+    ))
+}
+
 pub fn commit(path: &str, message: &str, no_verify: bool) -> AppResult<CommitOutcome> {
     let mut repo = super::repo::open(path)?;
     let sig = default_signature(&repo)?;
+    let start = head_state(&repo)?;
 
     let is_merge = repo.state() == git2::RepositoryState::Merge;
     let mut merge_oids: Vec<git2::Oid> = Vec::new();
@@ -32,6 +59,7 @@ pub fn commit(path: &str, message: &str, no_verify: bool) -> AppResult<CommitOut
         tree_oid
     };
     let message = hooks.commit_msg(&repo, message)?;
+    ensure_head_unchanged(&repo, &start)?;
 
     let oid = {
         let tree = repo.find_tree(tree_oid)?;
@@ -151,6 +179,7 @@ pub fn amend(path: &str, message: Option<&str>, no_verify: bool) -> AppResult<Co
         .head()
         .map_err(|_| AppError::other("nothing to amend: repository has no commits"))?;
     let commit = head.peel_to_commit()?;
+    let start = head_state(&repo)?;
     let hooks = CommitHooks::prepare(&repo, &commit.author(), no_verify)?;
     hooks.pre_commit(&repo)?;
     let message = match message {
@@ -165,6 +194,7 @@ pub fn amend(path: &str, message: Option<&str>, no_verify: bool) -> AppResult<Co
     index.read(true)?;
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
+    ensure_head_unchanged(&repo, &start)?;
     if super::sign::signing_config(&repo)?.is_none() {
         let oid = commit.amend(
             Some("HEAD"),
