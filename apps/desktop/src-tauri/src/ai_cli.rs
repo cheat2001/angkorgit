@@ -19,6 +19,7 @@ const AGENTS: &[(&str, &str, &[&str])] = &[
 
 const OUTPUT_FILE_PLACEHOLDER: &str = "{OUTPUT_FILE}";
 const VERSION_TIMEOUT: Duration = Duration::from_secs(15);
+const OUTPUT_DRAIN: Duration = Duration::from_secs(1);
 const CURSOR_LAUNCHERS: &[&str] = &["cursor-agent", "agent"];
 
 #[derive(Serialize, Clone)]
@@ -279,22 +280,8 @@ fn collect(
             let _ = pipe.write_all(&stdin_data);
         }
     });
-    let mut stdout_pipe = child.stdout.take();
-    let stdout_thread = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(pipe) = stdout_pipe.as_mut() {
-            let _ = pipe.read_to_end(&mut buf);
-        }
-        buf
-    });
-    let mut stderr_pipe = child.stderr.take();
-    let stderr_thread = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(pipe) = stderr_pipe.as_mut() {
-            let _ = pipe.read_to_end(&mut buf);
-        }
-        buf
-    });
+    let (stdout, stdout_thread) = read_pipe(child.stdout.take());
+    let (stderr, stderr_thread) = read_pipe(child.stderr.take());
 
     let status = match wait_with_timeout(&mut child, timeout) {
         Some(status) => status,
@@ -314,14 +301,54 @@ fn collect(
             )));
         }
     };
-    let _ = stdin_thread.join();
-    let stdout = stdout_thread.join().unwrap_or_default();
-    let stderr = stderr_thread.join().unwrap_or_default();
+    let drain_until = Instant::now() + OUTPUT_DRAIN;
+    while !(stdout_thread.is_finished() && stderr_thread.is_finished())
+        && Instant::now() < drain_until
+    {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    drop(stdin_thread);
     Ok(Captured {
         status,
-        stdout: String::from_utf8_lossy(&stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        stdout: take_output(&stdout),
+        stderr: take_output(&stderr),
     })
+}
+
+type SharedOutput = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
+
+fn read_pipe<R: Read + Send + 'static>(
+    pipe: Option<R>,
+) -> (SharedOutput, std::thread::JoinHandle<()>) {
+    let output = SharedOutput::default();
+    let sink = std::sync::Arc::clone(&output);
+    let handle = std::thread::spawn(move || {
+        let Some(mut pipe) = pipe else {
+            return;
+        };
+        let mut chunk = [0u8; 8192];
+        loop {
+            match pipe.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => {
+                    if let Ok(mut buffer) = sink.lock() {
+                        buffer.extend_from_slice(&chunk[..read]);
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(_) => break,
+            }
+        }
+    });
+    (output, handle)
+}
+
+fn take_output(output: &SharedOutput) -> String {
+    let bytes = output
+        .lock()
+        .map(|mut buffer| std::mem::take(&mut *buffer))
+        .unwrap_or_default();
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Option<i32> {
@@ -707,5 +734,24 @@ mod tests {
         }
         std::fs::remove_dir_all(&dir).ok();
         assert!(!alive, "the grandchild outlived the timeout");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_background_process_holding_the_pipes_does_not_hold_up_the_capture() {
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("sleep 30 & echo $!; echo done");
+        let started = Instant::now();
+        let child = spawn_tree(command).unwrap();
+        let captured = capture_tree_child(child, "", Duration::from_secs(60)).unwrap();
+        let elapsed = started.elapsed();
+        let mut lines = captured.stdout.lines();
+        let background: libc::pid_t = lines.next().unwrap().trim().parse().unwrap();
+        unsafe {
+            libc::kill(background, libc::SIGKILL);
+        }
+        assert_eq!(lines.next(), Some("done"));
+        assert_eq!(captured.status, 0);
+        assert!(elapsed < Duration::from_secs(10), "waited {elapsed:?}");
     }
 }
