@@ -988,12 +988,12 @@ test('a hook that fails after a tab switch stays with its repository and offers 
   await expect(summary).toHaveValue('feat: temple draft');
 
   await page.keyboard.press('ControlOrMeta+1');
-  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
   const dialog = page.locator('[data-hook-failed]');
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('The pre-commit hook failed (exit code 1).');
   await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
+  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
   await expect(summary).toHaveValue('fix: started in angkorgit');
 });
 
