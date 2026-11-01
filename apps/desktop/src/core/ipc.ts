@@ -158,7 +158,7 @@ function demoHooksDelay(): number {
 }
 
 async function demoCommitOutcome(oid: string, noVerify: boolean): Promise<CommitOutcome> {
-  await delay(demoHooks() && !noVerify ? demoHooksDelay() : 200);
+  await delay(demoHooksDelay());
   if (demoHooks() === 'fail' && !noVerify) {
     const failure: IpcError = {
       code: 'hook_failed',

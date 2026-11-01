@@ -12,43 +12,49 @@ import {
   DialogTitle,
 } from '@angkorgit/design-system';
 
-export interface CommitRequest {
-  repoPath: string;
-  message: string;
-  amend: boolean;
-}
+export type HookOperation = 'commit' | 'amend';
 
-export interface HookFailure {
-  request: CommitRequest;
+export interface HookFailureView {
+  operation: HookOperation;
   message: string;
   output: string;
 }
 
+const COPY: Record<HookOperation, { outcome: string; retry: string }> = {
+  commit: {
+    outcome: 'Nothing was committed. Your message is still in the commit box.',
+    retry: 'Commit without hooks',
+  },
+  amend: {
+    outcome: 'The last commit was not changed. Your message is still in the commit box.',
+    retry: 'Amend without hooks',
+  },
+};
+
 export function HookFailedDialog({
   failure,
-  onCommitWithoutHooks,
+  onRetry,
   onClose,
 }: {
-  failure: HookFailure | null;
-  onCommitWithoutHooks: () => void;
+  failure: HookFailureView | null;
+  onRetry: () => void;
   onClose: () => void;
 }) {
-  const output = useMemo(() => cleanCliOutput(failure?.output ?? ''), [failure]);
+  const output = useMemo(() => cleanCliOutput(failure?.output ?? ''), [failure?.output]);
   const copy = () => {
     void navigator.clipboard.writeText(output).then(
       () => toast.success('Copied the hook output'),
       () => toast.error('Could not copy the hook output'),
     );
   };
+  const text = COPY[failure?.operation ?? 'commit'];
   return (
     <Dialog open={failure !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-w-2xl" data-hook-failed>
+      <DialogContent className="max-w-2xl" data-hook-failed={failure?.operation}>
         <DialogHeader>
-          <DialogTitle>A hook stopped the {failure?.request.amend ? 'amend' : 'commit'}</DialogTitle>
+          <DialogTitle>A hook stopped the {failure?.operation ?? 'commit'}</DialogTitle>
           <DialogDescription>
-            {failure?.message}{' '}
-            {failure?.request.amend ? 'The last commit was not changed.' : 'Nothing was committed.'} Your
-            message is still in the commit box.
+            {failure?.message} {text.outcome}
           </DialogDescription>
         </DialogHeader>
         {output ? (
@@ -66,8 +72,8 @@ export function HookFailedDialog({
             <Copy /> Copy output
           </Button>
           <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" onClick={onCommitWithoutHooks}>
-              <ShieldOff /> {failure?.request.amend ? 'Amend' : 'Commit'} without hooks
+            <Button variant="outline" onClick={onRetry}>
+              <ShieldOff /> {text.retry}
             </Button>
             <Button onClick={onClose} autoFocus>
               Close

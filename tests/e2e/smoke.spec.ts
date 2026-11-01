@@ -989,8 +989,74 @@ test('a hook that fails after a tab switch stays with its repository and offers 
 
   await page.keyboard.press('ControlOrMeta+1');
   await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+  const dialog = page.locator('[data-hook-failed]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('The pre-commit hook failed (exit code 1).');
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
   await expect(summary).toHaveValue('fix: started in angkorgit');
-  await expect(page.locator('[data-hook-failed]')).toHaveCount(0);
+});
+
+test('a commit hook keeps the commit busy and reports its failure while a graph commit is selected', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-hooks-delay', '3000');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const summary = page.getByLabel('Commit summary');
+  await summary.fill('fix: lint me');
+  await page.getByRole('button', { name: /^Commit \d+ files?$/ }).click();
+  const running = page.getByRole('button', { name: 'Running hooks…' });
+  await expect(running).toBeVisible();
+
+  await page.getByText('feat(graph): virtualize commit rows').first().click();
+  await expect(summary).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back to working copy' }).click();
+  await expect(running).toBeVisible();
+  await expect(running).toBeDisabled();
+
+  await page.getByText('feat(graph): virtualize commit rows').first().click();
+  await expect(summary).toHaveCount(0);
+  const dialog = page.locator('[data-hook-failed]');
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  await expect(dialog).toContainText('The pre-commit hook failed (exit code 1).');
+  await expect(dialog.locator('[data-hook-output]')).toContainText("'unusedLane' is assigned a value but never used");
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole('button', { name: 'Back to working copy' }).click();
+  await expect(summary).toHaveValue('fix: lint me');
+  await expect(page.getByRole('button', { name: /^Commit \d+ files?$/ })).toBeEnabled();
+  await expect(running).toHaveCount(0);
+});
+
+test('Commit without hooks never claims to run hooks and keeps text typed while it runs', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-hooks-delay', '1500');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const summary = page.getByLabel('Commit summary');
+  const description = page.getByLabel('Commit description');
+  const commitButton = page.getByRole('button', { name: /^Commit \d+ files?$/ });
+  await summary.fill('fix: lint me');
+  await commitButton.click();
+  const dialog = page.locator('[data-hook-failed]');
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Commit without hooks' }).click();
+
+  await expect(commitButton).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Running hooks…' })).toHaveCount(0);
+  await description.fill('typed while the commit ran');
+  await expect(page.getByText('Committed', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(summary).toHaveValue('fix: lint me');
+  await expect(description).toHaveValue('typed while the commit ran');
 });
 
 test('the commit box has no Skip hooks box when the repository has no hooks', async ({ page }) => {

@@ -5,6 +5,7 @@ import { Toaster, toast } from 'sonner';
 import { Spinner, TooltipProvider } from '@angkorgit/design-system';
 import { SplashScreen } from './SplashScreen';
 import { ConfirmHost } from '@/components/confirm';
+import { HookFailureHost } from '@/components/hookFailure';
 import { ProfilePromptHost } from '@/components/profilePrompt';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WelcomePage } from '@/features/repository/WelcomePage';
@@ -190,6 +191,7 @@ export function App() {
         </div>
       </MemoryRouter>
       <ConfirmHost />
+      <HookFailureHost />
       <ProfilePromptHost />
       <Toaster
         position="bottom-left"
