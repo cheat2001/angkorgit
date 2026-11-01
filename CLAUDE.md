@@ -3774,7 +3774,7 @@ update CLAUDE.md or docs/ — never the code.
   start and the stop click. Same trap, other half: locking the textareas with
   disabled while the AI runs killed focus-within (the editor's ring dropped) and
   the design-system Textarea's disabled:opacity-50 dimmed them — busy locks on
-  inputs are readOnly, never disabled. Found by Chris in WebKit on PR #83.
+  inputs are readOnly, never disabled. Found by the owner in WebKit while reviewing PR #83.
 
 ## 9. Testing map
 
