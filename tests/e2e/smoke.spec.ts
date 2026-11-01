@@ -2109,6 +2109,43 @@ test('a diff selection keeps its lines after scrolling away and back', async ({ 
   }
 });
 
+test('the AI button writes a new summary and description while editing an earlier commit message', async ({ page }) => {
+  let prompt = '';
+  let holdAnswer = true;
+  let releaseAnswer: (() => void) | null = null;
+  await page.route('**/api/chat', async (route) => {
+    prompt = route.request().postData() ?? '';
+    if (holdAnswer) await new Promise<void>((resolve) => { releaseAnswer = resolve; });
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ message: { content: 'perf(graph): mount only visible rows\n\nRows outside the viewport stay unmounted.' } }),
+    });
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const inspector = page.getByRole('complementary', { name: 'Inspector' });
+  const summary = inspector.getByLabel('Commit summary');
+
+  await page.getByText('feat(graph): virtualize commit rows').first().click();
+  await expect(inspector.getByRole('heading', { name: 'feat(graph): virtualize commit rows' })).toBeVisible();
+  await inspector.getByRole('button', { name: 'Edit commit message' }).click();
+  await inspector.getByRole('button', { name: 'Generate commit message with AI' }).click();
+  await expect(summary).toBeFocused();
+  await summary.press('Escape');
+  await expect(inspector.getByRole('heading', { name: 'feat(graph): virtualize commit rows' })).toBeVisible();
+  releaseAnswer?.();
+
+  holdAnswer = false;
+  await inspector.getByRole('button', { name: 'Edit commit message' }).click();
+  await inspector.getByRole('button', { name: 'Generate commit message with AI' }).click();
+  await expect(summary).toHaveValue('perf(graph): mount only visible rows');
+  await expect(inspector.getByLabel('Commit description')).toHaveValue('Rows outside the viewport stay unmounted.');
+  expect(prompt).toContain('+++ ');
+  await inspector.getByRole('button', { name: 'Save message' }).click();
+  await expect(inspector.getByRole('heading', { name: 'perf(graph): mount only visible rows' })).toBeVisible();
+});
+
 test('an unpushed commit message can be edited in place and a pushed one asks before rewriting', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();
