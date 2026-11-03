@@ -473,18 +473,15 @@ impl PrePush {
     }
 
     pub(crate) fn run(&self, repo: &Repository, refs: &[PushedRef]) -> AppResult<()> {
+        self.run_input(repo, &pre_push_input(repo, refs))
+    }
+
+    pub(crate) fn run_input(&self, repo: &Repository, input: &str) -> AppResult<()> {
         let Some(runner) = &self.runner else {
             return Ok(());
         };
         let args = [self.args[0].as_os_str(), self.args[1].as_os_str()];
-        run(
-            repo,
-            runner,
-            PRE_PUSH,
-            &args,
-            &[],
-            Some(&pre_push_input(repo, refs)),
-        )
+        run(repo, runner, PRE_PUSH, &args, &[], Some(input))
     }
 }
 

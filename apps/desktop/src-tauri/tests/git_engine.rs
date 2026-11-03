@@ -4964,6 +4964,169 @@ fn pre_push_follows_core_hooks_path() {
     std::fs::remove_dir_all(origin).unwrap();
 }
 
+fn serve_git_http(stream: std::net::TcpStream, root: &std::path::Path, idle: std::time::Duration) {
+    use std::io::{BufRead, Read, Write};
+    let mut writer = stream.try_clone().unwrap();
+    let mut reader = std::io::BufReader::new(stream);
+    loop {
+        reader.get_ref().set_read_timeout(Some(idle)).unwrap();
+        let mut request_line = String::new();
+        if reader.read_line(&mut request_line).unwrap_or(0) == 0 {
+            return;
+        }
+        reader
+            .get_ref()
+            .set_read_timeout(Some(std::time::Duration::from_secs(30)))
+            .unwrap();
+        let mut headers = Vec::new();
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let line = line.trim_end();
+            if line.is_empty() {
+                break;
+            }
+            if let Some((name, value)) = line.split_once(':') {
+                headers.push((name.trim().to_ascii_lowercase(), value.trim().to_string()));
+            }
+        }
+        let header = |name: &str| {
+            headers
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone())
+        };
+        let mut body = Vec::new();
+        if header("transfer-encoding").is_some_and(|value| value.eq_ignore_ascii_case("chunked")) {
+            loop {
+                let mut size = String::new();
+                reader.read_line(&mut size).unwrap();
+                let size =
+                    usize::from_str_radix(size.trim().split(';').next().unwrap(), 16).unwrap();
+                if size == 0 {
+                    let mut trailer = String::new();
+                    while reader.read_line(&mut trailer).unwrap() > 0 && trailer.trim() != "" {
+                        trailer.clear();
+                    }
+                    break;
+                }
+                let start = body.len();
+                body.resize(start + size, 0);
+                reader.read_exact(&mut body[start..]).unwrap();
+                reader.read_exact(&mut [0; 2]).unwrap();
+            }
+        } else if let Some(length) = header("content-length") {
+            body.resize(length.parse().unwrap(), 0);
+            reader.read_exact(&mut body).unwrap();
+        }
+        let mut parts = request_line.split_whitespace();
+        let method = parts.next().unwrap_or_default().to_string();
+        let target = parts.next().unwrap_or_default().to_string();
+        let (path, query) = target.split_once('?').unwrap_or((&target, ""));
+        let mut child = Command::new("git")
+            .arg("http-backend")
+            .env("GIT_PROJECT_ROOT", root)
+            .env("GIT_HTTP_EXPORT_ALL", "1")
+            .env("REQUEST_METHOD", &method)
+            .env("PATH_INFO", path)
+            .env("QUERY_STRING", query)
+            .env("CONTENT_TYPE", header("content-type").unwrap_or_default())
+            .env("CONTENT_LENGTH", body.len().to_string())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        let feeder = std::thread::spawn(move || {
+            let _ = stdin.write_all(&body);
+        });
+        let output = child.wait_with_output().unwrap();
+        feeder.join().unwrap();
+        let out = output.stdout;
+        let (head_end, body_start) = out
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|at| (at, at + 4))
+            .or_else(|| {
+                out.windows(2)
+                    .position(|window| window == b"\n\n")
+                    .map(|at| (at, at + 2))
+            })
+            .unwrap();
+        let mut status = "200 OK".to_string();
+        let mut response_headers = String::new();
+        for line in String::from_utf8_lossy(&out[..head_end]).lines() {
+            match line.split_once(':') {
+                Some((name, value)) if name.eq_ignore_ascii_case("status") => {
+                    status = value.trim().to_string();
+                }
+                _ => {
+                    response_headers.push_str(line.trim_end());
+                    response_headers.push_str("\r\n");
+                }
+            }
+        }
+        let content = &out[body_start..];
+        let head = format!(
+            "HTTP/1.1 {status}\r\n{response_headers}Content-Length: {}\r\n\r\n",
+            content.len()
+        );
+        if writer
+            .write_all(head.as_bytes())
+            .and_then(|_| writer.write_all(content))
+            .is_err()
+        {
+            return;
+        }
+    }
+}
+
+fn http_origin(local: &TempRepo, idle: std::time::Duration) -> (PathBuf, CleanupDir) {
+    let root = std::env::temp_dir().join(format!(
+        "{}-http",
+        local.dir.file_name().unwrap().to_string_lossy()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let cleanup = CleanupDir(root.clone());
+    git_in(&root, &["init", "--bare", "-q", "origin.git"]);
+    let origin = root.join("origin.git");
+    git_in(&origin, &["config", "http.receivepack", "true"]);
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/origin.git", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let root = root.clone();
+            std::thread::spawn(move || serve_git_http(stream, &root, idle));
+        }
+    });
+    git_in(&local.dir, &["remote", "add", "origin", &url]);
+    (origin, cleanup)
+}
+
+#[test]
+fn a_slow_pre_push_hook_survives_a_server_that_drops_idle_connections() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "one\n");
+    let first = commit_all(&local, "first");
+    let (origin, _cleanup) = http_origin(&local, std::time::Duration::from_secs(1));
+    recording_pre_push(&local, "echo run >> .git/pre-push-runs\nsleep 3");
+
+    let outcome = core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_eq!(ref_at(&origin, "refs/heads/master"), Some(first.clone()));
+    assert_eq!(local.read(".git/pre-push-runs"), "run\n");
+    assert_eq!(
+        pre_push_stdin(&local),
+        vec![format!(
+            "refs/heads/master {first} refs/heads/master {ZERO_OID}"
+        )]
+    );
+}
+
 fn branch_tip(repo: &TempRepo, branch: &str) -> String {
     git2::Repository::open(repo.path())
         .unwrap()

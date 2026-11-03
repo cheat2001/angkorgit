@@ -12,7 +12,7 @@ use git2::{
 use crate::error::{AppError, AppResult};
 
 use super::group_update::{FetchProgress, GroupUpdateControl};
-use super::hooks::{PrePush, PushedRef};
+use super::hooks::{pre_push_input, PrePush, PushedRef};
 use super::types::{GeneratedKey, GroupUpdateResult, OpOutcome, RefMovement, RemoteInfo};
 
 static CREDENTIAL_PREFS: OnceLock<RwLock<CredentialPrefs>> = OnceLock::new();
@@ -1148,13 +1148,55 @@ fn send(
     pre_push: &PrePush,
 ) -> AppResult<()> {
     prime_account_bindings(Some(repo));
-    let rejected: std::sync::Arc<Mutex<Vec<(String, String)>>> = Default::default();
-    let server_said: std::sync::Arc<Mutex<Vec<u8>>> = Default::default();
     let hook_failure: RefCell<Option<AppError>> = RefCell::new(None);
+    let approved: RefCell<Option<String>> = RefCell::new(None);
+    let mut sent = send_once(repo, remote, refspecs, pre_push, &hook_failure, &approved);
+    if sent.as_ref().is_err_and(connection_broke) && approved.borrow().is_some() {
+        sent = send_once(repo, remote, refspecs, pre_push, &hook_failure, &approved);
+    }
+    if let Some(error) = hook_failure.take() {
+        return Err(error);
+    }
+    let (rejected, server_said) = sent?;
+    if !rejected.is_empty() {
+        return Err(AppError::other(rejection_message(
+            remote_name,
+            &rejected,
+            &server_lines(&server_said),
+        )));
+    }
+    Ok(())
+}
+
+fn connection_broke(error: &git2::Error) -> bool {
+    matches!(
+        error.class(),
+        git2::ErrorClass::Net | git2::ErrorClass::Os | git2::ErrorClass::Ssh
+    )
+}
+
+fn already_approved(approved: &Option<String>, input: &str) -> bool {
+    approved
+        .as_deref()
+        .is_some_and(|seen| input.lines().all(|line| seen.lines().any(|ok| ok == line)))
+}
+
+type Sent = (Vec<(String, String)>, Vec<u8>);
+
+fn send_once(
+    repo: &Repository,
+    remote: &mut git2::Remote<'_>,
+    refspecs: &[String],
+    pre_push: &PrePush,
+    hook_failure: &RefCell<Option<AppError>>,
+    approved: &RefCell<Option<String>>,
+) -> Result<Sent, git2::Error> {
+    let rejected: Arc<Mutex<Vec<(String, String)>>> = Default::default();
+    let server_said: Arc<Mutex<Vec<u8>>> = Default::default();
     let forced = forced_refs(refspecs);
     let mut callbacks = make_callbacks();
     {
-        let rejected = std::sync::Arc::clone(&rejected);
+        let rejected = Arc::clone(&rejected);
         callbacks.push_update_reference(move |refname, status| {
             if let Some(reason) = status {
                 rejected
@@ -1164,7 +1206,7 @@ fn send(
             }
             Ok(())
         });
-        let server_said = std::sync::Arc::clone(&server_said);
+        let server_said = Arc::clone(&server_said);
         callbacks.sideband_progress(move |data| {
             let mut buffer = server_said.lock().unwrap();
             if buffer.len() < SERVER_MESSAGE_CAP {
@@ -1189,30 +1231,25 @@ fn send(
                     }
                 })
                 .collect();
-            pre_push.run(repo, &refs).map_err(|error| {
+            let input = pre_push_input(repo, &refs);
+            if already_approved(&approved.borrow(), &input) {
+                return Ok(());
+            }
+            pre_push.run_input(repo, &input).map_err(|error| {
                 *hook_failure.borrow_mut() = Some(error);
                 git2::Error::from_str("the pre-push hook stopped the push")
-            })
+            })?;
+            *approved.borrow_mut() = Some(input);
+            Ok(())
         });
     }
     let mut opts = PushOptions::new();
     opts.remote_callbacks(callbacks);
     let specs: Vec<&str> = refspecs.iter().map(String::as_str).collect();
-    let pushed = remote.push(&specs, Some(&mut opts));
-    if let Some(error) = hook_failure.take() {
-        return Err(error);
-    }
-    pushed?;
+    remote.push(&specs, Some(&mut opts))?;
     let rejected = std::mem::take(&mut *rejected.lock().unwrap());
-    if !rejected.is_empty() {
-        let said = server_lines(&server_said.lock().unwrap());
-        return Err(AppError::other(rejection_message(
-            remote_name,
-            &rejected,
-            &said,
-        )));
-    }
-    Ok(())
+    let server_said = std::mem::take(&mut *server_said.lock().unwrap());
+    Ok((rejected, server_said))
 }
 
 const SERVER_MESSAGE_CAP: usize = 8 * 1024;
@@ -1689,5 +1726,25 @@ mod tests {
             push_refspecs("feature/x", true, &[]),
             vec!["+refs/heads/feature/x:refs/heads/feature/x".to_string()]
         );
+    }
+
+    #[test]
+    fn a_retried_push_skips_only_updates_the_pre_push_hook_already_saw() {
+        let seen =
+            Some("refs/heads/a 1 refs/heads/a 0\nrefs/tags/v1 1 refs/tags/v1 0\n".to_string());
+        assert!(super::already_approved(
+            &seen,
+            "refs/heads/a 1 refs/heads/a 0\nrefs/tags/v1 1 refs/tags/v1 0\n"
+        ));
+        assert!(super::already_approved(
+            &seen,
+            "refs/tags/v1 1 refs/tags/v1 0\n"
+        ));
+        assert!(super::already_approved(&seen, ""));
+        assert!(!super::already_approved(
+            &seen,
+            "refs/heads/a 1 refs/heads/a 2\n"
+        ));
+        assert!(!super::already_approved(&None, ""));
     }
 }
