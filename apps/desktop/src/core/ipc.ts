@@ -158,6 +158,15 @@ function demoHooksDelay(): number {
 }
 
 const DEMO_PUSH_REJECTED = 'angkorgit-demo-push-rejected';
+const DEMO_CHECKOUT = 'angkorgit-demo-checkout';
+
+function demoCheckoutMovesHead(): boolean {
+  try {
+    return localStorage.getItem(DEMO_CHECKOUT) === '1';
+  } catch {
+    return false;
+  }
+}
 
 function demoPushRejected(): boolean {
   try {
@@ -495,7 +504,7 @@ export const ipc = {
   },
 
   async branches(path: string): Promise<BranchInfo[]> {
-    if (!isTauri()) return demo.demoBranches;
+    if (!isTauri()) return demo.demoBranchList();
     return invoke('branch_list', { path });
   },
   async createBranch(path: string, name: string, fromOid: string | null, checkout: boolean): Promise<void> {
@@ -511,7 +520,10 @@ export const ipc = {
     return invoke('branch_rename', { path, oldName, newName });
   },
   async checkout(path: string, name: string): Promise<void> {
-    if (!isTauri()) return;
+    if (!isTauri()) {
+      if (demoCheckoutMovesHead()) demo.demoCheckout(name);
+      return;
+    }
     return invoke('branch_checkout', { path, name });
   },
   async checkoutDetached(path: string, rev: string): Promise<void> {

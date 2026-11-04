@@ -61,7 +61,7 @@ import { useUndo } from '@/features/history/undoStore';
 import { useSettings, type IdentityProfile } from '@/features/settings/store';
 import { applyProfileToRepo, ensureRepoProfile } from '@/features/settings/profiles';
 import { openInEditor, preferredEditor, useEditors } from '@/features/settings/editors';
-import { capCount, isMac, modKey } from '@/shared/utils';
+import { basename, capCount, isMac, modKey } from '@/shared/utils';
 
 function RepoSwitcher() {
   const repo = useRepo((s) => s.repo);
@@ -414,6 +414,17 @@ interface PushRequest {
   noVerify: boolean;
 }
 
+function rebaseBlocker(request: PushRequest, repoPath: string, headBranch: string | null): string | null {
+  const branch = request.branch ?? 'the pushed branch';
+  if (request.repoPath !== repoPath) {
+    return `Switch to ${basename(request.repoPath)} and check out ${branch} first: a pull rebases the checked-out branch.`;
+  }
+  if (!request.branch || headBranch !== request.branch) {
+    return `Check out ${branch} first: a pull rebases the checked-out branch.`;
+  }
+  return null;
+}
+
 function isNonFastForward(error: unknown): boolean {
   const e = error as { code?: string; message?: string } | null;
   return e?.code === 'non_fast_forward' || /non-fast-?forward/i.test(e?.message ?? '');
@@ -563,10 +574,14 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
         open={pushRejected !== null}
         remote={pushRejected?.remote ?? remote}
         branch={pushRejected?.branch ?? repo.headBranch ?? null}
+        pullBlocked={pushRejected ? rebaseBlocker(pushRejected, repo.path, repo.headBranch) : null}
         onClose={() => setPushRejected(null)}
         onPullRebase={() => {
+          const rejected = pushRejected;
+          const current = useRepo.getState().repo;
+          if (!rejected || !current || rebaseBlocker(rejected, current.path, current.headBranch) !== null) return;
           setPushRejected(null);
-          void run('Pull (rebase)', () => ipc.pull(repo.path, remote, 'rebase'));
+          void run('Pull (rebase)', () => ipc.pull(rejected.repoPath, rejected.remote, 'rebase'));
         }}
         onForcePush={() => {
           const rejected = pushRejected;

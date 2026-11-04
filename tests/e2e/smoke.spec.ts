@@ -1107,6 +1107,50 @@ test('Force push after a rejected Push without hooks keeps skipping the hook and
   await expect(hookDialog).toHaveCount(0);
 });
 
+test('Pull with rebase after a rejected Push without hooks waits until the pushed branch is checked out again', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-hooks-delay', '1500');
+    localStorage.setItem('angkorgit-demo-push-rejected', '1');
+    localStorage.setItem('angkorgit-demo-checkout', '1');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.locator('header').getByRole('button', { name: /^Push\s*\d*$/ }).click();
+  await page.getByTitle('develop — click to filter graph, double-click to checkout').dblclick();
+  await expect(page.getByText('Checkout develop done')).toBeVisible();
+  const hookDialog = page.locator('[data-hook-failed="push"]');
+  await expect(hookDialog).toBeVisible({ timeout: 10_000 });
+  await hookDialog.locator('[data-hook-actions]').getByRole('button', { name: 'Push without hooks' }).click();
+
+  const rejected = page.locator('[data-push-rejected]');
+  await expect(rejected).toBeVisible();
+  await expect(rejected).toContainText('origin/main');
+  const pullRebase = rejected.getByRole('button', { name: /^Pull with rebase/ });
+  await expect(pullRebase).toBeDisabled();
+  await expect(rejected.locator('[data-pull-blocked]')).toHaveText(
+    'Check out main first: a pull rebases the checked-out branch.',
+  );
+  await expect(rejected.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await rejected.getByRole('button', { name: 'Cancel' }).click();
+  await expect(rejected).toBeHidden();
+  await expect(page.getByText('Pull (rebase) complete')).toHaveCount(0);
+  await expect(page.getByText('Already up to date (demo)')).toHaveCount(0);
+
+  await page.getByTitle('main — click to filter graph, double-click to checkout').dblclick();
+  await expect(page.getByText('Checkout main done')).toBeVisible();
+  await page.getByRole('button', { name: 'Push options' }).click();
+  await page.getByRole('menuitem', { name: 'Push without hooks' }).click();
+  await expect(rejected).toBeVisible();
+  await expect(rejected.locator('[data-pull-blocked]')).toHaveCount(0);
+  await expect(pullRebase).toBeEnabled();
+  await expect(pullRebase).toBeFocused();
+  await pullRebase.click();
+  await expect(page.getByText('Already up to date (demo)')).toBeVisible();
+});
+
 test('the commit box has no Skip hooks box when the repository has no hooks', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();
