@@ -4964,15 +4964,39 @@ fn pre_push_follows_core_hooks_path() {
     std::fs::remove_dir_all(origin).unwrap();
 }
 
-fn serve_git_http(stream: std::net::TcpStream, root: &std::path::Path, idle: std::time::Duration) {
+#[derive(Clone, Copy)]
+enum IdleDrop {
+    Close,
+    HalfClose,
+}
+
+fn serve_git_http(
+    stream: std::net::TcpStream,
+    root: &std::path::Path,
+    idle: std::time::Duration,
+    drop: IdleDrop,
+) {
     use std::io::{BufRead, Read, Write};
     let mut writer = stream.try_clone().unwrap();
     let mut reader = std::io::BufReader::new(stream);
     loop {
         reader.get_ref().set_read_timeout(Some(idle)).unwrap();
         let mut request_line = String::new();
-        if reader.read_line(&mut request_line).unwrap_or(0) == 0 {
-            return;
+        match reader.read_line(&mut request_line) {
+            Ok(0) => return,
+            Ok(_) => {}
+            Err(_) => {
+                if let IdleDrop::HalfClose = drop {
+                    let _ = reader.get_ref().shutdown(std::net::Shutdown::Write);
+                    reader
+                        .get_ref()
+                        .set_read_timeout(Some(std::time::Duration::from_secs(30)))
+                        .unwrap();
+                    let mut sink = [0; 8192];
+                    while matches!(reader.read(&mut sink), Ok(n) if n > 0) {}
+                }
+                return;
+            }
         }
         reader
             .get_ref()
@@ -5082,7 +5106,11 @@ fn serve_git_http(stream: std::net::TcpStream, root: &std::path::Path, idle: std
     }
 }
 
-fn http_origin(local: &TempRepo, idle: std::time::Duration) -> (PathBuf, CleanupDir) {
+fn http_origin(
+    local: &TempRepo,
+    idle: std::time::Duration,
+    drop: IdleDrop,
+) -> (PathBuf, CleanupDir) {
     let root = std::env::temp_dir().join(format!(
         "{}-http",
         local.dir.file_name().unwrap().to_string_lossy()
@@ -5097,22 +5125,21 @@ fn http_origin(local: &TempRepo, idle: std::time::Duration) -> (PathBuf, Cleanup
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let root = root.clone();
-            std::thread::spawn(move || serve_git_http(stream, &root, idle));
+            std::thread::spawn(move || serve_git_http(stream, &root, idle, drop));
         }
     });
     git_in(&local.dir, &["remote", "add", "origin", &url]);
     (origin, cleanup)
 }
 
-#[test]
-fn a_slow_pre_push_hook_survives_a_server_that_drops_idle_connections() {
+fn slow_pre_push_lands_once(drop: IdleDrop) {
     if !hooks_runnable() {
         return;
     }
     let local = TempRepo::new();
     local.write("a.txt", "one\n");
     let first = commit_all(&local, "first");
-    let (origin, _cleanup) = http_origin(&local, std::time::Duration::from_secs(1));
+    let (origin, _cleanup) = http_origin(&local, std::time::Duration::from_secs(1), drop);
     recording_pre_push(&local, "echo run >> .git/pre-push-runs\nsleep 3");
 
     let outcome = core::push(local.path(), "origin", None, false, false, true, false).unwrap();
@@ -5125,6 +5152,16 @@ fn a_slow_pre_push_hook_survives_a_server_that_drops_idle_connections() {
             "refs/heads/master {first} refs/heads/master {ZERO_OID}"
         )]
     );
+}
+
+#[test]
+fn a_slow_pre_push_hook_survives_a_server_that_drops_idle_connections() {
+    slow_pre_push_lands_once(IdleDrop::Close);
+}
+
+#[test]
+fn a_slow_pre_push_hook_survives_a_server_that_half_closes_idle_connections() {
+    slow_pre_push_lands_once(IdleDrop::HalfClose);
 }
 
 fn branch_tip(repo: &TempRepo, branch: &str) -> String {

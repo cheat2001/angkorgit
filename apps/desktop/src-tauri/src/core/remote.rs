@@ -1171,7 +1171,11 @@ fn send(
 fn connection_broke(error: &git2::Error) -> bool {
     matches!(
         error.class(),
-        git2::ErrorClass::Net | git2::ErrorClass::Os | git2::ErrorClass::Ssh
+        git2::ErrorClass::Net
+            | git2::ErrorClass::Os
+            | git2::ErrorClass::Ssh
+            | git2::ErrorClass::Http
+            | git2::ErrorClass::Ssl
     )
 }
 
