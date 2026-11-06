@@ -26,6 +26,13 @@ All notable changes to AngKorGit are documented here. The format follows
   **Pull all without hooks** in the group menu skips it. Cancel waits for a hook that
   is already running, the same way it waits for the checkout before it. (#69, #82)
 
+### Changed
+- **Rebasing a branch that already sits on top of its target does nothing**, like
+  `git rebase`: it reports "Already up to date" instead of re-creating the branch's
+  commits with new commit dates.
+- **Fast-forward merges and pulls set `ORIG_HEAD`** to the commit you were on, like
+  `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
+
 ## [0.26.0] — 2026-11-06
 
 The hooks release. Commits and pushes now run your Git hooks the way `git` does, the
