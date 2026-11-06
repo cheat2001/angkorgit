@@ -494,8 +494,8 @@ pub async fn merge_abort(path: String) -> AppResult<()> {
 #[tauri::command]
 pub async fn branch_rebase(app: AppHandle, path: String, upstream: String) -> AppResult<OpOutcome> {
     let repo_path = path.clone();
-    let hooked = blocking(move || post_hooks::rebase(&path, &upstream, false)).await?;
-    Ok(report(&app, &repo_path, hooked))
+    let hooked = blocking(move || Ok(post_hooks::rebase(&path, &upstream, false))).await?;
+    report(&app, &repo_path, hooked)
 }
 
 #[tauri::command]
@@ -630,10 +630,15 @@ pub async fn remote_pull(
 ) -> AppResult<OpOutcome> {
     let repo_path = path.clone();
     let hooked = blocking(move || {
-        post_hooks::pull(&path, &remote, mode.as_deref(), noVerify.unwrap_or(false))
+        Ok(post_hooks::pull(
+            &path,
+            &remote,
+            mode.as_deref(),
+            noVerify.unwrap_or(false),
+        ))
     })
     .await?;
-    Ok(report(&app, &repo_path, hooked))
+    report(&app, &repo_path, hooked)
 }
 
 #[tauri::command]

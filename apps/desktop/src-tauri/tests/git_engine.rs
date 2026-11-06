@@ -3307,7 +3307,9 @@ fn group_pull_matches_toolbar_pull_with_active_hooks() {
     let new = commit_all(&local, "updated");
     core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
-    core::post_hooks::pull(toolbar.path(), "origin", Some("merge"), false).unwrap();
+    core::post_hooks::pull(toolbar.path(), "origin", Some("merge"), false)
+        .into_result()
+        .unwrap();
     assert_eq!(other.read("a.txt"), toolbar.read("a.txt"));
     assert_eq!(repo.head().unwrap().target().unwrap().to_string(), new);
     for pulled in [&other, &toolbar] {
@@ -5455,7 +5457,9 @@ fn post_rewrite_after_rebase_lists_every_commit_once() {
     core::checkout_branch(repo.path(), "topic").unwrap();
     record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
 
-    let rebased = core::post_hooks::rebase(repo.path(), "master", false).unwrap();
+    let rebased = core::post_hooks::rebase(repo.path(), "master", false)
+        .into_result()
+        .unwrap();
     assert_eq!(rebased.value.status, "ok");
     assert_eq!(rev(&repo, "HEAD~2"), onto);
     assert_eq!(
@@ -5468,7 +5472,9 @@ fn post_rewrite_after_rebase_lists_every_commit_once() {
         ]
     );
 
-    let again = core::post_hooks::rebase(repo.path(), "topic", false).unwrap();
+    let again = core::post_hooks::rebase(repo.path(), "topic", false)
+        .into_result()
+        .unwrap();
     assert_eq!(again.value.status, "up_to_date");
     assert!(post_hook_runs(&repo).is_empty());
 }
@@ -5488,7 +5494,9 @@ fn rebasing_a_branch_already_on_top_of_its_upstream_is_up_to_date_and_runs_no_ho
     let tip = commit_all(&repo, "t2");
     record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
 
-    let rebased = core::post_hooks::rebase(repo.path(), "master", false).unwrap();
+    let rebased = core::post_hooks::rebase(repo.path(), "master", false)
+        .into_result()
+        .unwrap();
     assert_eq!(
         rebased.value.status, "up_to_date",
         "{}",
@@ -5519,7 +5527,9 @@ fn rebase_runs_post_checkout_on_onto_before_replaying_the_commits() {
         &format!("echo \"$2 $(git rev-parse HEAD) $(cat a.txt)\" >> '{POST_HOOK_LOG}'"),
     );
 
-    let paused = core::post_hooks::rebase(repo.path(), "master", false).unwrap();
+    let paused = core::post_hooks::rebase(repo.path(), "master", false)
+        .into_result()
+        .unwrap();
     assert_eq!(paused.value.status, "conflicts");
     assert!(repo.read("a.txt").contains("<<<<<<<"));
     assert_eq!(post_hook_runs(&repo), vec![format!("{onto} {onto} master")]);
@@ -5545,7 +5555,9 @@ fn post_rewrite_runs_once_when_a_paused_rebase_completes() {
     core::checkout_branch(repo.path(), "topic").unwrap();
     record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
 
-    let paused = core::post_hooks::rebase(repo.path(), "master", false).unwrap();
+    let paused = core::post_hooks::rebase(repo.path(), "master", false)
+        .into_result()
+        .unwrap();
     assert_eq!(paused.value.status, "conflicts");
     assert_eq!(
         post_hook_runs(&repo),
@@ -5616,7 +5628,9 @@ fn pull_with_rebase_runs_post_rewrite_and_never_post_merge() {
     local.write("b.txt", "b\n");
     commit_all(&local, "b");
     core::push(local.path(), "origin", None, false, false, true, false).unwrap();
-    let behind = core::post_hooks::pull(other.path(), "origin", Some("rebase"), false).unwrap();
+    let behind = core::post_hooks::pull(other.path(), "origin", Some("rebase"), false)
+        .into_result()
+        .unwrap();
     assert_eq!(behind.value.status, "fast_forward");
     assert_eq!(post_hook_runs(&other), vec!["post-merge 0"]);
 
@@ -5625,7 +5639,9 @@ fn pull_with_rebase_runs_post_rewrite_and_never_post_merge() {
     core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     other.write("o.txt", "o\n");
     let mine = commit_all(&other, "o");
-    let diverged = core::post_hooks::pull(other.path(), "origin", Some("rebase"), false).unwrap();
+    let diverged = core::post_hooks::pull(other.path(), "origin", Some("rebase"), false)
+        .into_result()
+        .unwrap();
     assert_eq!(diverged.value.status, "ok", "{}", diverged.value.message);
     assert_eq!(head_commit(&other).1, 1);
     assert_eq!(
@@ -5642,11 +5658,15 @@ fn pull_with_rebase_runs_post_rewrite_and_never_post_merge() {
     core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     other.write("p.txt", "p\n");
     commit_all(&other, "p");
-    let merged = core::post_hooks::pull(other.path(), "origin", Some("merge"), false).unwrap();
+    let merged = core::post_hooks::pull(other.path(), "origin", Some("merge"), false)
+        .into_result()
+        .unwrap();
     assert_eq!(merged.value.status, "ok");
     assert_eq!(post_hook_runs(&other), vec!["post-merge 0"]);
 
-    let current = core::post_hooks::pull(other.path(), "origin", Some("merge"), false).unwrap();
+    let current = core::post_hooks::pull(other.path(), "origin", Some("merge"), false)
+        .into_result()
+        .unwrap();
     assert_eq!(current.value.status, "up_to_date");
     assert!(post_hook_runs(&other).is_empty());
     std::fs::remove_dir_all(origin).unwrap();
@@ -5670,7 +5690,9 @@ fn pull_without_hooks_stays_without_hooks_when_its_paused_rebase_is_continued() 
     other.write("a.txt", "mine\n");
     commit_all(&other, "mine");
 
-    let paused = core::post_hooks::pull(other.path(), "origin", Some("rebase"), true).unwrap();
+    let paused = core::post_hooks::pull(other.path(), "origin", Some("rebase"), true)
+        .into_result()
+        .unwrap();
     assert_eq!(paused.value.status, "conflicts");
     core::conflict_resolve(other.path(), "a.txt", "both\n").unwrap();
     let done = core::post_hooks::rebase_continue(other.path(), false).unwrap();
@@ -5703,7 +5725,8 @@ fn pull_without_hooks_stays_without_hooks_when_replay_stops_on_an_untracked_file
     commit_all(&other, "remove later");
     other.write("later.txt", "untracked and in the way\n");
 
-    let stopped = core::post_hooks::pull(other.path(), "origin", Some("rebase"), true);
+    let stopped =
+        core::post_hooks::pull(other.path(), "origin", Some("rebase"), true).into_result();
     assert!(stopped.is_err());
     let repo = git2::Repository::open(other.path()).unwrap();
     assert_eq!(repo.state(), git2::RepositoryState::RebaseMerge);
@@ -5725,10 +5748,10 @@ fn rebase_refuses_a_dirty_tree_or_a_rebase_in_progress_even_when_up_to_date() {
     let tip = commit_all(&repo, "t");
 
     repo.write("a.txt", "unstaged\n");
-    let unstaged = core::post_hooks::rebase(repo.path(), "master", false);
+    let unstaged = core::post_hooks::rebase(repo.path(), "master", false).into_result();
     assert!(unstaged.is_err());
     core::stage_file(repo.path(), "a.txt").unwrap();
-    let staged = core::post_hooks::rebase(repo.path(), "master", false);
+    let staged = core::post_hooks::rebase(repo.path(), "master", false).into_result();
     assert!(staged.is_err());
     assert_eq!(rev(&repo, "HEAD"), tip);
     core::discard_staged_file(repo.path(), "a.txt").unwrap();
@@ -5739,9 +5762,11 @@ fn rebase_refuses_a_dirty_tree_or_a_rebase_in_progress_even_when_up_to_date() {
     core::branch_create(repo.path(), "clash", Some(&tip), true).unwrap();
     repo.write("a.txt", "clash\n");
     commit_all(&repo, "clash edit");
-    let paused = core::post_hooks::rebase(repo.path(), "master", false).unwrap();
+    let paused = core::post_hooks::rebase(repo.path(), "master", false)
+        .into_result()
+        .unwrap();
     assert_eq!(paused.value.status, "conflicts");
-    let again = core::post_hooks::rebase(repo.path(), "HEAD", false);
+    let again = core::post_hooks::rebase(repo.path(), "HEAD", false).into_result();
     assert!(again.is_err());
     let message = again.err().unwrap().to_string();
     assert!(message.contains("in progress"), "{message}");
@@ -5782,12 +5807,95 @@ fn a_hook_folder_inside_the_worktree_is_reported_so_a_pull_can_skip_an_arriving_
     commit_all(&local, "add a post-merge hook");
     core::push(local.path(), "origin", None, false, false, true, false).unwrap();
 
-    core::post_hooks::pull(skipping.path(), "origin", Some("merge"), true).unwrap();
+    core::post_hooks::pull(skipping.path(), "origin", Some("merge"), true)
+        .into_result()
+        .unwrap();
     assert!(skipping.dir.join(".husky").join("post-merge").exists());
     assert!(post_hook_runs(&skipping).is_empty());
-    core::post_hooks::pull(running.path(), "origin", Some("merge"), false).unwrap();
+    core::post_hooks::pull(running.path(), "origin", Some("merge"), false)
+        .into_result()
+        .unwrap();
     assert_eq!(post_hook_runs(&running), vec!["post-merge 0"]);
     std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_hook_symlink_into_the_worktree_counts_as_a_hook_a_pull_can_bring() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let skipping = clone_of(&origin, &local, "symlink-skip");
+    let running = clone_of(&origin, &local, "symlink-run");
+    for repo in [&skipping, &running] {
+        let link = default_hooks(repo).join("post-merge");
+        std::os::unix::fs::symlink("../../scripts/post-merge", &link).unwrap();
+        let hooks = core::repo_hooks(repo.path()).unwrap();
+        assert!(!hooks.found.contains(&"post-merge".to_string()));
+        assert!(hooks.in_worktree);
+    }
+    let outside = TempRepo::new();
+    std::os::unix::fs::symlink("/usr/bin/true", default_hooks(&outside).join("post-merge"))
+        .unwrap();
+    assert!(!core::repo_hooks(outside.path()).unwrap().in_worktree);
+    let linked_folder = TempRepo::new();
+    std::fs::remove_dir_all(default_hooks(&linked_folder)).ok();
+    std::os::unix::fs::symlink("../githooks", default_hooks(&linked_folder)).unwrap();
+    assert!(core::repo_hooks(linked_folder.path()).unwrap().in_worktree);
+
+    write_hook(
+        &local.dir.join("scripts"),
+        "post-merge",
+        &format!("echo \"post-merge $*\" >> '{POST_HOOK_LOG}'"),
+    );
+    commit_all(&local, "add the post-merge script");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+
+    core::post_hooks::pull(skipping.path(), "origin", Some("merge"), true)
+        .into_result()
+        .unwrap();
+    assert!(post_hook_runs(&skipping).is_empty());
+    core::post_hooks::pull(running.path(), "origin", Some("merge"), false)
+        .into_result()
+        .unwrap();
+    assert_eq!(post_hook_runs(&running), vec!["post-merge 0"]);
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn a_post_checkout_warning_survives_a_replay_that_fails_afterwards() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "topic", None, false).unwrap();
+    repo.write("theirs.txt", "theirs\n");
+    commit_all(&repo, "theirs");
+    core::checkout_branch(repo.path(), "topic").unwrap();
+    repo.write("later.txt", "added\n");
+    commit_all(&repo, "add later");
+    std::fs::remove_file(repo.dir.join("later.txt")).unwrap();
+    commit_all(&repo, "remove later");
+    repo.write("later.txt", "untracked and in the way\n");
+    write_hook(
+        &default_hooks(&repo),
+        "post-checkout",
+        "echo install failed >&2\nexit 3",
+    );
+
+    let stopped = core::post_hooks::rebase(repo.path(), "master", false);
+    assert!(stopped.value.is_err());
+    assert_eq!(stopped.warnings.len(), 1);
+    assert_eq!(stopped.warnings[0].hook, "post-checkout");
+    assert_eq!(stopped.warnings[0].status, Some(3));
+    assert_eq!(stopped.warnings[0].output, "install failed");
 }
 
 #[test]
@@ -5845,7 +5953,9 @@ fn skipping_hooks_suppresses_every_post_hook() {
     core::post_hooks::checkout_branch(repo.path(), "topic", true).unwrap();
     repo.write("t.txt", "t\n");
     commit_all(&repo, "t");
-    core::post_hooks::rebase(repo.path(), "master", true).unwrap();
+    core::post_hooks::rebase(repo.path(), "master", true)
+        .into_result()
+        .unwrap();
     repo.write("t.txt", "amended\n");
     core::stage_all(repo.path()).unwrap();
     core::post_hooks::amend(repo.path(), None, true).unwrap();
