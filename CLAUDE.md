@@ -403,23 +403,17 @@ ai_cli.rs             ← installed AI-CLI transport: detect (which_in over augm
                         binaries only, stdin prompt, {OUTPUT_FILE} placeholder → temp file,
                         neutral cwd, NO_COLOR/TERM=dumb env, kill-on-timeout); capture =
                         spawn_piped + capture_child (kills the child only); hooks use
-                        spawn_tree (own process group on unix) + run_tree(child, stdin, timeout,
-                        wait_for_group) → TreeRun {captured, timed_out} (a timeout kills the
-                        whole group, or `taskkill /F /T` on Windows, and STILL RETURNS what the
-                        hook printed so far — PR #87 review, round eight; wait_for_group = after
-                        the hook exits, poll killpg(pgid, 0) until no process of its group is
-                        left, up to the same deadline, then kill the group and count it as a
-                        timeout; on Windows (PR #87 review, round ten) the child is put in a JOB
-                        OBJECT right after spawn (ai_cli job::Job over windows-sys: Assign
-                        ProcessToJobObject, ActiveProcesses from QueryInformationJobObject,
-                        TerminateJobObject at the deadline) because processes it starts join the
-                        job; a grandchild started before the assignment would escape, which
-                        cannot happen for git.exe, the only child that waits this way). OUTPUT IS DRAINED, NOT
+                        spawn_tree(command, wait_for_group) + run_tree(tree, stdin, timeout)
+                        → TreeRun {captured, timed_out}. A timeout stops the process tree and
+                        returns the output so far. For group pull, wait_for_group carries the
+                        Unix process group or Windows job through capture and waits for its
+                        descendants up to the same deadline. Windows job startup and cleanup
+                        are described in G55 (8). OUTPUT IS DRAINED, NOT
                         JOINED (PR #85 reviews): the readers stream into shared buffers and, once
                         the process has exited, get at most OUTPUT_DRAIN 1 s before collect()
                         returns what was read — a background process that inherited
                         stdout/stderr (a hook's `cmd &`) kept the old read_to_end joins blocked,
-                        so Push never finished; 8 module tests.
+                        so Push never finished (see §9 for tests).
                         WINDOWS BATCH LAUNCHERS (issue #43 follow-up, 2026-09-30): Cursor
                         installs `cursor-agent.cmd` (→ .ps1 → versions\<v>\node.exe
                         index.js) and is the ONE agent whose prompt is a positional ARG
@@ -4263,21 +4257,29 @@ update CLAUDE.md or docs/ — never the code.
   first file it could not delete, after earlier files were already restored, and so never
   ran post-checkout; it now returns DiscardBatch too, runs the hook once when any file came
   back and the panel names the failed files ("k of n staged files could not be discarded")
-  without a success toast. stage::discard_staged_all keeps its old Vec<String> signature for
+  without a success toast. Detect staged renames and handle each source and destination as
+  one entry. Restore the source first and leave the destination in the index and worktree
+  if that restore fails. When paths overlap or alias on disk, forced checkout can remove the
+  destination itself. Move the blocking path into a sibling backup first, put it back if
+  checkout fails, and reload the cached index before trying independent entries. Refuse to
+  move a directory blocker that contains unrelated files.
+  stage::discard_staged_all keeps its old Vec<String> signature for
   the engine tests (the first failure becomes its error). E2E TRAP met here:
   `expect(locator).toHaveCount(0)` RETRIES until it holds, so it passes once a wrongly shown
   toast expires (sonner's 4 s) — check absence with a one-shot `locator.count()` after a
   wait, as the hook e2e tests do now. (b) "Pull without hooks" goes through PullCheckDialog like the main
   Pull button when the preview predicts conflicts or blocking edits (pullCheck state
   {noVerify}); the other Pull menu items still never ask. (c) GROUP PULL CONTAINS
-  POST-MERGE'S LEFTOVERS: run_post_watched(…, Watch::UNTIL_LEFTOVERS_EXIT) runs the hook with
-  run_tree(…, wait_for_group = true), so a `(npm install &)` style background job finishes
+  POST-MERGE'S LEFTOVERS: run_post_watched(…, Watch::UNTIL_LEFTOVERS_EXIT) starts the hook with
+  spawn_tree(…, wait_for_group = true), so a `(npm install &)` style background job finishes
   (or is killed at HOOK_TIMEOUT) before with_active_result lets go of the lock — the cancel
   guarantee covers the hook's whole process group. Elsewhere hooks keep git's behaviour:
-  background jobs outlive the operation. Windows has no process group, so the runner puts
-  git in a job object there and waits until the job holds no process (round ten; the first
-  version reported the group empty on Windows and let a background child write after Cancel
-  was acknowledged). (d) TIMEOUTS ARE NOT "DID NOT
+  background jobs outlive the operation. On Windows the runner starts Git suspended,
+  assigns it to a job object, then resumes it and waits until the job holds no process.
+  Assigning the job after Git started let fast hooks escape tracking. A job setup or resume
+  failure reports a hook launch warning on the group row. If Git was spawned, the runner
+  terminates it. At the deadline the runner terminates the job and waits for it to empty.
+  (d) TIMEOUTS ARE NOT "DID NOT
   RUN": run_watched returns AppError::HookTimeout {hook, seconds, output} (code
   hook_timeout, detail = output so far); a post-hook timeout becomes a HookWarning with
   status null, timedOut true and the output, shown as "The <hook> hook timed out" with

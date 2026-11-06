@@ -5484,6 +5484,111 @@ fn discarding_all_staged_changes_keeps_going_past_a_file_it_cannot_delete() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn discarding_all_staged_changes_preserves_a_rename_if_its_source_cannot_be_restored() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo = TempRepo::new();
+    let source = "locked/source.txt";
+    let destination = "a-moved.txt";
+    repo.write(source, "original contents\n");
+    repo.write("z.txt", "original z\n");
+    commit_all(&repo, "two files");
+
+    std::fs::rename(repo.dir.join(source), repo.dir.join(destination)).unwrap();
+    repo.write("z.txt", "staged z\n");
+    core::stage_all(repo.path()).unwrap();
+    repo.write(destination, "edited after staging\n");
+
+    let locked = repo.dir.join("locked");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+    if std::fs::write(locked.join("probe"), "").is_ok() {
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipping: the folder stayed writable, permissions are not enforced here");
+        return;
+    }
+
+    let result = core::post_hooks::discard_staged_all(repo.path(), false);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let result = result.unwrap();
+    assert!(result.value.leftovers.is_empty());
+    assert_eq!(result.value.failed.len(), 1);
+    assert_eq!(result.value.failed[0].path, source);
+    assert!(!repo.dir.join(source).exists());
+    assert_eq!(repo.read(destination), "edited after staging\n");
+    assert_eq!(repo.read("z.txt"), "original z\n");
+
+    let status = core::status(repo.path()).unwrap();
+    assert_eq!(status.files.len(), 1);
+    assert_eq!(status.files[0].path, destination);
+    assert_eq!(status.files[0].orig_path.as_deref(), Some(source));
+    assert_eq!(status.files[0].staged.as_deref(), Some("renamed"));
+
+    let result = core::post_hooks::discard_staged_all(repo.path(), false).unwrap();
+    assert!(result.value.failed.is_empty());
+    assert!(result.value.leftovers.is_empty());
+    assert_eq!(repo.read(source), "original contents\n");
+    assert!(!repo.dir.join(destination).exists());
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
+}
+
+#[test]
+fn discarding_staged_renames_with_overlapping_paths_puts_back_the_destination_on_failure() {
+    for (source, destination) in [
+        ("a", "a/b"),
+        ("a/b", "a"),
+        ("lower.txt", "LOWER.txt"),
+        ("a", "A/b"),
+        ("A/b", "a"),
+    ] {
+        let repo = TempRepo::new();
+        repo.write(source, "original contents\n");
+        commit_all(&repo, "one file");
+        let source_path = repo.dir.join(source);
+        std::fs::remove_file(&source_path).unwrap();
+        let source_parent = source_path.parent().unwrap();
+        if source_parent != repo.dir {
+            std::fs::remove_dir(source_parent).unwrap();
+        }
+        repo.write(destination, "original contents\n");
+        let git_repo = git2::Repository::open(repo.path()).unwrap();
+        let mut index = git_repo.index().unwrap();
+        index.remove_path(std::path::Path::new(source)).unwrap();
+        index.add_path(std::path::Path::new(destination)).unwrap();
+        index.write().unwrap();
+        repo.write(destination, "edited after staging\n");
+
+        let lock = repo.dir.join(".git/index.lock");
+        std::fs::write(&lock, "").unwrap();
+        let result = core::post_hooks::discard_staged_all(repo.path(), true);
+        std::fs::remove_file(lock).unwrap();
+        let result = result.unwrap();
+        assert!(
+            result.value.leftovers.is_empty(),
+            "{source} → {destination}"
+        );
+        assert_eq!(result.value.failed.len(), 1, "{source} → {destination}");
+        assert_eq!(result.value.failed[0].path, source);
+        assert_eq!(repo.read(destination), "edited after staging\n");
+        let status = core::status(repo.path()).unwrap();
+        let staged: Vec<_> = status.files.iter().filter(|f| f.staged.is_some()).collect();
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].path, destination);
+        assert_eq!(staged[0].orig_path.as_deref(), Some(source));
+        assert_eq!(staged[0].staged.as_deref(), Some("renamed"));
+
+        let result = core::post_hooks::discard_staged_all(repo.path(), true).unwrap();
+        assert!(result.value.failed.is_empty(), "{source} → {destination}");
+        assert!(
+            result.value.leftovers.is_empty(),
+            "{source} → {destination}"
+        );
+        assert_eq!(repo.read(source), "original contents\n");
+        assert!(core::status(repo.path()).unwrap().files.is_empty());
+    }
+}
+
 #[test]
 fn post_merge_runs_after_a_merge_commit_and_a_fast_forward_only() {
     if !hooks_runnable() {
