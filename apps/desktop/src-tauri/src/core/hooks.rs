@@ -167,9 +167,13 @@ fn config_lives_in_worktree(repo: &Repository, workdir: &Handle, gitdirs: &[Hand
     let home = super::remote::home_dir();
     let mut seen = std::collections::HashSet::new();
     while let Some(file) = pending.pop() {
-        if seen.len() >= CONFIG_FILE_LIMIT || !seen.insert(file.clone()) {
+        if seen.contains(&file) {
             continue;
         }
+        if seen.len() >= CONFIG_FILE_LIMIT {
+            return true;
+        }
+        seen.insert(file.clone());
         if visits_worktree(&file, workdir, gitdirs) {
             return true;
         }

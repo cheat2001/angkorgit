@@ -296,7 +296,7 @@ fn ensure_rebase_can_start(repo: &Repository) -> AppResult<()> {
              finish or abort it first",
         ));
     }
-    ensure_tracked_clean(repo)
+    ensure_clean_for_libgit2_rebase(repo)
 }
 
 fn linear_since(repo: &Repository, head: git2::Oid, base: git2::Oid) -> AppResult<bool> {
@@ -485,21 +485,30 @@ pub fn rebase_commits(path: &str, base: &str) -> AppResult<Vec<CommitInfo>> {
     Ok(commits)
 }
 
+fn uncommitted_changes() -> AppError {
+    AppError::other("working tree has uncommitted changes — commit or stash them first")
+}
+
 fn ensure_tracked_clean(repo: &Repository) -> AppResult<()> {
+    ensure_clean(repo, git2::SubmoduleIgnore::Unspecified)
+}
+
+fn ensure_clean_for_libgit2_rebase(repo: &Repository) -> AppResult<()> {
+    ensure_clean(repo, git2::SubmoduleIgnore::Untracked)
+}
+
+fn ensure_clean(repo: &Repository, submodules: git2::SubmoduleIgnore) -> AppResult<()> {
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(false)
         .include_ignored(false)
         .exclude_submodules(true);
-    let statuses = repo.statuses(Some(&mut opts))?;
-    if !statuses.is_empty() || submodule_changed(repo)? {
-        return Err(AppError::other(
-            "working tree has uncommitted changes — commit or stash them first",
-        ));
+    if !repo.statuses(Some(&mut opts))?.is_empty() || submodule_changed(repo, submodules)? {
+        return Err(uncommitted_changes());
     }
     Ok(())
 }
 
-fn submodule_changed(repo: &Repository) -> AppResult<bool> {
+fn submodule_changed(repo: &Repository, ignore: git2::SubmoduleIgnore) -> AppResult<bool> {
     let changed = git2::SubmoduleStatus::INDEX_ADDED
         | git2::SubmoduleStatus::INDEX_DELETED
         | git2::SubmoduleStatus::INDEX_MODIFIED
@@ -507,12 +516,13 @@ fn submodule_changed(repo: &Repository) -> AppResult<bool> {
         | git2::SubmoduleStatus::WD_DELETED
         | git2::SubmoduleStatus::WD_MODIFIED
         | git2::SubmoduleStatus::WD_INDEX_MODIFIED
-        | git2::SubmoduleStatus::WD_WD_MODIFIED;
+        | git2::SubmoduleStatus::WD_WD_MODIFIED
+        | git2::SubmoduleStatus::WD_UNTRACKED;
     for submodule in repo.submodules()? {
         let Some(name) = submodule.name() else {
             continue;
         };
-        let status = repo.submodule_status(name, git2::SubmoduleIgnore::Untracked)?;
+        let status = repo.submodule_status(name, ignore)?;
         if status.intersects(changed) {
             return Ok(true);
         }
