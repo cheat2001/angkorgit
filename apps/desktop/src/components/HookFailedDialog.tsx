@@ -22,6 +22,7 @@ export interface HookFailureView {
 
 export interface HookWarningView {
   hook: string;
+  timedOut: boolean;
   message: string;
   output: string;
   repoName: string;
@@ -112,7 +113,9 @@ export function HookWarningDialog({ warning, onClose }: { warning: HookWarningVi
     <Dialog open={warning !== null} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-2xl" data-hook-warning={warning?.hook}>
         <DialogHeader>
-          <DialogTitle>The {warning?.hook ?? 'post-checkout'} hook failed</DialogTitle>
+          <DialogTitle>
+            The {warning?.hook ?? 'post-checkout'} hook {warning?.timedOut ? 'timed out' : 'failed'}
+          </DialogTitle>
           <DialogDescription>
             {warning?.message} Nothing was undone in {warning?.repoName}: git ignores the exit code of this hook.
           </DialogDescription>

@@ -524,10 +524,7 @@ export function WorkingCopyPanel() {
   const discardMany = async (paths: string[], staged: boolean) => {
     const leftovers: string[] = [];
     try {
-      for (const file of paths) {
-        const clean = staged ? await ipc.discardStagedFile(path, file) : await ipc.discardFile(path, file);
-        if (!clean) leftovers.push(file);
-      }
+      leftovers.push(...(await ipc.discardFiles(path, paths, staged)));
     } catch (error) {
       toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
     }

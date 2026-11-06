@@ -7,7 +7,7 @@ use git2::{Oid, Repository};
 use same_file::Handle;
 
 use super::types::{HookWarning, RepoHooks};
-use crate::ai_cli::{capture, capture_tree_child, search_path, spawn_tree};
+use crate::ai_cli::{capture, run_tree, search_path, spawn_tree};
 use crate::error::{AppError, AppResult};
 
 pub const PRE_COMMIT: &str = "pre-commit";
@@ -369,6 +369,23 @@ impl Drop for InputFile {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct Watch {
+    timeout: Duration,
+    leftovers: bool,
+}
+
+impl Watch {
+    pub(crate) const PLAIN: Watch = Watch {
+        timeout: HOOK_TIMEOUT,
+        leftovers: false,
+    };
+    pub(crate) const UNTIL_LEFTOVERS_EXIT: Watch = Watch {
+        timeout: HOOK_TIMEOUT,
+        leftovers: true,
+    };
+}
+
 pub(crate) fn run(
     repo: &Repository,
     runner: &Runner,
@@ -376,6 +393,18 @@ pub(crate) fn run(
     args: &[&OsStr],
     env: &[(&str, &OsStr)],
     input: Option<&str>,
+) -> AppResult<()> {
+    run_watched(repo, runner, name, args, env, input, Watch::PLAIN)
+}
+
+pub(crate) fn run_watched(
+    repo: &Repository,
+    runner: &Runner,
+    name: &str,
+    args: &[&OsStr],
+    env: &[(&str, &OsStr)],
+    input: Option<&str>,
+    watch: Watch,
 ) -> AppResult<()> {
     let cwd = repo.workdir().unwrap_or_else(|| repo.path());
     let input_file = match (runner, input) {
@@ -431,9 +460,9 @@ pub(crate) fn run(
         Runner::Direct(_) => input.unwrap_or(""),
         Runner::Git(_) => "",
     };
-    let captured = capture_tree_child(child, piped, HOOK_TIMEOUT)
-        .map_err(|e| AppError::other(format!("The {name} hook could not run: {e}")))?;
-    if captured.status == 0 {
+    let run = run_tree(child, piped, watch.timeout, watch.leftovers);
+    let captured = run.captured;
+    if captured.status == 0 && !run.timed_out {
         return Ok(());
     }
     let output = [captured.stdout.trim_end(), captured.stderr.trim_end()]
@@ -441,6 +470,13 @@ pub(crate) fn run(
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join("\n");
+    if run.timed_out {
+        return Err(AppError::HookTimeout {
+            hook: name.to_string(),
+            seconds: watch.timeout.as_secs(),
+            output: output_tail(&output, OUTPUT_CAP),
+        });
+    }
     Err(AppError::Hook {
         hook: name.to_string(),
         status: captured.status,
@@ -789,6 +825,15 @@ impl PostHooks {
 }
 
 pub(crate) fn run_post(repo: &Repository, hooks: &[PostHook], no_verify: bool) -> Vec<HookWarning> {
+    run_post_watched(repo, hooks, no_verify, Watch::PLAIN)
+}
+
+pub(crate) fn run_post_watched(
+    repo: &Repository,
+    hooks: &[PostHook],
+    no_verify: bool,
+    watch: Watch,
+) -> Vec<HookWarning> {
     let mut warnings: Vec<HookWarning> = Vec::new();
     let Some(workdir) = repo.workdir() else {
         return warnings;
@@ -801,7 +846,13 @@ pub(crate) fn run_post(repo: &Repository, hooks: &[PostHook], no_verify: bool) -
         let found = match present(repo, name) {
             Ok(found) => found,
             Err(error) => {
-                warnings.push(post_warning(name, None, error.to_string(), String::new()));
+                warnings.push(post_warning(
+                    name,
+                    None,
+                    false,
+                    error.to_string(),
+                    String::new(),
+                ));
                 continue;
             }
         };
@@ -813,28 +864,42 @@ pub(crate) fn run_post(repo: &Repository, hooks: &[PostHook], no_verify: bool) -
             Ok(runner) => runner,
             Err(reason) => {
                 if !warnings.iter().any(|w| w.message == reason) {
-                    warnings.push(post_warning(name, None, reason, String::new()));
+                    warnings.push(post_warning(name, None, false, reason, String::new()));
                 }
                 continue;
             }
         };
         let args = hook.args();
         let args: Vec<&OsStr> = args.iter().map(OsStr::new).collect();
-        if let Err(error) = run(repo, &runner, name, &args, &[], input.as_deref()) {
-            let (status, output) = match &error {
-                AppError::Hook { status, output, .. } => (Some(*status), output.clone()),
-                _ => (None, String::new()),
+        if let Err(error) = run_watched(repo, &runner, name, &args, &[], input.as_deref(), watch) {
+            let (status, timed_out, output) = match &error {
+                AppError::Hook { status, output, .. } => (Some(*status), false, output.clone()),
+                AppError::HookTimeout { output, .. } => (None, true, output.clone()),
+                _ => (None, false, String::new()),
             };
-            warnings.push(post_warning(name, status, error.to_string(), output));
+            warnings.push(post_warning(
+                name,
+                status,
+                timed_out,
+                error.to_string(),
+                output,
+            ));
         }
     }
     warnings
 }
 
-fn post_warning(hook: &str, status: Option<i32>, message: String, output: String) -> HookWarning {
+fn post_warning(
+    hook: &str,
+    status: Option<i32>,
+    timed_out: bool,
+    message: String,
+    output: String,
+) -> HookWarning {
     HookWarning {
         hook: hook.to_string(),
         status,
+        timed_out,
         message,
         output,
     }
@@ -907,6 +972,35 @@ mod tests {
             "@1730103456 -0530"
         );
         assert_eq!(git_date(git2::Time::new(0, 0)), "@0 +0000");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_post_hook_that_runs_past_its_time_is_a_timeout_warning_with_its_output() {
+        use std::os::unix::fs::PermissionsExt;
+        if !runner_available() {
+            return;
+        }
+        let (dir, repo) = temp_repo("timeout");
+        let hook = dir.join(".git").join("hooks").join("post-merge");
+        std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+        std::fs::write(&hook, "#!/bin/sh\necho installing\nsleep 30\n").unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let watch = Watch {
+            timeout: Duration::from_secs(1),
+            leftovers: false,
+        };
+        let warnings = run_post_watched(&repo, &[PostHook::Merge], false, watch);
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(warnings.len(), 1);
+        let warning = &warnings[0];
+        assert!(warning.timed_out);
+        assert_eq!(warning.status, None);
+        assert_eq!(warning.output, "installing");
+        assert_eq!(
+            warning.message,
+            "The post-merge hook did not finish within 1 seconds and was stopped."
+        );
     }
 
     #[test]

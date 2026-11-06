@@ -148,6 +148,7 @@ pub fn run() {
             commands::stage_all,
             commands::unstage_all,
             commands::discard_file,
+            commands::discard_files,
             commands::discard_all,
             commands::discard_staged_file,
             commands::discard_staged_all,

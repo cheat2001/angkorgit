@@ -214,12 +214,39 @@ pub(crate) fn capture_child(child: Child, stdin: &str, timeout: Duration) -> App
     collect(child, stdin, timeout, false)
 }
 
-pub(crate) fn capture_tree_child(
+pub(crate) struct TreeRun {
+    pub(crate) captured: Captured,
+    pub(crate) timed_out: bool,
+}
+
+pub(crate) fn run_tree(
     child: Child,
     stdin: &str,
     timeout: Duration,
-) -> AppResult<Captured> {
-    collect(child, stdin, timeout, true)
+    wait_for_group: bool,
+) -> TreeRun {
+    let (captured, timed_out) = gather(child, stdin, timeout, true, wait_for_group);
+    TreeRun {
+        captured,
+        timed_out,
+    }
+}
+
+fn timed_out(timeout: Duration) -> AppError {
+    AppError::other(format!("timed out after {}s", timeout.as_secs()))
+}
+
+#[cfg(unix)]
+fn group_alive(group: u32) -> bool {
+    let Ok(group) = libc::pid_t::try_from(group) else {
+        return false;
+    };
+    unsafe { libc::killpg(group, 0) == 0 }
+}
+
+#[cfg(not(unix))]
+fn group_alive(_group: u32) -> bool {
+    false
 }
 
 #[cfg(unix)]
@@ -257,12 +284,23 @@ fn kill_tree(child: &mut Child) {
     let _ = child.kill();
 }
 
-fn collect(
+fn collect(child: Child, stdin: &str, timeout: Duration, whole_tree: bool) -> AppResult<Captured> {
+    let (captured, expired) = gather(child, stdin, timeout, whole_tree, false);
+    if expired {
+        return Err(timed_out(timeout));
+    }
+    Ok(captured)
+}
+
+fn gather(
     mut child: Child,
     stdin: &str,
     timeout: Duration,
     whole_tree: bool,
-) -> AppResult<Captured> {
+    wait_for_group: bool,
+) -> (Captured, bool) {
+    let deadline = Instant::now() + timeout;
+    let group = child.id();
     let stdin_data = stdin.as_bytes().to_vec();
     let mut stdin_pipe = child.stdin.take();
     let stdin_thread = std::thread::spawn(move || {
@@ -273,24 +311,29 @@ fn collect(
     let (stdout, stdout_thread) = read_pipe(child.stdout.take());
     let (stderr, stderr_thread) = read_pipe(child.stderr.take());
 
+    let mut expired = false;
     let status = match wait_with_timeout(&mut child, timeout) {
         Some(status) => status,
         None => {
+            expired = true;
             if whole_tree {
                 kill_tree(&mut child);
             } else {
                 let _ = child.kill();
             }
             let _ = child.wait();
-            drop(stdin_thread);
-            drop(stdout_thread);
-            drop(stderr_thread);
-            return Err(AppError::other(format!(
-                "timed out after {}s",
-                timeout.as_secs()
-            )));
+            -1
         }
     };
+    if wait_for_group && !expired {
+        while group_alive(group) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        if group_alive(group) {
+            expired = true;
+            kill_group(group);
+        }
+    }
     let drain_until = Instant::now() + OUTPUT_DRAIN;
     while !(stdout_thread.is_finished() && stderr_thread.is_finished())
         && Instant::now() < drain_until
@@ -298,12 +341,25 @@ fn collect(
         std::thread::sleep(Duration::from_millis(10));
     }
     drop(stdin_thread);
-    Ok(Captured {
+    let captured = Captured {
         status,
         stdout: take_output(&stdout),
         stderr: take_output(&stderr),
-    })
+    };
+    (captured, expired)
 }
+
+#[cfg(unix)]
+fn kill_group(group: u32) {
+    if let Ok(group) = libc::pid_t::try_from(group) {
+        unsafe {
+            libc::killpg(group, libc::SIGKILL);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn kill_group(_group: u32) {}
 
 type SharedOutput = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
 
@@ -700,10 +756,8 @@ mod tests {
         ));
         let started = Instant::now();
         let child = spawn_tree(command).unwrap();
-        let Err(err) = capture_tree_child(child, "", Duration::from_secs(1)) else {
-            panic!("the sleeping shell must time out");
-        };
-        assert!(err.to_string().contains("timed out"), "{err}");
+        let run = run_tree(child, "", Duration::from_secs(1), false);
+        assert!(run.timed_out, "the sleeping shell must time out");
         assert!(started.elapsed() < Duration::from_secs(10));
         let grandchild: libc::pid_t = std::fs::read_to_string(&pid_file)
             .unwrap()
@@ -729,12 +783,85 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn a_timed_out_tree_run_keeps_the_output_it_printed_before() {
+        let mut command = crate::proc::hidden("/bin/sh");
+        command
+            .arg("-c")
+            .arg("echo started; echo warming up >&2; sleep 30");
+        let child = spawn_tree(command).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(1), false);
+        assert!(run.timed_out);
+        assert_eq!(run.captured.stdout.trim(), "started");
+        assert_eq!(run.captured.stderr.trim(), "warming up");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn waiting_for_leftovers_returns_only_after_the_background_work_finished() {
+        let dir = std::env::temp_dir().join(format!(
+            "angkorgit-leftovers-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let marker = dir.join("late");
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg(format!(
+            "(sleep 1; echo late > '{}') > /dev/null 2>&1 & echo done",
+            marker.display()
+        ));
+        let child = spawn_tree(command).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(20), true);
+        let written = marker.exists();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(!run.timed_out);
+        assert_eq!(run.captured.stdout.trim(), "done");
+        assert!(
+            written,
+            "the run returned before its background work finished"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn leftovers_still_running_at_the_deadline_are_stopped_and_count_as_a_timeout() {
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("sleep 30 > /dev/null 2>&1 & echo $!");
+        let started = Instant::now();
+        let child = spawn_tree(command).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(1), true);
+        assert!(run.timed_out);
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut alive = true;
+        while alive && Instant::now() < deadline {
+            alive = unsafe { libc::kill(background, 0) } == 0;
+            if alive {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        if alive {
+            unsafe {
+                libc::kill(background, libc::SIGKILL);
+            }
+        }
+        assert!(!alive, "the leftover process outlived the deadline");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_background_process_holding_the_pipes_does_not_hold_up_the_capture() {
         let mut command = crate::proc::hidden("/bin/sh");
         command.arg("-c").arg("sleep 30 & echo $!; echo done");
         let started = Instant::now();
         let child = spawn_tree(command).unwrap();
-        let captured = capture_tree_child(child, "", Duration::from_secs(60)).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(60), false);
+        assert!(!run.timed_out);
+        let captured = run.captured;
         let elapsed = started.elapsed();
         let mut lines = captured.stdout.lines();
         let background: libc::pid_t = lines.next().unwrap().trim().parse().unwrap();

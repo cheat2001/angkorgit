@@ -459,7 +459,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const editor = preferredEditor(editors, editorId);
 
   const [pushRejected, setPushRejected] = useState<PushRequest | null>(null);
-  const [pullCheck, setPullCheck] = useState(false);
+  const [pullCheck, setPullCheck] = useState<{ noVerify: boolean } | null>(null);
   const pullWarning = pullWarningOf(pullPreview);
   const pullWarningLine = pullPreview ? pullWarningText(pullPreview) : null;
 
@@ -593,15 +593,16 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       />
 
       <PullCheckDialog
-        open={pullCheck}
+        open={pullCheck !== null}
         preview={pullPreview}
-        onClose={() => setPullCheck(false)}
+        onClose={() => setPullCheck(null)}
         onPull={() => {
-          setPullCheck(false);
-          void run('Pull', () => ipc.pull(repo.path, remote));
+          const noVerify = pullCheck?.noVerify ?? false;
+          setPullCheck(null);
+          void run(noVerify ? 'Pull without hooks' : 'Pull', () => ipc.pull(repo.path, remote, undefined, noVerify));
         }}
         onStash={(paths) => {
-          setPullCheck(false);
+          setPullCheck(null);
           openDialog('createStash', { paths });
         }}
       />
@@ -646,7 +647,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             size="sm"
             className="rounded-r-none"
             disabled={!!busy}
-            onClick={() => (pullWarning ? setPullCheck(true) : void run('Pull', () => ipc.pull(repo.path, remote)))}
+            onClick={() => (pullWarning ? setPullCheck({ noVerify: false }) : void run('Pull', () => ipc.pull(repo.path, remote)))}
           >
             <ArrowDownToLine />
             Pull
@@ -674,7 +675,11 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             </DropdownMenuItem>
             {(repoHooks.inWorktree || repoHooks.found.some((name) => PULL_HOOKS.includes(name))) && (
               <DropdownMenuItem
-                onClick={() => void run('Pull without hooks', () => ipc.pull(repo.path, remote, undefined, true))}
+                onClick={() =>
+                  pullWarning
+                    ? setPullCheck({ noVerify: true })
+                    : void run('Pull without hooks', () => ipc.pull(repo.path, remote, undefined, true))
+                }
               >
                 Pull without hooks
               </DropdownMenuItem>

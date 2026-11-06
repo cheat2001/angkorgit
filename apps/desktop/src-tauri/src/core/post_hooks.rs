@@ -215,17 +215,55 @@ pub fn reword(path: &str, oid: &str, message: &str, no_verify: bool) -> AppResul
     Ok(finished(path, reworded, hooks))
 }
 
+fn restores_from_index(repo: &git2::Repository, file: &str) -> AppResult<bool> {
+    let tracked = repo.index()?.get_path(Path::new(file), 0).is_some();
+    Ok(tracked && submodule::drifted(repo, file).is_none())
+}
+
 pub fn discard_file(path: &str, file: &str, no_verify: bool) -> AppResult<Hooked<bool>> {
-    let restores = {
-        let repo = super::repo::open(path)?;
-        let tracked = repo.index()?.get_path(Path::new(file), 0).is_some();
-        tracked && submodule::drifted(&repo, file).is_none()
-    };
+    let restores = restores_from_index(&super::repo::open(path)?, file)?;
     let clean = stage::discard_file(path, file)?;
     Ok(if restores {
         restored(path, clean, no_verify)
     } else {
         Hooked::plain(clean)
+    })
+}
+
+pub fn discard_files(
+    path: &str,
+    files: &[String],
+    staged: bool,
+    no_verify: bool,
+) -> AppResult<Hooked<Vec<String>>> {
+    let restores = if staged {
+        !files.is_empty()
+    } else {
+        let repo = super::repo::open(path)?;
+        let mut any = false;
+        for file in files {
+            if restores_from_index(&repo, file)? {
+                any = true;
+                break;
+            }
+        }
+        any
+    };
+    let mut leftovers = Vec::new();
+    for file in files {
+        let clean = if staged {
+            stage::discard_staged_file(path, file)?
+        } else {
+            stage::discard_file(path, file)?
+        };
+        if !clean {
+            leftovers.push(file.clone());
+        }
+    }
+    Ok(if restores {
+        restored(path, leftovers, no_verify)
+    } else {
+        Hooked::plain(leftovers)
     })
 }
 

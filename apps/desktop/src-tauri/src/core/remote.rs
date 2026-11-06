@@ -714,8 +714,12 @@ fn group_update_inner(
                 ))
             })?;
         super::submodule::follow_recorded(path, &submodules, false);
-        let hook_warnings =
-            super::hooks::run_post(&repo, &[PostHook::Merge], control.skips_hooks());
+        let hook_warnings = super::hooks::run_post_watched(
+            &repo,
+            &[PostHook::Merge],
+            control.skips_hooks(),
+            super::hooks::Watch::UNTIL_LEFTOVERS_EXIT,
+        );
         Ok(GroupUpdateResult {
             status: "ok".into(),
             message: format!("Fast-forwarded {branch_name} by {behind} commit(s)"),
