@@ -44,6 +44,9 @@ All notable changes to AngKorGit are documented here. The format follows
   of its lane. The row band is a flat stripe that ends in a thin lane coloured line
   before the message, and the uncommitted changes banner no longer lets the rows
   scroll through it.
+- **The graph scrolls sideways when it runs out of room.** In a repository with more
+  branches than fit the graph column, swipe sideways or use Shift and the wheel over
+  the graph, or drag the scrollbar under it, to bring the lanes on the right into view.
 
 ### Fixed
 - Closing a tab right after switching to it (⌘W / Ctrl+W) no longer brings the

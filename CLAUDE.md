@@ -1561,7 +1561,25 @@ features/
 │                           under 190px, and in a 12-lane repo the 27px avatar nodes then covered
 │                           the lines on both sides (owner screenshot of core.api: 13px lanes);
 │                           gutterWidthFor caps the column at GUTTER_MAX_WIDTH 250 and lanes past
-│                           it are clipped (overflow-hidden gutter, the node clamps to the edge);
+│                           it SCROLL SIDEWAYS (owner, same day, after GitKraken screenshots "able to
+│                           scroll"): gutterOverflowFor = full lane width − cap; GraphScrollbar sets
+│                           --graph-scroll-x on the Commits scroller and every row's lane drawing
+│                           (an SVG <g>, the avatar span and the WIP marker) is translated by
+│                           graphShift = translateX(calc(var × −1)), so a pan never re-renders a row;
+│                           the band rect is overflow wider and the chip connector (data-graph-
+│                           connector) starts at −overflow so both still reach the fixed edges, and
+│                           the TAIL_EDGE bar sits OUTSIDE the <g>; the node is no longer clamped to
+│                           the column (it scrolls into view instead); the bar (data-graph-scrollbar,
+│                           absolute bottom-0 under the gutter: left 4 + REF_COL_WIDTH or 16, width
+│                           gutterWidth, only when overflow > 0) DRAWS ITS OWN THUMB for the G46
+│                           reason (macOS hides native bars), drag maps pointer dx by overflow /
+│                           travel, a track click pages by the column width, and a native non-
+│                           passive wheel listener on the scroller pans on deltaX when it beats
+│                           deltaY (or Shift+wheel) and leaves vertical scrolling alone; offset
+│                           resets per repo and clamps when the overflow shrinks; demo flag
+│                           angkorgit-demo-busy-graph = 1 builds a 14-lane history for the e2e
+│                           `a graph with more lanes than its column scrolls sideways…` (verified to
+│                           fail without the feature);
 │                           the 190 cap existed because the owner disliked "a really long gap"
 │                           before the message (2026-09), so 250 is the compromise the owner took
 │                           with C — a draggable graph column is the offered follow-up; LINES ARE
@@ -3055,7 +3073,8 @@ drifted `vendor/libfoo` submodule row, cleared by the demo ipc.submoduleUpdate;
 `angkorgit-demo-hooks` = pass | fail makes ipc.repoHooks report pre-commit and pre-push, and
 `fail` makes ipc.commit/amend throw a pre-commit hook_failed error with lint output and
 ipc.push/pushTag a pre-push one with test output, unless noVerify;
-`angkorgit-demo-hooks-delay` = ms stretches every demo commit, with or without hooks, and a demo
+`angkorgit-demo-busy-graph` = 1 builds a 14-lane history so the graph overflows
+its column and scrolls sideways; `angkorgit-demo-hooks-delay` = ms stretches every demo commit, with or without hooks, and a demo
 push that runs its hook, so an e2e can switch tabs or select a graph commit mid-hook;
 `angkorgit-demo-push-rejected` = 1 rejects every non-forced demo branch push as
 non_fast_forward; `angkorgit-demo-checkout` = 1 makes the demo ipc.checkout move HEAD
