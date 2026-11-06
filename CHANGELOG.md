@@ -39,7 +39,8 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
   with **Show output** instead of an error. **Skip hooks** in the commit box also skips
   `post-rewrite` when amending, and the Pull menu has **Pull without hooks** when the
   repository has one of these hooks, or keeps its hooks in a folder inside the repository
-  (like `.husky`) or links a hook to a file there, where a pull can bring a new one. A rebase you started without hooks
+  (like `.husky`), links a hook to a file there, or includes a Git config file from the
+  repository, where a pull can bring a new one. A rebase you started without hooks
   stays without hooks when you continue it after a conflict. (#82)
 - **Pull all runs `post-merge` in each repository it fast-forwarded.** One at a time,
   never for a repository that was already up to date; a failing hook shows as a warning
