@@ -567,17 +567,28 @@ export function WorkingCopyPanel() {
 
   const discardAllStaged = async () => {
     const before = allStaged.length;
+    let batch: Awaited<ReturnType<typeof ipc.discardStagedAll>>;
     try {
-      const remaining = await ipc.discardStagedAll(path);
-      await refreshStatus();
-      if (remaining.length > 0) {
-        const listed = remaining.slice(0, 3).join(', ') + (remaining.length > 3 ? ` +${remaining.length - 3} more` : '');
-        toast.error(`${remaining.length} staged change${remaining.length === 1 ? '' : 's'} could not be discarded: ${listed}`);
-      } else if (before > 0) {
-        toast.success(`Discarded ${before} staged change${before === 1 ? '' : 's'}`);
-      }
+      batch = await ipc.discardStagedAll(path);
     } catch (error) {
       toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
+      await refreshStatus();
+      return;
+    }
+    await refreshStatus();
+    const { leftovers: remaining, failed } = batch;
+    const list = (files: string[]) =>
+      files.slice(0, 3).join(', ') + (files.length > 3 ? ` +${files.length - 3} more` : '');
+    if (failed.length > 0) {
+      toast.error(`${failed.length} of ${before} staged files could not be discarded: ${list(failed.map((f) => f.path))}`, {
+        description: failed[0].message,
+      });
+    }
+    if (remaining.length > 0) {
+      toast.error(`${remaining.length} staged change${remaining.length === 1 ? '' : 's'} could not be discarded: ${list(remaining)}`);
+    }
+    if (failed.length === 0 && remaining.length === 0 && before > 0) {
+      toast.success(`Discarded ${before} staged change${before === 1 ? '' : 's'}`);
     }
   };
 

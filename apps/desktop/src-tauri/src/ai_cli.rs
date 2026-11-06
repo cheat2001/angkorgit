@@ -237,19 +237,6 @@ fn timed_out(timeout: Duration) -> AppError {
 }
 
 #[cfg(unix)]
-fn group_alive(group: u32) -> bool {
-    let Ok(group) = libc::pid_t::try_from(group) else {
-        return false;
-    };
-    unsafe { libc::killpg(group, 0) == 0 }
-}
-
-#[cfg(not(unix))]
-fn group_alive(_group: u32) -> bool {
-    false
-}
-
-#[cfg(unix)]
 fn own_process_group(command: &mut Command) {
     use std::os::unix::process::CommandExt;
     command.process_group(0);
@@ -284,6 +271,121 @@ fn kill_tree(child: &mut Child) {
     let _ = child.kill();
 }
 
+struct Leftovers {
+    #[cfg(unix)]
+    group: u32,
+    #[cfg(windows)]
+    job: Option<job::Job>,
+}
+
+impl Leftovers {
+    fn track(child: &Child) -> Self {
+        #[cfg(unix)]
+        {
+            Leftovers { group: child.id() }
+        }
+        #[cfg(windows)]
+        {
+            Leftovers {
+                job: job::Job::holding(child),
+            }
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = child;
+            Leftovers {}
+        }
+    }
+
+    fn running(&self) -> bool {
+        #[cfg(unix)]
+        {
+            let Ok(group) = libc::pid_t::try_from(self.group) else {
+                return false;
+            };
+            unsafe { libc::killpg(group, 0) == 0 }
+        }
+        #[cfg(windows)]
+        {
+            self.job.as_ref().is_some_and(job::Job::running)
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            false
+        }
+    }
+
+    fn stop(&self) {
+        #[cfg(unix)]
+        if let Ok(group) = libc::pid_t::try_from(self.group) {
+            unsafe {
+                libc::killpg(group, libc::SIGKILL);
+            }
+        }
+        #[cfg(windows)]
+        if let Some(job) = &self.job {
+            job.stop();
+        }
+    }
+}
+
+#[cfg(windows)]
+mod job {
+    use std::os::windows::io::AsRawHandle;
+    use std::process::Child;
+
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
+        QueryInformationJobObject, TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+    };
+
+    pub(super) struct Job(HANDLE);
+
+    impl Job {
+        pub(super) fn holding(child: &Child) -> Option<Job> {
+            let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+            if handle.is_null() {
+                return None;
+            }
+            let job = Job(handle);
+            let process: HANDLE = child.as_raw_handle();
+            if unsafe { AssignProcessToJobObject(job.0, process) } == 0 {
+                return None;
+            }
+            Some(job)
+        }
+
+        pub(super) fn running(&self) -> bool {
+            let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+            let queried = unsafe {
+                QueryInformationJobObject(
+                    self.0,
+                    JobObjectBasicAccountingInformation,
+                    std::ptr::addr_of_mut!(info).cast(),
+                    std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                    std::ptr::null_mut(),
+                )
+            };
+            queried != 0 && info.ActiveProcesses > 0
+        }
+
+        pub(super) fn stop(&self) {
+            unsafe {
+                TerminateJobObject(self.0, 1);
+            }
+        }
+    }
+
+    impl Drop for Job {
+        fn drop(&mut self) {
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+}
+
 fn collect(child: Child, stdin: &str, timeout: Duration, whole_tree: bool) -> AppResult<Captured> {
     let (captured, expired) = gather(child, stdin, timeout, whole_tree, false);
     if expired {
@@ -300,7 +402,7 @@ fn gather(
     wait_for_group: bool,
 ) -> (Captured, bool) {
     let deadline = Instant::now() + timeout;
-    let group = child.id();
+    let leftovers = wait_for_group.then(|| Leftovers::track(&child));
     let stdin_data = stdin.as_bytes().to_vec();
     let mut stdin_pipe = child.stdin.take();
     let stdin_thread = std::thread::spawn(move || {
@@ -321,17 +423,20 @@ fn gather(
             } else {
                 let _ = child.kill();
             }
+            if let Some(leftovers) = &leftovers {
+                leftovers.stop();
+            }
             let _ = child.wait();
             -1
         }
     };
-    if wait_for_group && !expired {
-        while group_alive(group) && Instant::now() < deadline {
+    if let Some(leftovers) = leftovers.as_ref().filter(|_| !expired) {
+        while leftovers.running() && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(25));
         }
-        if group_alive(group) {
+        if leftovers.running() {
             expired = true;
-            kill_group(group);
+            leftovers.stop();
         }
     }
     let drain_until = Instant::now() + OUTPUT_DRAIN;
@@ -348,18 +453,6 @@ fn gather(
     };
     (captured, expired)
 }
-
-#[cfg(unix)]
-fn kill_group(group: u32) {
-    if let Ok(group) = libc::pid_t::try_from(group) {
-        unsafe {
-            libc::killpg(group, libc::SIGKILL);
-        }
-    }
-}
-
-#[cfg(not(unix))]
-fn kill_group(_group: u32) {}
 
 type SharedOutput = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
 
@@ -779,6 +872,34 @@ mod tests {
         }
         std::fs::remove_dir_all(&dir).ok();
         assert!(!alive, "the grandchild outlived the timeout");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn waiting_for_leftovers_tracks_a_windows_background_child() {
+        let mut command = crate::proc::hidden("cmd");
+        command.args(["/C", "start", "", "/B", "ping", "-n", "3", "127.0.0.1"]);
+        let started = Instant::now();
+        let child = spawn_tree(command).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(30), true);
+        assert!(!run.timed_out);
+        assert!(
+            started.elapsed() >= Duration::from_millis(1500),
+            "returned after {:?}, before the background ping finished",
+            started.elapsed()
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_background_child_left_at_the_deadline_is_stopped() {
+        let mut command = crate::proc::hidden("cmd");
+        command.args(["/C", "start", "", "/B", "ping", "-n", "30", "127.0.0.1"]);
+        let started = Instant::now();
+        let child = spawn_tree(command).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(2), true);
+        assert!(run.timed_out);
+        assert!(started.elapsed() < Duration::from_secs(15));
     }
 
     #[cfg(unix)]
