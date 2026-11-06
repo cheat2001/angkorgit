@@ -1745,6 +1745,38 @@ test('a graph with more lanes than its column scrolls sideways under its own scr
   expect(await offset()).toBe(0);
 });
 
+test('dragging the graph header edge resizes the column, keeps it after a reload and scrolls only what it hides', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-busy-graph', '1'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const edge = async () => (await page.locator('[data-graph-resize]').boundingBox())!.x;
+  const drag = async (dx: number) => {
+    const h = (await page.locator('[data-graph-resize]').boundingBox())!;
+    await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(h.x + h.width / 2 + dx, h.y + h.height / 2, { steps: 6 });
+    await page.mouse.up();
+  };
+  const bar = page.locator('[data-graph-scrollbar]');
+  await expect(bar).toBeVisible();
+  const start = await edge();
+  const startBar = (await bar.boundingBox())!.width;
+  await drag(-80);
+  expect(Math.abs((await edge()) - (start - 80))).toBeLessThan(2);
+  expect((await bar.boundingBox())!.width).toBeLessThan(startBar - 70);
+  await page.reload();
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await expect(bar).toBeVisible();
+  await expect.poll(async () => Math.abs((await edge()) - (start - 80))).toBeLessThan(2);
+  await drag(400);
+  await expect(bar).toHaveCount(0);
+  await page.locator('[data-graph-resize]').dblclick();
+  await expect.poll(async () => Math.abs((await edge()) - start)).toBeLessThan(2);
+  await expect(bar).toBeVisible();
+});
+
 test('the remote menu and the palette open the repository page in the browser', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();

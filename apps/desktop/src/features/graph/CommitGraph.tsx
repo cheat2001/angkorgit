@@ -25,7 +25,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { AUTHOR_COL_WIDTH, CommitRow, GUTTER_GAP, GraphTailDefs, LANE_WIDTH, REF_COL_WIDTH, ROW_HEIGHT, gutterOverflowFor, gutterWidthFor } from './GraphRow';
+import { AUTHOR_COL_WIDTH, CommitRow, GUTTER_GAP, GraphTailDefs, GUTTER_DEFAULT_WIDTH, LANE_WIDTH, REF_COL_WIDTH, ROW_HEIGHT, clampGraphWidth, gutterOverflowFor, gutterWidthFor } from './GraphRow';
 import { GraphScrollbar } from './GraphScrollbar';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
@@ -64,6 +64,10 @@ export function CommitGraph() {
   const requestEditMessage = useUi((s) => s.requestEditMessage);
   const graphColumns = useUi((s) => s.graphColumns);
   const graphTail = useUi((s) => s.graphTail);
+  const graphWidth = useUi((s) => s.graphWidth);
+  const setGraphWidth = useUi((s) => s.setGraphWidth);
+  const widthDrag = useRef<{ x: number; width: number } | null>(null);
+  const [resizingGraph, setResizingGraph] = useState(false);
   const setGraphTail = useUi((s) => s.setGraphTail);
   const setGraphColumn = useUi((s) => s.setGraphColumn);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -154,8 +158,9 @@ export function CommitGraph() {
   }, [pendingScrollIndex, rows.length, virtualizer, clearPendingScroll]);
 
   const laneWidth = LANE_WIDTH;
-  const gutterWidth = gutterWidthFor(maxLane, laneWidth);
-  const graphOverflow = gutterOverflowFor(maxLane, laneWidth);
+  const graphLimit = graphWidth ?? GUTTER_DEFAULT_WIDTH;
+  const gutterWidth = gutterWidthFor(maxLane, laneWidth, graphLimit);
+  const graphOverflow = gutterOverflowFor(maxLane, laneWidth, graphLimit);
   const filtersActive = Boolean(filters.branch);
 
   const moveSelection = useCallback(
@@ -533,8 +538,41 @@ export function CommitGraph() {
             Branch / tag
           </span>
         )}
-        <span className="shrink-0 truncate" style={{ width: gutterWidth, marginRight: GUTTER_GAP }}>
-          Graph
+        <span className="relative shrink-0" style={{ width: gutterWidth, marginRight: GUTTER_GAP }}>
+          <span className="block truncate">Graph</span>
+          <span
+            data-graph-resize
+            className="group/resize absolute inset-y-0 z-10 flex w-2 cursor-col-resize justify-center"
+            style={{ right: -GUTTER_GAP / 2 - 4 }}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              widthDrag.current = { x: event.clientX, width: gutterWidth };
+              setResizingGraph(true);
+            }}
+            onPointerMove={(event) => {
+              if (!widthDrag.current) return;
+              setGraphWidth(clampGraphWidth(widthDrag.current.width + event.clientX - widthDrag.current.x));
+            }}
+            onPointerUp={(event) => {
+              widthDrag.current = null;
+              setResizingGraph(false);
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }}
+            onPointerCancel={() => {
+              widthDrag.current = null;
+              setResizingGraph(false);
+            }}
+            onDoubleClick={() => setGraphWidth(null)}
+          >
+            <span
+              className={cn(
+                'h-full w-0.5 rounded-full bg-border transition-colors group-hover/resize:bg-primary/60',
+                resizingGraph && '!bg-primary',
+              )}
+            />
+          </span>
         </span>
         {graphColumns.message && (
           <span className="min-w-0 flex-1 truncate">

@@ -19,7 +19,9 @@ const CHAR_WIDTH = 6.4;
 const CHIP_PADDING = 18;
 const CHIP_ICON = 14;
 export const LANE_WIDTH = 22;
-export const GUTTER_MAX_WIDTH = 250;
+export const GUTTER_DEFAULT_WIDTH = 190;
+export const GUTTER_MIN_WIDTH = 60;
+export const GUTTER_MAX_WIDTH = 600;
 export const GUTTER_BASE = 18;
 const NODE_RADIUS = 4;
 const AVATAR_SIZE = 20;
@@ -53,13 +55,15 @@ export function GraphTailDefs() {
   );
 }
 
-export function gutterWidthFor(maxLane: number, laneWidth: number = LANE_WIDTH): number {
-  return Math.min(GUTTER_BASE + (maxLane + 1) * laneWidth, GUTTER_MAX_WIDTH);
+export function gutterWidthFor(maxLane: number, laneWidth: number = LANE_WIDTH, limit: number = GUTTER_DEFAULT_WIDTH): number {
+  return Math.min(GUTTER_BASE + (maxLane + 1) * laneWidth, limit);
 }
 
-export function gutterOverflowFor(maxLane: number, laneWidth: number = LANE_WIDTH): number {
-  return Math.max(0, GUTTER_BASE + (maxLane + 1) * laneWidth - gutterWidthFor(maxLane, laneWidth));
+export function gutterOverflowFor(maxLane: number, laneWidth: number = LANE_WIDTH, limit: number = GUTTER_DEFAULT_WIDTH): number {
+  return Math.max(0, GUTTER_BASE + (maxLane + 1) * laneWidth - gutterWidthFor(maxLane, laneWidth, limit));
 }
+
+export const clampGraphWidth = (width: number) => Math.round(Math.min(GUTTER_MAX_WIDTH, Math.max(GUTTER_MIN_WIDTH, width)));
 
 export const GRAPH_SCROLL_VAR = '--graph-scroll-x';
 export const graphShift = { transform: `translateX(calc(var(${GRAPH_SCROLL_VAR}, 0px) * -1))` } as const;
