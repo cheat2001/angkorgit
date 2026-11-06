@@ -131,11 +131,58 @@ pub fn repo_hooks(path: &str) -> AppResult<RepoHooks> {
             found.push(name.to_string());
         }
     }
-    let dir = lexical(&hooks_dir(&repo)?);
-    let in_worktree = dir.starts_with(lexical(workdir))
-        && !dir.starts_with(lexical(repo.path()))
-        && !dir.starts_with(lexical(repo.commondir()));
+    let in_worktree = hooks_live_in_worktree(&repo, workdir)?;
     Ok(RepoHooks { found, in_worktree })
+}
+
+fn hooks_live_in_worktree(repo: &Repository, workdir: &Path) -> AppResult<bool> {
+    let workdir = resolved(workdir);
+    let gitdirs = [resolved(repo.path()), resolved(repo.commondir())];
+    let inside = |path: &Path| {
+        let path = resolved(path);
+        path.starts_with(&workdir) && !gitdirs.iter().any(|gitdir| path.starts_with(gitdir))
+    };
+    let dir = hooks_dir(repo)?;
+    if inside(&dir) {
+        return Ok(true);
+    }
+    if let (Ok(target), Some(parent)) = (std::fs::read_link(&dir), dir.parent()) {
+        if inside(&parent.join(target)) {
+            return Ok(true);
+        }
+    }
+    for name in REPO_HOOKS {
+        for file in hook_candidates(&dir, name) {
+            let Ok(target) = std::fs::read_link(&file) else {
+                continue;
+            };
+            if inside(&dir.join(target)) {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn resolved(path: &Path) -> PathBuf {
+    let path = lexical(path);
+    let mut existing = path.as_path();
+    let mut missing = Vec::new();
+    loop {
+        if let Ok(real) = std::fs::canonicalize(existing) {
+            return missing
+                .iter()
+                .rev()
+                .fold(real, |full, part| full.join(part));
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                missing.push(name.to_os_string());
+                existing = parent;
+            }
+            _ => return path,
+        }
+    }
 }
 
 fn lexical(path: &Path) -> PathBuf {
@@ -676,6 +723,10 @@ impl PostHooks {
         if self.run {
             self.pending.push(hook);
         }
+    }
+
+    pub(crate) fn abandon(self) -> Vec<HookWarning> {
+        self.warnings
     }
 
     pub(crate) fn finish(mut self, repo: Option<&Repository>) -> Vec<HookWarning> {

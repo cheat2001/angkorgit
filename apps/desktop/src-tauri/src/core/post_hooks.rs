@@ -21,6 +21,13 @@ impl<T> Hooked<T> {
     }
 }
 
+impl<T> Hooked<AppResult<T>> {
+    pub fn into_result(self) -> AppResult<Hooked<T>> {
+        let warnings = self.warnings;
+        self.value.map(|value| Hooked { value, warnings })
+    }
+}
+
 fn ran<T>(path: &str, value: T, hooks: &[PostHook], no_verify: bool) -> Hooked<T> {
     let warnings = match super::repo::open(path) {
         Ok(repo) if !hooks.is_empty() => run_post(&repo, hooks, no_verify),
@@ -34,6 +41,26 @@ fn finished<T>(path: &str, value: T, hooks: PostHooks) -> Hooked<T> {
     Hooked {
         value,
         warnings: hooks.finish(repo.as_ref()),
+    }
+}
+
+fn finished_or_failed<T>(
+    path: &str,
+    result: AppResult<T>,
+    hooks: PostHooks,
+) -> Hooked<AppResult<T>> {
+    match result {
+        Ok(value) => {
+            let done = finished(path, value, hooks);
+            Hooked {
+                value: Ok(done.value),
+                warnings: done.warnings,
+            }
+        }
+        Err(error) => Hooked {
+            value: Err(error),
+            warnings: hooks.abandon(),
+        },
     }
 }
 
@@ -129,12 +156,12 @@ pub fn pull(
     remote_name: &str,
     mode: Option<&str>,
     no_verify: bool,
-) -> AppResult<Hooked<OpOutcome>> {
+) -> Hooked<AppResult<OpOutcome>> {
     let mut hooks = PostHooks::new(no_verify);
     let outcome = submodule::synced(path, || {
         remote::pull_with_hooks(path, remote_name, mode, &mut hooks)
-    })?;
-    Ok(finished(path, outcome, hooks))
+    });
+    finished_or_failed(path, outcome, hooks)
 }
 
 pub fn pull_branch(path: &str, branch_name: &str, no_verify: bool) -> AppResult<Hooked<OpOutcome>> {
@@ -143,12 +170,12 @@ pub fn pull_branch(path: &str, branch_name: &str, no_verify: bool) -> AppResult<
     Ok(finished(path, outcome, hooks))
 }
 
-pub fn rebase(path: &str, upstream: &str, no_verify: bool) -> AppResult<Hooked<OpOutcome>> {
+pub fn rebase(path: &str, upstream: &str, no_verify: bool) -> Hooked<AppResult<OpOutcome>> {
     let mut hooks = PostHooks::new(no_verify);
     let outcome = submodule::synced(path, || {
         branch::rebase_with_hooks(path, upstream, &mut hooks)
-    })?;
-    Ok(finished(path, outcome, hooks))
+    });
+    finished_or_failed(path, outcome, hooks)
 }
 
 pub fn rebase_continue(path: &str, no_verify: bool) -> AppResult<Hooked<OpOutcome>> {
