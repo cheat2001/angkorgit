@@ -20,6 +20,13 @@ export interface HookFailureView {
   output: string;
 }
 
+export interface HookWarningView {
+  hook: string;
+  message: string;
+  output: string;
+  repoName: string;
+}
+
 const COPY: Record<HookOperation, { outcome: string; retry: string }> = {
   commit: {
     outcome: 'Nothing was committed. Your message is still in the commit box.',
@@ -35,6 +42,33 @@ const COPY: Record<HookOperation, { outcome: string; retry: string }> = {
   },
 };
 
+function HookOutput({ output }: { output: string }) {
+  return output ? (
+    <pre
+      data-hook-output
+      className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground [overflow-wrap:anywhere]"
+    >
+      {output}
+    </pre>
+  ) : (
+    <p className="text-xs text-muted">The hook printed nothing.</p>
+  );
+}
+
+function CopyOutputButton({ output }: { output: string }) {
+  const copy = () => {
+    void navigator.clipboard.writeText(output).then(
+      () => toast.success('Copied the hook output'),
+      () => toast.error('Could not copy the hook output'),
+    );
+  };
+  return (
+    <Button variant="ghost" onClick={copy} disabled={!output}>
+      <Copy /> Copy output
+    </Button>
+  );
+}
+
 export function HookFailedDialog({
   failure,
   onRetry,
@@ -45,12 +79,6 @@ export function HookFailedDialog({
   onClose: () => void;
 }) {
   const output = useMemo(() => cleanCliOutput(failure?.output ?? ''), [failure?.output]);
-  const copy = () => {
-    void navigator.clipboard.writeText(output).then(
-      () => toast.success('Copied the hook output'),
-      () => toast.error('Could not copy the hook output'),
-    );
-  };
   const text = COPY[failure?.operation ?? 'commit'];
   return (
     <Dialog open={failure !== null} onOpenChange={(next) => !next && onClose()}>
@@ -61,20 +89,9 @@ export function HookFailedDialog({
             {failure?.message} {text.outcome}
           </DialogDescription>
         </DialogHeader>
-        {output ? (
-          <pre
-            data-hook-output
-            className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground [overflow-wrap:anywhere]"
-          >
-            {output}
-          </pre>
-        ) : (
-          <p className="text-xs text-muted">The hook printed nothing.</p>
-        )}
+        <HookOutput output={output} />
         <DialogFooter className="flex-wrap justify-between" data-hook-actions>
-          <Button variant="ghost" onClick={copy} disabled={!output}>
-            <Copy /> Copy output
-          </Button>
+          <CopyOutputButton output={output} />
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={onRetry}>
               <ShieldOff /> {text.retry}
@@ -83,6 +100,29 @@ export function HookFailedDialog({
               Close
             </Button>
           </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function HookWarningDialog({ warning, onClose }: { warning: HookWarningView | null; onClose: () => void }) {
+  const output = useMemo(() => cleanCliOutput(warning?.output ?? ''), [warning?.output]);
+  return (
+    <Dialog open={warning !== null} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-w-2xl" data-hook-warning={warning?.hook}>
+        <DialogHeader>
+          <DialogTitle>The {warning?.hook ?? 'post-checkout'} hook failed</DialogTitle>
+          <DialogDescription>
+            {warning?.message} Nothing was undone in {warning?.repoName}: git ignores the exit code of this hook.
+          </DialogDescription>
+        </DialogHeader>
+        <HookOutput output={output} />
+        <DialogFooter className="flex-wrap justify-between" data-hook-actions>
+          <CopyOutputButton output={output} />
+          <Button onClick={onClose} autoFocus>
+            Close
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

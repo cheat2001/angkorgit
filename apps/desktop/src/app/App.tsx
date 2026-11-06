@@ -6,6 +6,7 @@ import { Spinner, TooltipProvider } from '@angkorgit/design-system';
 import { SplashScreen } from './SplashScreen';
 import { ConfirmHost } from '@/components/confirm';
 import { HookFailureHost } from '@/components/hookFailure';
+import { HookWarningHost } from '@/components/hookWarnings';
 import { ProfilePromptHost } from '@/components/profilePrompt';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WelcomePage } from '@/features/repository/WelcomePage';
@@ -192,6 +193,7 @@ export function App() {
       </MemoryRouter>
       <ConfirmHost />
       <HookFailureHost />
+      <HookWarningHost />
       <ProfilePromptHost />
       <Toaster
         position="bottom-left"

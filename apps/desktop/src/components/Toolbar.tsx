@@ -227,6 +227,8 @@ function RepoSwitcher() {
   );
 }
 
+const PULL_HOOKS = ['post-merge', 'post-rewrite', 'post-checkout'];
+
 const STATE_LABELS: Record<string, string> = {
   rebase: 'Rebase in progress',
   merge: 'Merge in progress',
@@ -670,6 +672,13 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             <DropdownMenuItem onClick={() => void run('Pull (rebase)', () => ipc.pull(repo.path, remote, 'rebase'))}>
               Pull with rebase
             </DropdownMenuItem>
+            {repoHooks.some((name) => PULL_HOOKS.includes(name)) && (
+              <DropdownMenuItem
+                onClick={() => void run('Pull without hooks', () => ipc.pull(repo.path, remote, undefined, true))}
+              >
+                Pull without hooks
+              </DropdownMenuItem>
+            )}
             {remotes.length > 1 && (
               <>
                 <DropdownMenuSeparator />

@@ -9,6 +9,7 @@ use crate::error::{AppError, AppResult};
 pub struct GroupUpdateControl {
     cancelled: Mutex<bool>,
     completed: Mutex<HashMap<String, Completed>>,
+    no_verify: bool,
 }
 
 #[derive(Clone)]
@@ -26,6 +27,17 @@ pub(super) struct FetchProgress {
 }
 
 impl GroupUpdateControl {
+    pub fn skipping_hooks(no_verify: bool) -> Self {
+        GroupUpdateControl {
+            no_verify,
+            ..Default::default()
+        }
+    }
+
+    pub fn skips_hooks(&self) -> bool {
+        self.no_verify
+    }
+
     pub fn cancel(&self) -> AppResult<()> {
         *self
             .cancelled
@@ -104,6 +116,7 @@ impl GroupUpdateControl {
                     status: "failed".into(),
                     message: error.to_string(),
                     changes: Vec::new(),
+                    ..Default::default()
                 },
             };
             self.completed
@@ -179,7 +192,7 @@ fn prune_expired(runs: &mut Runs, now: Instant) {
     });
 }
 
-pub fn start(id: &str) -> AppResult<()> {
+pub fn start(id: &str, no_verify: bool) -> AppResult<()> {
     let mut runs = runs()
         .lock()
         .map_err(|_| AppError::other("Group update registry poisoned"))?;
@@ -191,7 +204,7 @@ pub fn start(id: &str) -> AppResult<()> {
     runs.insert(
         id.into(),
         Run {
-            control: Arc::new(GroupUpdateControl::default()),
+            control: Arc::new(GroupUpdateControl::skipping_hooks(no_verify)),
             last_used: now,
         },
     );

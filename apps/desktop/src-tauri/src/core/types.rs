@@ -307,12 +307,31 @@ pub struct GeneratedKey {
     pub public_key: String,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupUpdateResult {
     pub status: String,
     pub message: String,
     pub changes: Vec<RefMovement>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hook_warnings: Vec<HookWarning>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HookWarning {
+    pub hook: String,
+    pub status: Option<i32>,
+    pub message: String,
+    pub output: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HookWarningEvent {
+    pub repo_path: String,
+    #[serde(flatten)]
+    pub warning: HookWarning,
 }
 
 #[derive(Serialize, Debug, Clone)]

@@ -28,6 +28,7 @@ import {
   Pencil,
   Search,
   Settings,
+  ShieldOff,
   Trash2,
   Ungroup,
   X,
@@ -100,11 +101,24 @@ export function WelcomePage() {
   const [missing, setMissing] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<{ x: number; y: number; repo: RecentRepository } | null>(null);
   const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; group: RepoGroup; repos: RecentRepository[] } | null>(null);
+  const [groupMenuHooks, setGroupMenuHooks] = useState<{ groupId: string; postMerge: boolean } | null>(null);
   const [dragPath, setDragPath] = useState<string | null>(null);
   const [dropZone, setDropZone] = useState<string | null>(null);
   const [dragGroupId, setDragGroupId] = useState<string | null>(null);
   const [groupDrop, setGroupDrop] = useState<{ id: string; position: RepoGroupDropPosition } | null>(null);
   const [version, setVersion] = useState('');
+
+  useEffect(() => {
+    if (!groupMenu) return;
+    let cancelled = false;
+    const groupId = groupMenu.group.id;
+    void Promise.all(groupMenu.repos.map((r) => ipc.repoHooks(r.path).catch(() => [] as string[]))).then((found) => {
+      if (!cancelled) setGroupMenuHooks({ groupId, postMerge: found.some((hooks) => hooks.includes('post-merge')) });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [groupMenu]);
 
   useEffect(() => () => {
     const run = groupRun.current;
@@ -131,13 +145,13 @@ export function WelcomePage() {
     }
   }
 
-  async function updateGroup(group: RepoGroup, repos: RecentRepository[], pull: boolean) {
+  async function updateGroup(group: RepoGroup, repos: RecentRepository[], pull: boolean, skipHooks = false) {
     if (groupRun.current || useRepo.getState().busy || useRepo.getState().opening || repos.length === 0) return;
     const id = crypto.randomUUID();
-    const run = { id, controller: new AbortController(), cancelling: false, ready: ipc.groupStart(id), completed: new Map<string, GroupUpdateResult>() };
+    const run = { id, controller: new AbortController(), cancelling: false, ready: ipc.groupStart(id, skipHooks), completed: new Map<string, GroupUpdateResult>() };
     groupRun.current = run;
     useRepo.getState().setBusy(pull ? 'Pulling group…' : 'Fetching group…');
-    setGroupProgress({ runId: run.id, name: group.name, pull, total: repos.length, results: [], running: true, cancelling: false });
+    setGroupProgress({ runId: run.id, name: group.name, pull, skipHooks, total: repos.length, results: [], running: true, cancelling: false });
     try {
       await run.ready;
       await updateGroupRepositories(repos, (path) => ipc.groupUpdate(path, pull, run.id), (result) => {
@@ -712,6 +726,14 @@ export function WelcomePage() {
             >
               <ArrowDownToLine /> Pull all (fast-forward only)
             </DropdownMenuItem>
+            {groupMenuHooks?.groupId === groupMenu.group.id && groupMenuHooks.postMerge && (
+              <DropdownMenuItem
+                disabled={groupMenu.repos.length === 0 || !!busy || !!opening}
+                onClick={() => void updateGroup(groupMenu.group, groupMenu.repos, true, true)}
+              >
+                <ShieldOff /> Pull all without hooks
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               disabled={groupMenu.repos.length === 0}

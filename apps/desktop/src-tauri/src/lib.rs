@@ -44,6 +44,7 @@ pub mod test_api {
         stash_create, stash_files, stash_list, stash_pop, stash_restore_files, tag_create,
         tag_delete, tag_list,
     };
+    pub use crate::core::post_hooks;
     pub use crate::core::pull_preview::pull_preview;
     pub use crate::core::remote::{
         add as remote_add, checkout_remote_ref, fetch, group_update, group_update_controlled,

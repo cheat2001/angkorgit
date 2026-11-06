@@ -72,6 +72,10 @@ function statusBadge(kind: string | null) {
 
 const COMMIT_HOOKS = ['pre-commit', 'commit-msg'];
 
+function hookList(names: string[]): string {
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? '');
+}
+
 function submoduleDrift(file: FileStatus, staged: boolean): string | null {
   if (staged || !file.submodule) return null;
   return `Submodule checked out at ${file.submodule.checkedOut.slice(0, 7)}, this repository records ${file.submodule.recorded.slice(0, 7)}`;
@@ -354,7 +358,10 @@ export function WorkingCopyPanel() {
   const statusVersion = useRepo((s) => s.statusVersion);
   const statusReady = status !== null;
   const repoHooks = useRepoHooks(path);
-  const commitHooks = useMemo(() => repoHooks.filter((name) => COMMIT_HOOKS.includes(name)), [repoHooks]);
+  const commitHooks = useMemo(
+    () => repoHooks.filter((name) => COMMIT_HOOKS.includes(name) || (amend && name === 'post-rewrite')),
+    [repoHooks, amend],
+  );
   const skipHooks = useCommitWork((s) => !!s.skipHooks[path]);
   const setSkipHooks = (skip: boolean) => useCommitWork.getState().setSkipHooks(path, skip);
   const [indexPaths, setIndexPaths] = useState<string[] | null>(null);
@@ -1484,7 +1491,9 @@ export function WorkingCopyPanel() {
                 <Undo2 className="size-3" /> Amend
               </label>
               {commitHooks.length > 0 && (
-                <Hint label={`Commit without running the ${commitHooks.join(' and ')} hook${commitHooks.length === 1 ? '' : 's'}, like --no-verify`}>
+                <Hint
+                  label={`${amend ? 'Amend' : 'Commit'} without running the ${hookList(commitHooks)} hook${commitHooks.length === 1 ? '' : 's'}${commitHooks.includes('post-rewrite') ? '' : ', like --no-verify'}`}
+                >
                   <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted" data-skip-hooks>
                     <Checkbox
                       checked={skipHooks}
