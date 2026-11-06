@@ -5847,6 +5847,12 @@ fn a_hook_symlink_into_the_worktree_counts_as_a_hook_a_pull_can_bring() {
     std::fs::remove_dir_all(default_hooks(&linked_folder)).ok();
     std::os::unix::fs::symlink("../githooks", default_hooks(&linked_folder)).unwrap();
     assert!(core::repo_hooks(linked_folder.path()).unwrap().in_worktree);
+    let chained = TempRepo::new();
+    let hop = chained.dir.with_extension("hop");
+    std::os::unix::fs::symlink(chained.dir.join("scripts").join("post-merge"), &hop).unwrap();
+    std::os::unix::fs::symlink(&hop, default_hooks(&chained).join("post-merge")).unwrap();
+    assert!(core::repo_hooks(chained.path()).unwrap().in_worktree);
+    std::fs::remove_file(hop).unwrap();
 
     write_hook(
         &local.dir.join("scripts"),
@@ -5865,6 +5871,50 @@ fn a_hook_symlink_into_the_worktree_counts_as_a_hook_a_pull_can_bring() {
         .unwrap();
     assert_eq!(post_hook_runs(&running), vec!["post-merge 0"]);
     std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_tracked_hooks_link_that_a_pull_replaces_with_a_folder_still_offers_the_skip() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    let empty = local.dir.with_extension("empty-hooks");
+    std::fs::create_dir_all(&empty).unwrap();
+    std::os::unix::fs::symlink(&empty, local.dir.join(".husky")).unwrap();
+    commit_all(&local, "point .husky elsewhere");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let skipping = clone_of(&origin, &local, "husky-link-skip");
+    let running = clone_of(&origin, &local, "husky-link-run");
+    for repo in [&skipping, &running] {
+        core::set_config(Some(repo.path()), "core.hooksPath", ".husky", false).unwrap();
+        let hooks = core::repo_hooks(repo.path()).unwrap();
+        assert!(hooks.found.is_empty());
+        assert!(hooks.in_worktree);
+    }
+    std::fs::remove_file(local.dir.join(".husky")).unwrap();
+    write_hook(
+        &local.dir.join(".husky"),
+        "post-merge",
+        &format!("echo \"post-merge $*\" >> '{POST_HOOK_LOG}'"),
+    );
+    commit_all(&local, "real .husky folder");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+
+    core::post_hooks::pull(skipping.path(), "origin", Some("merge"), true)
+        .into_result()
+        .unwrap();
+    assert!(skipping.dir.join(".husky").join("post-merge").is_file());
+    assert!(post_hook_runs(&skipping).is_empty());
+    core::post_hooks::pull(running.path(), "origin", Some("merge"), false)
+        .into_result()
+        .unwrap();
+    assert_eq!(post_hook_runs(&running), vec!["post-merge 0"]);
+    std::fs::remove_dir_all(origin).unwrap();
+    std::fs::remove_dir_all(empty).unwrap();
 }
 
 #[test]
