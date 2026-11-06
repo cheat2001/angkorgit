@@ -1248,7 +1248,24 @@ test('Pull without hooks goes through the conflict check first and still skips t
   await check.getByRole('button', { name: 'Pull and resolve' }).click();
   await expect(page.getByText('Fast-forwarded main to origin/main (demo)')).toBeVisible();
   await page.waitForTimeout(1000);
-  await expect(page.getByText('The post-merge hook failed (exit code 1).')).toHaveCount(0);
+  expect(await page.getByText('The post-merge hook failed (exit code 1).').count()).toBe(0);
+});
+
+test('a bulk discard that fails for one file says so and does not claim success', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-discard-fails', 'src/data/palette-seed.sql'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByText('ipc.ts', { exact: true }).first().click();
+  await page.getByText('Architecture.md', { exact: true }).first().click({ modifiers: ['Shift'] });
+  await page.getByText('palette-seed.sql', { exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /Discard changes in 3 files/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Discard' }).click();
+  await expect(page.getByText('1 of 3 files could not be discarded: src/data/palette-seed.sql')).toBeVisible();
+  await expect(page.getByText('Permission denied (os error 13)')).toBeVisible();
+  await page.waitForTimeout(1000);
+  expect(await page.locator('[data-sonner-toast]', { hasText: 'Discarded 3 changes' }).count()).toBe(0);
 });
 
 test('discarding several files at once runs post-checkout once', async ({ page }) => {
@@ -1277,7 +1294,8 @@ test('Pull without hooks skips the post-merge hook that a plain pull runs', asyn
   await page.getByRole('button', { name: 'Pull options' }).click();
   await page.getByRole('menuitem', { name: 'Pull without hooks' }).click();
   await expect(page.getByText('Fast-forwarded main to origin/main (demo)')).toBeVisible();
-  await expect(page.getByText('The post-merge hook failed (exit code 1).')).toHaveCount(0);
+  await page.waitForTimeout(1000);
+  expect(await page.getByText('The post-merge hook failed (exit code 1).').count()).toBe(0);
 
   await page.getByRole('button', { name: /^Pull/ }).first().click();
   await expect(page.getByText('The post-merge hook failed (exit code 1).')).toBeVisible();

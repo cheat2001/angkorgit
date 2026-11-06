@@ -172,7 +172,7 @@ pub async fn discard_files(
     path: String,
     files: Vec<String>,
     staged: bool,
-) -> AppResult<Vec<String>> {
+) -> AppResult<DiscardBatch> {
     let repo_path = path.clone();
     let hooked = blocking(move || post_hooks::discard_files(&path, &files, staged, false)).await?;
     Ok(report(&app, &repo_path, hooked))

@@ -267,6 +267,11 @@ export interface GroupUpdateResult {
   hookWarnings?: HookWarning[];
 }
 
+export interface DiscardBatch {
+  leftovers: string[];
+  failed: { path: string; message: string }[];
+}
+
 export interface RepoHooks {
   found: string[];
   inWorktree: boolean;
