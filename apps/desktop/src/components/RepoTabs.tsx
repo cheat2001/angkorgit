@@ -57,6 +57,8 @@ import { useTitleBarInset } from '@/shared/useTitleBarInset';
 const DRAG_TYPE = 'text/angkorgit-repo-tab';
 const GROUP_DRAG_TYPE = 'text/angkorgit-repo-group';
 const COMPACT_TAB_WIDTH = 112;
+const TAB_NAME_MIN_CH = 4;
+const ACTIVE_NAME_MIN_CH = 8;
 const chipZone = (group: RepoGroup) => `group:${group.id}`;
 
 export function RepoTabs() {
@@ -257,8 +259,8 @@ export function RepoTabs() {
         }}
         className={cn(
           'group flex h-8 max-w-56 shrink cursor-default items-center gap-1.5 rounded-t-md border border-b-0 text-xs',
+          'min-w-min',
           compact ? 'px-2' : 'px-3',
-          active ? 'min-w-28' : shortcutFor(path) ? 'min-w-20' : 'min-w-12',
           active
             ? 'border-border-subtle bg-background text-foreground'
             : 'border-transparent text-muted hover:bg-surface-raised hover:text-foreground',
@@ -272,16 +274,24 @@ export function RepoTabs() {
             aria-label="Worktree"
           />
         )}
-        <span className={cn('line-clamp-1 min-w-0 break-all', labels.get(path)?.hint && 'max-w-full shrink-0')}>
+        <span
+          className={cn('line-clamp-1 break-all', labels.get(path)?.hint && 'max-w-full shrink-0')}
+          style={{ minWidth: `${Math.min(label(path).length, active ? ACTIVE_NAME_MIN_CH : TAB_NAME_MIN_CH)}ch` }}
+        >
           {label(path)}
         </span>
         {labels.get(path)?.hint && (
-          <span
-            dir="rtl"
-            className={cn('min-w-0 truncate text-left text-[10px]', active ? 'text-muted' : 'text-faint')}
-            data-tab-hint
-          >
-            <bdi>{labels.get(path)?.hint}</bdi>
+          <span className="relative h-4 min-w-0 text-[10px] leading-4">
+            <span aria-hidden className="invisible block h-0 overflow-hidden break-all">
+              {labels.get(path)?.hint}
+            </span>
+            <span
+              dir="rtl"
+              className={cn('absolute inset-0 truncate text-left', active ? 'text-muted' : 'text-faint')}
+              data-tab-hint
+            >
+              <bdi>{labels.get(path)?.hint}</bdi>
+            </span>
           </span>
         )}
         {shortcutFor(path) && (

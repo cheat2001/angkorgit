@@ -3544,11 +3544,39 @@ test('tabs shrink to share a narrow window like browser tabs and scroll only pas
   await expect(page.getByRole('button', { name: 'Close angkorgit' })).toBeVisible();
   await page.setViewportSize({ width: 480, height: 900 });
   await expect(page.locator('[data-tab-overflow]')).toBeVisible();
-  expect((await longTab.boundingBox())!.width).toBeGreaterThanOrEqual(48);
+  expect((await longTab.boundingBox())!.width).toBeGreaterThanOrEqual(44);
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(strip).toHaveAttribute('data-tab-strip', 'full');
   await expect(page.getByRole('button', { name: 'Close tycho' })).toBeVisible();
   expect(Math.abs((await longTab.boundingBox())!.width - wide.width)).toBeLessThan(2);
+});
+
+test('a short tab name keeps its letters next to a shortcut pill while the strip squeezes', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    const names = ['campaignrouting', 'gatewayservice', 'ledgerreports', 'notificationhub', 'pricingengine', 'zed', 'schedulerworker', 'inventorysync', 'auditlogviewer', 'checkoutflow', 'angkorgit'];
+    const paths = names.map((name) => `/Users/demo/projects/${name}`);
+    localStorage.setItem('angkorgit-ui', JSON.stringify({ state: { repoTabs: paths, worktreeTabs: [] }, version: 0 }));
+    localStorage.setItem(
+      'angkorgit-settings',
+      JSON.stringify({ state: { repoShortcuts: { '/Users/demo/projects/zed': 'shift+meta+y', '/Users/demo/projects/inventorysync': 'shift+meta+i' } }, version: 0 }),
+    );
+  });
+  await page.setViewportSize({ width: 1300, height: 900 });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-tab-strip]')).toHaveAttribute('data-tab-strip', 'full');
+  const zed = page.locator('[data-tab-path="/Users/demo/projects/zed"]');
+  await expect(zed.locator('[data-tab-shortcut]')).toBeVisible();
+  const name = zed.locator('span').first();
+  const fits = await name.evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && el.getBoundingClientRect().width >= 18);
+  expect(fits).toBe(true);
+  for (const path of ['campaignrouting', 'inventorysync']) {
+    const label = page.locator(`[data-tab-path="/Users/demo/projects/${path}"] span`).first();
+    expect((await label.boundingBox())!.width).toBeGreaterThanOrEqual(24);
+  }
 });
 
 test("what's new opens from the welcome footer and the status bar and its unread dot clears once seen", async ({ page }) => {
