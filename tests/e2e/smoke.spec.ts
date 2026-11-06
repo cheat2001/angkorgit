@@ -1218,6 +1218,20 @@ test('a hook folder inside the worktree offers the without-hooks pulls before an
   await expect(page.getByRole('menuitem', { name: 'Push without hooks' })).toHaveCount(0);
 });
 
+test('the Pull menu checks the hooks again each time it opens', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Pull with rebase' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Pull without hooks' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  await page.evaluate(() => localStorage.setItem('angkorgit-demo-hooks-in-worktree', '1'));
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Pull without hooks' })).toBeVisible();
+});
+
 test('Pull without hooks skips the post-merge hook that a plain pull runs', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('angkorgit-demo-post-hooks', 'fail'));
   await page.goto('/');

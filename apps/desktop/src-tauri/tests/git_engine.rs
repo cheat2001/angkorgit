@@ -6095,6 +6095,45 @@ fn a_hook_symlink_into_the_worktree_counts_as_a_hook_a_pull_can_bring() {
 
 #[cfg(unix)]
 #[test]
+fn a_hook_link_that_climbs_out_of_a_linked_folder_is_followed_like_the_filesystem_does() {
+    let repo = TempRepo::new();
+    std::fs::create_dir_all(repo.dir.join("sub").join("dir")).unwrap();
+    let hooks = default_hooks(&repo);
+    std::fs::create_dir_all(&hooks).unwrap();
+    std::os::unix::fs::symlink(repo.dir.join("sub").join("dir"), hooks.join("proxy")).unwrap();
+    std::os::unix::fs::symlink("proxy/../.husky/post-merge", hooks.join("post-merge")).unwrap();
+    let found = core::repo_hooks(repo.path()).unwrap();
+    assert!(!found.found.contains(&"post-merge".to_string()));
+    assert!(found.in_worktree);
+}
+
+#[test]
+fn a_hooks_path_spelled_with_other_letter_case_is_the_same_folder_where_the_disk_ignores_case() {
+    let repo = TempRepo::new();
+    let name = repo
+        .dir
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_uppercase();
+    let respelled = repo.dir.with_file_name(&name);
+    let ignores_case = std::fs::metadata(&respelled).is_ok();
+    let configured = respelled.join(".husky");
+    core::set_config(
+        Some(repo.path()),
+        "core.hooksPath",
+        configured.to_str().unwrap(),
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        core::repo_hooks(repo.path()).unwrap().in_worktree,
+        ignores_case
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn a_tracked_hooks_link_that_a_pull_replaces_with_a_folder_still_offers_the_skip() {
     if !hooks_runnable() {
         return;
