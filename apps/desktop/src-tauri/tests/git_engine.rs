@@ -4763,7 +4763,7 @@ fn commit_hooks_follow_core_hooks_path_and_ignore_samples_and_plain_files() {
     write_hook(&default, "pre-commit.sample", "exit 1");
     #[cfg(unix)]
     std::fs::write(default.join("commit-msg"), "#!/bin/sh\nexit 1\n").unwrap();
-    assert!(core::repo_hooks(repo.path()).unwrap().is_empty());
+    assert!(core::repo_hooks(repo.path()).unwrap().found.is_empty());
     repo.write("a.txt", "one\n");
     let base = commit_all(&repo, "base");
 
@@ -4774,7 +4774,10 @@ fn commit_hooks_follow_core_hooks_path_and_ignore_samples_and_plain_files() {
         "pre-commit",
         "echo 'from .githooks'\nexit 2",
     );
-    assert_eq!(core::repo_hooks(repo.path()).unwrap(), vec!["pre-commit"]);
+    assert_eq!(
+        core::repo_hooks(repo.path()).unwrap().found,
+        vec!["pre-commit"]
+    );
     if !hooks_runnable() {
         return;
     }
@@ -4791,9 +4794,12 @@ fn commit_hooks_follow_core_hooks_path_and_ignore_samples_and_plain_files() {
 #[test]
 fn commit_hooks_include_hooks_defined_in_config() {
     let repo = TempRepo::new();
-    assert!(core::repo_hooks(repo.path()).unwrap().is_empty());
+    assert!(core::repo_hooks(repo.path()).unwrap().found.is_empty());
     core::set_config(Some(repo.path()), "hook.lint.event", "pre-commit", false).unwrap();
-    assert_eq!(core::repo_hooks(repo.path()).unwrap(), vec!["pre-commit"]);
+    assert_eq!(
+        core::repo_hooks(repo.path()).unwrap().found,
+        vec!["pre-commit"]
+    );
 }
 
 #[test]
@@ -5168,7 +5174,10 @@ fn pre_push_follows_core_hooks_path() {
         "pre-push",
         "echo 'from .githooks'\nexit 2",
     );
-    assert_eq!(core::repo_hooks(local.path()).unwrap(), vec!["pre-push"]);
+    assert_eq!(
+        core::repo_hooks(local.path()).unwrap().found,
+        vec!["pre-push"]
+    );
     if !hooks_runnable() {
         std::fs::remove_dir_all(origin).unwrap();
         return;
@@ -5888,6 +5897,116 @@ fn pull_without_hooks_stays_without_hooks_when_its_paused_rebase_is_continued() 
     assert_eq!(done.value.status, "ok", "{}", done.value.message);
     assert!(done.warnings.is_empty());
     assert!(post_hook_runs(&other).is_empty());
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn pull_without_hooks_stays_without_hooks_when_replay_stops_on_an_untracked_file() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let other = clone_of(&origin, &local, "pull-skip-untracked");
+    record_post_hooks(&default_hooks(&other), POST_HOOK_LOG);
+    local.write("theirs.txt", "theirs\n");
+    commit_all(&local, "theirs");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    other.write("first.txt", "replays cleanly\n");
+    commit_all(&other, "first");
+    other.write("later.txt", "added\n");
+    commit_all(&other, "add later");
+    std::fs::remove_file(other.dir.join("later.txt")).unwrap();
+    commit_all(&other, "remove later");
+    other.write("later.txt", "untracked and in the way\n");
+
+    let stopped = core::post_hooks::pull(other.path(), "origin", Some("rebase"), true);
+    assert!(stopped.is_err());
+    let repo = git2::Repository::open(other.path()).unwrap();
+    assert_eq!(repo.state(), git2::RepositoryState::RebaseMerge);
+    drop(repo);
+    std::fs::remove_file(other.dir.join("later.txt")).unwrap();
+    let done = core::post_hooks::rebase_continue(other.path(), false).unwrap();
+    assert_eq!(done.value.status, "ok", "{}", done.value.message);
+    assert!(post_hook_runs(&other).is_empty());
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn rebase_refuses_a_dirty_tree_or_a_rebase_in_progress_even_when_up_to_date() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "topic", None, true).unwrap();
+    repo.write("t.txt", "t\n");
+    let tip = commit_all(&repo, "t");
+
+    repo.write("a.txt", "unstaged\n");
+    let unstaged = core::post_hooks::rebase(repo.path(), "master", false);
+    assert!(unstaged.is_err());
+    core::stage_file(repo.path(), "a.txt").unwrap();
+    let staged = core::post_hooks::rebase(repo.path(), "master", false);
+    assert!(staged.is_err());
+    assert_eq!(rev(&repo, "HEAD"), tip);
+    core::discard_staged_file(repo.path(), "a.txt").unwrap();
+
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("a.txt", "master\n");
+    commit_all(&repo, "master edit");
+    core::branch_create(repo.path(), "clash", Some(&tip), true).unwrap();
+    repo.write("a.txt", "clash\n");
+    commit_all(&repo, "clash edit");
+    let paused = core::post_hooks::rebase(repo.path(), "master", false).unwrap();
+    assert_eq!(paused.value.status, "conflicts");
+    let again = core::post_hooks::rebase(repo.path(), "HEAD", false);
+    assert!(again.is_err());
+    let message = again.err().unwrap().to_string();
+    assert!(message.contains("in progress"), "{message}");
+}
+
+#[test]
+fn a_hook_folder_inside_the_worktree_is_reported_so_a_pull_can_skip_an_arriving_hook() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    commit_all(&local, "base");
+    assert!(!core::repo_hooks(local.path()).unwrap().in_worktree);
+    core::set_config(
+        Some(local.path()),
+        "core.hooksPath",
+        "../shared-hooks",
+        false,
+    )
+    .unwrap();
+    assert!(!core::repo_hooks(local.path()).unwrap().in_worktree);
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let skipping = clone_of(&origin, &local, "husky-skip");
+    let running = clone_of(&origin, &local, "husky-run");
+    for repo in [&skipping, &running] {
+        core::set_config(Some(repo.path()), "core.hooksPath", ".husky", false).unwrap();
+        let hooks = core::repo_hooks(repo.path()).unwrap();
+        assert!(hooks.found.is_empty());
+        assert!(hooks.in_worktree);
+    }
+    write_hook(
+        &local.dir.join(".husky"),
+        "post-merge",
+        &format!("echo \"post-merge $*\" >> '{POST_HOOK_LOG}'"),
+    );
+    commit_all(&local, "add a post-merge hook");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+
+    core::post_hooks::pull(skipping.path(), "origin", Some("merge"), true).unwrap();
+    assert!(skipping.dir.join(".husky").join("post-merge").exists());
+    assert!(post_hook_runs(&skipping).is_empty());
+    core::post_hooks::pull(running.path(), "origin", Some("merge"), false).unwrap();
+    assert_eq!(post_hook_runs(&running), vec!["post-merge 0"]);
     std::fs::remove_dir_all(origin).unwrap();
 }
 

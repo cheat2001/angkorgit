@@ -1194,6 +1194,30 @@ test('a failing post-checkout hook warns after the checkout and its output opens
   await expect(dialog).toBeHidden();
 });
 
+test('a hook folder inside the worktree offers the without-hooks pulls before any hook exists', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-hooks-in-worktree', '1'));
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const { useSettings } = await import('/src/features/settings/store.ts');
+    const { useRepo } = await import('/src/features/repository/store.ts');
+    const paths = useRepo.getState().recents.slice(0, 2).map((r) => r.path);
+    useSettings.getState().addRepoGroup('Husky', 0, paths);
+  });
+  await page.locator('[data-group-header]', { hasText: 'Husky' }).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Pull all without hooks', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Pull without hooks' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Push options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Force push' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Push without hooks' })).toHaveCount(0);
+});
+
 test('Pull without hooks skips the post-merge hook that a plain pull runs', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('angkorgit-demo-post-hooks', 'fail'));
   await page.goto('/');

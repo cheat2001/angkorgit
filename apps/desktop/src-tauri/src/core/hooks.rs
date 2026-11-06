@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use git2::{Oid, Repository};
 
-use super::types::HookWarning;
+use super::types::{HookWarning, RepoHooks};
 use crate::ai_cli::{capture, capture_tree_child, search_path, spawn_tree};
 use crate::error::{AppError, AppResult};
 
@@ -120,18 +120,36 @@ fn configured_for(repo: &Repository, name: &str) -> AppResult<bool> {
     Ok(false)
 }
 
-pub fn repo_hooks(path: &str) -> AppResult<Vec<String>> {
+pub fn repo_hooks(path: &str) -> AppResult<RepoHooks> {
     let repo = super::repo::open(path)?;
-    if repo.workdir().is_none() {
-        return Ok(Vec::new());
-    }
+    let Some(workdir) = repo.workdir() else {
+        return Ok(RepoHooks::default());
+    };
     let mut found = Vec::new();
     for name in REPO_HOOKS {
         if present(&repo, name)? {
             found.push(name.to_string());
         }
     }
-    Ok(found)
+    let dir = lexical(&hooks_dir(&repo)?);
+    let in_worktree = dir.starts_with(lexical(workdir))
+        && !dir.starts_with(lexical(repo.path()))
+        && !dir.starts_with(lexical(repo.commondir()));
+    Ok(RepoHooks { found, in_worktree })
+}
+
+fn lexical(path: &Path) -> PathBuf {
+    let mut clean = PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                clean.pop();
+            }
+            other => clean.push(other),
+        }
+    }
+    clean
 }
 
 pub fn runner_available() -> bool {
@@ -788,6 +806,19 @@ mod tests {
             "@1730103456 -0530"
         );
         assert_eq!(git_date(git2::Time::new(0, 0)), "@0 +0000");
+    }
+
+    #[test]
+    fn hook_folders_are_compared_without_dot_segments() {
+        assert_eq!(
+            lexical(Path::new("/repo/./.husky")),
+            PathBuf::from("/repo/.husky")
+        );
+        assert_eq!(
+            lexical(Path::new("/repo/../shared/hooks")),
+            PathBuf::from("/shared/hooks")
+        );
+        assert!(!lexical(Path::new("/repo/../shared")).starts_with("/repo"));
     }
 
     #[test]

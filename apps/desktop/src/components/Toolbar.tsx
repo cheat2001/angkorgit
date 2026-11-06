@@ -672,7 +672,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             <DropdownMenuItem onClick={() => void run('Pull (rebase)', () => ipc.pull(repo.path, remote, 'rebase'))}>
               Pull with rebase
             </DropdownMenuItem>
-            {repoHooks.some((name) => PULL_HOOKS.includes(name)) && (
+            {(repoHooks.inWorktree || repoHooks.found.some((name) => PULL_HOOKS.includes(name))) && (
               <DropdownMenuItem
                 onClick={() => void run('Pull without hooks', () => ipc.pull(repo.path, remote, undefined, true))}
               >
@@ -724,7 +724,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             <DropdownMenuItem onClick={() => runPush('Push with tags', pushRequest({ withTags: true }))}>
               Push with tags
             </DropdownMenuItem>
-            {repoHooks.includes('pre-push') && (
+            {repoHooks.found.includes('pre-push') && (
               <DropdownMenuItem
                 onClick={() => runPush('Push without hooks', pushRequest({ noVerify: true }))}
               >
