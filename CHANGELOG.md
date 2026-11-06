@@ -6,6 +6,26 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Checkouts, merges and rewrites run your `post-*` hooks.** `post-checkout`,
+  `post-merge` and `post-rewrite` now run after the operations that run them in `git`,
+  with the same arguments and input:
+  - `post-checkout` after a checkout, a new branch you check out, a detached checkout,
+    a pull request checkout, a clone, a new worktree, and after discarding or applying
+    files from a stash (`git restore` runs it too, with flag `0`).
+  - `post-merge` after a merge or a pull that merged or fast-forwarded.
+  - `post-rewrite` after amend, reword, rebase, interactive rebase and a pull with
+    rebase, once with every rewritten commit, also when a paused rebase is continued.
+  As in `git`, a failing hook never undoes the operation: AngKorGit shows a warning
+  with **Show output** instead of an error. **Skip hooks** in the commit box also skips
+  `post-rewrite` when amending, and the Pull menu has **Pull without hooks** when the
+  repository has one of these hooks. (#82)
+- **Pull all runs `post-merge` in each repository it fast-forwarded.** One at a time,
+  never for a repository that was already up to date; a failing hook shows as a warning
+  with its output on that repository's row and the rest of the group still updates.
+  **Pull all without hooks** in the group menu skips it. Cancel waits for a hook that
+  is already running, the same way it waits for the checkout before it. (#69, #82)
+
 ## [0.26.0] — 2026-11-06
 
 The hooks release. Commits and pushes now run your Git hooks the way `git` does, the
