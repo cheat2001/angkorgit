@@ -6253,6 +6253,61 @@ fn a_tracked_config_include_offers_the_skip_before_it_sets_a_hooks_path() {
 }
 
 #[test]
+fn a_config_scan_that_hits_its_file_limit_still_offers_the_skip() {
+    let repo = TempRepo::new();
+    repo.write("project.gitconfig", "# project settings come later\n");
+    commit_all(&repo, "project config");
+    let outside = repo.dir.with_extension("many-configs");
+    std::fs::create_dir_all(&outside).unwrap();
+    let mut includes = String::from("[include]\n\tpath = ../project.gitconfig\n");
+    for n in 0..64 {
+        let file = outside.join(format!("c{n}.gitconfig"));
+        std::fs::write(&file, "# outside\n").unwrap();
+        includes.push_str(&format!("\tpath = {}\n", shell_path(&file)));
+    }
+    let config = repo.dir.join(".git").join("config");
+    let mut text = std::fs::read_to_string(&config).unwrap();
+    text.push_str(&includes);
+    std::fs::write(&config, text).unwrap();
+
+    assert!(core::repo_hooks(repo.path()).unwrap().in_worktree);
+    std::fs::remove_dir_all(outside).unwrap();
+}
+
+#[test]
+fn interactive_rebase_keeps_honouring_a_submodule_ignore_dirty_setting() {
+    let fixture = SubmoduleFixture::new();
+    let local = &fixture.local;
+    let gitmodules = local.read(".gitmodules");
+    local.write(".gitmodules", &format!("{gitmodules}\tignore = dirty\n"));
+    let configured = commit_all(local, "ignore dirty submodule content");
+    local.write("one.txt", "one\n");
+    let first = commit_all(local, "one");
+    local.write("two.txt", "two\n");
+    let second = commit_all(local, "two");
+    local.write("deps/lib/lib.txt", "edited inside the submodule\n");
+
+    let todo = vec![
+        todo_entry(&first, "pick", None),
+        todo_entry(&second, "reword", Some("two, reworded")),
+    ];
+    core::post_hooks::rebase_interactive(local.path(), &configured, &todo, false).unwrap();
+    assert_eq!(head_message(local).trim(), "two, reworded");
+    let older = rev(local, "HEAD~1");
+    core::post_hooks::reword(local.path(), &older, "one, reworded", false).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(local.dir.join("deps/lib/lib.txt")).unwrap(),
+        "edited inside the submodule\n"
+    );
+
+    core::branch_create(local.path(), "topic", Some(&configured), true).unwrap();
+    local.write("topic.txt", "topic\n");
+    commit_all(local, "topic");
+    let ordinary = core::post_hooks::rebase(local.path(), "master", false).into_result();
+    assert!(ordinary.is_err());
+}
+
+#[test]
 fn rebase_allows_a_submodule_with_only_untracked_files_but_not_edited_ones() {
     let fixture = SubmoduleFixture::new();
     let local = &fixture.local;
