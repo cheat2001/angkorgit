@@ -474,6 +474,7 @@ pub(crate) fn run_watched(
         return Err(AppError::HookTimeout {
             hook: name.to_string(),
             seconds: watch.timeout.as_secs(),
+            exit_unconfirmed: run.exit_unconfirmed,
             output: output_tail(&output, OUTPUT_CAP),
         });
     }

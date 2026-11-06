@@ -18,10 +18,18 @@ pub enum AppError {
         status: i32,
         output: String,
     },
-    #[error("The {hook} hook did not finish within {seconds} seconds and was stopped.")]
+    #[error(
+        "The {hook} hook did not finish within {seconds} seconds{}",
+        if *.exit_unconfirmed {
+            ". Windows could not confirm that all hook processes exited."
+        } else {
+            " and was stopped."
+        }
+    )]
     HookTimeout {
         hook: String,
         seconds: u64,
+        exit_unconfirmed: bool,
         output: String,
     },
 }
@@ -220,6 +228,23 @@ mod tests {
         assert_eq!(payload["detail"], "lint: bad file");
         let plain = serde_json::to_value(AppError::other("boom")).unwrap();
         assert!(plain.get("detail").is_none());
+    }
+
+    #[test]
+    fn a_hook_timeout_reports_an_unconfirmed_exit_and_keeps_its_output() {
+        let error = AppError::HookTimeout {
+            hook: "post-merge".into(),
+            seconds: 600,
+            exit_unconfirmed: true,
+            output: "installing".into(),
+        };
+        let payload = serde_json::to_value(&error).unwrap();
+        assert_eq!(payload["code"], "hook_timeout");
+        assert_eq!(
+            payload["message"],
+            "The post-merge hook did not finish within 600 seconds. Windows could not confirm that all hook processes exited."
+        );
+        assert_eq!(payload["detail"], "installing");
     }
 
     #[test]

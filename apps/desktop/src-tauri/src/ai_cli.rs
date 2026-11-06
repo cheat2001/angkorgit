@@ -238,14 +238,11 @@ pub(crate) fn capture_child(child: Child, stdin: &str, timeout: Duration) -> App
 pub(crate) struct TreeRun {
     pub(crate) captured: Captured,
     pub(crate) timed_out: bool,
+    pub(crate) exit_unconfirmed: bool,
 }
 
 pub(crate) fn run_tree(tree: TreeChild, stdin: &str, timeout: Duration) -> TreeRun {
-    let (captured, timed_out) = gather(tree.child, stdin, timeout, true, tree.leftovers);
-    TreeRun {
-        captured,
-        timed_out,
-    }
+    gather(tree.child, stdin, timeout, true, tree.leftovers)
 }
 
 fn timed_out(timeout: Duration) -> AppError {
@@ -313,7 +310,7 @@ impl Leftovers {
         }
     }
 
-    fn stop(self) {
+    fn stop(self) -> bool {
         #[cfg(unix)]
         if let Ok(group) = libc::pid_t::try_from(self.group) {
             unsafe {
@@ -321,7 +318,30 @@ impl Leftovers {
             }
         }
         #[cfg(windows)]
-        self.job.stop();
+        {
+            self.job.stop()
+        }
+        #[cfg(not(windows))]
+        {
+            true
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+fn wait_for_job_exit(timeout: Duration, mut active_processes: impl FnMut() -> Option<u32>) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match active_processes() {
+            Some(0) => return true,
+            None => return false,
+            Some(_) => {}
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(25)));
     }
 }
 
@@ -348,6 +368,8 @@ mod job {
     };
 
     pub(super) struct Job(OwnedHandle);
+
+    const JOB_EXIT_GRACE: Duration = Duration::from_secs(1);
 
     impl Job {
         pub(super) fn new() -> io::Result<Self> {
@@ -401,12 +423,11 @@ mod job {
             (queried != 0).then_some(info.ActiveProcesses)
         }
 
-        pub(super) fn stop(self) {
-            if unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) } != 0 {
-                while self.active_processes().is_some_and(|count| count > 0) {
-                    std::thread::sleep(Duration::from_millis(25));
-                }
+        pub(super) fn stop(self) -> bool {
+            if unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) } == 0 {
+                return self.active_processes() == Some(0);
             }
+            super::wait_for_job_exit(JOB_EXIT_GRACE, || self.active_processes())
         }
     }
 
@@ -484,11 +505,11 @@ mod job {
 }
 
 fn collect(child: Child, stdin: &str, timeout: Duration, whole_tree: bool) -> AppResult<Captured> {
-    let (captured, expired) = gather(child, stdin, timeout, whole_tree, None);
-    if expired {
+    let run = gather(child, stdin, timeout, whole_tree, None);
+    if run.timed_out {
         return Err(timed_out(timeout));
     }
-    Ok(captured)
+    Ok(run.captured)
 }
 
 fn gather(
@@ -497,7 +518,7 @@ fn gather(
     timeout: Duration,
     whole_tree: bool,
     mut leftovers: Option<Leftovers>,
-) -> (Captured, bool) {
+) -> TreeRun {
     let deadline = Instant::now() + timeout;
     let stdin_data = stdin.as_bytes().to_vec();
     let mut stdin_pipe = child.stdin.take();
@@ -510,19 +531,26 @@ fn gather(
     let (stderr, stderr_thread) = read_pipe(child.stderr.take());
 
     let mut expired = false;
+    let mut exit_unconfirmed = false;
     let status = match wait_with_timeout(&mut child, timeout) {
         Some(status) => status,
         None => {
             expired = true;
             if let Some(leftovers) = leftovers.take() {
-                leftovers.stop();
-                let _ = child.kill();
-            } else if whole_tree {
-                kill_tree(&mut child);
+                exit_unconfirmed = !leftovers.stop();
+                #[cfg(not(windows))]
+                {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
             } else {
-                let _ = child.kill();
+                if whole_tree {
+                    kill_tree(&mut child);
+                } else {
+                    let _ = child.kill();
+                }
+                let _ = child.wait();
             }
-            let _ = child.wait();
             -1
         }
     };
@@ -530,7 +558,7 @@ fn gather(
         while leftovers.running() {
             if Instant::now() >= deadline {
                 expired = true;
-                leftovers.stop();
+                exit_unconfirmed = !leftovers.stop();
                 break;
             }
             std::thread::sleep(Duration::from_millis(25));
@@ -548,7 +576,11 @@ fn gather(
         stdout: take_output(&stdout),
         stderr: take_output(&stderr),
     };
-    (captured, expired)
+    TreeRun {
+        captured,
+        timed_out: expired,
+        exit_unconfirmed,
+    }
 }
 
 type SharedOutput = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
@@ -987,6 +1019,15 @@ mod tests {
         );
     }
 
+    #[test]
+    fn job_cleanup_stops_polling_at_the_deadline_without_confirming_exit() {
+        let mut active = [Some(1), Some(1), Some(0)].into_iter();
+        let poll = || active.next().flatten();
+        assert!(!wait_for_job_exit(Duration::from_millis(5), poll));
+        assert!(wait_for_job_exit(Duration::ZERO, || Some(0)));
+        assert!(!wait_for_job_exit(Duration::ZERO, || None));
+    }
+
     #[cfg(windows)]
     #[test]
     fn a_windows_background_child_left_at_the_deadline_is_stopped() {
@@ -996,6 +1037,7 @@ mod tests {
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(2));
         assert!(run.timed_out);
+        assert!(!run.exit_unconfirmed);
         assert!(started.elapsed() < Duration::from_secs(15));
     }
 

@@ -5534,8 +5534,9 @@ fn discarding_all_staged_changes_preserves_a_rename_if_its_source_cannot_be_rest
 }
 
 #[test]
-fn discarding_staged_renames_with_overlapping_paths_puts_back_the_destination_on_failure() {
+fn discarding_staged_renames_preserves_destinations_on_index_lock_and_retries_cleanly() {
     for (source, destination) in [
+        ("original.txt", "moved.txt"),
         ("a", "a/b"),
         ("a/b", "a"),
         ("lower.txt", "LOWER.txt"),
@@ -5587,6 +5588,65 @@ fn discarding_staged_renames_with_overlapping_paths_puts_back_the_destination_on
         assert_eq!(repo.read(source), "original contents\n");
         assert!(core::status(repo.path()).unwrap().files.is_empty());
     }
+}
+
+#[test]
+fn discarding_all_staged_changes_retries_a_rename_after_another_removes_its_blocker() {
+    for (other_destination, remove_from_worktree) in [
+        ("a/second", false),
+        ("a/extra/second", false),
+        ("a/second", true),
+    ] {
+        let repo = TempRepo::new();
+        repo.write("a", "first file\n");
+        repo.write("z", "second file\n");
+        commit_all(&repo, "two files");
+        std::fs::remove_file(repo.dir.join("a")).unwrap();
+        std::fs::remove_file(repo.dir.join("z")).unwrap();
+        repo.write("a/first", "first file\n");
+        repo.write(other_destination, "second file\n");
+        core::stage_all(repo.path()).unwrap();
+        if remove_from_worktree {
+            std::fs::remove_file(repo.dir.join(other_destination)).unwrap();
+        }
+
+        let result = core::post_hooks::discard_staged_all(repo.path(), true).unwrap();
+        assert!(result.value.failed.is_empty(), "{:?}", result.value.failed);
+        assert!(result.value.leftovers.is_empty());
+        assert_eq!(repo.read("a"), "first file\n");
+        assert_eq!(repo.read("z"), "second file\n");
+        assert!(core::status(repo.path()).unwrap().files.is_empty());
+    }
+}
+
+#[test]
+fn discarding_staged_renames_preserves_an_index_only_blocker_when_its_rename_fails() {
+    let repo = TempRepo::new();
+    repo.write("a", "first file\n");
+    repo.write("z", "second file\n");
+    commit_all(&repo, "two files");
+    std::fs::remove_file(repo.dir.join("a")).unwrap();
+    std::fs::remove_file(repo.dir.join("z")).unwrap();
+    repo.write("a/first", "first file\n");
+    repo.write("a/second", "second file\n");
+    core::stage_all(repo.path()).unwrap();
+    std::fs::remove_file(repo.dir.join("a/second")).unwrap();
+    repo.write("a/first", "edited after staging\n");
+    repo.write("z/keep", "unrelated file\n");
+
+    let result = core::post_hooks::discard_staged_all(repo.path(), true).unwrap();
+    assert!(result.value.leftovers.is_empty());
+    assert_eq!(result.value.failed.len(), 2);
+    assert_eq!(repo.read("a/first"), "edited after staging\n");
+    assert_eq!(repo.read("z/keep"), "unrelated file\n");
+    let git_repo = git2::Repository::open(repo.path()).unwrap();
+    let index = git_repo.index().unwrap();
+    assert!(index.get_path(std::path::Path::new("a"), 0).is_none());
+    assert!(index.get_path(std::path::Path::new("z"), 0).is_none());
+    assert!(index.get_path(std::path::Path::new("a/first"), 0).is_some());
+    assert!(index
+        .get_path(std::path::Path::new("a/second"), 0)
+        .is_some());
 }
 
 #[test]

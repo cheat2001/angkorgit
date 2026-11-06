@@ -4258,11 +4258,16 @@ update CLAUDE.md or docs/ — never the code.
   ran post-checkout; it now returns DiscardBatch too, runs the hook once when any file came
   back and the panel names the failed files ("k of n staged files could not be discarded")
   without a success toast. Detect staged renames and handle each source and destination as
-  one entry. Restore the source first and leave the destination in the index and worktree
-  if that restore fails. When paths overlap or alias on disk, forced checkout can remove the
+  one entry. Restore the source first and verify its HEAD entry is present in the index
+  before discarding the destination. After an index-lock failure, libgit2 can leave the
+  source restored on disk and skip writing its index entry on retry. Write the source's HEAD
+  entry and remove the destination's entry together. Discard the destination on disk only
+  after that index write succeeds.
+  When paths overlap or alias on disk, forced checkout can remove the
   destination itself. Move the blocking path into a sibling backup first, put it back if
   checkout fails, and reload the cached index before trying independent entries. Refuse to
-  move a directory blocker that contains unrelated files.
+  move a directory blocker that contains unrelated files. Retry a blocked rename after
+  another entry in the same batch removes its blocker.
   stage::discard_staged_all keeps its old Vec<String> signature for
   the engine tests (the first failure becomes its error). E2E TRAP met here:
   `expect(locator).toHaveCount(0)` RETRIES until it holds, so it passes once a wrongly shown
@@ -4278,7 +4283,9 @@ update CLAUDE.md or docs/ — never the code.
   assigns it to a job object, then resumes it and waits until the job holds no process.
   Assigning the job after Git started let fast hooks escape tracking. A job setup or resume
   failure reports a hook launch warning on the group row. If Git was spawned, the runner
-  terminates it. At the deadline the runner terminates the job and waits for it to empty.
+  terminates it. At the hook deadline the runner requests job termination and allows one
+  second to confirm exit. If exit cannot be confirmed, the group row and
+  cancellation receipt carry a timeout warning with that detail and the captured output.
   (d) TIMEOUTS ARE NOT "DID NOT
   RUN": run_watched returns AppError::HookTimeout {hook, seconds, output} (code
   hook_timeout, detail = output so far); a post-hook timeout becomes a HookWarning with
@@ -4302,9 +4309,9 @@ update CLAUDE.md or docs/ — never the code.
   with_active_result section as the fast-forward, after follow_recorded, and its warnings
   ride on GroupUpdateResult.hookWarnings (serialized only when non-empty), so the receipt
   Cancel returns includes them; the fast-forward and its hook are one unit — Cancel before
-  it means neither, Cancel during the hook waits for it like any active local write
-  (bounded by HOOK_TIMEOUT) — never a fast-forward whose hook was skipped and never a hook
-  still writing after Cancel was acknowledged. The skip choice is per run:
+  it means neither, Cancel during the hook waits for it like any active local write.
+  The hook timeout, bounded termination check and output drain limit that wait. The receipt
+  includes any warning that Windows could not confirm process exit. The skip choice is per run:
   repository_group_start(runId, noVerify) → GroupUpdateControl::skipping_hooks. The dialog
   shows the warning and a collapsed "Hook output" on the row (data-group-hook-warning), "n
   hook warnings" in the counts line, and "Pull all without hooks" in the title. The clone
