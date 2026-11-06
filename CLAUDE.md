@@ -1554,26 +1554,35 @@ features/
 │                           (outside it, so the sticky WIP banner stays first inside),
 │                           mirroring the row layout exactly — REF_COL_WIDTH with the
 │                           same -mr-2, gutterWidth, flex-1, w-14, w-[4.5rem] — and
-│                           hiding a header with its column; LANE_WIDTH is 20px (was 14,
-│                           owner found lanes crowded) BUT laneWidthFor(maxLane) shrinks
-│                           the spacing (never below LANE_WIDTH_MIN 11) so the gutter
-│                           gutterWidthFor() stays ≤ GUTTER_MAX_WIDTH 190 — a busy repo's
-│                           deep history used to widen the gutter for EVERY row and the
-│                           owner saw "a really long gap" before the message; laneX takes
+│                           hiding a header with its column; GRAPH LOOK REWORK (owner, 2026-11-06,
+│                           "our graph looks messy next to GitKraken", picked option C from a
+│                           labelled mock of four): LANE_WIDTH is a FIXED 22px — it was 20 with a
+│                           laneWidthFor() that squeezed lanes down to 11px to keep the gutter
+│                           under 190px, and in a 12-lane repo the 27px avatar nodes then covered
+│                           the lines on both sides (owner screenshot of core.api: 13px lanes);
+│                           gutterWidthFor caps the column at GUTTER_MAX_WIDTH 250 and lanes past
+│                           it are clipped (overflow-hidden gutter, the node clamps to the edge);
+│                           the 190 cap existed because the owner disliked "a really long gap"
+│                           before the message (2026-09), so 250 is the compromise the owner took
+│                           with C — a draggable graph column is the offered follow-up; LINES ARE
+│                           RAILS: railIn/railOut draw vertical → RAIL_RADIUS 6 quadratic corner
+│                           → horizontal, replacing the S-shaped cubic béziers whose diagonals
+│                           tangled when lanes crossed (e2e asserts no ' C ' in any row path); option
+│                           D (keep the squeeze, dots instead of avatars when lanes < 20px) was
+│                           the runner-up; laneX takes
 │                           laneWidth (WipRow's laneX(0) is width-independent); nodes are
 │                           20px avatars with a double ring (NODE_HALO 1.5px background
 │                           + NODE_RING 2px lane color via two box-shadows); each row
-│                           draws a TAIL — a rounded rect from the node to the end of the
+│                           draws a TAIL — a FLAT rect (no rx since 2026-11-06) from the node to the end of the
 │                           gutter (the gutter div is width + GUTTER_GAP wide, no margin)
 │                           filled with `url(#graph-tail-N)`, ten linearGradients
 │                           (lane color 0.18 → 0.07 → 0.03 — was 0.28/0.12, dialled down 2026-09-07 after a many-lane repo read as a striped wall) rendered once by GraphTailDefs
 │                           inside the CommitGraph section, painted BEFORE the lane lines
 │                           so lines stay crisp over it (owner asked for a colored band
-│                           from avatar to next column); a second stroked pill (1px,
-│                           `url(#graph-tail-edge-N)`: 0 → 0 at 60% → 0.32 at the end)
-│                           outlines the RIGHT CAP so the band ends on a soft edge instead
-│                           of dissolving — owner asked for "a border right" 2026-09-07;
-│                           the fill rect is 1px short of the gutter so the stroke fits;
+│                           from avatar to next column); it ends in a solid 2px lane-colour
+│                           EDGE (TAIL_EDGE, data-graph-tail-edge) at the gutter's right side, the
+│                           "border right" the owner asked for 2026-09-07 — it replaced the
+│                           stroked rounded right cap and its graph-tail-edge gradients/token;
 │                           the whole band is behind ui.graphTail (persisted, default ON,
 │                           "Lane color band" checkbox at the bottom of the Graph display
 │                           menu, same list as the columns with NO separator (a separator
@@ -1588,9 +1597,12 @@ features/
 │                           WipRow: the uncommitted banner's marker is a dashed
 │                           "WIP" chip (replaced the `// WIP` monospace text that read
 │                           as a glitch, UX audit 2026-09-24); GraphTailDefs stop
-│                           opacities come from tokens --graph-tail-start/mid/end/edge
-│                           (0.18/0.07/0.03/0.32 dark, 0.34/0.14/0.06/0.5 in .light —
-│                           the band was invisible on light themes);
+│                           opacities come from tokens --graph-tail-start/mid/end
+│                           (0.18/0.07/0.03 dark, 0.34/0.14/0.06 in .light —
+│                           the band was invisible on light themes); the banner is OPAQUE (bg-surface
+│                           with the primary/10 selected/hover tint as a background-image) — a
+│                           bg-primary/10 replaced bg-surface/95 when selected and rows scrolled
+│                           visibly under it;
 │                           GraphRow (per-row SVG lanes; REF CHIPS: groupRefs merges
 │                           local+remote of the same name, DROPS 'head' refs when a local
 │                           branch sits on the commit (the tick on that chip is the HEAD
@@ -1651,10 +1663,15 @@ features/
 │                           from the card; the demo puts `release/0.4` next to
 │                           `feature/diff-viewer` on commit 7 so the fold is real; the
 │                           CHECKED-OUT branch chip is a SOLID
-│                           success fill (bg-success text-background shadow-soft, hover
-│                           kept solid) instead of the /15 tint every other local chip
-│                           gets — the tick alone was not enough to spot where you
-│                           stand, same rule as the sidebar row; a remote-only chip
+│                           fill instead of the tint every other chip gets — the tick alone
+│                           was not enough to spot where you stand; SINCE 2026-11-06 EVERY CHIP
+│                           WEARS ITS ROW'S LANE COLOUR (inline style: lane/0.16 bg, lane/0.45
+│                           border, lane text; the checked-out one solid lane with background
+│                           text; data-lane-chip=<lane>) instead of the kind tones (local green,
+│                           remote blue, tag primary) — a green `demo ✓` on an orange lane did
+│                           not say which line it was; the icons still tell local/remote/tag
+│                           apart; stash chips stay neutral and dashed; the chip→node connector
+│                           is 1.5px at 0.85 opacity (was 1px/0.45); a remote-only chip
 │                           whose base name matches an existing local branch is
 │                           SEPARATED (local and origin sit on different commits;
 │                           resettableBranches is passed down

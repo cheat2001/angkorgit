@@ -36,6 +36,15 @@ All notable changes to AngKorGit are documented here. The format follows
   worktree, next to the merge, rebase, pull and push entries it already had. Tag chips
   can be checked out, pushed and deleted from the graph too.
 
+### Changed
+- **A tidier commit graph.** Branch lines now run like rails, straight across and
+  down with rounded corners, instead of diagonal curves that tangled where branches
+  crossed. Lanes keep their spacing in busy repositories, so a commit's avatar no
+  longer covers the lines next to it, and every branch and tag chip takes the colour
+  of its lane. The row band is a flat stripe that ends in a thin lane coloured line
+  before the message, and the uncommitted changes banner no longer lets the rows
+  scroll through it.
+
 ### Fixed
 - Closing a tab right after switching to it (⌘W / Ctrl+W) no longer brings the
   closed tab back a moment later.
