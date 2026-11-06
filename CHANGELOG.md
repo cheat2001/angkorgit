@@ -60,6 +60,11 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
   code's own colours show through, and the changed words keep their strong highlight.
   Inline, Split, History and Blame in the diff header now have text labels when
   there is room, and the file name stays whole while the folder part shortens.
+- **Rebasing a branch that already sits on top of its target does nothing**, like
+  `git rebase`: it reports "Already up to date" instead of re-creating the branch's
+  commits with new commit dates.
+- **Fast-forward merges and pulls set `ORIG_HEAD`** to the commit you were on, like
+  `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
 
 ### Fixed
 - **Continue rebase no longer loses a commit** (#88). When a rebase stopped because
