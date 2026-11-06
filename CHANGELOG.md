@@ -17,7 +17,8 @@ All notable changes to AngKorGit are documented here. The format follows
   - `post-rewrite` after amend, reword, rebase, interactive rebase and a pull with
     rebase, once with every rewritten commit, also when a paused rebase is continued.
   As in `git`, a failing hook never undoes the operation: AngKorGit shows a warning
-  with **Show output** instead of an error. **Skip hooks** in the commit box also skips
+  with **Show output** instead of an error. A hook that runs past its 10-minute limit is
+  stopped and reported as timed out, with what it printed until then. **Skip hooks** in the commit box also skips
   `post-rewrite` when amending, and the Pull menu has **Pull without hooks** when the
   repository has one of these hooks, or keeps its hooks in a folder inside the repository
   (like `.husky`), links a hook to a file there, or includes a Git config file from the
