@@ -199,6 +199,7 @@ function demoPostHookWarning(path: string, hook: string): HookWarningEvent {
     repoPath: path,
     hook,
     status: 1,
+    timedOut: false,
     message: `The ${hook} hook failed (exit code 1).`,
     output: (DEMO_POST_HOOK_OUTPUT[hook] ?? []).join('\n'),
   };
@@ -437,6 +438,13 @@ export const ipc = {
   async discardAll(path: string): Promise<string[]> {
     if (!isTauri()) return [];
     return invoke('discard_all', { path });
+  },
+  async discardFiles(path: string, files: string[], staged: boolean): Promise<string[]> {
+    if (!isTauri()) {
+      demoRunPostHook(path, 'post-checkout');
+      return [];
+    }
+    return invoke('discard_files', { path, files, staged });
   },
   async discardStagedFile(path: string, file: string): Promise<boolean> {
     if (!isTauri()) return true;
@@ -711,7 +719,9 @@ export const ipc = {
           status: 'ok',
           message: 'Fast-forwarded main by 2 commit(s) (demo)',
           changes: [{ name: 'main', oldOid: 'a1b2c3d4e5f6', newOid: 'f6e5d4c3b2a1', commits: 2 }],
-          hookWarnings: warning ? [{ hook: warning.hook, status: warning.status, message: warning.message, output: warning.output }] : [],
+          hookWarnings: warning
+            ? [{ hook: warning.hook, status: warning.status, timedOut: warning.timedOut, message: warning.message, output: warning.output }]
+            : [],
         };
       }
       return { status: 'up_to_date', message: pull ? 'main is already up to date (demo)' : 'Fetched origin; no refs moved (demo)', changes: [] };

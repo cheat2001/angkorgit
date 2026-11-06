@@ -167,6 +167,18 @@ pub async fn discard_file(app: AppHandle, path: String, file: String) -> AppResu
 }
 
 #[tauri::command]
+pub async fn discard_files(
+    app: AppHandle,
+    path: String,
+    files: Vec<String>,
+    staged: bool,
+) -> AppResult<Vec<String>> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::discard_files(&path, &files, staged, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
+}
+
+#[tauri::command]
 pub async fn discard_all(app: AppHandle, path: String) -> AppResult<Vec<String>> {
     let repo_path = path.clone();
     let hooked = blocking(move || post_hooks::discard_all(&path, false)).await?;

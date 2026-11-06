@@ -275,6 +275,7 @@ export interface RepoHooks {
 export interface HookWarning {
   hook: string;
   status: number | null;
+  timedOut: boolean;
   message: string;
   output: string;
 }

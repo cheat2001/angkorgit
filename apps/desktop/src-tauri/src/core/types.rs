@@ -329,6 +329,7 @@ pub struct RepoHooks {
 pub struct HookWarning {
     pub hook: String,
     pub status: Option<i32>,
+    pub timed_out: bool,
     pub message: String,
     pub output: String,
 }

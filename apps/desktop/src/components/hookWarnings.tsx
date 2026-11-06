@@ -16,14 +16,18 @@ export function reportHookWarning(warning: HookWarningEvent): void {
 
 function showHookWarning(warning: HookWarningEvent): void {
   const repoName = basename(warning.repoPath);
-  if (warning.status === null) {
+  if (warning.status === null && !warning.timedOut) {
     toast.warning(`The ${warning.hook} hook did not run`, { description: warning.message, duration: 12000 });
     return;
   }
-  toast.warning(warning.message, {
-    description: `Nothing was undone in ${repoName}.`,
+  toast.warning(warning.timedOut ? `The ${warning.hook} hook timed out` : warning.message, {
+    description: warning.timedOut
+      ? `It was stopped. Nothing was undone in ${repoName}; what it changed before stays.`
+      : `Nothing was undone in ${repoName}.`,
     duration: 12000,
-    action: { label: 'Show output', onClick: () => useHookWarnings.setState({ open: warning }) },
+    action: warning.output
+      ? { label: 'Show output', onClick: () => useHookWarnings.setState({ open: warning }) }
+      : undefined,
   });
 }
 
@@ -43,7 +47,11 @@ export function HookWarningHost() {
   }, []);
   return (
     <HookWarningDialog
-      warning={open ? { hook: open.hook, message: open.message, output: open.output, repoName: basename(open.repoPath) } : null}
+      warning={
+        open
+          ? { hook: open.hook, timedOut: open.timedOut, message: open.message, output: open.output, repoName: basename(open.repoPath) }
+          : null
+      }
       onClose={() => useHookWarnings.setState({ open: null })}
     />
   );

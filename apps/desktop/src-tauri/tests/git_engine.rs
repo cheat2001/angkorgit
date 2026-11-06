@@ -5571,6 +5571,49 @@ fn discarding_changes_runs_post_checkout_with_flag_0_like_git_restore() {
 }
 
 #[test]
+fn discarding_several_files_runs_post_checkout_once_after_all_of_them() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "a\n");
+    repo.write("b.txt", "b\n");
+    repo.write("c.txt", "c\n");
+    let head = commit_all(&repo, "three files");
+    write_hook(
+        &default_hooks(&repo),
+        "post-checkout",
+        &format!("echo \"post-checkout $* $(cat a.txt b.txt c.txt | tr '\\n' ' ')\" >> '{POST_HOOK_LOG}'"),
+    );
+
+    for file in ["a.txt", "b.txt", "c.txt"] {
+        repo.write(file, "changed\n");
+    }
+    let files: Vec<String> = ["a.txt", "b.txt", "c.txt"].map(String::from).to_vec();
+    let unstaged = core::post_hooks::discard_files(repo.path(), &files, false, false).unwrap();
+    assert!(unstaged.value.is_empty());
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![format!("post-checkout {head} {head} 0 a b c ")]
+    );
+
+    for file in ["a.txt", "b.txt"] {
+        repo.write(file, "staged\n");
+        core::stage_file(repo.path(), file).unwrap();
+    }
+    let staged: Vec<String> = ["a.txt", "b.txt"].map(String::from).to_vec();
+    core::post_hooks::discard_files(repo.path(), &staged, true, false).unwrap();
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![format!("post-checkout {head} {head} 0 a b c ")]
+    );
+
+    repo.write("new.txt", "untracked\n");
+    core::post_hooks::discard_files(repo.path(), &["new.txt".to_string()], false, false).unwrap();
+    assert!(post_hook_runs(&repo).is_empty());
+}
+
+#[test]
 fn post_merge_runs_after_a_merge_commit_and_a_fast_forward_only() {
     if !hooks_runnable() {
         return;
@@ -6488,6 +6531,35 @@ fn group_pull_runs_post_merge_only_where_it_fast_forwarded() {
         assert_eq!(rev(repo, "HEAD"), last);
     }
     assert!(post_hook_runs(&behind).is_empty());
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn group_pull_waits_for_what_post_merge_left_running_before_it_lets_go() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let behind = clone_of(&origin, &local, "group-leftovers");
+    write_hook(
+        &default_hooks(&behind),
+        "post-merge",
+        "(sleep 1; echo finished > .git/background-done) > /dev/null 2>&1 &",
+    );
+    local.write("a.txt", "next\n");
+    commit_all(&local, "next");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+
+    let control = core::GroupUpdateControl::default();
+    let pulled = core::group_update_controlled(behind.path(), true, &control).unwrap();
+    assert_eq!(pulled.status, "ok");
+    assert!(pulled.hook_warnings.is_empty());
+    assert!(behind.dir.join(".git").join("background-done").exists());
     std::fs::remove_dir_all(origin).unwrap();
 }
 

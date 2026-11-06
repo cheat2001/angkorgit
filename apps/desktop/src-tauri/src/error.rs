@@ -18,6 +18,12 @@ pub enum AppError {
         status: i32,
         output: String,
     },
+    #[error("The {hook} hook did not finish within {seconds} seconds and was stopped.")]
+    HookTimeout {
+        hook: String,
+        seconds: u64,
+        output: String,
+    },
 }
 
 const HTTP_STATUS_MARKER: &str = "unexpected http status code: ";
@@ -96,12 +102,17 @@ impl AppError {
             AppError::NoRepository => "no_repository",
             AppError::Conflict(_) => "conflict",
             AppError::Hook { .. } => "hook_failed",
+            AppError::HookTimeout { .. } => "hook_timeout",
         }
     }
 
     fn detail(&self) -> Option<String> {
         match self {
-            AppError::Hook { output, .. } if !output.is_empty() => Some(output.clone()),
+            AppError::Hook { output, .. } | AppError::HookTimeout { output, .. }
+                if !output.is_empty() =>
+            {
+                Some(output.clone())
+            }
             _ => None,
         }
     }
