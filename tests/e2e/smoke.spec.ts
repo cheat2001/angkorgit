@@ -1268,6 +1268,23 @@ test('a bulk discard that fails for one file says so and does not claim success'
   expect(await page.locator('[data-sonner-toast]', { hasText: 'Discarded 3 changes' }).count()).toBe(0);
 });
 
+test('discarding every staged change names the file that failed and does not claim success', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-discard-fails', 'src/old-layout.tsx'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const stagedCount = demoStatus.files.filter((file) => file.staged).length;
+  await page.getByRole('button', { name: 'Discard all staged changes' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Discard all' }).click();
+  await expect(
+    page.getByText(`1 of ${stagedCount} staged files could not be discarded: src/old-layout.tsx`),
+  ).toBeVisible();
+  await expect(page.getByText('Permission denied (os error 13)')).toBeVisible();
+  await page.waitForTimeout(1000);
+  expect(await page.locator('[data-sonner-toast]', { hasText: /^Discarded/ }).count()).toBe(0);
+});
+
 test('discarding several files at once runs post-checkout once', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('angkorgit-demo-post-hooks', 'fail'));
   await page.goto('/');

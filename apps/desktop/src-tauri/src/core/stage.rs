@@ -2,6 +2,7 @@ use std::path::Path;
 
 use git2::{ApplyLocation, DiffFormat, DiffOptions, Repository};
 
+use super::types::{DiscardBatch, DiscardFailure};
 use crate::error::{AppError, AppResult};
 
 pub fn stage_file(path: &str, file: &str) -> AppResult<()> {
@@ -157,6 +158,14 @@ pub fn discard_staged_file(path: &str, file: &str) -> AppResult<bool> {
 }
 
 pub fn discard_staged_all(path: &str) -> AppResult<Vec<String>> {
+    let (batch, _) = discard_staged_all_reporting(path)?;
+    if let Some(failure) = batch.failed.first() {
+        return Err(AppError::other(failure.message.clone()));
+    }
+    Ok(batch.leftovers)
+}
+
+pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatch, bool)> {
     let repo = super::repo::open(path)?;
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(false);
@@ -187,14 +196,23 @@ pub fn discard_staged_all(path: &str) -> AppResult<Vec<String>> {
         })
         .collect();
     drop(statuses);
+    let mut batch = DiscardBatch::default();
+    let mut restored_any = false;
     for file in staged.iter().chain(renamed_targets.iter()) {
-        discard_to_head(&repo, file)?;
+        match discard_to_head(&repo, file) {
+            Ok(()) => restored_any = true,
+            Err(error) => batch.failed.push(DiscardFailure {
+                path: file.clone(),
+                message: error.to_string(),
+            }),
+        }
     }
     let remaining = touched_paths(&repo)?;
-    Ok(staged
+    batch.leftovers = staged
         .into_iter()
-        .filter(|p| remaining.contains(p))
-        .collect())
+        .filter(|p| remaining.contains(p) && !batch.failed.iter().any(|f| &f.path == p))
+        .collect();
+    Ok((batch, restored_any))
 }
 
 fn discard_to_head(repo: &git2::Repository, file: &str) -> AppResult<()> {

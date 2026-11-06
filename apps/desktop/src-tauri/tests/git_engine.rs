@@ -5659,6 +5659,51 @@ fn a_bulk_discard_reports_the_file_it_could_not_discard_and_keeps_the_others() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn discarding_all_staged_changes_keeps_going_past_a_file_it_cannot_delete() {
+    use std::os::unix::fs::PermissionsExt;
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "a\n");
+    repo.write("z.txt", "z\n");
+    let head = commit_all(&repo, "two files");
+    write_hook(
+        &default_hooks(&repo),
+        "post-checkout",
+        &format!(
+            "echo \"post-checkout $* $(cat a.txt z.txt | tr '\\n' ' ')\" >> '{POST_HOOK_LOG}'"
+        ),
+    );
+    for file in ["a.txt", "locked/new.txt", "z.txt"] {
+        repo.write(file, "staged\n");
+        core::stage_file(repo.path(), file).unwrap();
+    }
+    let locked = repo.dir.join("locked");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+    if std::fs::write(locked.join("probe"), "").is_ok() {
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipping: the folder stayed writable, permissions are not enforced here");
+        return;
+    }
+
+    let result = core::post_hooks::discard_staged_all(repo.path(), false);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let result = result.unwrap();
+    assert!(result.value.leftovers.is_empty());
+    assert_eq!(result.value.failed.len(), 1);
+    assert_eq!(result.value.failed[0].path, "locked/new.txt");
+    assert!(!result.value.failed[0].message.is_empty());
+    assert_eq!(repo.read("a.txt"), "a\n");
+    assert_eq!(repo.read("z.txt"), "z\n");
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![format!("post-checkout {head} {head} 0 a z ")]
+    );
+}
+
 #[test]
 fn post_merge_runs_after_a_merge_commit_and_a_fast_forward_only() {
     if !hooks_runnable() {
@@ -6580,7 +6625,6 @@ fn group_pull_runs_post_merge_only_where_it_fast_forwarded() {
     std::fs::remove_dir_all(origin).unwrap();
 }
 
-#[cfg(unix)]
 #[test]
 fn group_pull_waits_for_what_post_merge_left_running_before_it_lets_go() {
     if !hooks_runnable() {

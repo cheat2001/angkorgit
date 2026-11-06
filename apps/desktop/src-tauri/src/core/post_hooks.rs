@@ -290,20 +290,12 @@ pub fn discard_staged_file(path: &str, file: &str, no_verify: bool) -> AppResult
     Ok(restored(path, clean, no_verify))
 }
 
-pub fn discard_staged_all(path: &str, no_verify: bool) -> AppResult<Hooked<Vec<String>>> {
-    let restores = has_status(
-        path,
-        git2::Status::INDEX_NEW
-            | git2::Status::INDEX_MODIFIED
-            | git2::Status::INDEX_DELETED
-            | git2::Status::INDEX_RENAMED
-            | git2::Status::INDEX_TYPECHANGE,
-    )?;
-    let leftovers = stage::discard_staged_all(path)?;
-    Ok(if restores {
-        restored(path, leftovers, no_verify)
+pub fn discard_staged_all(path: &str, no_verify: bool) -> AppResult<Hooked<DiscardBatch>> {
+    let (batch, restored_any) = stage::discard_staged_all_reporting(path)?;
+    Ok(if restored_any {
+        restored(path, batch, no_verify)
     } else {
-        Hooked::plain(leftovers)
+        Hooked::plain(batch)
     })
 }
 

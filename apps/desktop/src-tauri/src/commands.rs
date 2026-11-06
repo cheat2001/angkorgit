@@ -193,7 +193,7 @@ pub async fn discard_staged_file(app: AppHandle, path: String, file: String) -> 
 }
 
 #[tauri::command]
-pub async fn discard_staged_all(app: AppHandle, path: String) -> AppResult<Vec<String>> {
+pub async fn discard_staged_all(app: AppHandle, path: String) -> AppResult<DiscardBatch> {
     let repo_path = path.clone();
     let hooked = blocking(move || post_hooks::discard_staged_all(&path, false)).await?;
     Ok(report(&app, &repo_path, hooked))

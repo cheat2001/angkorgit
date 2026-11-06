@@ -465,8 +465,11 @@ export const ipc = {
     if (!isTauri()) return true;
     return invoke('discard_staged_file', { path, file });
   },
-  async discardStagedAll(path: string): Promise<string[]> {
-    if (!isTauri()) return [];
+  async discardStagedAll(path: string): Promise<DiscardBatch> {
+    if (!isTauri()) {
+      const failing = demoDiscardFails();
+      return { leftovers: [], failed: failing ? [{ path: failing, message: 'Permission denied (os error 13)' }] : [] };
+    }
     return invoke('discard_staged_all', { path });
   },
   async stageHunk(path: string, file: string, hunkIndex: number): Promise<void> {

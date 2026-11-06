@@ -78,6 +78,7 @@ dependencies = [
  "tauri-plugin-updater",
  "thiserror 2.0.19",
  "which",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
