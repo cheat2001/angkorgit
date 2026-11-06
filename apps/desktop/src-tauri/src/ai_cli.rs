@@ -20,6 +20,8 @@ const AGENTS: &[(&str, &str, &[&str])] = &[
 const OUTPUT_FILE_PLACEHOLDER: &str = "{OUTPUT_FILE}";
 const VERSION_TIMEOUT: Duration = Duration::from_secs(15);
 const OUTPUT_DRAIN: Duration = Duration::from_secs(1);
+#[cfg(any(unix, windows))]
+const PROCESS_EXIT_GRACE: Duration = Duration::from_secs(1);
 const CURSOR_LAUNCHERS: &[&str] = &["cursor-agent", "agent"];
 
 #[derive(Serialize, Clone)]
@@ -296,9 +298,10 @@ impl Leftovers {
         #[cfg(unix)]
         {
             let Ok(group) = libc::pid_t::try_from(self.group) else {
-                return false;
+                return true;
             };
-            unsafe { libc::killpg(group, 0) == 0 }
+            let present = unsafe { libc::killpg(group, 0) == 0 };
+            present || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
         }
         #[cfg(windows)]
         {
@@ -310,32 +313,35 @@ impl Leftovers {
         }
     }
 
-    fn stop(self) -> bool {
+    fn stop(self, child: &mut Child) -> bool {
         #[cfg(unix)]
-        if let Ok(group) = libc::pid_t::try_from(self.group) {
-            unsafe {
-                libc::killpg(group, libc::SIGKILL);
-            }
+        {
+            kill_tree(child);
+            wait_for_process_exit(PROCESS_EXIT_GRACE, || {
+                Some(child.try_wait().ok()?.is_some() && !self.running())
+            })
         }
+        #[cfg(not(unix))]
+        let _ = child;
         #[cfg(windows)]
         {
             self.job.stop()
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(unix, windows)))]
         {
             true
         }
     }
 }
 
-#[cfg(any(windows, test))]
-fn wait_for_job_exit(timeout: Duration, mut active_processes: impl FnMut() -> Option<u32>) -> bool {
+#[cfg(any(unix, windows, test))]
+fn wait_for_process_exit(timeout: Duration, mut exited: impl FnMut() -> Option<bool>) -> bool {
     let deadline = Instant::now() + timeout;
     loop {
-        match active_processes() {
-            Some(0) => return true,
+        match exited() {
+            Some(true) => return true,
             None => return false,
-            Some(_) => {}
+            Some(false) => {}
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
@@ -351,7 +357,6 @@ mod job {
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
     use std::os::windows::process::CommandExt;
     use std::process::{Child, Command};
-    use std::time::Duration;
 
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
@@ -368,8 +373,6 @@ mod job {
     };
 
     pub(super) struct Job(OwnedHandle);
-
-    const JOB_EXIT_GRACE: Duration = Duration::from_secs(1);
 
     impl Job {
         pub(super) fn new() -> io::Result<Self> {
@@ -427,7 +430,9 @@ mod job {
             if unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) } == 0 {
                 return self.active_processes() == Some(0);
             }
-            super::wait_for_job_exit(JOB_EXIT_GRACE, || self.active_processes())
+            super::wait_for_process_exit(super::PROCESS_EXIT_GRACE, || {
+                self.active_processes().map(|count| count == 0)
+            })
         }
     }
 
@@ -537,12 +542,7 @@ fn gather(
         None => {
             expired = true;
             if let Some(leftovers) = leftovers.take() {
-                exit_unconfirmed = !leftovers.stop();
-                #[cfg(not(windows))]
-                {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                }
+                exit_unconfirmed = !leftovers.stop(&mut child);
             } else {
                 if whole_tree {
                     kill_tree(&mut child);
@@ -558,7 +558,7 @@ fn gather(
         while leftovers.running() {
             if Instant::now() >= deadline {
                 expired = true;
-                exit_unconfirmed = !leftovers.stop();
+                exit_unconfirmed = !leftovers.stop(&mut child);
                 break;
             }
             std::thread::sleep(Duration::from_millis(25));
@@ -571,6 +571,12 @@ fn gather(
         std::thread::sleep(Duration::from_millis(10));
     }
     drop(stdin_thread);
+    #[cfg(unix)]
+    if exit_unconfirmed && !matches!(child.try_wait(), Ok(Some(_))) {
+        let _ = std::thread::Builder::new().spawn(move || {
+            let _ = child.wait();
+        });
+    }
     let captured = Captured {
         status,
         stdout: take_output(&stdout),
@@ -1020,12 +1026,12 @@ mod tests {
     }
 
     #[test]
-    fn job_cleanup_stops_polling_at_the_deadline_without_confirming_exit() {
-        let mut active = [Some(1), Some(1), Some(0)].into_iter();
-        let poll = || active.next().flatten();
-        assert!(!wait_for_job_exit(Duration::from_millis(5), poll));
-        assert!(wait_for_job_exit(Duration::ZERO, || Some(0)));
-        assert!(!wait_for_job_exit(Duration::ZERO, || None));
+    fn process_cleanup_stops_polling_at_the_deadline_without_confirming_exit() {
+        let mut states = [Some(false), Some(false), Some(true)].into_iter();
+        let poll = || states.next().flatten();
+        assert!(!wait_for_process_exit(Duration::from_millis(5), poll));
+        assert!(wait_for_process_exit(Duration::ZERO, || Some(true)));
+        assert!(!wait_for_process_exit(Duration::ZERO, || None));
     }
 
     #[cfg(windows)]
@@ -1039,6 +1045,18 @@ mod tests {
         assert!(run.timed_out);
         assert!(!run.exit_unconfirmed);
         assert!(started.elapsed() < Duration::from_secs(15));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_timed_out_group_hook_confirms_exit_after_reaping_its_direct_child() {
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("echo started; exec sleep 30");
+        let child = spawn_tree(command, true).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(1));
+        assert!(run.timed_out);
+        assert!(!run.exit_unconfirmed);
+        assert_eq!(run.captured.stdout.trim(), "started");
     }
 
     #[cfg(unix)]
