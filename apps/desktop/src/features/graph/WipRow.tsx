@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Pencil } from 'lucide-react';
 import { Badge, cn } from '@angkorgit/design-system';
 import { useRepo } from '@/features/repository/store';
-import { GUTTER_GAP, laneX, REF_COL_WIDTH } from './GraphRow';
+import { GUTTER_GAP, graphShift, laneX, REF_COL_WIDTH } from './GraphRow';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 
@@ -54,6 +54,7 @@ export function WipRow({
     >
       {showRefs && <span className="h-full shrink-0" style={{ width: REF_COL_WIDTH }} />}
       <svg width={gutterWidth} height={36} className="shrink-0" style={{ marginRight: GUTTER_GAP }} aria-hidden>
+        <g style={graphShift}>
         <line x1={laneX(0)} y1={18} x2={laneX(0)} y2={36} stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="3 3" />
         <circle
           cx={laneX(0)}
@@ -64,6 +65,7 @@ export function WipRow({
           strokeWidth={2}
           strokeDasharray="3 2.5"
         />
+        </g>
       </svg>
       <Pencil className="size-3.5 shrink-0 text-primary" />
       <span className="rounded border border-dashed border-primary/50 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-primary">

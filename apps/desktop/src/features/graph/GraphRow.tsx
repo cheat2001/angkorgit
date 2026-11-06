@@ -56,6 +56,13 @@ export function GraphTailDefs() {
 export function gutterWidthFor(maxLane: number, laneWidth: number = LANE_WIDTH): number {
   return Math.min(GUTTER_BASE + (maxLane + 1) * laneWidth, GUTTER_MAX_WIDTH);
 }
+
+export function gutterOverflowFor(maxLane: number, laneWidth: number = LANE_WIDTH): number {
+  return Math.max(0, GUTTER_BASE + (maxLane + 1) * laneWidth - gutterWidthFor(maxLane, laneWidth));
+}
+
+export const GRAPH_SCROLL_VAR = '--graph-scroll-x';
+export const graphShift = { transform: `translateX(calc(var(${GRAPH_SCROLL_VAR}, 0px) * -1))` } as const;
 const CY = ROW_HEIGHT / 2;
 const RAIL_RADIUS = 6;
 
@@ -100,6 +107,7 @@ function GraphGutter({
   hasRefs,
   isStash,
   showTail,
+  overflow,
 }: {
   row: GraphRowData;
   width: number;
@@ -109,37 +117,30 @@ function GraphGutter({
   hasRefs: boolean;
   isStash: boolean;
   showTail: boolean;
+  overflow: number;
 }) {
   const { node, passing } = row;
   const x = (lane: number) => laneX(lane, laneWidth);
-  const nx = Math.min(x(node.lane), width - AVATAR_SIZE / 2 - NODE_RING - NODE_HALO - 1);
+  const nx = x(node.lane);
   const total = width + GUTTER_GAP;
   return (
     <div className="relative shrink-0 overflow-hidden" style={{ width: total, height: ROW_HEIGHT }}>
       <svg width={total} height={ROW_HEIGHT} aria-hidden>
+        <g style={graphShift}>
         {showTail && (
-          <>
-            <rect
-              data-graph-tail
-              x={nx}
-              y={CY - TAIL_HEIGHT / 2}
-              width={Math.max(0, total - nx)}
-              height={TAIL_HEIGHT}
-              fill={`url(#graph-tail-${node.color % 10})`}
-            />
-            <rect
-              data-graph-tail-edge
-              x={total - TAIL_EDGE}
-              y={2}
-              width={TAIL_EDGE}
-              height={ROW_HEIGHT - 4}
-              fill={laneColor(node.color)}
-            />
-          </>
+          <rect
+            data-graph-tail
+            x={nx}
+            y={CY - TAIL_HEIGHT / 2}
+            width={Math.max(0, total - nx + overflow)}
+            height={TAIL_HEIGHT}
+            fill={`url(#graph-tail-${node.color % 10})`}
+          />
         )}
         {hasRefs && (
           <line
-            x1={0}
+            data-graph-connector
+            x1={-overflow - 1}
             y1={CY}
             x2={nx}
             y2={CY}
@@ -193,6 +194,17 @@ function GraphGutter({
             strokeWidth={2}
           />
         )}
+        </g>
+        {showTail && (
+          <rect
+            data-graph-tail-edge
+            x={total - TAIL_EDGE}
+            y={2}
+            width={TAIL_EDGE}
+            height={ROW_HEIGHT - 4}
+            fill={laneColor(node.color)}
+          />
+        )}
       </svg>
       {!node.isMerge && (
         <span
@@ -206,6 +218,7 @@ function GraphGutter({
             boxShadow: `0 0 0 ${NODE_HALO}px hsl(var(--background)), 0 0 0 ${NODE_HALO + NODE_RING}px ${laneColor(node.color)}`,
             background: 'hsl(var(--surface))',
             outline: isStash ? `1.5px dashed ${laneColor(node.color)}` : undefined,
+            ...graphShift,
             outlineOffset: isStash ? -1.5 : undefined,
           }}
         >
@@ -475,6 +488,7 @@ interface Props {
   laneWidth?: number;
   columns?: GraphColumns;
   showTail?: boolean;
+  graphOverflow?: number;
   headBranch?: string | null;
   worktrees?: ReadonlyMap<string, string>;
   resettableBranches?: ReadonlySet<string>;
@@ -493,6 +507,7 @@ export const CommitRow = memo(function CommitRow({
   laneWidth = LANE_WIDTH,
   columns = DEFAULT_GRAPH_COLUMNS,
   showTail = true,
+  graphOverflow = 0,
   headBranch = null,
   worktrees,
   resettableBranches,
@@ -541,6 +556,7 @@ export const CommitRow = memo(function CommitRow({
         hasRefs={columns.refs && commit.refs.length > 0}
         isStash={isStash}
         showTail={showTail}
+        overflow={graphOverflow}
       />
       {commit.isHead && commit.refs.length === 0 && <Badge tone="primary">HEAD</Badge>}
       {columns.message ? (

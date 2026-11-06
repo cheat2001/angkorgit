@@ -25,7 +25,8 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { AUTHOR_COL_WIDTH, CommitRow, GUTTER_GAP, GraphTailDefs, LANE_WIDTH, REF_COL_WIDTH, ROW_HEIGHT, gutterWidthFor } from './GraphRow';
+import { AUTHOR_COL_WIDTH, CommitRow, GUTTER_GAP, GraphTailDefs, LANE_WIDTH, REF_COL_WIDTH, ROW_HEIGHT, gutterOverflowFor, gutterWidthFor } from './GraphRow';
+import { GraphScrollbar } from './GraphScrollbar';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { isHookFailure, reportHookFailure } from '@/components/hookFailure';
@@ -47,6 +48,9 @@ interface RefMenuState {
 const localNameOf = (remote: RefInfo) => remote.shorthand.split('/').slice(1).join('/');
 
 const stashIndexOf = (ref: RefInfo) => Number(/\{(\d+)\}/.exec(ref.name)?.[1] ?? 0);
+
+const GRAPH_LEFT_WITH_REFS = 4 + REF_COL_WIDTH;
+const GRAPH_LEFT_WITHOUT_REFS = 16;
 
 export function CommitGraph() {
   const repo = useRepo((s) => s.repo);
@@ -151,6 +155,7 @@ export function CommitGraph() {
 
   const laneWidth = LANE_WIDTH;
   const gutterWidth = gutterWidthFor(maxLane, laneWidth);
+  const graphOverflow = gutterOverflowFor(maxLane, laneWidth);
   const filtersActive = Boolean(filters.branch);
 
   const moveSelection = useCallback(
@@ -608,6 +613,7 @@ export function CommitGraph() {
                     laneWidth={laneWidth}
                     columns={graphColumns}
                     showTail={graphTail}
+                    graphOverflow={graphOverflow}
                     headBranch={headBranch}
                     worktrees={worktreeBranches}
                     resettableBranches={localBranchNames}
@@ -631,6 +637,13 @@ export function CommitGraph() {
           </div>
         )}
       </div>
+      <GraphScrollbar
+        scrollRef={scrollRef}
+        overflow={graphOverflow}
+        left={graphColumns.refs ? GRAPH_LEFT_WITH_REFS : GRAPH_LEFT_WITHOUT_REFS}
+        width={gutterWidth}
+        resetKey={path}
+      />
 
       {refMenu && (
         <DropdownMenu open onOpenChange={(o) => !o && setRefMenu(null)}>

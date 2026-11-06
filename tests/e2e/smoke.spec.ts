@@ -1690,7 +1690,7 @@ test('graph chips wear their lane colour, lines run as rails and the WIP banner 
   await expect(head).toBeVisible();
   const colours = await top.evaluate((row) => {
     const chip = row.querySelector('[data-lane-chip]') as HTMLElement;
-    const connector = row.querySelector('svg line[x1="0"]') as SVGLineElement;
+    const connector = row.querySelector('svg line[data-graph-connector]') as SVGLineElement;
     return { chip: getComputedStyle(chip).backgroundColor, lane: getComputedStyle(connector).stroke };
   });
   expect(colours.chip).toBe(colours.lane);
@@ -1701,6 +1701,48 @@ test('graph chips wear their lane colour, lines run as rails and the WIP banner 
   const banner = page.getByRole('button', { name: /uncommitted file change/ });
   const background = await banner.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(background).not.toMatch(/rgba|\/ 0\./);
+});
+
+test('a graph with more lanes than its column scrolls sideways under its own scrollbar', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-graph-scrollbar]')).toHaveCount(0);
+  await page.evaluate(() => localStorage.setItem('angkorgit-demo-busy-graph', '1'));
+  await page.reload();
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const bar = page.locator('[data-graph-scrollbar]');
+  await expect(bar).toBeVisible();
+  const list = page.getByRole('table', { name: 'Commits' });
+  const offset = () => list.evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue('--graph-scroll-x') || '0'));
+  const node = page.getByRole('row').nth(4).locator('span.rounded-full').first();
+  const start = (await node.boundingBox())!.x;
+  const listBox = (await list.boundingBox())!;
+  await page.mouse.move(listBox.x + 300, listBox.y + 200);
+  let previous = 0;
+  for (let i = 0; i < 4; i++) {
+    await page.mouse.wheel(10, 0);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
+    const now = await offset();
+    expect(now).toBeGreaterThan(previous);
+    previous = now;
+  }
+  expect(Math.abs(start - (await node.boundingBox())!.x - previous)).toBeLessThan(1);
+  const thumb = page.locator('[data-graph-scrollbar-thumb]');
+  const t = (await thumb.boundingBox())!;
+  await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(t.x + t.width / 2 + 30, t.y + t.height / 2, { steps: 4 });
+  await page.mouse.up();
+  expect(await offset()).toBeGreaterThan(previous);
+  const b = (await bar.boundingBox())!;
+  await page.mouse.click(b.x + 2, b.y + b.height / 2);
+  expect(await offset()).toBe(0);
+  await page.mouse.move(listBox.x + 500, listBox.y + 300);
+  await page.mouse.wheel(0, 200);
+  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await offset()).toBe(0);
 });
 
 test('the remote menu and the palette open the repository page in the browser', async ({ page }) => {

@@ -44,19 +44,26 @@ const SUBJECTS = [
   'feat(ai): provider registry + adapters',
 ];
 
+const BUSY_LANES = (() => {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('angkorgit-demo-busy-graph') === '1' ? 14 : 0;
+  } catch {
+    return 0;
+  }
+})();
+
 function makeCommits(count: number): CommitInfo[] {
   const commits: CommitInfo[] = [];
   const now = 1754200000;
   for (let i = 0; i < count; i++) {
     const oid = `${(count - i).toString(16).padStart(6, '0')}${'a'.repeat(34)}`;
     const author = AUTHORS[i % AUTHORS.length];
-    const isMerge = i % 9 === 4 && i + 8 < count;
-    const parents = [
-      `${(count - i - 1).toString(16).padStart(6, '0')}${'a'.repeat(34)}`,
-    ];
-    if (isMerge) {
-      parents.push(`${(count - i - 3).toString(16).padStart(6, '0')}${'a'.repeat(34)}`);
-    }
+    const at = (j: number) => `${(count - j).toString(16).padStart(6, '0')}${'a'.repeat(34)}`;
+    const busy = BUSY_LANES > 0 && i + BUSY_LANES * 2 < count;
+    const parents = busy ? [at(i + BUSY_LANES)] : [at(i + 1)];
+    if (busy && i % 5 === 2) parents.push(at(i + 1 + (i % 4)));
+    else if (!busy && i % 9 === 4 && i + 8 < count) parents.push(at(i + 3));
+    const isMerge = parents.length > 1;
     commits.push({
       oid,
       shortOid: oid.slice(0, 8),
