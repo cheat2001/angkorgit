@@ -19,7 +19,9 @@ All notable changes to AngKorGit are documented here. The format follows
   As in `git`, a failing hook never undoes the operation: AngKorGit shows a warning
   with **Show output** instead of an error. **Skip hooks** in the commit box also skips
   `post-rewrite` when amending, and the Pull menu has **Pull without hooks** when the
-  repository has one of these hooks. (#82)
+  repository has one of these hooks, or keeps its hooks in a folder inside the repository
+  (like `.husky`), where a pull can bring a new one. A rebase you started without hooks
+  stays without hooks when you continue it after a conflict. (#82)
 - **Pull all runs `post-merge` in each repository it fast-forwarded.** One at a time,
   never for a repository that was already up to date; a failing hook shows as a warning
   with its output on that repository's row and the rest of the group still updates.
@@ -29,7 +31,8 @@ All notable changes to AngKorGit are documented here. The format follows
 ### Changed
 - **Rebasing a branch that already sits on top of its target does nothing**, like
   `git rebase`: it reports "Already up to date" instead of re-creating the branch's
-  commits with new commit dates.
+  commits with new commit dates. Uncommitted changes or an unfinished operation still
+  stop it first.
 - **Fast-forward merges and pulls set `ORIG_HEAD`** to the commit you were on, like
   `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
 
