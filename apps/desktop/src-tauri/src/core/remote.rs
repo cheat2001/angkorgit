@@ -12,7 +12,7 @@ use git2::{
 use crate::error::{AppError, AppResult};
 
 use super::group_update::{FetchProgress, GroupUpdateControl};
-use super::hooks::{pre_push_input, PostHook, PrePush, PushedRef};
+use super::hooks::{pre_push_input, PostHook, PostHooks, PrePush, PushedRef};
 use super::types::{GeneratedKey, GroupUpdateResult, OpOutcome, RefMovement, RemoteInfo};
 
 static CREDENTIAL_PREFS: OnceLock<RwLock<CredentialPrefs>> = OnceLock::new();
@@ -690,6 +690,7 @@ fn group_update_inner(
         ));
     }
     let checkout = control.with_active_result(path, || {
+        super::branch::set_orig_head(&repo, old)?;
         let mut checkout = CheckoutBuilder::new();
         checkout.safe();
         if let Err(error) = repo.checkout_tree(target.as_object(), Some(&mut checkout)) {
@@ -931,14 +932,15 @@ fn fetched_refs(repo: &Repository) -> AppResult<HashMap<String, git2::Oid>> {
 }
 
 pub fn pull(path: &str, remote_name: &str, mode: Option<&str>) -> AppResult<OpOutcome> {
-    pull_reporting(path, remote_name, mode).map(|(outcome, _)| outcome)
+    pull_with_hooks(path, remote_name, mode, &mut PostHooks::off())
 }
 
-pub(crate) fn pull_reporting(
+pub(crate) fn pull_with_hooks(
     path: &str,
     remote_name: &str,
     mode: Option<&str>,
-) -> AppResult<(OpOutcome, Vec<PostHook>)> {
+    hooks: &mut PostHooks,
+) -> AppResult<OpOutcome> {
     fetch(path, remote_name, false, false)?;
 
     let repo = super::repo::open(path)?;
@@ -970,11 +972,13 @@ pub(crate) fn pull_reporting(
     drop(repo);
 
     if rebase && ahead > 0 && behind > 0 {
-        return super::branch::rebase_reporting(path, &upstream_name);
+        return super::branch::rebase_with_hooks(path, &upstream_name, hooks);
     }
     let outcome = super::branch::merge(path, &upstream_name, false)?;
-    let hooks = PostHook::merged(&outcome);
-    Ok((outcome, hooks))
+    if let Some(hook) = PostHook::merged(&outcome) {
+        hooks.later(hook);
+    }
+    Ok(outcome)
 }
 
 pub(super) fn pull_source(
@@ -1328,7 +1332,11 @@ fn tracking_ref_matches(repo: &Repository, remote_name: &str, branch_name: &str)
     local.is_some() && local == tip(format!("refs/remotes/{remote_name}/{branch_name}"))
 }
 
-pub(crate) fn pull_branch(path: &str, branch_name: &str) -> AppResult<(OpOutcome, Vec<PostHook>)> {
+pub(crate) fn pull_branch_with_hooks(
+    path: &str,
+    branch_name: &str,
+    hooks: &mut PostHooks,
+) -> AppResult<OpOutcome> {
     let (upstream_name, remote_name) = {
         let repo = super::repo::open(path)?;
         let branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
@@ -1358,8 +1366,10 @@ pub(crate) fn pull_branch(path: &str, branch_name: &str) -> AppResult<(OpOutcome
         == Some(branch_name);
     if is_head {
         let outcome = super::branch::merge(path, &upstream_name, false)?;
-        let hooks = PostHook::merged(&outcome);
-        return Ok((outcome, hooks));
+        if let Some(hook) = PostHook::merged(&outcome) {
+            hooks.later(hook);
+        }
+        return Ok(outcome);
     }
 
     let branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
@@ -1374,23 +1384,17 @@ pub(crate) fn pull_branch(path: &str, branch_name: &str) -> AppResult<(OpOutcome
         .ok_or_else(|| AppError::other("upstream has no target"))?;
 
     if local_oid == upstream_oid {
-        return Ok((
-            OpOutcome {
-                status: "up_to_date".into(),
-                message: format!("{branch_name} is already up to date"),
-            },
-            Vec::new(),
-        ));
+        return Ok(OpOutcome {
+            status: "up_to_date".into(),
+            message: format!("{branch_name} is already up to date"),
+        });
     }
     let (ahead, behind) = repo.graph_ahead_behind(local_oid, upstream_oid)?;
     if behind == 0 {
-        return Ok((
-            OpOutcome {
-                status: "up_to_date".into(),
-                message: format!("{branch_name} is ahead of {upstream_name} — nothing to pull"),
-            },
-            Vec::new(),
-        ));
+        return Ok(OpOutcome {
+            status: "up_to_date".into(),
+            message: format!("{branch_name} is ahead of {upstream_name} — nothing to pull"),
+        });
     }
     if ahead > 0 {
         return Err(AppError::other(format!(
@@ -1402,13 +1406,10 @@ pub(crate) fn pull_branch(path: &str, branch_name: &str) -> AppResult<(OpOutcome
         upstream_oid,
         &format!("pull: fast-forward to {upstream_name}"),
     )?;
-    Ok((
-        OpOutcome {
-            status: "fast_forward".into(),
-            message: format!("Fast-forwarded {branch_name} to {upstream_name}"),
-        },
-        Vec::new(),
-    ))
+    Ok(OpOutcome {
+        status: "fast_forward".into(),
+        message: format!("Fast-forwarded {branch_name} to {upstream_name}"),
+    })
 }
 
 const PR_HEAD_TMP_REF: &str = "refs/angkorgit/pr-head";

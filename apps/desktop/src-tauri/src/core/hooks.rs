@@ -559,11 +559,8 @@ pub(crate) enum PostHook {
 }
 
 impl PostHook {
-    pub(crate) fn merged(outcome: &super::types::OpOutcome) -> Vec<Self> {
-        match outcome.status.as_str() {
-            "ok" | "fast_forward" => vec![PostHook::Merge],
-            _ => Vec::new(),
-        }
+    pub(crate) fn merged(outcome: &super::types::OpOutcome) -> Option<Self> {
+        matches!(outcome.status.as_str(), "ok" | "fast_forward").then_some(PostHook::Merge)
     }
 
     pub(crate) fn rebased(pairs: Vec<(Oid, Oid)>) -> Option<Self> {
@@ -611,6 +608,64 @@ impl PostHook {
             ),
             _ => None,
         }
+    }
+}
+
+pub(crate) struct PostHooks {
+    run: bool,
+    skipped: bool,
+    pending: Vec<PostHook>,
+    warnings: Vec<HookWarning>,
+}
+
+impl PostHooks {
+    pub(crate) fn new(no_verify: bool) -> Self {
+        PostHooks {
+            run: !no_verify,
+            skipped: no_verify,
+            pending: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    pub(crate) fn off() -> Self {
+        PostHooks {
+            run: false,
+            skipped: false,
+            pending: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    pub(crate) fn skipped(&self) -> bool {
+        self.skipped
+    }
+
+    pub(crate) fn skip(&mut self) {
+        self.run = false;
+        self.skipped = true;
+        self.pending.clear();
+    }
+
+    pub(crate) fn run_now(&mut self, repo: &Repository, hook: PostHook) {
+        if self.run {
+            let warnings = run_post(repo, &[hook], false);
+            self.warnings.extend(warnings);
+        }
+    }
+
+    pub(crate) fn later(&mut self, hook: PostHook) {
+        if self.run {
+            self.pending.push(hook);
+        }
+    }
+
+    pub(crate) fn finish(mut self, repo: Option<&Repository>) -> Vec<HookWarning> {
+        if let Some(repo) = repo.filter(|_| !self.pending.is_empty()) {
+            let warnings = run_post(repo, &self.pending, false);
+            self.warnings.extend(warnings);
+        }
+        self.warnings
     }
 }
 
@@ -776,13 +831,13 @@ mod tests {
             status: status.into(),
             message: String::new(),
         };
-        assert_eq!(PostHook::merged(&outcome("ok")), vec![PostHook::Merge]);
+        assert_eq!(PostHook::merged(&outcome("ok")), Some(PostHook::Merge));
         assert_eq!(
             PostHook::merged(&outcome("fast_forward")),
-            vec![PostHook::Merge]
+            Some(PostHook::Merge)
         );
-        assert!(PostHook::merged(&outcome("up_to_date")).is_empty());
-        assert!(PostHook::merged(&outcome("conflicts")).is_empty());
+        assert_eq!(PostHook::merged(&outcome("up_to_date")), None);
+        assert_eq!(PostHook::merged(&outcome("conflicts")), None);
     }
 
     #[test]

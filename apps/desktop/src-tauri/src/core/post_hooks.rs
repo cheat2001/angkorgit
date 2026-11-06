@@ -2,7 +2,7 @@ use std::path::Path;
 
 use git2::Oid;
 
-use super::hooks::{run_post, PostHook};
+use super::hooks::{run_post, PostHook, PostHooks};
 use super::types::{CommitOutcome, HookWarning, OpOutcome, RebaseTodoEntry, WorktreeAddRequest};
 use super::{branch, commit, misc, remote, stage, submodule, worktree};
 use crate::error::AppResult;
@@ -27,6 +27,14 @@ fn ran<T>(path: &str, value: T, hooks: &[PostHook], no_verify: bool) -> Hooked<T
         _ => Vec::new(),
     };
     Hooked { value, warnings }
+}
+
+fn finished<T>(path: &str, value: T, hooks: PostHooks) -> Hooked<T> {
+    let repo = super::repo::open(path).ok();
+    Hooked {
+        value,
+        warnings: hooks.finish(repo.as_ref()),
+    }
 }
 
 fn head_oid(path: &str) -> Oid {
@@ -112,7 +120,7 @@ pub fn checkout_remote_ref(
 
 pub fn merge(path: &str, name: &str, no_ff: bool, no_verify: bool) -> AppResult<Hooked<OpOutcome>> {
     let outcome = submodule::synced(path, || branch::merge(path, name, no_ff))?;
-    let hooks = PostHook::merged(&outcome);
+    let hooks: Vec<PostHook> = PostHook::merged(&outcome).into_iter().collect();
     Ok(ran(path, outcome, &hooks, no_verify))
 }
 
@@ -122,24 +130,33 @@ pub fn pull(
     mode: Option<&str>,
     no_verify: bool,
 ) -> AppResult<Hooked<OpOutcome>> {
-    let (outcome, hooks) =
-        submodule::synced(path, || remote::pull_reporting(path, remote_name, mode))?;
-    Ok(ran(path, outcome, &hooks, no_verify))
+    let mut hooks = PostHooks::new(no_verify);
+    let outcome = submodule::synced(path, || {
+        remote::pull_with_hooks(path, remote_name, mode, &mut hooks)
+    })?;
+    Ok(finished(path, outcome, hooks))
 }
 
 pub fn pull_branch(path: &str, branch_name: &str, no_verify: bool) -> AppResult<Hooked<OpOutcome>> {
-    let (outcome, hooks) = remote::pull_branch(path, branch_name)?;
-    Ok(ran(path, outcome, &hooks, no_verify))
+    let mut hooks = PostHooks::new(no_verify);
+    let outcome = remote::pull_branch_with_hooks(path, branch_name, &mut hooks)?;
+    Ok(finished(path, outcome, hooks))
 }
 
 pub fn rebase(path: &str, upstream: &str, no_verify: bool) -> AppResult<Hooked<OpOutcome>> {
-    let (outcome, hooks) = submodule::synced(path, || branch::rebase_reporting(path, upstream))?;
-    Ok(ran(path, outcome, &hooks, no_verify))
+    let mut hooks = PostHooks::new(no_verify);
+    let outcome = submodule::synced(path, || {
+        branch::rebase_with_hooks(path, upstream, &mut hooks)
+    })?;
+    Ok(finished(path, outcome, hooks))
 }
 
 pub fn rebase_continue(path: &str, no_verify: bool) -> AppResult<Hooked<OpOutcome>> {
-    let (outcome, hooks) = submodule::synced(path, || branch::rebase_continue(path))?;
-    Ok(ran(path, outcome, &hooks, no_verify))
+    let mut hooks = PostHooks::new(no_verify);
+    let outcome = submodule::synced(path, || {
+        branch::rebase_continue_with_hooks(path, &mut hooks)
+    })?;
+    Ok(finished(path, outcome, hooks))
 }
 
 pub fn rebase_interactive(
@@ -148,10 +165,11 @@ pub fn rebase_interactive(
     todo: &[RebaseTodoEntry],
     no_verify: bool,
 ) -> AppResult<Hooked<String>> {
-    let (head, hooks) = submodule::synced(path, || {
-        branch::rebase_interactive_reporting(path, base, todo)
+    let mut hooks = PostHooks::new(no_verify);
+    let head = submodule::synced(path, || {
+        branch::rebase_interactive_with_hooks(path, base, todo, &mut hooks)
     })?;
-    Ok(ran(path, head, &hooks, no_verify))
+    Ok(finished(path, head, hooks))
 }
 
 pub fn amend(
@@ -159,13 +177,15 @@ pub fn amend(
     message: Option<&str>,
     no_verify: bool,
 ) -> AppResult<Hooked<CommitOutcome>> {
-    let (outcome, hook) = commit::amend_reporting(path, message, no_verify)?;
-    Ok(ran(path, outcome, &[hook], no_verify))
+    let mut hooks = PostHooks::new(no_verify);
+    let outcome = commit::amend_with_hooks(path, message, no_verify, &mut hooks)?;
+    Ok(finished(path, outcome, hooks))
 }
 
 pub fn reword(path: &str, oid: &str, message: &str, no_verify: bool) -> AppResult<Hooked<String>> {
-    let (reworded, hooks) = commit::reword_reporting(path, oid, message)?;
-    Ok(ran(path, reworded, &hooks, no_verify))
+    let mut hooks = PostHooks::new(no_verify);
+    let reworded = commit::reword_with_hooks(path, oid, message, &mut hooks)?;
+    Ok(finished(path, reworded, hooks))
 }
 
 pub fn discard_file(path: &str, file: &str, no_verify: bool) -> AppResult<Hooked<bool>> {
