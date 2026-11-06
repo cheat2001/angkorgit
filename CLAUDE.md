@@ -404,8 +404,8 @@ ai_cli.rs             ← installed AI-CLI transport: detect (which_in over augm
                         neutral cwd, NO_COLOR/TERM=dumb env, kill-on-timeout); capture =
                         spawn_piped + capture_child (kills the child only); hooks use
                         spawn_tree(command, wait_for_group) + run_tree(tree, stdin, timeout)
-                        → TreeRun {captured, timed_out}. A timeout stops the process tree and
-                        returns the output so far. For group pull, wait_for_group carries the
+                        → TreeRun {captured, timed_out, exit_unconfirmed}. A timeout signals the
+                        process tree and returns the output so far. For group pull, wait_for_group carries the
                         Unix process group or Windows job through capture and waits for its
                         descendants up to the same deadline. Windows job startup and cleanup
                         are described in G55 (8). OUTPUT IS DRAINED, NOT
@@ -4383,18 +4383,19 @@ update CLAUDE.md or docs/ — never the code.
   Pull button when the preview predicts conflicts or blocking edits (pullCheck state
   {noVerify}); the other Pull menu items still never ask. (c) GROUP PULL CONTAINS
   POST-MERGE'S LEFTOVERS: run_post_watched(…, Watch::UNTIL_LEFTOVERS_EXIT) starts the hook with
-  spawn_tree(…, wait_for_group = true), so a `(npm install &)` style background job finishes
-  (or is killed at HOOK_TIMEOUT) before with_active_result lets go of the lock — the cancel
-  guarantee covers the hook's whole process group. Elsewhere hooks keep git's behaviour:
+  spawn_tree(…, wait_for_group = true). Group pull waits for background jobs such as
+  `(npm install &)` under the same lock, up to HOOK_TIMEOUT. Elsewhere hooks keep git's behaviour:
   background jobs outlive the operation. On Windows the runner starts Git suspended,
   assigns it to a job object, then resumes it and waits until the job holds no process.
   Assigning the job after Git started let fast hooks escape tracking. A job setup or resume
   failure reports a hook launch warning on the group row. If Git was spawned, the runner
-  terminates it. At the hook deadline the runner requests job termination and allows one
-  second to confirm exit. If exit cannot be confirmed, the group row and
+  terminates it. At the hook deadline the runner terminates the Windows job or sends SIGKILL
+  to the Unix process group, then allows one second to confirm exit. On Unix it polls the
+  direct child and checks that the group is gone. A direct child still waiting to exit is
+  reaped in the background. If exit cannot be confirmed, the group row and
   cancellation receipt carry a timeout warning with that detail and the captured output.
   (d) TIMEOUTS ARE NOT "DID NOT
-  RUN": run_watched returns AppError::HookTimeout {hook, seconds, output} (code
+  RUN": run_watched returns AppError::HookTimeout {hook, seconds, exit_unconfirmed, output} (code
   hook_timeout, detail = output so far); a post-hook timeout becomes a HookWarning with
   status null, timedOut true and the output, shown as "The <hook> hook timed out" with
   Show output; status null without timedOut still means it never started. Pre-hook
@@ -4418,7 +4419,7 @@ update CLAUDE.md or docs/ — never the code.
   Cancel returns includes them; the fast-forward and its hook are one unit — Cancel before
   it means neither, Cancel during the hook waits for it like any active local write.
   The hook timeout, bounded termination check and output drain limit that wait. The receipt
-  includes any warning that Windows could not confirm process exit. The skip choice is per run:
+  includes any warning that the runner could not confirm process exit. The skip choice is per run:
   repository_group_start(runId, noVerify) → GroupUpdateControl::skipping_hooks. The dialog
   shows the warning and a collapsed "Hook output" on the row (data-group-hook-warning), "n
   hook warnings" in the counts line, and "Pull all without hooks" in the title. The clone
