@@ -135,54 +135,49 @@ pub fn repo_hooks(path: &str) -> AppResult<RepoHooks> {
     Ok(RepoHooks { found, in_worktree })
 }
 
+const SYMLINK_HOPS: usize = 40;
+
 fn hooks_live_in_worktree(repo: &Repository, workdir: &Path) -> AppResult<bool> {
-    let workdir = resolved(workdir);
-    let gitdirs = [resolved(repo.path()), resolved(repo.commondir())];
+    let forms = |path: &Path| {
+        let mut forms = vec![lexical(path)];
+        forms.extend(std::fs::canonicalize(path).ok());
+        forms
+    };
+    let workdirs = forms(workdir);
+    let gitdirs: Vec<PathBuf> = forms(repo.path())
+        .into_iter()
+        .chain(forms(repo.commondir()))
+        .collect();
     let inside = |path: &Path| {
-        let path = resolved(path);
-        path.starts_with(&workdir) && !gitdirs.iter().any(|gitdir| path.starts_with(gitdir))
+        workdirs.iter().any(|root| path.starts_with(root))
+            && !gitdirs.iter().any(|gitdir| path.starts_with(gitdir))
     };
     let dir = hooks_dir(repo)?;
-    if inside(&dir) {
-        return Ok(true);
-    }
-    if let (Ok(target), Some(parent)) = (std::fs::read_link(&dir), dir.parent()) {
-        if inside(&parent.join(target)) {
-            return Ok(true);
-        }
-    }
-    for name in REPO_HOOKS {
-        for file in hook_candidates(&dir, name) {
-            let Ok(target) = std::fs::read_link(&file) else {
-                continue;
-            };
-            if inside(&dir.join(target)) {
-                return Ok(true);
-            }
-        }
-    }
-    Ok(false)
+    Ok(REPO_HOOKS
+        .iter()
+        .flat_map(|name| hook_candidates(&dir, name))
+        .any(|hook| passes_through(&hook, &inside, SYMLINK_HOPS)))
 }
 
-fn resolved(path: &Path) -> PathBuf {
+fn passes_through(path: &Path, inside: &dyn Fn(&Path) -> bool, hops: usize) -> bool {
     let path = lexical(path);
-    let mut existing = path.as_path();
-    let mut missing = Vec::new();
-    loop {
-        if let Ok(real) = std::fs::canonicalize(existing) {
-            return missing
-                .iter()
-                .rev()
-                .fold(real, |full, part| full.join(part));
-        }
-        match (existing.parent(), existing.file_name()) {
-            (Some(parent), Some(name)) => {
-                missing.push(name.to_os_string());
-                existing = parent;
-            }
-            _ => return path,
-        }
+    if inside(&path) {
+        return true;
     }
+    if hops == 0 {
+        return false;
+    }
+    let mut prefix = PathBuf::new();
+    for part in path.components() {
+        prefix.push(part);
+        let Ok(target) = std::fs::read_link(&prefix) else {
+            continue;
+        };
+        let rest = path.strip_prefix(&prefix).unwrap_or(Path::new(""));
+        let base = prefix.parent().unwrap_or(Path::new(""));
+        return passes_through(&base.join(target).join(rest), inside, hops - 1);
+    }
+    false
 }
 
 fn lexical(path: &Path) -> PathBuf {
