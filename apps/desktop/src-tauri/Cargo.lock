@@ -76,6 +76,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tempfile",
  "thiserror 2.0.19",
  "which",
  "windows-sys 0.61.2",

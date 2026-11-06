@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::process::Command;
 
 #[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[cfg(windows)]
 pub fn hidden<S: AsRef<OsStr>>(program: S) -> Command {

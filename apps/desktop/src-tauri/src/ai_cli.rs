@@ -205,9 +205,30 @@ pub(crate) fn spawn_piped(mut command: Command) -> std::io::Result<Child> {
     command.spawn()
 }
 
-pub(crate) fn spawn_tree(mut command: Command) -> std::io::Result<Child> {
+pub(crate) struct TreeChild {
+    child: Child,
+    leftovers: Option<Leftovers>,
+}
+
+pub(crate) fn spawn_tree(mut command: Command, wait_for_group: bool) -> std::io::Result<TreeChild> {
+    #[cfg(not(any(unix, windows)))]
+    let _ = wait_for_group;
+    #[cfg(windows)]
+    if wait_for_group {
+        let job = job::Job::new()?;
+        let child = job::spawn_assigned(command, |child| job.assign(child))?;
+        return Ok(TreeChild {
+            child,
+            leftovers: Some(Leftovers { job }),
+        });
+    }
     own_process_group(&mut command);
-    spawn_piped(command)
+    let child = spawn_piped(command)?;
+    #[cfg(unix)]
+    let leftovers = wait_for_group.then(|| Leftovers { group: child.id() });
+    #[cfg(not(unix))]
+    let leftovers = None;
+    Ok(TreeChild { child, leftovers })
 }
 
 pub(crate) fn capture_child(child: Child, stdin: &str, timeout: Duration) -> AppResult<Captured> {
@@ -219,13 +240,8 @@ pub(crate) struct TreeRun {
     pub(crate) timed_out: bool,
 }
 
-pub(crate) fn run_tree(
-    child: Child,
-    stdin: &str,
-    timeout: Duration,
-    wait_for_group: bool,
-) -> TreeRun {
-    let (captured, timed_out) = gather(child, stdin, timeout, true, wait_for_group);
+pub(crate) fn run_tree(tree: TreeChild, stdin: &str, timeout: Duration) -> TreeRun {
+    let (captured, timed_out) = gather(tree.child, stdin, timeout, true, tree.leftovers);
     TreeRun {
         captured,
         timed_out,
@@ -275,28 +291,10 @@ struct Leftovers {
     #[cfg(unix)]
     group: u32,
     #[cfg(windows)]
-    job: Option<job::Job>,
+    job: job::Job,
 }
 
 impl Leftovers {
-    fn track(child: &Child) -> Self {
-        #[cfg(unix)]
-        {
-            Leftovers { group: child.id() }
-        }
-        #[cfg(windows)]
-        {
-            Leftovers {
-                job: job::Job::holding(child),
-            }
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            let _ = child;
-            Leftovers {}
-        }
-    }
-
     fn running(&self) -> bool {
         #[cfg(unix)]
         {
@@ -307,7 +305,7 @@ impl Leftovers {
         }
         #[cfg(windows)]
         {
-            self.job.as_ref().is_some_and(job::Job::running)
+            self.job.running()
         }
         #[cfg(not(any(unix, windows)))]
         {
@@ -315,7 +313,7 @@ impl Leftovers {
         }
     }
 
-    fn stop(&self) {
+    fn stop(self) {
         #[cfg(unix)]
         if let Ok(group) = libc::pid_t::try_from(self.group) {
             unsafe {
@@ -323,71 +321,170 @@ impl Leftovers {
             }
         }
         #[cfg(windows)]
-        if let Some(job) = &self.job {
-            job.stop();
-        }
+        self.job.stop();
     }
 }
 
 #[cfg(windows)]
 mod job {
-    use std::os::windows::io::AsRawHandle;
-    use std::process::Child;
+    use std::io;
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use std::os::windows::process::CommandExt;
+    use std::process::{Child, Command};
+    use std::time::Duration;
 
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
-        QueryInformationJobObject, TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+        JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
+        TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenThread, ResumeThread, CREATE_SUSPENDED, THREAD_SUSPEND_RESUME,
     };
 
-    pub(super) struct Job(HANDLE);
+    pub(super) struct Job(OwnedHandle);
 
     impl Job {
-        pub(super) fn holding(child: &Child) -> Option<Job> {
+        pub(super) fn new() -> io::Result<Self> {
             let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
             if handle.is_null() {
-                return None;
+                return Err(windows_error("could not create the hook job"));
             }
-            let job = Job(handle);
-            let process: HANDLE = child.as_raw_handle();
-            if unsafe { AssignProcessToJobObject(job.0, process) } == 0 {
-                return None;
+            let job = Job(unsafe { OwnedHandle::from_raw_handle(handle) });
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let configured = unsafe {
+                SetInformationJobObject(
+                    job.0.as_raw_handle(),
+                    JobObjectExtendedLimitInformation,
+                    std::ptr::addr_of!(limits).cast(),
+                    std::mem::size_of_val(&limits) as u32,
+                )
+            };
+            if configured == 0 {
+                return Err(windows_error("could not configure the hook job"));
             }
-            Some(job)
+            Ok(job)
+        }
+
+        pub(super) fn assign(&self, child: &Child) -> io::Result<()> {
+            if unsafe { AssignProcessToJobObject(self.0.as_raw_handle(), child.as_raw_handle()) }
+                == 0
+            {
+                return Err(windows_error(
+                    "could not assign the suspended process to the hook job",
+                ));
+            }
+            Ok(())
         }
 
         pub(super) fn running(&self) -> bool {
+            self.active_processes() != Some(0)
+        }
+
+        fn active_processes(&self) -> Option<u32> {
             let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
             let queried = unsafe {
                 QueryInformationJobObject(
-                    self.0,
+                    self.0.as_raw_handle(),
                     JobObjectBasicAccountingInformation,
                     std::ptr::addr_of_mut!(info).cast(),
                     std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
                     std::ptr::null_mut(),
                 )
             };
-            queried != 0 && info.ActiveProcesses > 0
+            (queried != 0).then_some(info.ActiveProcesses)
         }
 
-        pub(super) fn stop(&self) {
-            unsafe {
-                TerminateJobObject(self.0, 1);
+        pub(super) fn stop(self) {
+            if unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) } != 0 {
+                while self.active_processes().is_some_and(|count| count > 0) {
+                    std::thread::sleep(Duration::from_millis(25));
+                }
             }
         }
     }
 
-    impl Drop for Job {
-        fn drop(&mut self) {
-            unsafe {
-                CloseHandle(self.0);
+    pub(super) fn spawn_assigned(
+        mut command: Command,
+        assign: impl FnOnce(&Child) -> io::Result<()>,
+    ) -> io::Result<Child> {
+        command.creation_flags(crate::proc::CREATE_NO_WINDOW | CREATE_SUSPENDED);
+        let mut child = super::spawn_piped(command)?;
+        if let Err(error) = assign(&child).and_then(|()| resume_primary_thread(child.id())) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+        Ok(child)
+    }
+
+    fn resume_primary_thread(process_id: u32) -> io::Result<()> {
+        let thread = primary_thread(process_id)?;
+        match unsafe { ResumeThread(thread.as_raw_handle()) } {
+            1 => Ok(()),
+            u32::MAX => Err(windows_error("could not resume the hook thread")),
+            _ => Err(io::Error::other("unexpected hook thread suspend count")),
+        }
+    }
+
+    fn primary_thread(process_id: u32) -> io::Result<OwnedHandle> {
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(windows_error("could not find the suspended hook thread"));
+        }
+        let snapshot = unsafe { OwnedHandle::from_raw_handle(snapshot) };
+        let mut entry = THREADENTRY32 {
+            dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
+            ..Default::default()
+        };
+        let mut found = unsafe { Thread32First(snapshot.as_raw_handle(), &mut entry) };
+        while found != 0 {
+            if entry.th32OwnerProcessID == process_id {
+                let thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) };
+                if thread.is_null() {
+                    return Err(windows_error("could not open the suspended hook thread"));
+                }
+                return Ok(unsafe { OwnedHandle::from_raw_handle(thread) });
             }
+            found = unsafe { Thread32Next(snapshot.as_raw_handle(), &mut entry) };
+        }
+        Err(windows_error("could not find the suspended hook thread"))
+    }
+
+    fn windows_error(action: &str) -> io::Error {
+        io::Error::other(format!("{action}: {}", io::Error::last_os_error()))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use windows_sys::Win32::System::Threading::SuspendThread;
+
+        #[test]
+        fn hook_is_still_suspended_if_assignment_fails() {
+            let mut command = crate::proc::hidden("cmd");
+            command.args(["/C", "pause"]);
+            let mut previous_suspend_count = 0;
+            let error = spawn_assigned(command, |child| {
+                let thread = primary_thread(child.id())?;
+                previous_suspend_count = unsafe { SuspendThread(thread.as_raw_handle()) };
+                Err(io::Error::other("assignment refused"))
+            })
+            .unwrap_err();
+            assert_eq!(error.to_string(), "assignment refused");
+            assert_eq!(previous_suspend_count, 1);
         }
     }
 }
 
 fn collect(child: Child, stdin: &str, timeout: Duration, whole_tree: bool) -> AppResult<Captured> {
-    let (captured, expired) = gather(child, stdin, timeout, whole_tree, false);
+    let (captured, expired) = gather(child, stdin, timeout, whole_tree, None);
     if expired {
         return Err(timed_out(timeout));
     }
@@ -399,10 +496,9 @@ fn gather(
     stdin: &str,
     timeout: Duration,
     whole_tree: bool,
-    wait_for_group: bool,
+    mut leftovers: Option<Leftovers>,
 ) -> (Captured, bool) {
     let deadline = Instant::now() + timeout;
-    let leftovers = wait_for_group.then(|| Leftovers::track(&child));
     let stdin_data = stdin.as_bytes().to_vec();
     let mut stdin_pipe = child.stdin.take();
     let stdin_thread = std::thread::spawn(move || {
@@ -418,25 +514,26 @@ fn gather(
         Some(status) => status,
         None => {
             expired = true;
-            if whole_tree {
+            if let Some(leftovers) = leftovers.take() {
+                leftovers.stop();
+                let _ = child.kill();
+            } else if whole_tree {
                 kill_tree(&mut child);
             } else {
                 let _ = child.kill();
-            }
-            if let Some(leftovers) = &leftovers {
-                leftovers.stop();
             }
             let _ = child.wait();
             -1
         }
     };
-    if let Some(leftovers) = leftovers.as_ref().filter(|_| !expired) {
-        while leftovers.running() && Instant::now() < deadline {
+    if let Some(leftovers) = leftovers {
+        while leftovers.running() {
+            if Instant::now() >= deadline {
+                expired = true;
+                leftovers.stop();
+                break;
+            }
             std::thread::sleep(Duration::from_millis(25));
-        }
-        if leftovers.running() {
-            expired = true;
-            leftovers.stop();
         }
     }
     let drain_until = Instant::now() + OUTPUT_DRAIN;
@@ -848,8 +945,8 @@ mod tests {
             pid_file.display()
         ));
         let started = Instant::now();
-        let child = spawn_tree(command).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(1), false);
+        let child = spawn_tree(command, false).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(1));
         assert!(run.timed_out, "the sleeping shell must time out");
         assert!(started.elapsed() < Duration::from_secs(10));
         let grandchild: libc::pid_t = std::fs::read_to_string(&pid_file)
@@ -880,8 +977,8 @@ mod tests {
         let mut command = crate::proc::hidden("cmd");
         command.args(["/C", "start", "", "/B", "ping", "-n", "3", "127.0.0.1"]);
         let started = Instant::now();
-        let child = spawn_tree(command).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(30), true);
+        let child = spawn_tree(command, true).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(30));
         assert!(!run.timed_out);
         assert!(
             started.elapsed() >= Duration::from_millis(1500),
@@ -896,8 +993,8 @@ mod tests {
         let mut command = crate::proc::hidden("cmd");
         command.args(["/C", "start", "", "/B", "ping", "-n", "30", "127.0.0.1"]);
         let started = Instant::now();
-        let child = spawn_tree(command).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(2), true);
+        let child = spawn_tree(command, true).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(2));
         assert!(run.timed_out);
         assert!(started.elapsed() < Duration::from_secs(15));
     }
@@ -909,8 +1006,8 @@ mod tests {
         command
             .arg("-c")
             .arg("echo started; echo warming up >&2; sleep 30");
-        let child = spawn_tree(command).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(1), false);
+        let child = spawn_tree(command, false).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(1));
         assert!(run.timed_out);
         assert_eq!(run.captured.stdout.trim(), "started");
         assert_eq!(run.captured.stderr.trim(), "warming up");
@@ -934,8 +1031,8 @@ mod tests {
             "(sleep 1; echo late > '{}') > /dev/null 2>&1 & echo done",
             marker.display()
         ));
-        let child = spawn_tree(command).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(20), true);
+        let child = spawn_tree(command, true).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(20));
         let written = marker.exists();
         std::fs::remove_dir_all(&dir).ok();
         assert!(!run.timed_out);
@@ -952,8 +1049,8 @@ mod tests {
         let mut command = crate::proc::hidden("/bin/sh");
         command.arg("-c").arg("sleep 30 > /dev/null 2>&1 & echo $!");
         let started = Instant::now();
-        let child = spawn_tree(command).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(1), true);
+        let child = spawn_tree(command, true).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(1));
         assert!(run.timed_out);
         assert!(started.elapsed() < Duration::from_secs(10));
         let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
@@ -979,8 +1076,8 @@ mod tests {
         let mut command = crate::proc::hidden("/bin/sh");
         command.arg("-c").arg("sleep 30 & echo $!; echo done");
         let started = Instant::now();
-        let child = spawn_tree(command).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(60), false);
+        let child = spawn_tree(command, false).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(60));
         assert!(!run.timed_out);
         let captured = run.captured;
         let elapsed = started.elapsed();

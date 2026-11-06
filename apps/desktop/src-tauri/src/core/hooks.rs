@@ -434,18 +434,18 @@ pub(crate) fn run_watched(
                 command.arg("--").args(args);
             }
             configure(&mut command);
-            spawn_tree(command)
+            spawn_tree(command, watch.leftovers)
         }
         Runner::Direct(hook) => {
             let mut command = crate::proc::hidden(hook);
             command.args(args);
             configure(&mut command);
-            match spawn_tree(command) {
+            match spawn_tree(command, watch.leftovers) {
                 Err(error) if is_exec_format_error(&error) => {
                     let mut command = crate::proc::hidden(SHELL_PATH);
                     command.arg(hook).args(args);
                     configure(&mut command);
-                    spawn_tree(command)
+                    spawn_tree(command, watch.leftovers)
                 }
                 spawned => spawned,
             }
@@ -460,7 +460,7 @@ pub(crate) fn run_watched(
         Runner::Direct(_) => input.unwrap_or(""),
         Runner::Git(_) => "",
     };
-    let run = run_tree(child, piped, watch.timeout, watch.leftovers);
+    let run = run_tree(child, piped, watch.timeout);
     let captured = run.captured;
     if captured.status == 0 && !run.timed_out {
         return Ok(());
