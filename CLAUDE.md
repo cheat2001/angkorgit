@@ -1560,7 +1560,14 @@ features/
 │                           laneWidthFor() that squeezed lanes down to 11px to keep the gutter
 │                           under 190px, and in a 12-lane repo the 27px avatar nodes then covered
 │                           the lines on both sides (owner screenshot of core.api: 13px lanes);
-│                           gutterWidthFor caps the column at GUTTER_MAX_WIDTH 250 and lanes past
+│                           gutterWidthFor(maxLane, lw, limit) caps the column at the USER'S WIDTH —
+│                           ui.graphWidth (persisted, null = GUTTER_DEFAULT_WIDTH 190, clamped
+│                           GUTTER_MIN_WIDTH 60 to GUTTER_MAX_WIDTH 600 by clampGraphWidth) set by
+│                           dragging the data-graph-resize handle on the Graph header's right edge
+│                           (2px border bar, primary/60 on hover, primary while dragging; double-
+│                           click resets) — a narrower repo still shrinks the column to its lanes;
+│                           the first cut capped at a fixed 250 and core.api's 10 lanes (238px) all
+│                           fit, so the owner found "nothing can scroll" — and lanes past
 │                           it SCROLL SIDEWAYS (owner, same day, after GitKraken screenshots "able to
 │                           scroll"): gutterOverflowFor = full lane width − cap; GraphScrollbar sets
 │                           --graph-scroll-x on the Commits scroller and every row's lane drawing
@@ -1581,8 +1588,9 @@ features/
 │                           `a graph with more lanes than its column scrolls sideways…` (verified to
 │                           fail without the feature);
 │                           the 190 cap existed because the owner disliked "a really long gap"
-│                           before the message (2026-09), so 250 is the compromise the owner took
-│                           with C — a draggable graph column is the offered follow-up; LINES ARE
+│                           before the message (2026-09), which is why the default went back to 190
+│                           with the drag handle (e2e `dragging the graph header edge resizes the
+│                           column…` verified to fail without it); LINES ARE
 │                           RAILS: railIn/railOut draw vertical → RAIL_RADIUS 6 quadratic corner
 │                           → horizontal, replacing the S-shaped cubic béziers whose diagonals
 │                           tangled when lanes crossed (e2e asserts no ' C ' in any row path); option
