@@ -5371,7 +5371,8 @@ fn discarding_several_files_runs_post_checkout_once_after_all_of_them() {
     }
     let files: Vec<String> = ["a.txt", "b.txt", "c.txt"].map(String::from).to_vec();
     let unstaged = core::post_hooks::discard_files(repo.path(), &files, false, false).unwrap();
-    assert!(unstaged.value.is_empty());
+    assert!(unstaged.value.leftovers.is_empty());
+    assert!(unstaged.value.failed.is_empty());
     assert_eq!(
         post_hook_runs(&repo),
         vec![format!("post-checkout {head} {head} 0 a b c ")]
@@ -5391,6 +5392,51 @@ fn discarding_several_files_runs_post_checkout_once_after_all_of_them() {
     repo.write("new.txt", "untracked\n");
     core::post_hooks::discard_files(repo.path(), &["new.txt".to_string()], false, false).unwrap();
     assert!(post_hook_runs(&repo).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_bulk_discard_reports_the_file_it_could_not_discard_and_keeps_the_others() {
+    use std::os::unix::fs::PermissionsExt;
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "a\n");
+    repo.write("b.txt", "b\n");
+    let head = commit_all(&repo, "two files");
+    write_hook(
+        &default_hooks(&repo),
+        "post-checkout",
+        &format!("echo \"post-checkout $*\" >> '{POST_HOOK_LOG}'"),
+    );
+    repo.write("a.txt", "changed\n");
+    repo.write("locked/new.txt", "untracked\n");
+    repo.write("b.txt", "changed\n");
+    let locked = repo.dir.join("locked");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+    if std::fs::write(locked.join("probe"), "").is_ok() {
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipping: the folder stayed writable, permissions are not enforced here");
+        return;
+    }
+
+    let files: Vec<String> = ["a.txt", "locked/new.txt", "b.txt"]
+        .map(String::from)
+        .to_vec();
+    let result = core::post_hooks::discard_files(repo.path(), &files, false, false).unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(result.value.leftovers.is_empty());
+    assert_eq!(result.value.failed.len(), 1);
+    assert_eq!(result.value.failed[0].path, "locked/new.txt");
+    assert!(!result.value.failed[0].message.is_empty());
+    assert_eq!(repo.read("a.txt"), "a\n");
+    assert_eq!(repo.read("b.txt"), "b\n");
+    assert!(repo.dir.join("locked/new.txt").exists());
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![format!("post-checkout {head} {head} 0")]
+    );
 }
 
 #[test]

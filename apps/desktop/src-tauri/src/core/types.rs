@@ -317,6 +317,20 @@ pub struct GroupUpdateResult {
     pub hook_warnings: Vec<HookWarning>,
 }
 
+#[derive(Serialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardBatch {
+    pub leftovers: Vec<String>,
+    pub failed: Vec<DiscardFailure>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardFailure {
+    pub path: String,
+    pub message: String,
+}
+
 #[derive(Serialize, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoHooks {

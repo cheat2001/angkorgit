@@ -3,7 +3,10 @@ use std::path::Path;
 use git2::Oid;
 
 use super::hooks::{run_post, PostHook, PostHooks};
-use super::types::{CommitOutcome, HookWarning, OpOutcome, RebaseTodoEntry, WorktreeAddRequest};
+use super::types::{
+    CommitOutcome, DiscardBatch, DiscardFailure, HookWarning, OpOutcome, RebaseTodoEntry,
+    WorktreeAddRequest,
+};
 use super::{branch, commit, misc, remote, stage, submodule, worktree};
 use crate::error::AppResult;
 
@@ -235,35 +238,34 @@ pub fn discard_files(
     files: &[String],
     staged: bool,
     no_verify: bool,
-) -> AppResult<Hooked<Vec<String>>> {
-    let restores = if staged {
-        !files.is_empty()
-    } else {
-        let repo = super::repo::open(path)?;
-        let mut any = false;
-        for file in files {
-            if restores_from_index(&repo, file)? {
-                any = true;
-                break;
-            }
-        }
-        any
-    };
-    let mut leftovers = Vec::new();
+) -> AppResult<Hooked<DiscardBatch>> {
+    let repo = super::repo::open(path)?;
+    let mut batch = DiscardBatch::default();
+    let mut restored_any = false;
     for file in files {
-        let clean = if staged {
-            stage::discard_staged_file(path, file)?
+        let restores = staged || restores_from_index(&repo, file).unwrap_or(false);
+        let result = if staged {
+            stage::discard_staged_file(path, file)
         } else {
-            stage::discard_file(path, file)?
+            stage::discard_file(path, file)
         };
-        if !clean {
-            leftovers.push(file.clone());
+        match result {
+            Ok(clean) => {
+                restored_any |= restores;
+                if !clean {
+                    batch.leftovers.push(file.clone());
+                }
+            }
+            Err(error) => batch.failed.push(DiscardFailure {
+                path: file.clone(),
+                message: error.to_string(),
+            }),
         }
     }
-    Ok(if restores {
-        restored(path, leftovers, no_verify)
+    Ok(if restored_any {
+        restored(path, batch, no_verify)
     } else {
-        Hooked::plain(leftovers)
+        Hooked::plain(batch)
     })
 }
 

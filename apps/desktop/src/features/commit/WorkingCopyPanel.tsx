@@ -522,21 +522,32 @@ export function WorkingCopyPanel() {
     );
 
   const discardMany = async (paths: string[], staged: boolean) => {
-    const leftovers: string[] = [];
+    let batch: Awaited<ReturnType<typeof ipc.discardFiles>>;
     try {
-      leftovers.push(...(await ipc.discardFiles(path, paths, staged)));
+      batch = await ipc.discardFiles(path, paths, staged);
     } catch (error) {
       toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
+      await refreshStatus();
+      return;
     }
     await refreshStatus();
+    const { leftovers, failed } = batch;
+    const list = (files: string[]) =>
+      files.slice(0, 3).join(', ') + (files.length > 3 ? ` +${files.length - 3} more` : '');
+    if (failed.length > 0) {
+      toast.error(`${failed.length} of ${paths.length} files could not be discarded: ${list(failed.map((f) => f.path))}`, {
+        description: failed[0].message,
+      });
+    }
     if (leftovers.length > 0) {
-      const listed = leftovers.slice(0, 3).join(', ') + (leftovers.length > 3 ? ` +${leftovers.length - 3} more` : '');
+      const listed = list(leftovers);
       toast.error(
         leftovers.some(isSubmodule)
           ? `${leftovers.length} change${leftovers.length === 1 ? '' : 's'} could not be discarded (${listed}). Submodule changes must be discarded inside the submodule repository.`
           : `${leftovers.length} change${leftovers.length === 1 ? '' : 's'} could not be discarded: ${listed}`,
       );
-    } else {
+    }
+    if (failed.length === 0 && leftovers.length === 0) {
       toast.success(`Discarded ${paths.length} change${paths.length === 1 ? '' : 's'}`);
     }
   };

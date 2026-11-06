@@ -30,6 +30,7 @@ import type {
   WorktreeInfo,
   HookWarningEvent,
   RepoHooks,
+  DiscardBatch,
 } from '@angkorgit/core';
 import type { FileBlame } from '@angkorgit/core';
 let demo = null as unknown as typeof import('./demo');
@@ -210,6 +211,16 @@ function demoRunPostHook(path: string, hook: string, noVerify = false): void {
 }
 
 const demoGroupRunsSkippingHooks = new Set<string>();
+
+const DEMO_DISCARD_FAILS = 'angkorgit-demo-discard-fails';
+
+function demoDiscardFails(): string | null {
+  try {
+    return localStorage.getItem(DEMO_DISCARD_FAILS);
+  } catch {
+    return null;
+  }
+}
 
 const DEMO_HOOKS_IN_WORKTREE = 'angkorgit-demo-hooks-in-worktree';
 
@@ -439,10 +450,14 @@ export const ipc = {
     if (!isTauri()) return [];
     return invoke('discard_all', { path });
   },
-  async discardFiles(path: string, files: string[], staged: boolean): Promise<string[]> {
+  async discardFiles(path: string, files: string[], staged: boolean): Promise<DiscardBatch> {
     if (!isTauri()) {
       demoRunPostHook(path, 'post-checkout');
-      return [];
+      const failing = demoDiscardFails();
+      return {
+        leftovers: [],
+        failed: files.filter((file) => file === failing).map((file) => ({ path: file, message: 'Permission denied (os error 13)' })),
+      };
     }
     return invoke('discard_files', { path, files, staged });
   },
