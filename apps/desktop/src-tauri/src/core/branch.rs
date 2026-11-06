@@ -198,7 +198,7 @@ pub fn checkout_detached(path: &str, rev: &str) -> AppResult<()> {
 }
 
 pub(crate) fn set_orig_head(repo: &Repository, oid: git2::Oid) -> AppResult<()> {
-    std::fs::write(repo.path().join("ORIG_HEAD"), format!("{oid}\n"))?;
+    repo.reference("ORIG_HEAD", oid, true, "updating ORIG_HEAD")?;
     Ok(())
 }
 
@@ -595,14 +595,37 @@ pub fn rebase_commits(path: &str, base: &str) -> AppResult<Vec<CommitInfo>> {
 
 fn ensure_tracked_clean(repo: &Repository) -> AppResult<()> {
     let mut opts = git2::StatusOptions::new();
-    opts.include_untracked(false).include_ignored(false);
+    opts.include_untracked(false)
+        .include_ignored(false)
+        .exclude_submodules(true);
     let statuses = repo.statuses(Some(&mut opts))?;
-    if !statuses.is_empty() {
+    if !statuses.is_empty() || submodule_changed(repo)? {
         return Err(AppError::other(
             "working tree has uncommitted changes — commit or stash them first",
         ));
     }
     Ok(())
+}
+
+fn submodule_changed(repo: &Repository) -> AppResult<bool> {
+    let changed = git2::SubmoduleStatus::INDEX_ADDED
+        | git2::SubmoduleStatus::INDEX_DELETED
+        | git2::SubmoduleStatus::INDEX_MODIFIED
+        | git2::SubmoduleStatus::WD_ADDED
+        | git2::SubmoduleStatus::WD_DELETED
+        | git2::SubmoduleStatus::WD_MODIFIED
+        | git2::SubmoduleStatus::WD_INDEX_MODIFIED
+        | git2::SubmoduleStatus::WD_WD_MODIFIED;
+    for submodule in repo.submodules()? {
+        let Some(name) = submodule.name() else {
+            continue;
+        };
+        let status = repo.submodule_status(name, git2::SubmoduleIgnore::Untracked)?;
+        if status.intersects(changed) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub fn rebase_interactive(path: &str, base: &str, todo: &[RebaseTodoEntry]) -> AppResult<String> {

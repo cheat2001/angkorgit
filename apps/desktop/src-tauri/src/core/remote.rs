@@ -64,7 +64,7 @@ fn prefs_snapshot() -> CredentialPrefs {
         .unwrap_or_default()
 }
 
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
