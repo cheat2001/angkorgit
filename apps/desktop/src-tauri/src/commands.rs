@@ -348,7 +348,7 @@ pub async fn commit_amend(
 }
 
 #[tauri::command]
-pub async fn repo_hooks(path: String) -> AppResult<Vec<String>> {
+pub async fn repo_hooks(path: String) -> AppResult<RepoHooks> {
     blocking(move || hooks::repo_hooks(&path)).await
 }
 

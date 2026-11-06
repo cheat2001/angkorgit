@@ -282,15 +282,21 @@ fn rebase_state_dir(repo: &Repository) -> std::path::PathBuf {
     repo.path().join("rebase-merge")
 }
 
-fn paused_rebase(repo: &Repository, hooks: &PostHooks) -> AppResult<OpOutcome> {
-    let state = rebase_state_dir(repo);
-    if hooks.skipped() && state.is_dir() {
-        std::fs::write(state.join(SKIP_HOOKS_MARK), "")?;
-    }
-    Ok(OpOutcome {
+fn paused_rebase() -> OpOutcome {
+    OpOutcome {
         status: "conflicts".into(),
         message: "Rebase paused on conflicts. Resolve them, then continue.".into(),
-    })
+    }
+}
+
+fn ensure_rebase_can_start(repo: &Repository) -> AppResult<()> {
+    if repo.state() != git2::RepositoryState::Clean {
+        return Err(AppError::other(
+            "another operation is still in progress (a rebase, merge, cherry-pick or revert) — \
+             finish or abort it first",
+        ));
+    }
+    ensure_tracked_clean(repo)
 }
 
 fn linear_since(repo: &Repository, head: git2::Oid, base: git2::Oid) -> AppResult<bool> {
@@ -316,6 +322,7 @@ pub(crate) fn rebase_with_hooks(
     let sig = repo.signature()?;
     let previous = repo.head()?.peel_to_commit()?.id();
     let onto = upstream_annotated.id();
+    ensure_rebase_can_start(&repo)?;
     if previous == onto
         || (repo.graph_descendant_of(previous, onto)? && linear_since(&repo, previous, onto)?)
     {
@@ -327,6 +334,12 @@ pub(crate) fn rebase_with_hooks(
 
     let mut opts = git2::RebaseOptions::new();
     let mut rebase = repo.rebase(None, Some(&upstream_annotated), None, Some(&mut opts))?;
+    if hooks.skipped() {
+        if let Err(error) = std::fs::write(rebase_state_dir(&repo).join(SKIP_HOOKS_MARK), "") {
+            let _ = rebase.abort();
+            return Err(error.into());
+        }
+    }
     hooks.run_now(
         &repo,
         PostHook::Checkout {
@@ -340,7 +353,7 @@ pub(crate) fn rebase_with_hooks(
         op?;
         let index = repo.index()?;
         if index.has_conflicts() {
-            return paused_rebase(&repo, hooks);
+            return Ok(paused_rebase());
         }
         match rebase.commit(None, &sig, None) {
             Ok(_) => {}
@@ -404,7 +417,7 @@ pub(crate) fn rebase_continue_with_hooks(
         op?;
         let index = repo.index()?;
         if index.has_conflicts() {
-            return paused_rebase(&repo, hooks);
+            return Ok(paused_rebase());
         }
         match rebase.commit(None, &sig, None) {
             Ok(_) => {}

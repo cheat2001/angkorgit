@@ -112,8 +112,9 @@ export function WelcomePage() {
     if (!groupMenu) return;
     let cancelled = false;
     const groupId = groupMenu.group.id;
-    void Promise.all(groupMenu.repos.map((r) => ipc.repoHooks(r.path).catch(() => [] as string[]))).then((found) => {
-      if (!cancelled) setGroupMenuHooks({ groupId, postMerge: found.some((hooks) => hooks.includes('post-merge')) });
+    void Promise.all(groupMenu.repos.map((r) => ipc.repoHooks(r.path).catch(() => null))).then((found) => {
+      const mayRun = found.some((hooks) => !!hooks && (hooks.inWorktree || hooks.found.includes('post-merge')));
+      if (!cancelled) setGroupMenuHooks({ groupId, postMerge: mayRun });
     });
     return () => {
       cancelled = true;

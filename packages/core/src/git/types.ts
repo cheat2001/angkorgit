@@ -267,6 +267,11 @@ export interface GroupUpdateResult {
   hookWarnings?: HookWarning[];
 }
 
+export interface RepoHooks {
+  found: string[];
+  inWorktree: boolean;
+}
+
 export interface HookWarning {
   hook: string;
   status: number | null;

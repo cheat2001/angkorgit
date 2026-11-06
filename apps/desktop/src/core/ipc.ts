@@ -29,6 +29,7 @@ import type {
   WorktreeAddRequest,
   WorktreeInfo,
   HookWarningEvent,
+  RepoHooks,
 } from '@angkorgit/core';
 import type { FileBlame } from '@angkorgit/core';
 let demo = null as unknown as typeof import('./demo');
@@ -208,6 +209,16 @@ function demoRunPostHook(path: string, hook: string, noVerify = false): void {
 }
 
 const demoGroupRunsSkippingHooks = new Set<string>();
+
+const DEMO_HOOKS_IN_WORKTREE = 'angkorgit-demo-hooks-in-worktree';
+
+function demoHooksInWorktree(): boolean {
+  try {
+    return localStorage.getItem(DEMO_HOOKS_IN_WORKTREE) === '1';
+  } catch {
+    return false;
+  }
+}
 
 const DEMO_PUSH_REJECTED = 'angkorgit-demo-push-rejected';
 const DEMO_CHECKOUT = 'angkorgit-demo-checkout';
@@ -487,12 +498,12 @@ export const ipc = {
     if (!isTauri()) return demoCommitOutcome('demo-amend-oid', noVerify);
     return invoke('commit_amend', { path, message, noVerify });
   },
-  async repoHooks(path: string): Promise<string[]> {
+  async repoHooks(path: string): Promise<RepoHooks> {
     if (!isTauri()) {
-      return [
-        ...(demoHooks() ? ['pre-commit', 'pre-push'] : []),
-        ...(demoPostHooks() ? ['post-checkout', 'post-merge'] : []),
-      ];
+      return {
+        found: [...(demoHooks() ? ['pre-commit', 'pre-push'] : []), ...(demoPostHooks() ? ['post-checkout', 'post-merge'] : [])],
+        inWorktree: demoHooksInWorktree(),
+      };
     }
     return invoke('repo_hooks', { path });
   },

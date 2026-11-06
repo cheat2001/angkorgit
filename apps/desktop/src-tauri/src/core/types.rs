@@ -317,6 +317,13 @@ pub struct GroupUpdateResult {
     pub hook_warnings: Vec<HookWarning>,
 }
 
+#[derive(Serialize, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoHooks {
+    pub found: Vec<String>,
+    pub in_worktree: bool,
+}
+
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct HookWarning {

@@ -359,7 +359,7 @@ export function WorkingCopyPanel() {
   const statusReady = status !== null;
   const repoHooks = useRepoHooks(path);
   const commitHooks = useMemo(
-    () => repoHooks.filter((name) => COMMIT_HOOKS.includes(name) || (amend && name === 'post-rewrite')),
+    () => repoHooks.found.filter((name) => COMMIT_HOOKS.includes(name) || (amend && name === 'post-rewrite')),
     [repoHooks, amend],
   );
   const skipHooks = useCommitWork((s) => !!s.skipHooks[path]);
