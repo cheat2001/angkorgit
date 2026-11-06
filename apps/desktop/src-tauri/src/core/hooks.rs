@@ -147,10 +147,56 @@ fn hooks_live_in_worktree(repo: &Repository, workdir: &Path) -> AppResult<bool> 
         .filter_map(|dir| Handle::from_path(dir).ok())
         .collect();
     let dir = hooks_dir(repo)?;
-    Ok(REPO_HOOKS
+    let hook_paths = REPO_HOOKS
         .iter()
         .flat_map(|name| hook_candidates(&dir, name))
-        .any(|hook| visits_worktree(&hook, &workdir, &gitdirs)))
+        .any(|hook| visits_worktree(&hook, &workdir, &gitdirs));
+    Ok(hook_paths || config_lives_in_worktree(repo, &workdir, &gitdirs))
+}
+
+const CONFIG_FILE_LIMIT: usize = 64;
+
+fn config_lives_in_worktree(repo: &Repository, workdir: &Handle, gitdirs: &[Handle]) -> bool {
+    let mut pending = vec![
+        repo.commondir().join("config"),
+        repo.path().join("config.worktree"),
+    ];
+    pending.extend(git2::Config::find_global().ok());
+    pending.extend(git2::Config::find_xdg().ok());
+    pending.extend(git2::Config::find_system().ok());
+    let home = super::remote::home_dir();
+    let mut seen = std::collections::HashSet::new();
+    while let Some(file) = pending.pop() {
+        if seen.len() >= CONFIG_FILE_LIMIT || !seen.insert(file.clone()) {
+            continue;
+        }
+        if visits_worktree(&file, workdir, gitdirs) {
+            return true;
+        }
+        pending.extend(include_targets(&file, home.as_deref()));
+    }
+    false
+}
+
+fn include_targets(file: &Path, home: Option<&Path>) -> Vec<PathBuf> {
+    let Ok(config) = git2::Config::open(file) else {
+        return Vec::new();
+    };
+    let Ok(mut entries) = config.entries(Some(r"^include(if\..+)?\.path$")) else {
+        return Vec::new();
+    };
+    let base = file.parent().unwrap_or(Path::new(""));
+    let mut targets = Vec::new();
+    while let Some(Ok(entry)) = entries.next() {
+        if entry.include_depth() > 0 {
+            continue;
+        }
+        let Some(value) = entry.value() else {
+            continue;
+        };
+        targets.push(base.join(super::remote::expand_home(value, home)));
+    }
+    targets
 }
 
 fn visits_worktree(path: &Path, workdir: &Handle, gitdirs: &[Handle]) -> bool {

@@ -5988,6 +5988,105 @@ fn a_post_checkout_warning_survives_a_replay_that_fails_afterwards() {
 }
 
 #[test]
+fn a_tracked_config_include_offers_the_skip_before_it_sets_a_hooks_path() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("project.gitconfig", "# project settings come later\n");
+    commit_all(&local, "project config");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let skipping = clone_of(&origin, &local, "include-skip");
+    let running = clone_of(&origin, &local, "include-run");
+    for repo in [&skipping, &running] {
+        assert!(!core::repo_hooks(repo.path()).unwrap().in_worktree);
+        core::set_config(
+            Some(repo.path()),
+            "include.path",
+            "../project.gitconfig",
+            false,
+        )
+        .unwrap();
+        let hooks = core::repo_hooks(repo.path()).unwrap();
+        assert!(hooks.found.is_empty());
+        assert!(hooks.in_worktree);
+    }
+    local.write("project.gitconfig", "[core]\n\thooksPath = .husky\n");
+    write_hook(
+        &local.dir.join(".husky"),
+        "post-merge",
+        &format!("echo \"post-merge $*\" >> '{POST_HOOK_LOG}'"),
+    );
+    commit_all(&local, "hooks from the project config");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+
+    core::post_hooks::pull(skipping.path(), "origin", Some("merge"), true)
+        .into_result()
+        .unwrap();
+    assert!(post_hook_runs(&skipping).is_empty());
+    core::post_hooks::pull(running.path(), "origin", Some("merge"), false)
+        .into_result()
+        .unwrap();
+    assert_eq!(post_hook_runs(&running), vec!["post-merge 0"]);
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn rebase_allows_a_submodule_with_only_untracked_files_but_not_edited_ones() {
+    let fixture = SubmoduleFixture::new();
+    let local = &fixture.local;
+    core::branch_create(local.path(), "topic", Some(&fixture.added), false).unwrap();
+    local.write("README.md", "parent, edited on master\n");
+    let onto = commit_all(local, "master edit");
+    core::checkout_branch(local.path(), "topic").unwrap();
+    local.write("notes.txt", "topic\n");
+    commit_all(local, "topic note");
+    local.write("deps/lib/scratch.txt", "untracked inside the submodule\n");
+
+    let rebased = core::post_hooks::rebase(local.path(), "master", false)
+        .into_result()
+        .unwrap();
+    assert_eq!(rebased.value.status, "ok", "{}", rebased.value.message);
+    assert_eq!(rev(local, "HEAD~1"), onto);
+    assert!(local.dir.join("deps/lib/scratch.txt").exists());
+
+    core::branch_create(local.path(), "again", Some(&fixture.added), true).unwrap();
+    local.write("again.txt", "again\n");
+    commit_all(local, "again");
+    local.write("deps/lib/lib.txt", "edited inside the submodule\n");
+    let refused = core::post_hooks::rebase(local.path(), "master", false).into_result();
+    assert!(refused.is_err());
+}
+
+#[test]
+fn a_fast_forward_leaves_orig_head_alone_while_another_process_holds_its_lock() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, true).unwrap();
+    repo.write("f.txt", "feature\n");
+    commit_all(&repo, "feature");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    let gitdir = repo.dir.join(".git");
+    std::fs::write(gitdir.join("ORIG_HEAD"), format!("{base}\n")).unwrap();
+    std::fs::write(gitdir.join("ORIG_HEAD.lock"), "held by another git\n").unwrap();
+
+    let blocked = core::post_hooks::merge(repo.path(), "feature", false, false);
+    assert!(blocked.is_err());
+    assert_eq!(rev(&repo, "HEAD"), base);
+    assert_eq!(
+        std::fs::read_to_string(gitdir.join("ORIG_HEAD")).unwrap(),
+        format!("{base}\n")
+    );
+
+    std::fs::remove_file(gitdir.join("ORIG_HEAD.lock")).unwrap();
+    let merged = core::post_hooks::merge(repo.path(), "feature", false, false).unwrap();
+    assert_eq!(merged.value.status, "fast_forward");
+    assert_eq!(rev(&repo, "ORIG_HEAD"), base);
+}
+
+#[test]
 fn a_failing_post_hook_is_a_warning_and_the_operation_stands() {
     if !hooks_runnable() {
         return;
