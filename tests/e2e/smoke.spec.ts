@@ -1656,6 +1656,31 @@ test('branch menus offer a fast-forward entry next to merge, disabled when the c
   await expect(graphFf).toHaveAttribute('aria-disabled', 'true');
 });
 
+test('graph branch and tag chips offer the sidebar actions, with the checked-out branch protected', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByTitle(/^feature\/diff-viewer · local/).first().click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  await expect(menu.getByRole('menuitem', { name: 'Open in new worktree…' })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: 'Create branch here…' })).toBeEnabled();
+  await expect(menu.getByRole('menuitem', { name: 'Rename…' })).toBeEnabled();
+  await menu.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+  await expect(page.getByText('Delete branch feature/diff-viewer done')).toBeVisible();
+  await page.getByTitle(/^main · local/).first().click({ button: 'right' });
+  await expect(menu.getByRole('menuitem', { name: 'Delete', exact: true })).toHaveAttribute('aria-disabled', 'true');
+  await expect(menu.getByRole('menuitem', { name: 'Merge into current branch' })).toHaveAttribute('aria-disabled', 'true');
+  await expect(menu.getByRole('menuitem', { name: 'Checkout main' })).toHaveAttribute('aria-disabled', 'true');
+  await expect(menu.getByRole('menuitem', { name: 'Rename…' })).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await page.getByTitle('v0.4.0', { exact: true }).first().click({ button: 'right' });
+  await expect(menu.getByRole('menuitem', { name: 'Checkout (detached)' })).toBeEnabled();
+  await expect(menu.getByRole('menuitem', { name: 'Push to remote' })).toBeEnabled();
+  await menu.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+  await expect(page.getByText('Delete tag v0.4.0 done')).toBeVisible();
+});
+
 test('the remote menu and the palette open the repository page in the browser', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();

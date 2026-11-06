@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
-import { Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronUp, Combine, Copy, FastForward, Filter, FolderTree, GitBranchPlus, GitCommitHorizontal, Settings2, GitMerge, ListOrdered, ListRestart, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronUp, Cloud, Combine, Copy, FastForward, Filter, FolderTree, GitBranchPlus, GitCommitHorizontal, Settings2, GitMerge, ListOrdered, ListRestart, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
 import { pickRemote, type CommitInfo, type RefInfo } from '@angkorgit/core';
 import {
   Button,
@@ -373,6 +373,23 @@ export function CommitGraph() {
 
   const headBranch = useMemo(() => branches.find((b) => b.isHead && !b.isRemote)?.name ?? null, [branches]);
 
+  const refMenuIsHead = refMenu?.ref.kind === 'localBranch' && refMenu.ref.shorthand === headBranch;
+  const refMenuBranch =
+    refMenu?.ref.kind === 'localBranch' ? branches.find((b) => !b.isRemote && b.name === refMenu.ref.shorthand) : undefined;
+  const refMenuCanOpenWorktree =
+    !!refMenu &&
+    (refMenu.ref.kind === 'localBranch' || refMenu.ref.kind === 'remoteBranch') &&
+    !refMenuIsHead &&
+    !(refMenu.ref.kind === 'localBranch' && worktreeBranches.has(refMenu.ref.shorthand));
+
+  const pushTag = (tag: string, noVerify = false): void =>
+    void act(
+      `Push tag ${tag}`,
+      () => ipc.pushTag(path, pickRemote(remotes, branches.find((b) => b.isHead && !b.isRemote)?.upstream)?.name ?? 'origin', tag, noVerify),
+      undefined,
+      () => pushTag(tag, true),
+    );
+
   const refMenuResetTarget = (() => {
     if (!refMenu || refMenu.ref.kind !== 'remoteBranch') return null;
     const name = localNameOf(refMenu.ref);
@@ -656,12 +673,45 @@ export function CommitGraph() {
                 <DropdownMenuSeparator />
               </>
             )}
+            {refMenu.ref.kind === 'tag' && (
+              <>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void act(`Checkout ${refMenu.ref.shorthand}`, () => ipc.checkoutDetached(path, refMenu.ref.shorthand), {
+                      kind: 'checkout',
+                    })
+                  }
+                >
+                  <Check /> Checkout (detached)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => pushTag(refMenu.ref.shorthand)}>
+                  <Cloud /> Push to remote
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  destructive
+                  onClick={() => {
+                    const tag = refMenu.ref.shorthand;
+                    void act(`Delete tag ${tag}`, () => ipc.tagDelete(path, tag));
+                  }}
+                >
+                  <Trash2 /> Delete
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {refMenu.ref.kind !== 'tag' && refMenu.ref.kind !== 'stash' && (
               <>
-                <DropdownMenuItem onClick={() => checkoutRef(refMenu.ref)}>
+                <DropdownMenuItem disabled={refMenuIsHead} onClick={() => checkoutRef(refMenu.ref)}>
                   <Check /> Checkout {refMenu.ref.shorthand}
                 </DropdownMenuItem>
+                {refMenuCanOpenWorktree && (
+                  <DropdownMenuItem onClick={() => openDialog('createWorktree', { branch: refMenu.ref.shorthand })}>
+                    <FolderTree /> Open in new worktree…
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
+                  disabled={refMenuIsHead}
                   onClick={() =>
                     void act(`Merge ${refMenu.ref.shorthand}`, () => ipc.merge(path, refMenu.ref.shorthand, true), {
                       kind: 'merge',
@@ -672,7 +722,7 @@ export function CommitGraph() {
                   <GitMerge /> Merge into current branch
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  disabled={refMenuFf !== true}
+                  disabled={refMenuIsHead || refMenuFf !== true}
                   onClick={() =>
                     void act(`Fast-forward to ${refMenu.ref.shorthand}`, () => ipc.merge(path, refMenu.ref.shorthand, false), {
                       kind: 'merge',
@@ -683,6 +733,7 @@ export function CommitGraph() {
                   <FastForward /> Fast-forward current branch to this
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  disabled={refMenuIsHead}
                   onClick={() =>
                     void act(`Rebase onto ${refMenu.ref.shorthand}`, () => ipc.rebase(path, refMenu.ref.shorthand), {
                       kind: 'rebase',
@@ -698,7 +749,9 @@ export function CommitGraph() {
                 )}
                 {refMenu.ref.kind === 'localBranch' && (
                   <>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
+                      disabled={!refMenuBranch?.upstream}
                       onClick={() =>
                         void act(`Pull ${refMenu.ref.shorthand}`, () =>
                           ipc.pullBranch(path, refMenu.ref.shorthand),
@@ -709,6 +762,30 @@ export function CommitGraph() {
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => void pushBranch(refMenu.ref.shorthand)}>
                       <ArrowUpFromLine /> Push
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => openDialog('createBranch', refMenu.commit.oid)}>
+                  <GitBranchPlus /> Create branch here…
+                </DropdownMenuItem>
+                {refMenu.ref.kind === 'localBranch' && (
+                  <>
+                    <DropdownMenuItem onClick={() => openDialog('rename', refMenu.ref.shorthand)}>
+                      <Pencil /> Rename…
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      destructive
+                      disabled={refMenuIsHead}
+                      onClick={() => {
+                        const branch = refMenu.ref.shorthand;
+                        void act(`Delete branch ${branch}`, () => ipc.deleteBranch(path, branch, false), {
+                          kind: 'branchDelete',
+                          extra: { branch, oid: refMenu.commit.oid },
+                        });
+                      }}
+                    >
+                      <Trash2 /> Delete
                     </DropdownMenuItem>
                   </>
                 )}
