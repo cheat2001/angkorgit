@@ -659,7 +659,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             )}
           </Button>
         </Hint>
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={(open) => open && repoHooks.refresh()}>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" className="rounded-l-none" aria-label="Pull options" disabled={!!busy}>
               <ChevronDown className="size-3.5" />

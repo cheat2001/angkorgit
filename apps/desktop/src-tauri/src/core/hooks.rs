@@ -1,9 +1,10 @@
 use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use git2::{Oid, Repository};
+use same_file::Handle;
 
 use super::types::{HookWarning, RepoHooks};
 use crate::ai_cli::{capture, capture_tree_child, search_path, spawn_tree};
@@ -138,60 +139,64 @@ pub fn repo_hooks(path: &str) -> AppResult<RepoHooks> {
 const SYMLINK_HOPS: usize = 40;
 
 fn hooks_live_in_worktree(repo: &Repository, workdir: &Path) -> AppResult<bool> {
-    let forms = |path: &Path| {
-        let mut forms = vec![lexical(path)];
-        forms.extend(std::fs::canonicalize(path).ok());
-        forms
+    let Ok(workdir) = Handle::from_path(workdir) else {
+        return Ok(false);
     };
-    let workdirs = forms(workdir);
-    let gitdirs: Vec<PathBuf> = forms(repo.path())
+    let gitdirs: Vec<Handle> = [repo.path(), repo.commondir()]
         .into_iter()
-        .chain(forms(repo.commondir()))
+        .filter_map(|dir| Handle::from_path(dir).ok())
         .collect();
-    let inside = |path: &Path| {
-        workdirs.iter().any(|root| path.starts_with(root))
-            && !gitdirs.iter().any(|gitdir| path.starts_with(gitdir))
-    };
     let dir = hooks_dir(repo)?;
     Ok(REPO_HOOKS
         .iter()
         .flat_map(|name| hook_candidates(&dir, name))
-        .any(|hook| passes_through(&hook, &inside, SYMLINK_HOPS)))
+        .any(|hook| visits_worktree(&hook, &workdir, &gitdirs)))
 }
 
-fn passes_through(path: &Path, inside: &dyn Fn(&Path) -> bool, hops: usize) -> bool {
-    let path = lexical(path);
-    if inside(&path) {
-        return true;
-    }
-    if hops == 0 {
-        return false;
-    }
-    let mut prefix = PathBuf::new();
-    for part in path.components() {
-        prefix.push(part);
-        let Ok(target) = std::fs::read_link(&prefix) else {
-            continue;
+fn visits_worktree(path: &Path, workdir: &Handle, gitdirs: &[Handle]) -> bool {
+    let mut current = PathBuf::new();
+    let mut rest = path.to_path_buf();
+    let mut hops = 0;
+    loop {
+        let mut parts = rest.components();
+        let Some(part) = parts.next() else {
+            return false;
         };
-        let rest = path.strip_prefix(&prefix).unwrap_or(Path::new(""));
-        let base = prefix.parent().unwrap_or(Path::new(""));
-        return passes_through(&base.join(target).join(rest), inside, hops - 1);
+        let remaining = parts.as_path().to_path_buf();
+        match part {
+            Component::Prefix(_) | Component::RootDir => current.push(part),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                current.pop();
+            }
+            Component::Normal(name) => {
+                let next = current.join(name);
+                let link = std::fs::read_link(&next).ok();
+                let in_git = gitdirs
+                    .iter()
+                    .any(|gitdir| within(&next, gitdir, link.is_some()));
+                if within(&next, workdir, true) && !in_git {
+                    return true;
+                }
+                if let Some(target) = link {
+                    hops += 1;
+                    if hops > SYMLINK_HOPS {
+                        return false;
+                    }
+                    rest = target.join(remaining);
+                    continue;
+                }
+                current = next;
+            }
+        }
+        rest = remaining;
     }
-    false
 }
 
-fn lexical(path: &Path) -> PathBuf {
-    let mut clean = PathBuf::new();
-    for part in path.components() {
-        match part {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                clean.pop();
-            }
-            other => clean.push(other),
-        }
-    }
-    clean
+fn within(path: &Path, root: &Handle, strictly: bool) -> bool {
+    path.ancestors()
+        .skip(usize::from(strictly))
+        .any(|dir| Handle::from_path(dir).is_ok_and(|handle| &handle == root))
 }
 
 pub fn runner_available() -> bool {
@@ -852,19 +857,6 @@ mod tests {
             "@1730103456 -0530"
         );
         assert_eq!(git_date(git2::Time::new(0, 0)), "@0 +0000");
-    }
-
-    #[test]
-    fn hook_folders_are_compared_without_dot_segments() {
-        assert_eq!(
-            lexical(Path::new("/repo/./.husky")),
-            PathBuf::from("/repo/.husky")
-        );
-        assert_eq!(
-            lexical(Path::new("/repo/../shared/hooks")),
-            PathBuf::from("/shared/hooks")
-        );
-        assert!(!lexical(Path::new("/repo/../shared")).starts_with("/repo"));
     }
 
     #[test]

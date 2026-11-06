@@ -66,6 +66,7 @@ dependencies = [
  "notify-debouncer-mini",
  "portable-pty",
  "reqwest 0.12.28",
+ "same-file",
  "serde",
  "serde_json",
  "tauri",
