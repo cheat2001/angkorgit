@@ -25,7 +25,7 @@ import { useRepo } from '@/features/repository/store';
 import { useGraph } from './store';
 import { useUi } from '@/features/ui/store';
 import { useUndo, type UndoKind } from '@/features/history/undoStore';
-import { AUTHOR_COL_WIDTH, CommitRow, GUTTER_GAP, GraphTailDefs, REF_COL_WIDTH, ROW_HEIGHT, gutterWidthFor, laneWidthFor } from './GraphRow';
+import { AUTHOR_COL_WIDTH, CommitRow, GUTTER_GAP, GraphTailDefs, LANE_WIDTH, REF_COL_WIDTH, ROW_HEIGHT, gutterWidthFor } from './GraphRow';
 import { WipRow } from './WipRow';
 import { confirmDialog } from '@/components/confirm';
 import { isHookFailure, reportHookFailure } from '@/components/hookFailure';
@@ -149,7 +149,7 @@ export function CommitGraph() {
     clearPendingScroll();
   }, [pendingScrollIndex, rows.length, virtualizer, clearPendingScroll]);
 
-  const laneWidth = laneWidthFor(maxLane);
+  const laneWidth = LANE_WIDTH;
   const gutterWidth = gutterWidthFor(maxLane, laneWidth);
   const filtersActive = Boolean(filters.branch);
 

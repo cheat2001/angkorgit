@@ -17,7 +17,6 @@
   --graph-tail-start: 0.18;
   --graph-tail-mid: 0.07;
   --graph-tail-end: 0.03;
-  --graph-tail-edge: 0.32;
   --graph-0: 32 93% 54%;
   --graph-1: 199 89% 48%;
   --graph-2: 142 71% 45%;
@@ -80,7 +79,6 @@
   --graph-tail-start: 0.34;
   --graph-tail-mid: 0.14;
   --graph-tail-end: 0.06;
-  --graph-tail-edge: 0.5;
   --background: 220 25% 97%;
   --surface: 0 0% 100%;
   --surface-raised: 220 20% 99%;

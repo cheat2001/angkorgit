@@ -48,8 +48,8 @@ export function WipRow({
       className={cn(
         'sticky top-0 z-10 flex h-9 cursor-pointer select-none items-center gap-2 border-b border-dashed border-primary/40 pr-4 text-sm',
         showRefs ? 'pl-1' : 'pl-4',
-        'bg-surface/95 backdrop-blur-sm transition-colors hover:bg-primary/10',
-        selectedOid === null && 'bg-primary/10',
+        'bg-surface transition-colors hover:[background-image:linear-gradient(hsl(var(--primary)/0.1),hsl(var(--primary)/0.1))]',
+        selectedOid === null && '[background-image:linear-gradient(hsl(var(--primary)/0.1),hsl(var(--primary)/0.1))]',
       )}
     >
       {showRefs && <span className="h-full shrink-0" style={{ width: REF_COL_WIDTH }} />}

@@ -1681,6 +1681,28 @@ test('graph branch and tag chips offer the sidebar actions, with the checked-out
   await expect(page.getByText('Delete tag v0.4.0 done')).toBeVisible();
 });
 
+test('graph chips wear their lane colour, lines run as rails and the WIP banner hides the rows under it', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const top = page.getByRole('row').first();
+  const head = top.getByTitle(/^main · local/);
+  await expect(head).toBeVisible();
+  const colours = await top.evaluate((row) => {
+    const chip = row.querySelector('[data-lane-chip]') as HTMLElement;
+    const connector = row.querySelector('svg line[x1="0"]') as SVGLineElement;
+    return { chip: getComputedStyle(chip).backgroundColor, lane: getComputedStyle(connector).stroke };
+  });
+  expect(colours.chip).toBe(colours.lane);
+  const curves = await page.locator('[role=row] svg path').evaluateAll((paths) =>
+    paths.map((p) => p.getAttribute('d') ?? '').filter((d) => d.includes(' C ')),
+  );
+  expect(curves).toEqual([]);
+  const banner = page.getByRole('button', { name: /uncommitted file change/ });
+  const background = await banner.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(background).not.toMatch(/rgba|\/ 0\./);
+});
+
 test('the remote menu and the palette open the repository page in the browser', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();

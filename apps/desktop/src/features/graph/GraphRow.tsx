@@ -18,19 +18,21 @@ const REF_STACK_ALIGN_OFFSET = -5;
 const CHAR_WIDTH = 6.4;
 const CHIP_PADDING = 18;
 const CHIP_ICON = 14;
-export const LANE_WIDTH = 20;
-export const LANE_WIDTH_MIN = 11;
-export const GUTTER_MAX_WIDTH = 190;
+export const LANE_WIDTH = 22;
+export const GUTTER_MAX_WIDTH = 250;
 export const GUTTER_BASE = 18;
 const NODE_RADIUS = 4;
 const AVATAR_SIZE = 20;
 const TAIL_HEIGHT = 22;
+const TAIL_EDGE = 2;
 const NODE_RING = 2;
 const NODE_HALO = 1.5;
 
 export function laneColor(color: number): string {
   return `hsl(var(--graph-${color % 10}))`;
 }
+
+const laneTint = (color: number, alpha: number) => `hsl(var(--graph-${color % 10}) / ${alpha})`;
 
 export const laneX = (lane: number, laneWidth: number = LANE_WIDTH) =>
   AVATAR_SIZE / 2 + NODE_RING + NODE_HALO + 1 + lane * laneWidth;
@@ -46,27 +48,30 @@ export function GraphTailDefs() {
             <stop offset="1" stopColor={laneColor(i)} style={{ stopOpacity: 'var(--graph-tail-end)' }} />
           </linearGradient>
         ))}
-        {Array.from({ length: 10 }, (_, i) => (
-          <linearGradient key={`edge-${i}`} id={`graph-tail-edge-${i}`} x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0" stopColor={laneColor(i)} stopOpacity={0} />
-            <stop offset="0.6" stopColor={laneColor(i)} stopOpacity={0} />
-            <stop offset="1" stopColor={laneColor(i)} style={{ stopOpacity: 'var(--graph-tail-edge)' }} />
-          </linearGradient>
-        ))}
       </defs>
     </svg>
   );
 }
 
-export function laneWidthFor(maxLane: number): number {
-  const fit = Math.floor((GUTTER_MAX_WIDTH - GUTTER_BASE) / (maxLane + 1));
-  return Math.max(LANE_WIDTH_MIN, Math.min(LANE_WIDTH, fit));
-}
-
-export function gutterWidthFor(maxLane: number, laneWidth: number): number {
-  return GUTTER_BASE + (maxLane + 1) * laneWidth;
+export function gutterWidthFor(maxLane: number, laneWidth: number = LANE_WIDTH): number {
+  return Math.min(GUTTER_BASE + (maxLane + 1) * laneWidth, GUTTER_MAX_WIDTH);
 }
 const CY = ROW_HEIGHT / 2;
+const RAIL_RADIUS = 6;
+
+function railIn(from: number, to: number): string {
+  if (from === to) return `M ${from} 0 V ${CY}`;
+  const r = Math.min(RAIL_RADIUS, Math.abs(to - from));
+  const s = to > from ? 1 : -1;
+  return `M ${from} 0 V ${CY - r} Q ${from} ${CY} ${from + s * r} ${CY} H ${to}`;
+}
+
+function railOut(from: number, to: number): string {
+  if (from === to) return `M ${from} ${CY} V ${ROW_HEIGHT}`;
+  const r = Math.min(RAIL_RADIUS, Math.abs(to - from));
+  const s = to > from ? 1 : -1;
+  return `M ${from} ${CY} H ${to - s * r} Q ${to} ${CY} ${to} ${CY + r} V ${ROW_HEIGHT}`;
+}
 
 function StashNode({ color }: { color?: number }) {
   return (
@@ -118,20 +123,17 @@ function GraphGutter({
               data-graph-tail
               x={nx}
               y={CY - TAIL_HEIGHT / 2}
-              width={Math.max(0, total - nx - 1)}
+              width={Math.max(0, total - nx)}
               height={TAIL_HEIGHT}
-              rx={TAIL_HEIGHT / 2}
               fill={`url(#graph-tail-${node.color % 10})`}
             />
             <rect
-              x={nx + 0.5}
-              y={CY - TAIL_HEIGHT / 2 + 0.5}
-              width={Math.max(0, total - nx - 2)}
-              height={TAIL_HEIGHT - 1}
-              rx={(TAIL_HEIGHT - 1) / 2}
-              fill="none"
-              stroke={`url(#graph-tail-edge-${node.color % 10})`}
-              strokeWidth={1}
+              data-graph-tail-edge
+              x={total - TAIL_EDGE}
+              y={2}
+              width={TAIL_EDGE}
+              height={ROW_HEIGHT - 4}
+              fill={laneColor(node.color)}
             />
           </>
         )}
@@ -142,8 +144,8 @@ function GraphGutter({
             x2={nx}
             y2={CY}
             stroke={laneColor(node.color)}
-            strokeOpacity={0.45}
-            strokeWidth={1}
+            strokeOpacity={0.85}
+            strokeWidth={1.5}
           />
         )}
         {passing.map((p) => (
@@ -160,7 +162,7 @@ function GraphGutter({
         {node.closing.map((c) => (
           <path
             key={`c${c.lane}`}
-            d={`M ${x(c.lane)} 0 C ${x(c.lane)} ${CY}, ${nx} ${CY * 0.4}, ${nx} ${CY}`}
+            d={railIn(x(c.lane), nx)}
             stroke={laneColor(c.color)}
             strokeWidth={2}
             fill="none"
@@ -169,7 +171,7 @@ function GraphGutter({
         {node.merges.map((m) => (
           <path
             key={`m${m.lane}`}
-            d={`M ${nx} ${CY} C ${x(m.lane)} ${CY * 1.6}, ${x(m.lane)} ${CY}, ${x(m.lane)} ${ROW_HEIGHT}`}
+            d={railOut(nx, x(m.lane))}
             stroke={laneColor(m.color)}
             strokeWidth={2}
             fill="none"
@@ -290,6 +292,7 @@ function RefChip({
   head,
   worktree,
   separated,
+  color,
   onCheckoutRef,
   onRefMenu,
   onResetToRemote,
@@ -298,20 +301,27 @@ function RefChip({
   head: boolean;
   worktree?: string;
   separated: boolean;
+  color: number;
   onCheckoutRef: (ref: RefInfo) => void;
   onRefMenu: (event: React.MouseEvent, ref: RefInfo) => void;
   onResetToRemote: (ref: RefInfo) => void;
 }) {
+  const laneStyle = group.stash
+    ? undefined
+    : head
+      ? { background: laneColor(color), borderColor: laneColor(color), color: 'hsl(var(--background))' }
+      : { background: laneTint(color, 0.16), borderColor: laneTint(color, 0.45), color: laneColor(color) };
   return (
     <Badge
-      tone={group.stash ? 'neutral' : group.tag || group.detachedHead ? 'primary' : group.local ? 'success' : 'info'}
+      tone="neutral"
+      data-lane-chip={group.stash ? undefined : color % 10}
+      style={laneStyle}
       className={cn(
         'min-w-0 shrink whitespace-nowrap',
-        !group.tag && !group.stash &&
+        !group.tag && !group.stash && !head &&
           'cursor-pointer hover:z-20 hover:shrink-0 hover:!bg-surface-overlay hover:shadow-soft',
         group.stash && 'max-w-[11rem] cursor-pointer border-dashed hover:!bg-surface-overlay',
-        head &&
-          'border-success bg-success text-background shadow-soft hover:!bg-success',
+        head && 'cursor-pointer shadow-soft hover:z-20 hover:shrink-0',
       )}
       title={
         group.stash
@@ -397,6 +407,7 @@ function RefCell({
       group={group}
       head={head}
       worktree={group.local ? worktrees?.get(group.label) : undefined}
+      color={color}
       separated={group.remote && !group.local && (resettableBranches?.has(group.label) ?? false)}
       onCheckoutRef={onCheckoutRef}
       onRefMenu={onRefMenu}
@@ -431,7 +442,7 @@ function RefCell({
       {groups.length > 0 && (
         <span
           className="h-px min-w-1 flex-1"
-          style={{ background: laneColor(color), opacity: 0.45 }}
+          style={{ background: laneColor(color), opacity: 0.85, height: 1.5 }}
         />
       )}
     </span>
