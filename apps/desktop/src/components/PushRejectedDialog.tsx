@@ -13,6 +13,7 @@ export function PushRejectedDialog({
   open,
   remote,
   branch,
+  pullBlocked,
   onPullRebase,
   onForcePush,
   onClose,
@@ -20,6 +21,7 @@ export function PushRejectedDialog({
   open: boolean;
   remote: string;
   branch: string | null;
+  pullBlocked: string | null;
   onPullRebase: () => void;
   onForcePush: () => void;
   onClose: () => void;
@@ -38,9 +40,10 @@ export function PushRejectedDialog({
         <div className="flex flex-col gap-2">
           <button
             type="button"
-            className="flex items-start gap-3 rounded-md border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:border-primary/60 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            className="flex items-start gap-3 rounded-md border border-border bg-surface px-3 py-2.5 text-left transition-colors enabled:hover:border-primary/60 enabled:hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60"
             onClick={onPullRebase}
-            autoFocus
+            disabled={pullBlocked !== null}
+            autoFocus={pullBlocked === null}
           >
             <ArrowDownToLine className="mt-0.5 size-4 shrink-0 text-primary" />
             <span className="min-w-0">
@@ -49,6 +52,11 @@ export function PushRejectedDialog({
                 Bring the remote commits in and replay yours on top. Right when someone else pushed to
                 this branch. Nothing is lost.
               </span>
+              {pullBlocked && (
+                <span className="mt-1 block text-xs font-medium text-primary" data-pull-blocked>
+                  {pullBlocked}
+                </span>
+              )}
             </span>
           </button>
           <button
@@ -67,7 +75,7 @@ export function PushRejectedDialog({
           </button>
         </div>
         <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} autoFocus={pullBlocked !== null}>
             Cancel
           </Button>
         </DialogFooter>

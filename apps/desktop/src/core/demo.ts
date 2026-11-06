@@ -106,9 +106,21 @@ export const demoRepo: RepositoryInfo = {
   mainPath: null,
 };
 
+let demoHead = demoRepo.headBranch;
+
+export function demoCheckout(name: string): void {
+  if (demoBranches.some((b) => !b.isRemote && b.name === name)) demoHead = name;
+}
+
+export function demoBranchList(): BranchInfo[] {
+  if (demoHead === demoRepo.headBranch) return demoBranches;
+  return demoBranches.map((b) => (b.isRemote ? b : { ...b, isHead: b.name === demoHead }));
+}
+
 export function demoRepoAt(path: string): RepositoryInfo {
-  if (path === demoRepo.path) return demoRepo;
-  return { ...demoRepo, path, name: path.split('/').filter(Boolean).pop() ?? path };
+  const repo = demoHead === demoRepo.headBranch ? demoRepo : { ...demoRepo, headBranch: demoHead };
+  if (path === demoRepo.path) return repo;
+  return { ...repo, path, name: path.split('/').filter(Boolean).pop() ?? path };
 }
 
 export const DEMO_LESS_PATH = 'styles/theme.less';

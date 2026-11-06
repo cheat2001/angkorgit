@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '@angkorgit/design-system';
 
-export type HookOperation = 'commit' | 'amend';
+export type HookOperation = 'commit' | 'amend' | 'push';
 
 export interface HookFailureView {
   operation: HookOperation;
@@ -28,6 +28,10 @@ const COPY: Record<HookOperation, { outcome: string; retry: string }> = {
   amend: {
     outcome: 'The last commit was not changed. Your message is still in the commit box.',
     retry: 'Amend without hooks',
+  },
+  push: {
+    outcome: 'Nothing was pushed.',
+    retry: 'Push without hooks',
   },
 };
 

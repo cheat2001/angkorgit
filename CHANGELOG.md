@@ -17,6 +17,14 @@ All notable changes to AngKorGit are documented here. The format follows
   repositories that have hooks.
   Running hooks needs Git 2.36 or newer on your PATH; without it the commit still goes
   through and AngKorGit tells you the hooks did not run. (#82)
+- **Pushes run your `pre-push` hook.** Every push in the app (toolbar, graph, sidebar,
+  tags, force push and the push in the pull request dialog) runs `pre-push` first with
+  the same arguments and ref lines `git push` gives it, including the remote's current
+  commit for each ref. A failing hook stops the push before anything is sent and shows
+  its output, with **Push without hooks** to go ahead anyway; the Push menu has the same
+  entry when the repository has a `pre-push` hook. If the server closes an idle HTTPS
+  connection while a slow hook runs, the push reconnects without running the hook a
+  second time. With Git 2.36 to 2.39 the hook still runs on macOS and Linux. (#82)
 - **Write an earlier commit's message with AI.** The commit message editor in the
   inspector has the same sparkle button as the commit box: it sends that commit's
   changes to your AI provider and fills in a new summary and description, following

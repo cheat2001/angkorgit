@@ -12,6 +12,7 @@ use git2::{
 use crate::error::{AppError, AppResult};
 
 use super::group_update::{FetchProgress, GroupUpdateControl};
+use super::hooks::{pre_push_input, PrePush, PushedRef};
 use super::types::{GeneratedKey, GroupUpdateResult, OpOutcome, RefMovement, RemoteInfo};
 
 static CREDENTIAL_PREFS: OnceLock<RwLock<CredentialPrefs>> = OnceLock::new();
@@ -1031,6 +1032,7 @@ pub fn push(
     force: bool,
     with_tags: bool,
     set_upstream: bool,
+    no_verify: bool,
 ) -> AppResult<OpOutcome> {
     let repo = super::repo::open(path)?;
     let branch_name = match branch {
@@ -1056,21 +1058,149 @@ pub fn push(
         }
         Ok(())
     };
+    let mut remote = repo.find_remote(remote_name)?;
+    let pre_push = PrePush::prepare(&repo, &remote, no_verify)?;
     if !with_tags && tracking_ref_matches(&repo, remote_name, &branch_name) {
+        pre_push.run(&repo, &[])?;
         track_upstream(&repo)?;
-        return Ok(OpOutcome {
-            status: "up_to_date".into(),
-            message: format!("{branch_name} is already up to date on {remote_name}"),
-        });
+        return Ok(with_hook_warning(
+            OpOutcome {
+                status: "up_to_date".into(),
+                message: format!("{branch_name} is already up to date on {remote_name}"),
+            },
+            &pre_push,
+        ));
     }
 
-    prime_account_bindings(Some(&repo));
+    send(&repo, &mut remote, remote_name, &refspecs, &pre_push)?;
+    track_upstream(&repo)?;
+
+    Ok(with_hook_warning(
+        OpOutcome {
+            status: "ok".into(),
+            message: format!(
+                "Pushed {branch_name} to {remote_name}{}",
+                if force { " (forced)" } else { "" }
+            ),
+        },
+        &pre_push,
+    ))
+}
+
+pub fn push_specs(
+    path: &str,
+    remote_name: &str,
+    refspecs: &[String],
+    no_verify: bool,
+) -> AppResult<OpOutcome> {
+    push_specs_as(
+        path,
+        remote_name,
+        refspecs,
+        no_verify,
+        format!("Pushed to {remote_name}"),
+    )
+}
+
+fn push_specs_as(
+    path: &str,
+    remote_name: &str,
+    refspecs: &[String],
+    no_verify: bool,
+    done: String,
+) -> AppResult<OpOutcome> {
+    let repo = super::repo::open(path)?;
     let mut remote = repo.find_remote(remote_name)?;
-    let rejected: std::sync::Arc<Mutex<Vec<(String, String)>>> = Default::default();
-    let server_said: std::sync::Arc<Mutex<Vec<u8>>> = Default::default();
+    let pre_push = PrePush::prepare(&repo, &remote, no_verify)?;
+    send(&repo, &mut remote, remote_name, refspecs, &pre_push)?;
+    Ok(with_hook_warning(
+        OpOutcome {
+            status: "ok".into(),
+            message: done,
+        },
+        &pre_push,
+    ))
+}
+
+fn with_hook_warning(outcome: OpOutcome, pre_push: &PrePush) -> OpOutcome {
+    match &pre_push.warning {
+        Some(warning) => OpOutcome {
+            status: "hooks_skipped".into(),
+            message: format!("{}. {warning}", outcome.message),
+        },
+        None => outcome,
+    }
+}
+
+fn forced_refs(refspecs: &[String]) -> HashSet<String> {
+    refspecs
+        .iter()
+        .filter_map(|spec| spec.strip_prefix('+'))
+        .filter_map(|spec| spec.split_once(':').map(|(_, dst)| dst.to_string()))
+        .collect()
+}
+
+fn send(
+    repo: &Repository,
+    remote: &mut git2::Remote<'_>,
+    remote_name: &str,
+    refspecs: &[String],
+    pre_push: &PrePush,
+) -> AppResult<()> {
+    prime_account_bindings(Some(repo));
+    let hook_failure: RefCell<Option<AppError>> = RefCell::new(None);
+    let approved: RefCell<Option<String>> = RefCell::new(None);
+    let mut sent = send_once(repo, remote, refspecs, pre_push, &hook_failure, &approved);
+    if sent.as_ref().is_err_and(connection_broke) && approved.borrow().is_some() {
+        sent = send_once(repo, remote, refspecs, pre_push, &hook_failure, &approved);
+    }
+    if let Some(error) = hook_failure.take() {
+        return Err(error);
+    }
+    let (rejected, server_said) = sent?;
+    if !rejected.is_empty() {
+        return Err(AppError::other(rejection_message(
+            remote_name,
+            &rejected,
+            &server_lines(&server_said),
+        )));
+    }
+    Ok(())
+}
+
+fn connection_broke(error: &git2::Error) -> bool {
+    matches!(
+        error.class(),
+        git2::ErrorClass::Net
+            | git2::ErrorClass::Os
+            | git2::ErrorClass::Ssh
+            | git2::ErrorClass::Http
+            | git2::ErrorClass::Ssl
+    )
+}
+
+fn already_approved(approved: &Option<String>, input: &str) -> bool {
+    approved
+        .as_deref()
+        .is_some_and(|seen| input.lines().all(|line| seen.lines().any(|ok| ok == line)))
+}
+
+type Sent = (Vec<(String, String)>, Vec<u8>);
+
+fn send_once(
+    repo: &Repository,
+    remote: &mut git2::Remote<'_>,
+    refspecs: &[String],
+    pre_push: &PrePush,
+    hook_failure: &RefCell<Option<AppError>>,
+    approved: &RefCell<Option<String>>,
+) -> Result<Sent, git2::Error> {
+    let rejected: Arc<Mutex<Vec<(String, String)>>> = Default::default();
+    let server_said: Arc<Mutex<Vec<u8>>> = Default::default();
+    let forced = forced_refs(refspecs);
     let mut callbacks = make_callbacks();
     {
-        let rejected = std::sync::Arc::clone(&rejected);
+        let rejected = Arc::clone(&rejected);
         callbacks.push_update_reference(move |refname, status| {
             if let Some(reason) = status {
                 rejected
@@ -1080,7 +1210,7 @@ pub fn push(
             }
             Ok(())
         });
-        let server_said = std::sync::Arc::clone(&server_said);
+        let server_said = Arc::clone(&server_said);
         callbacks.sideband_progress(move |data| {
             let mut buffer = server_said.lock().unwrap();
             if buffer.len() < SERVER_MESSAGE_CAP {
@@ -1089,28 +1219,41 @@ pub fn push(
             true
         });
     }
+    if pre_push.active() {
+        callbacks.push_negotiation(|updates| {
+            let refs: Vec<PushedRef> = updates
+                .iter()
+                .map(|update| {
+                    let remote_ref =
+                        String::from_utf8_lossy(update.dst_refname_bytes()).into_owned();
+                    PushedRef {
+                        local_ref: String::from_utf8_lossy(update.src_refname_bytes()).into_owned(),
+                        local: update.dst(),
+                        force: forced.contains(&remote_ref),
+                        remote_ref,
+                        remote: update.src(),
+                    }
+                })
+                .collect();
+            let input = pre_push_input(repo, &refs);
+            if already_approved(&approved.borrow(), &input) {
+                return Ok(());
+            }
+            pre_push.run_input(repo, &input).map_err(|error| {
+                *hook_failure.borrow_mut() = Some(error);
+                git2::Error::from_str("the pre-push hook stopped the push")
+            })?;
+            *approved.borrow_mut() = Some(input);
+            Ok(())
+        });
+    }
     let mut opts = PushOptions::new();
     opts.remote_callbacks(callbacks);
     let specs: Vec<&str> = refspecs.iter().map(String::as_str).collect();
     remote.push(&specs, Some(&mut opts))?;
     let rejected = std::mem::take(&mut *rejected.lock().unwrap());
-    if !rejected.is_empty() {
-        let said = server_lines(&server_said.lock().unwrap());
-        return Err(AppError::other(rejection_message(
-            remote_name,
-            &rejected,
-            &said,
-        )));
-    }
-    track_upstream(&repo)?;
-
-    Ok(OpOutcome {
-        status: "ok".into(),
-        message: format!(
-            "Pushed {branch_name} to {remote_name}{}",
-            if force { " (forced)" } else { "" }
-        ),
-    })
+    let server_said = std::mem::take(&mut *server_said.lock().unwrap());
+    Ok((rejected, server_said))
 }
 
 const SERVER_MESSAGE_CAP: usize = 8 * 1024;
@@ -1323,20 +1466,14 @@ fn point_branch_and_checkout(
     Ok(())
 }
 
-pub fn push_tag(path: &str, remote_name: &str, tag: &str) -> AppResult<OpOutcome> {
-    let repo = super::repo::open(path)?;
-    prime_account_bindings(Some(&repo));
-    let mut remote = repo.find_remote(remote_name)?;
-    let mut opts = PushOptions::new();
-    opts.remote_callbacks(make_callbacks());
-    remote.push(
-        &[&format!("refs/tags/{tag}:refs/tags/{tag}")],
-        Some(&mut opts),
-    )?;
-    Ok(OpOutcome {
-        status: "ok".into(),
-        message: format!("Pushed tag {tag} to {remote_name}"),
-    })
+pub fn push_tag(path: &str, remote_name: &str, tag: &str, no_verify: bool) -> AppResult<OpOutcome> {
+    push_specs_as(
+        path,
+        remote_name,
+        &[format!("refs/tags/{tag}:refs/tags/{tag}")],
+        no_verify,
+        format!("Pushed tag {tag} to {remote_name}"),
+    )
 }
 
 pub fn clone(
@@ -1593,5 +1730,25 @@ mod tests {
             push_refspecs("feature/x", true, &[]),
             vec!["+refs/heads/feature/x:refs/heads/feature/x".to_string()]
         );
+    }
+
+    #[test]
+    fn a_retried_push_skips_only_updates_the_pre_push_hook_already_saw() {
+        let seen =
+            Some("refs/heads/a 1 refs/heads/a 0\nrefs/tags/v1 1 refs/tags/v1 0\n".to_string());
+        assert!(super::already_approved(
+            &seen,
+            "refs/heads/a 1 refs/heads/a 0\nrefs/tags/v1 1 refs/tags/v1 0\n"
+        ));
+        assert!(super::already_approved(
+            &seen,
+            "refs/tags/v1 1 refs/tags/v1 0\n"
+        ));
+        assert!(super::already_approved(&seen, ""));
+        assert!(!super::already_approved(
+            &seen,
+            "refs/heads/a 1 refs/heads/a 2\n"
+        ));
+        assert!(!super::already_approved(&None, ""));
     }
 }
