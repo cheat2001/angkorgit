@@ -1,10 +1,10 @@
 # Roadmap
 
-Updated for v0.25.0 (October 2026). [CHANGELOG.md](../CHANGELOG.md) is the
+Updated for v0.26.0 (November 2026). [CHANGELOG.md](../CHANGELOG.md) is the
 authoritative record of what shipped in each release; this file tracks
 direction.
 
-## Shipped (0.1.0 → 0.25.0)
+## Shipped (0.1.0 → 0.26.0)
 
 - [x] Repository: open, clone (with progress), recents, search, repository tabs (drag to reorder)
 - [x] Commit: stage files, hunks, and individual lines; unstage, commit, amend; per-repo commit drafts; multi-select in the working copy with bulk stage/unstage/stash/discard; discard for staged files; path filter over changed files and commit files
@@ -47,6 +47,8 @@ direction.
 - [x] Pull preview: after a fetch the pull is tried in memory, so the Pull button warns about conflicts (naming the files) or uncommitted edits in the way (offering to stash just them) before anything moves; follows `pull.rebase`
 - [x] Submodules follow the recorded commit after pull, checkout, merge, rebase, cherry-pick, revert, hard reset and stash pop; a drifted submodule gets an Update button on its row
 - [x] Syntax highlighting from the shebang for scripts without an extension
+- [x] Git hooks: `pre-commit` and `commit-msg` on commit and amend, `pre-push` on every push, with the hook output shown on failure and a way to go ahead without hooks
+- [x] Graph: rail-style lines, lanes that keep their spacing, chips in their lane colour, a resizable graph column that scrolls sideways, and the sidebar's branch and tag actions on the graph chips; AI writes a new message while rewording an earlier commit
 
 ## Next
 

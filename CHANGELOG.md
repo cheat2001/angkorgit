@@ -6,6 +6,12 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-11-06
+
+The hooks release. Commits and pushes now run your Git hooks the way `git` does, the
+commit graph is easier to follow in busy repositories, and AI can write a new message
+for a commit you are rewording.
+
 ### Added
 - **Commits run your Git hooks.** `pre-commit` and `commit-msg` now run when you
   commit or amend, from `.git/hooks` or `core.hooksPath` (Husky and similar setups
@@ -30,7 +36,6 @@ All notable changes to AngKorGit are documented here. The format follows
   changes to your AI provider and fills in a new summary and description, following
   your commit style and branch prefix rules. Edit it, then Save message as before;
   the button stops a run that is taking too long.
-
 - **Branch and tag chips in the graph have the sidebar's actions.** Right-click a
   branch chip to rename or delete it, create a branch at it or open it in a new
   worktree, next to the merge, rebase, pull and push entries it already had. Tag chips
@@ -1871,7 +1876,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/cheat2001/angkorgit/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/cheat2001/angkorgit/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/cheat2001/angkorgit/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/cheat2001/angkorgit/compare/v0.22.0...v0.23.0
