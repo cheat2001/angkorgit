@@ -28,7 +28,8 @@ All notable changes to AngKorGit are documented here. The format follows
   never for a repository that was already up to date; a failing hook shows as a warning
   with its output on that repository's row and the rest of the group still updates.
   **Pull all without hooks** in the group menu skips it. Cancel waits for a hook that
-  is already running, the same way it waits for the checkout before it. (#69, #82)
+  is already running, and for anything it left running in the background, the same way
+  it waits for the checkout before it. (#69, #82)
 
 ### Changed
 - **Rebasing a branch that already sits on top of its target does nothing**, like
@@ -37,6 +38,11 @@ All notable changes to AngKorGit are documented here. The format follows
   stop it first.
 - **Fast-forward merges and pulls set `ORIG_HEAD`** to the commit you were on, like
   `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
+
+### Fixed
+- **Discarding several files, or all staged changes, no longer stops at a file it
+  cannot remove.** The other files are still restored, and AngKorGit names the files
+  it could not discard instead of reporting every change as discarded.
 
 ## [0.26.0] — 2026-11-06
 
