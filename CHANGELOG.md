@@ -47,7 +47,8 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
   never for a repository that was already up to date; a failing hook shows as a warning
   with its output on that repository's row and the rest of the group still updates.
   **Pull all without hooks** in the group menu skips it. Cancel waits for a hook that
-  is already running, the same way it waits for the checkout before it. (#69, #82)
+  is already running, and for anything it left running in the background, the same way
+  it waits for the checkout before it. (#69, #82)
 
 ### Changed
 - **Smoother sideways scrolling in the graph.** Scrolling a wide graph sideways no
@@ -91,6 +92,9 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
   folder name, each shows its parent folder after the name. On a full tab strip that
   hint could shrink to its last letter, which looked like a typo next to the
   shortcut. It now keeps a few letters and the ellipsis.
+- **Discarding several files, or all staged changes, no longer stops at a file it
+  cannot remove.** The other files are still restored, and AngKorGit names the files
+  it could not discard instead of reporting every change as discarded.
 
 ## [0.26.0] — 2026-11-06
 
