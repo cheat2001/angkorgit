@@ -81,7 +81,9 @@ export function GroupUpdateDialog({ progress, onClose, onCancel }: {
                 <div key={warning.hook} className="mt-1.5 rounded-md bg-surface-raised px-2.5 py-1.5 text-xs" data-group-hook-warning={warning.hook}>
                   <p className="flex items-start gap-1.5">
                     <AlertTriangle className="mt-px size-3.5 shrink-0 text-primary" aria-hidden />
-                    <span className="break-words">{warning.message} Git ignores its exit code, so the pull stands.</span>
+                    <span className="break-words">
+                      {warning.message} {warning.status === null ? 'The pull stands.' : 'Git ignores its exit code, so the pull stands.'}
+                    </span>
                   </p>
                   {warning.output && (
                     <details className="mt-1">

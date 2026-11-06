@@ -172,7 +172,7 @@ pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatc
         .include_untracked(false)
         .renames_head_to_index(true);
     let statuses = repo.statuses(Some(&mut opts))?;
-    let staged: Vec<_> = statuses
+    let mut staged: Vec<_> = statuses
         .iter()
         .filter(|e| {
             e.status().intersects(
@@ -198,30 +198,53 @@ pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatc
     let mut batch = DiscardBatch::default();
     let mut restored_any = false;
     let mut restored = Vec::new();
-    for (source, destination) in staged {
-        let mut failed_path = &source;
-        let source_result = match destination.as_deref() {
-            Some(file) => discard_rename_source(&repo, &source, file),
-            None => discard_to_head(&repo, &source).map(|()| None),
-        };
-        let result = source_result.and_then(|backup| {
-            restored_any = true;
-            if let Some(file) = &destination {
-                failed_path = file;
-                discard_rename_destination(&repo, file, backup)?;
-            }
-            Ok(())
-        });
-        match result {
-            Ok(()) => restored.push((source, destination)),
-            Err(error) => {
-                repo.index()?.read(true)?;
-                batch.failed.push(DiscardFailure {
-                    path: failed_path.clone(),
-                    message: error.to_string(),
-                });
+    loop {
+        let mut progress = false;
+        let mut deferred = Vec::new();
+        for (source, destination) in staged {
+            let mut failed_path = &source;
+            let source_result = match destination.as_deref() {
+                Some(file) => discard_rename_source(&repo, &source, file),
+                None => discard_to_head(&repo, &source).map(|()| None),
+            };
+            let result = source_result.and_then(|backup| {
+                progress = true;
+                restored_any = true;
+                if let Some(file) = &destination {
+                    failed_path = file;
+                    discard_rename_destination(&repo, file, backup)?;
+                }
+                Ok(())
+            });
+            match result {
+                Ok(()) => restored.push((source, destination)),
+                Err(error) => {
+                    repo.index()?.read(true)?;
+                    let failure = DiscardFailure {
+                        path: failed_path.clone(),
+                        message: error.to_string(),
+                    };
+                    if destination.is_some()
+                        && failed_path == &source
+                        && matches!(error, AppError::Conflict(_))
+                    {
+                        deferred.push((source, destination, failure));
+                    } else {
+                        batch.failed.push(failure);
+                    }
+                }
             }
         }
+        if deferred.is_empty() || !progress {
+            batch
+                .failed
+                .extend(deferred.into_iter().map(|(_, _, failure)| failure));
+            break;
+        }
+        staged = deferred
+            .into_iter()
+            .map(|(source, destination, _)| (source, destination))
+            .collect();
     }
     let remaining = touched_paths(&repo)?;
     batch.leftovers = restored
@@ -246,18 +269,29 @@ fn discard_rename_source(
     let source_path = workdir.join(source);
     let destination_path = workdir.join(destination);
     let Some(blocker) = rename_blocker(&source_path, &destination_path) else {
-        return discard_to_head(repo, source).map(|()| None);
+        if (source_path.is_dir() && !contains_only_empty_directories(&source_path)?)
+            || source_path
+                .ancestors()
+                .skip(1)
+                .take_while(|parent| *parent != workdir)
+                .any(Path::is_file)
+        {
+            return Err(AppError::Conflict(format!(
+                "another path occupies {source}"
+            )));
+        }
+        return restore_rename_source(repo, source, destination).map(|()| None);
     };
     let metadata = match blocker.symlink_metadata() {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == ErrorKind::NotFound => {
-            return discard_to_head(repo, source).map(|()| None);
+            return restore_rename_source(repo, source, destination).map(|()| None);
         }
         Err(error) => return Err(error.into()),
     };
     if metadata.is_dir() && !contains_only_rename_destination(blocker, &destination_path)? {
-        return Err(AppError::other(format!(
-            "Cannot restore {source} while a directory containing other files occupies its path"
+        return Err(AppError::Conflict(format!(
+            "a directory containing other files occupies {source}"
         )));
     }
 
@@ -267,7 +301,7 @@ fn discard_rename_source(
         .tempdir_in(parent)?;
     let original = backup.path().join("original");
     fs::rename(blocker, &original)?;
-    if let Err(error) = discard_to_head(repo, source) {
+    if let Err(error) = restore_rename_source(repo, source, destination) {
         let replacement = backup.path().join("replacement");
         let rollback = match fs::rename(blocker, replacement) {
             Ok(()) => fs::rename(&original, blocker),
@@ -284,6 +318,58 @@ fn discard_rename_source(
         return Err(error);
     }
     Ok(Some(backup))
+}
+
+fn restore_rename_source(repo: &Repository, source: &str, destination: &str) -> AppResult<()> {
+    let tree = repo.head()?.peel_to_tree()?;
+    let source_path = Path::new(source);
+    let destination_path = Path::new(destination);
+    let head_entry = tree.get_path(source_path)?;
+    checkout_head_file(repo, &tree, source, false)?;
+
+    let mut index = repo.index()?;
+    index.read(true)?;
+    if index
+        .get_path(destination_path, 0)
+        .is_some_and(|entry| entry.path == destination.as_bytes())
+    {
+        index.remove(destination_path, 0)?;
+    }
+    let entry = git2::IndexEntry {
+        ctime: git2::IndexTime::new(0, 0),
+        mtime: git2::IndexTime::new(0, 0),
+        dev: 0,
+        ino: 0,
+        mode: head_entry.filemode() as u32,
+        uid: 0,
+        gid: 0,
+        file_size: 0,
+        id: head_entry.id(),
+        flags: 0,
+        flags_extended: 0,
+        path: source.as_bytes().to_vec(),
+    };
+    let expected_len = index.len()
+        + usize::from(
+            !index
+                .get_path(source_path, 0)
+                .is_some_and(|existing| existing.path == entry.path),
+        );
+    index.add(&entry)?;
+    if index.len() != expected_len {
+        return Err(AppError::Conflict(format!(
+            "another staged path occupies {source}"
+        )));
+    }
+    if !index.get_path(source_path, 0).is_some_and(|restored| {
+        restored.path == entry.path && restored.id == entry.id && restored.mode == entry.mode
+    }) {
+        return Err(AppError::other(format!(
+            "Could not restore {source} in the index"
+        )));
+    }
+    index.write()?;
+    Ok(())
 }
 
 fn rename_blocker<'a>(source: &Path, destination: &'a Path) -> Option<&'a Path> {
@@ -334,7 +420,9 @@ fn contains_only_rename_destination(blocker: &Path, destination: &Path) -> AppRe
             return Ok(false);
         }
         for entry in fs::read_dir(parent)? {
-            if entry?.path() != child {
+            let entry = entry?;
+            let path = entry.path();
+            if path != child && !contains_only_empty_directories(&path)? {
                 return Ok(false);
             }
         }
@@ -346,33 +434,29 @@ fn contains_only_rename_destination(blocker: &Path, destination: &Path) -> AppRe
     Ok(false)
 }
 
+fn contains_only_empty_directories(path: &Path) -> AppResult<bool> {
+    if !path.symlink_metadata()?.is_dir() {
+        return Ok(false);
+    }
+    for child in fs::read_dir(path)? {
+        if !contains_only_empty_directories(&child?.path())? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 fn discard_rename_destination(
     repo: &Repository,
     file: &str,
     backup: Option<tempfile::TempDir>,
 ) -> AppResult<()> {
     let Some(backup) = backup else {
-        return discard_to_head(repo, file);
+        let workdir = repo
+            .workdir()
+            .ok_or_else(|| AppError::other("bare repository"))?;
+        return remove_worktree_file(workdir, file);
     };
-    let result = (|| -> AppResult<()> {
-        let mut index = repo.index()?;
-        let path = Path::new(file);
-        if index
-            .get_path(path, 0)
-            .is_some_and(|entry| entry.path == file.as_bytes())
-        {
-            index.remove_path(path)?;
-            index.write()?;
-        }
-        Ok(())
-    })();
-    if let Err(error) = result {
-        let backup_path = backup.keep().join("original");
-        return Err(AppError::other(format!(
-            "{error}. The original is saved at {}",
-            backup_path.display()
-        )));
-    }
     let backup_path = backup.path().to_path_buf();
     backup.close().map_err(|error| {
         AppError::other(format!(
@@ -382,29 +466,41 @@ fn discard_rename_destination(
     })
 }
 
-fn discard_to_head(repo: &git2::Repository, file: &str) -> AppResult<()> {
+fn discard_to_head(repo: &Repository, file: &str) -> AppResult<()> {
     let workdir = repo
         .workdir()
-        .ok_or_else(|| AppError::other("bare repository"))?
-        .to_path_buf();
+        .ok_or_else(|| AppError::other("bare repository"))?;
     let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
-    let in_head = head_tree
-        .as_ref()
-        .map(|t| t.get_path(Path::new(file)).is_ok())
-        .unwrap_or(false);
-    if in_head {
-        let tree = head_tree.as_ref().expect("checked above");
-        let mut builder = git2::build::CheckoutBuilder::new();
-        builder.path(file).disable_pathspec_match(true).force();
-        repo.checkout_tree(tree.as_object(), Some(&mut builder))?;
+    if let Some(tree) = head_tree.filter(|tree| tree.get_path(Path::new(file)).is_ok()) {
+        checkout_head_file(repo, &tree, file, true)
     } else {
         let mut index = repo.index()?;
         let _ = index.remove_path(Path::new(file));
         index.write()?;
-        let full = workdir.join(file);
-        if full.is_file() || full.is_symlink() {
-            std::fs::remove_file(full)?;
-        }
+        remove_worktree_file(workdir, file)
+    }
+}
+
+fn checkout_head_file(
+    repo: &Repository,
+    tree: &git2::Tree<'_>,
+    file: &str,
+    update_index: bool,
+) -> AppResult<()> {
+    let mut builder = git2::build::CheckoutBuilder::new();
+    builder
+        .path(file)
+        .disable_pathspec_match(true)
+        .force()
+        .update_index(update_index);
+    repo.checkout_tree(tree.as_object(), Some(&mut builder))?;
+    Ok(())
+}
+
+fn remove_worktree_file(workdir: &Path, file: &str) -> AppResult<()> {
+    let full = workdir.join(file);
+    if full.is_file() || full.is_symlink() {
+        fs::remove_file(full)?;
     }
     Ok(())
 }
