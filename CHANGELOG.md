@@ -31,9 +31,17 @@ All notable changes to AngKorGit are documented here. The format follows
   your commit style and branch prefix rules. Edit it, then Save message as before;
   the button stops a run that is taking too long.
 
+- **Branch and tag chips in the graph have the sidebar's actions.** Right-click a
+  branch chip to rename or delete it, create a branch at it or open it in a new
+  worktree, next to the merge, rebase, pull and push entries it already had. Tag chips
+  can be checked out, pushed and deleted from the graph too.
+
 ### Fixed
 - Closing a tab right after switching to it (⌘W / Ctrl+W) no longer brings the
   closed tab back a moment later.
+- A tab with a short name and a keyboard shortcut no longer shrinks to a sliver of
+  its first letter when many tabs are open. Every tab keeps at least a few letters of
+  its name, and the shortcut stays visible.
 
 ## [0.25.0] — 2026-10-28
 
