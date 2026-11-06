@@ -3285,6 +3285,9 @@ fn group_pull_matches_toolbar_pull_with_submodule_metadata_and_lfs_attributes() 
 
 #[test]
 fn group_pull_matches_toolbar_pull_with_active_hooks() {
+    if !hooks_runnable() {
+        return;
+    }
     let local = TempRepo::new();
     local.write("a.txt", "base\n");
     commit_all(&local, "base");
@@ -3294,28 +3297,23 @@ fn group_pull_matches_toolbar_pull_with_active_hooks() {
     let toolbar = clone_of(&origin, &local, "toolbar-hooks");
     let repo = git2::Repository::open(other.path()).unwrap();
     let hooks = repo.path().join("custom-hooks");
-    std::fs::create_dir_all(&hooks).unwrap();
     for path in [other.path(), toolbar.path()] {
         core::set_config(Some(path), "core.hooksPath", hooks.to_str().unwrap(), false).unwrap();
     }
     for name in ["post-checkout", "post-merge"] {
-        let hook = hooks.join(name);
-        std::fs::write(&hook, "#!/bin/sh\nprintf invoked > hook-ran\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        write_hook(&hooks, name, &format!("printf '%s' \"$*\" > {name}-ran"));
     }
     local.write("a.txt", "updated\n");
     let new = commit_all(&local, "updated");
     core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     assert_eq!(core::group_update(other.path(), true).unwrap().status, "ok");
-    core::pull(toolbar.path(), "origin", Some("merge")).unwrap();
+    core::post_hooks::pull(toolbar.path(), "origin", Some("merge"), false).unwrap();
     assert_eq!(other.read("a.txt"), toolbar.read("a.txt"));
     assert_eq!(repo.head().unwrap().target().unwrap().to_string(), new);
-    assert!(!other.dir.join("hook-ran").exists());
-    assert!(!toolbar.dir.join("hook-ran").exists());
+    for pulled in [&other, &toolbar] {
+        assert_eq!(pulled.read("post-merge-ran"), "0");
+        assert!(!pulled.dir.join("post-checkout-ran").exists());
+    }
     std::fs::remove_dir_all(origin).unwrap();
 }
 
@@ -3392,8 +3390,8 @@ fn group_cancel_acknowledges_a_stalled_remote_without_waiting_for_the_socket() {
 fn group_run_registry_keeps_cancellation_on_in_flight_handles_after_finish() {
     let local = TempRepo::new();
     let id = local.path();
-    core::group_update_start(id).unwrap();
-    assert!(core::group_update_start(id).is_err());
+    core::group_update_start(id, false).unwrap();
+    assert!(core::group_update_start(id, false).is_err());
     let control = core::group_update_control(id).unwrap();
     assert!(!control.is_cancelled());
     core::group_update_cancel(id).unwrap();
@@ -5218,4 +5216,531 @@ fn an_amend_hook_that_switches_branch_leaves_both_branches_alone() {
     );
     assert_eq!(branch_tip(&repo, "master"), base);
     assert_eq!(branch_tip(&repo, "other"), base);
+}
+
+const POST_HOOK_LOG: &str = ".git/post-hooks.log";
+
+fn record_post_hooks(dir: &std::path::Path, log: &str) {
+    for name in ["post-checkout", "post-merge"] {
+        write_hook(dir, name, &format!("echo \"{name} $*\" >> '{log}'"));
+    }
+    write_hook(
+        dir,
+        "post-rewrite",
+        &format!("{{ echo \"post-rewrite $*\"; cat; }} >> '{log}'"),
+    );
+}
+
+fn post_hook_runs(repo: &TempRepo) -> Vec<String> {
+    let file = repo.dir.join(POST_HOOK_LOG);
+    let text = std::fs::read_to_string(&file).unwrap_or_default();
+    let _ = std::fs::remove_file(&file);
+    text.lines().map(str::to_string).collect()
+}
+
+fn rev(repo: &TempRepo, spec: &str) -> String {
+    git2::Repository::open(repo.path())
+        .unwrap()
+        .revparse_single(spec)
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id()
+        .to_string()
+}
+
+fn shell_path(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+#[test]
+fn post_checkout_runs_for_branch_switches_with_both_heads_and_flag_1() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let first = commit_all(&repo, "one");
+    core::branch_create(repo.path(), "other", None, false).unwrap();
+    repo.write("a.txt", "two\n");
+    let second = commit_all(&repo, "two");
+    record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
+
+    let switched = core::post_hooks::checkout_branch(repo.path(), "other", false).unwrap();
+    assert!(switched.warnings.is_empty());
+    assert_eq!(repo.read("a.txt"), "one\n");
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![format!("post-checkout {second} {first} 1")]
+    );
+
+    core::post_hooks::branch_create(repo.path(), "topic", None, true, false).unwrap();
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![format!("post-checkout {first} {first} 1")]
+    );
+
+    core::post_hooks::branch_create(repo.path(), "quiet", None, false, false).unwrap();
+    assert!(post_hook_runs(&repo).is_empty());
+
+    core::post_hooks::checkout_detached(repo.path(), &second, false).unwrap();
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![format!("post-checkout {first} {second} 1")]
+    );
+}
+
+#[test]
+fn discarding_changes_runs_post_checkout_with_flag_0_like_git_restore() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    repo.write("b.txt", "b\n");
+    let head = commit_all(&repo, "one");
+    record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
+    let restored = vec![format!("post-checkout {head} {head} 0")];
+
+    repo.write("a.txt", "changed\n");
+    core::post_hooks::discard_file(repo.path(), "a.txt", false).unwrap();
+    assert_eq!(repo.read("a.txt"), "one\n");
+    assert_eq!(post_hook_runs(&repo), restored);
+
+    repo.write("new.txt", "untracked\n");
+    core::post_hooks::discard_file(repo.path(), "new.txt", false).unwrap();
+    assert!(!repo.dir.join("new.txt").exists());
+    assert!(post_hook_runs(&repo).is_empty());
+
+    repo.write("new.txt", "untracked\n");
+    core::post_hooks::discard_all(repo.path(), false).unwrap();
+    assert!(post_hook_runs(&repo).is_empty());
+
+    repo.write("a.txt", "changed\n");
+    repo.write("b.txt", "changed\n");
+    core::post_hooks::discard_all(repo.path(), false).unwrap();
+    assert_eq!(post_hook_runs(&repo), restored);
+
+    repo.write("a.txt", "staged\n");
+    core::stage_file(repo.path(), "a.txt").unwrap();
+    core::post_hooks::discard_staged_file(repo.path(), "a.txt", false).unwrap();
+    assert_eq!(post_hook_runs(&repo), restored);
+
+    repo.write("b.txt", "staged\n");
+    core::stage_file(repo.path(), "b.txt").unwrap();
+    core::post_hooks::discard_staged_all(repo.path(), false).unwrap();
+    assert_eq!(repo.read("b.txt"), "b\n");
+    assert_eq!(post_hook_runs(&repo), restored);
+
+    repo.write("a.txt", "stashed\n");
+    core::stash_create(repo.path(), None, false, &[]).unwrap();
+    core::post_hooks::stash_restore_files(repo.path(), 0, &["a.txt".to_string()], false).unwrap();
+    assert_eq!(repo.read("a.txt"), "stashed\n");
+    assert_eq!(post_hook_runs(&repo), restored);
+}
+
+#[test]
+fn post_merge_runs_after_a_merge_commit_and_a_fast_forward_only() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "feature", None, true).unwrap();
+    repo.write("f.txt", "feature\n");
+    commit_all(&repo, "feature");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
+
+    let ff = core::post_hooks::merge(repo.path(), "feature", false, false).unwrap();
+    assert_eq!(ff.value.status, "fast_forward");
+    assert_eq!(post_hook_runs(&repo), vec!["post-merge 0"]);
+
+    let again = core::post_hooks::merge(repo.path(), "feature", false, false).unwrap();
+    assert_eq!(again.value.status, "up_to_date");
+    assert!(post_hook_runs(&repo).is_empty());
+
+    core::branch_create(repo.path(), "side", None, true).unwrap();
+    repo.write("s.txt", "side\n");
+    commit_all(&repo, "side");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("m.txt", "master\n");
+    commit_all(&repo, "master");
+    let merged = core::post_hooks::merge(repo.path(), "side", false, false).unwrap();
+    assert_eq!(merged.value.status, "ok");
+    assert_eq!(head_commit(&repo).1, 2);
+    assert_eq!(post_hook_runs(&repo), vec!["post-merge 0"]);
+
+    core::branch_create(repo.path(), "clash", None, true).unwrap();
+    repo.write("a.txt", "clash\n");
+    commit_all(&repo, "clash");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("a.txt", "master edit\n");
+    commit_all(&repo, "master edit");
+    let conflicted = core::post_hooks::merge(repo.path(), "clash", true, false).unwrap();
+    assert_eq!(conflicted.value.status, "conflicts");
+    assert!(post_hook_runs(&repo).is_empty());
+}
+
+#[test]
+fn post_rewrite_after_amend_and_reword_gets_the_old_and_new_commit() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let first = commit_all(&repo, "one");
+    record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
+
+    repo.write("a.txt", "two\n");
+    core::stage_all(repo.path()).unwrap();
+    let amended = core::post_hooks::amend(repo.path(), Some("one, amended"), false).unwrap();
+    let new = amended.value.oid;
+    assert_ne!(new, first);
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec!["post-rewrite amend".to_string(), format!("{first} {new}")]
+    );
+
+    let reworded = core::post_hooks::reword(repo.path(), &new, "one, reworded", false).unwrap();
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![
+            "post-rewrite amend".to_string(),
+            format!("{new} {}", reworded.value)
+        ]
+    );
+
+    repo.write("b.txt", "b\n");
+    commit_all(&repo, "plain commit");
+    assert!(post_hook_runs(&repo).is_empty());
+}
+
+#[test]
+fn post_rewrite_after_rebase_lists_every_commit_once() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "topic", None, true).unwrap();
+    repo.write("t1.txt", "t1\n");
+    let t1 = commit_all(&repo, "t1");
+    repo.write("t2.txt", "t2\n");
+    let t2 = commit_all(&repo, "t2");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("m.txt", "m\n");
+    let onto = commit_all(&repo, "m");
+    core::checkout_branch(repo.path(), "topic").unwrap();
+    record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
+
+    let rebased = core::post_hooks::rebase(repo.path(), "master", false).unwrap();
+    assert_eq!(rebased.value.status, "ok");
+    assert_eq!(rev(&repo, "HEAD~2"), onto);
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![
+            format!("post-checkout {t2} {onto} 1"),
+            "post-rewrite rebase".to_string(),
+            format!("{t1} {}", rev(&repo, "HEAD~1")),
+            format!("{t2} {}", rev(&repo, "HEAD")),
+        ]
+    );
+
+    let again = core::post_hooks::rebase(repo.path(), "topic", false).unwrap();
+    assert_eq!(again.value.status, "ok");
+    assert!(post_hook_runs(&repo).is_empty());
+}
+
+#[test]
+fn post_rewrite_runs_once_when_a_paused_rebase_completes() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "topic", None, true).unwrap();
+    repo.write("t1.txt", "t1\n");
+    let t1 = commit_all(&repo, "t1");
+    repo.write("a.txt", "topic\n");
+    let t2 = commit_all(&repo, "t2");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("a.txt", "master\n");
+    let onto = commit_all(&repo, "m");
+    core::checkout_branch(repo.path(), "topic").unwrap();
+    record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
+
+    let paused = core::post_hooks::rebase(repo.path(), "master", false).unwrap();
+    assert_eq!(paused.value.status, "conflicts");
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![format!("post-checkout {t2} {onto} 1")]
+    );
+
+    core::conflict_resolve(repo.path(), "a.txt", "resolved\n").unwrap();
+    let done = core::post_hooks::rebase_continue(repo.path(), false).unwrap();
+    assert_eq!(done.value.status, "ok", "{}", done.value.message);
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![
+            "post-rewrite rebase".to_string(),
+            format!("{t1} {}", rev(&repo, "HEAD~1")),
+            format!("{t2} {}", rev(&repo, "HEAD")),
+        ]
+    );
+}
+
+#[test]
+fn interactive_rebase_maps_squashed_commits_and_leaves_out_dropped_ones() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    let base = commit_all(&repo, "base");
+    repo.write("c1.txt", "c1\n");
+    let c1 = commit_all(&repo, "c1");
+    repo.write("c2.txt", "c2\n");
+    let c2 = commit_all(&repo, "c2");
+    repo.write("c3.txt", "c3\n");
+    let c3 = commit_all(&repo, "c3");
+    record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
+
+    let todo = vec![
+        todo_entry(&c1, "pick", None),
+        todo_entry(&c2, "squash", Some("c1 and c2")),
+        todo_entry(&c3, "drop", None),
+    ];
+    let rebased = core::post_hooks::rebase_interactive(repo.path(), &base, &todo, false).unwrap();
+    let squashed = rebased.value;
+    assert_eq!(rev(&repo, "HEAD~1"), base);
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![
+            format!("post-checkout {c3} {base} 1"),
+            "post-rewrite rebase".to_string(),
+            format!("{c1} {squashed}"),
+            format!("{c2} {squashed}"),
+        ]
+    );
+}
+
+#[test]
+fn pull_with_rebase_runs_post_rewrite_and_never_post_merge() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let other = clone_of(&origin, &local, "pull-hooks");
+    record_post_hooks(&default_hooks(&other), POST_HOOK_LOG);
+
+    local.write("b.txt", "b\n");
+    commit_all(&local, "b");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let behind = core::post_hooks::pull(other.path(), "origin", Some("rebase"), false).unwrap();
+    assert_eq!(behind.value.status, "fast_forward");
+    assert_eq!(post_hook_runs(&other), vec!["post-merge 0"]);
+
+    local.write("c.txt", "c\n");
+    commit_all(&local, "c");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    other.write("o.txt", "o\n");
+    let mine = commit_all(&other, "o");
+    let diverged = core::post_hooks::pull(other.path(), "origin", Some("rebase"), false).unwrap();
+    assert_eq!(diverged.value.status, "ok", "{}", diverged.value.message);
+    assert_eq!(head_commit(&other).1, 1);
+    assert_eq!(
+        post_hook_runs(&other),
+        vec![
+            format!("post-checkout {mine} {} 1", rev(&other, "origin/master")),
+            "post-rewrite rebase".to_string(),
+            format!("{mine} {}", rev(&other, "HEAD")),
+        ]
+    );
+
+    local.write("d.txt", "d\n");
+    commit_all(&local, "d");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    other.write("p.txt", "p\n");
+    commit_all(&other, "p");
+    let merged = core::post_hooks::pull(other.path(), "origin", Some("merge"), false).unwrap();
+    assert_eq!(merged.value.status, "ok");
+    assert_eq!(post_hook_runs(&other), vec!["post-merge 0"]);
+
+    let current = core::post_hooks::pull(other.path(), "origin", Some("merge"), false).unwrap();
+    assert_eq!(current.value.status, "up_to_date");
+    assert!(post_hook_runs(&other).is_empty());
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn a_failing_post_hook_is_a_warning_and_the_operation_stands() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let first = commit_all(&repo, "one");
+    core::branch_create(repo.path(), "other", None, false).unwrap();
+    repo.write("a.txt", "two\n");
+    commit_all(&repo, "two");
+    write_hook(
+        &default_hooks(&repo),
+        "post-checkout",
+        "echo checked out >&2\nexit 3",
+    );
+    write_hook(&default_hooks(&repo), "post-merge", "echo merged\nexit 1");
+
+    let switched = core::post_hooks::checkout_branch(repo.path(), "other", false).unwrap();
+    assert_eq!(rev(&repo, "HEAD"), first);
+    assert_eq!(switched.warnings.len(), 1);
+    let warning = &switched.warnings[0];
+    assert_eq!(warning.hook, "post-checkout");
+    assert_eq!(warning.status, Some(3));
+    assert_eq!(
+        warning.message,
+        "The post-checkout hook failed (exit code 3)."
+    );
+    assert_eq!(warning.output, "checked out");
+
+    let merged = core::post_hooks::merge(repo.path(), "master", false, false).unwrap();
+    assert_eq!(merged.value.status, "fast_forward");
+    assert_eq!(rev(&repo, "HEAD"), branch_tip(&repo, "master"));
+    assert_eq!(merged.warnings.len(), 1);
+    assert_eq!(merged.warnings[0].hook, "post-merge");
+    assert_eq!(merged.warnings[0].status, Some(1));
+    assert_eq!(merged.warnings[0].output, "merged");
+}
+
+#[test]
+fn skipping_hooks_suppresses_every_post_hook() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "topic", None, false).unwrap();
+    repo.write("m.txt", "m\n");
+    commit_all(&repo, "m");
+    record_post_hooks(&default_hooks(&repo), POST_HOOK_LOG);
+
+    core::post_hooks::checkout_branch(repo.path(), "topic", true).unwrap();
+    repo.write("t.txt", "t\n");
+    commit_all(&repo, "t");
+    core::post_hooks::rebase(repo.path(), "master", true).unwrap();
+    repo.write("t.txt", "amended\n");
+    core::stage_all(repo.path()).unwrap();
+    core::post_hooks::amend(repo.path(), None, true).unwrap();
+    repo.write("t.txt", "dirty\n");
+    core::post_hooks::discard_file(repo.path(), "t.txt", true).unwrap();
+    core::post_hooks::checkout_branch(repo.path(), "master", true).unwrap();
+    let merged = core::post_hooks::merge(repo.path(), "topic", false, true).unwrap();
+    assert_eq!(merged.value.status, "fast_forward");
+    assert!(merged.warnings.is_empty());
+    assert!(post_hook_runs(&repo).is_empty());
+}
+
+#[test]
+fn group_pull_runs_post_merge_only_where_it_fast_forwarded() {
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let behind = clone_of(&origin, &local, "group-behind");
+    let current = clone_of(&origin, &local, "group-current");
+    let failing = clone_of(&origin, &local, "group-failing");
+    local.write("a.txt", "next\n");
+    let next = commit_all(&local, "next");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    core::pull(current.path(), "origin", None).unwrap();
+    for repo in [&behind, &current] {
+        record_post_hooks(&default_hooks(repo), POST_HOOK_LOG);
+    }
+    write_hook(
+        &default_hooks(&failing),
+        "post-merge",
+        "echo install failed >&2\nexit 2",
+    );
+
+    let control = core::GroupUpdateControl::default();
+    let pulled = core::group_update_controlled(behind.path(), true, &control).unwrap();
+    assert_eq!(pulled.status, "ok");
+    assert!(pulled.hook_warnings.is_empty());
+    assert_eq!(post_hook_runs(&behind), vec!["post-merge 0"]);
+
+    let unchanged = core::group_update_controlled(current.path(), true, &control).unwrap();
+    assert_eq!(unchanged.status, "up_to_date");
+    assert!(post_hook_runs(&current).is_empty());
+
+    let warned = core::group_update_controlled(failing.path(), true, &control).unwrap();
+    assert_eq!(warned.status, "ok");
+    assert_eq!(rev(&failing, "HEAD"), next);
+    assert_eq!(warned.hook_warnings.len(), 1);
+    assert_eq!(warned.hook_warnings[0].hook, "post-merge");
+    assert_eq!(warned.hook_warnings[0].status, Some(2));
+    assert_eq!(warned.hook_warnings[0].output, "install failed");
+
+    local.write("a.txt", "last\n");
+    let last = commit_all(&local, "last");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let skipping = core::GroupUpdateControl::skipping_hooks(true);
+    for repo in [&behind, &failing] {
+        let result = core::group_update_controlled(repo.path(), true, &skipping).unwrap();
+        assert_eq!(result.status, "ok");
+        assert!(result.hook_warnings.is_empty());
+        assert_eq!(rev(repo, "HEAD"), last);
+    }
+    assert!(post_hook_runs(&behind).is_empty());
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[test]
+fn worktree_add_runs_post_checkout_inside_the_new_worktree() {
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("a.txt", "one\n");
+    let head = commit_all(&repo, "one");
+    let log = repo.dir.join(POST_HOOK_LOG);
+    write_hook(
+        &default_hooks(&repo),
+        "post-checkout",
+        &format!(
+            "echo \"post-checkout $*\" >> '{}'\ntouch post-checkout-ran-here",
+            shell_path(&log)
+        ),
+    );
+    let (dir, _cleanup) = worktree_target(&repo, "post-checkout");
+
+    let added = core::post_hooks::worktree_add(
+        repo.path(),
+        &core::WorktreeAddRequest {
+            directory: dir.to_string_lossy().to_string(),
+            branch: "wt".to_string(),
+            create_branch: true,
+            base: None,
+        },
+        false,
+    )
+    .unwrap();
+    assert!(added.warnings.is_empty());
+    assert_eq!(
+        post_hook_runs(&repo),
+        vec![format!("post-checkout {ZERO_OID} {head} 1")]
+    );
+    assert!(dir.join("post-checkout-ran-here").exists());
+    assert!(!repo.dir.join("post-checkout-ran-here").exists());
 }

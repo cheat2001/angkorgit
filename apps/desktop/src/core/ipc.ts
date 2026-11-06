@@ -28,6 +28,7 @@ import type {
   TagInfo,
   WorktreeAddRequest,
   WorktreeInfo,
+  HookWarningEvent,
 } from '@angkorgit/core';
 import type { FileBlame } from '@angkorgit/core';
 let demo = null as unknown as typeof import('./demo');
@@ -116,8 +117,19 @@ export async function fullscreenState(): Promise<boolean> {
     .catch(() => false);
 }
 
+const demoListeners = new Map<string, Set<(payload: unknown) => void>>();
+
+function demoEmit(event: string, payload: unknown): void {
+  for (const handler of demoListeners.get(event) ?? []) handler(payload);
+}
+
 export async function listen(event: string, handler: (payload: unknown) => void): Promise<() => void> {
-  if (!isTauri()) return () => {};
+  if (!isTauri()) {
+    const handlers = demoListeners.get(event) ?? new Set();
+    handlers.add(handler);
+    demoListeners.set(event, handlers);
+    return () => handlers.delete(handler);
+  }
   const { listen } = await import('@tauri-apps/api/event');
   const unlisten = await listen(event, (e) => handler(e.payload));
   return unlisten;
@@ -156,6 +168,46 @@ function demoHooksDelay(): number {
     return 200;
   }
 }
+
+const DEMO_POST_HOOK_OUTPUT: Record<string, string[]> = {
+  'post-checkout': [
+    'Installing dependencies for the checked-out branch…',
+    '\u001b[31mnpm ERR!\u001b[39m network request to registry.npmjs.org failed',
+    'husky - post-checkout script failed (code 1)',
+  ],
+  'post-merge': [
+    'Installing dependencies after the merge…',
+    '\u001b[31mnpm ERR!\u001b[39m network request to registry.npmjs.org failed',
+    'husky - post-merge script failed (code 1)',
+  ],
+};
+
+const DEMO_POST_HOOKS = 'angkorgit-demo-post-hooks';
+
+function demoPostHooks(): 'pass' | 'fail' | null {
+  try {
+    const value = localStorage.getItem(DEMO_POST_HOOKS);
+    return value === 'pass' || value === 'fail' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function demoPostHookWarning(path: string, hook: string): HookWarningEvent {
+  return {
+    repoPath: path,
+    hook,
+    status: 1,
+    message: `The ${hook} hook failed (exit code 1).`,
+    output: (DEMO_POST_HOOK_OUTPUT[hook] ?? []).join('\n'),
+  };
+}
+
+function demoRunPostHook(path: string, hook: string, noVerify = false): void {
+  if (demoPostHooks() === 'fail' && !noVerify) demoEmit('hook-warning', demoPostHookWarning(path, hook));
+}
+
+const demoGroupRunsSkippingHooks = new Set<string>();
 
 const DEMO_PUSH_REJECTED = 'angkorgit-demo-push-rejected';
 const DEMO_CHECKOUT = 'angkorgit-demo-checkout';
@@ -436,7 +488,12 @@ export const ipc = {
     return invoke('commit_amend', { path, message, noVerify });
   },
   async repoHooks(path: string): Promise<string[]> {
-    if (!isTauri()) return demoHooks() ? ['pre-commit', 'pre-push'] : [];
+    if (!isTauri()) {
+      return [
+        ...(demoHooks() ? ['pre-commit', 'pre-push'] : []),
+        ...(demoPostHooks() ? ['post-checkout', 'post-merge'] : []),
+      ];
+    }
     return invoke('repo_hooks', { path });
   },
   async reword(path: string, oid: string, message: string): Promise<string> {
@@ -522,6 +579,7 @@ export const ipc = {
   async checkout(path: string, name: string): Promise<void> {
     if (!isTauri()) {
       if (demoCheckoutMovesHead()) demo.demoCheckout(name);
+      demoRunPostHook(path, 'post-checkout');
       return;
     }
     return invoke('branch_checkout', { path, name });
@@ -614,21 +672,37 @@ export const ipc = {
     }
     return invoke('remote_fetch', { path, remote, tags, prune });
   },
-  async groupStart(runId: string): Promise<void> {
-    if (!isTauri()) return;
-    return invoke('repository_group_start', { runId });
+  async groupStart(runId: string, noVerify = false): Promise<void> {
+    if (!isTauri()) {
+      if (noVerify) demoGroupRunsSkippingHooks.add(runId);
+      return;
+    }
+    return invoke('repository_group_start', { runId, noVerify });
   },
   async groupCancel(runId: string): Promise<GroupUpdateReceipt[]> {
     if (!isTauri()) return [];
     return invoke('repository_group_cancel', { runId });
   },
   async groupFinish(runId: string): Promise<void> {
-    if (!isTauri()) return;
+    if (!isTauri()) {
+      demoGroupRunsSkippingHooks.delete(runId);
+      return;
+    }
     return invoke('repository_group_finish', { runId });
   },
   async groupUpdate(path: string, pull: boolean, runId: string): Promise<GroupUpdateResult> {
     if (!isTauri()) {
       await delay(400);
+      if (pull && demoPostHooks()) {
+        const skipping = demoGroupRunsSkippingHooks.has(runId);
+        const warning = demoPostHooks() === 'fail' && !skipping ? demoPostHookWarning(path, 'post-merge') : null;
+        return {
+          status: 'ok',
+          message: 'Fast-forwarded main by 2 commit(s) (demo)',
+          changes: [{ name: 'main', oldOid: 'a1b2c3d4e5f6', newOid: 'f6e5d4c3b2a1', commits: 2 }],
+          hookWarnings: warning ? [{ hook: warning.hook, status: warning.status, message: warning.message, output: warning.output }] : [],
+        };
+      }
       return { status: 'up_to_date', message: pull ? 'main is already up to date (demo)' : 'Fetched origin; no refs moved (demo)', changes: [] };
     }
     return invoke('repository_group_update', { path, pull, runId });
@@ -637,12 +711,14 @@ export const ipc = {
     if (!isTauri()) return demo.demoPullPreview(demoPullScenario(), remote);
     return invoke('pull_preview', { path, remote });
   },
-  async pull(path: string, remote: string, mode?: 'merge' | 'rebase'): Promise<OpOutcome> {
+  async pull(path: string, remote: string, mode?: 'merge' | 'rebase', noVerify = false): Promise<OpOutcome> {
     if (!isTauri()) {
       await delay(400);
-      return { status: 'ok', message: 'Already up to date (demo)' };
+      if (!demoPostHooks()) return { status: 'ok', message: 'Already up to date (demo)' };
+      demoRunPostHook(path, 'post-merge', noVerify);
+      return { status: 'fast_forward', message: `Fast-forwarded main to ${remote}/main (demo)` };
     }
-    return invoke('remote_pull', { path, remote, mode: mode ?? null });
+    return invoke('remote_pull', { path, remote, mode: mode ?? null, noVerify });
   },
   async push(
     path: string,

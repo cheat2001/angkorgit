@@ -5,13 +5,24 @@ use std::time::Duration;
 
 use git2::{Oid, Repository};
 
+use super::types::HookWarning;
 use crate::ai_cli::{capture, capture_tree_child, search_path, spawn_tree};
 use crate::error::{AppError, AppResult};
 
 pub const PRE_COMMIT: &str = "pre-commit";
 pub const COMMIT_MSG: &str = "commit-msg";
 pub const PRE_PUSH: &str = "pre-push";
-const REPO_HOOKS: &[&str] = &[PRE_COMMIT, COMMIT_MSG, PRE_PUSH];
+pub const POST_CHECKOUT: &str = "post-checkout";
+pub const POST_MERGE: &str = "post-merge";
+pub const POST_REWRITE: &str = "post-rewrite";
+const REPO_HOOKS: &[&str] = &[
+    PRE_COMMIT,
+    COMMIT_MSG,
+    PRE_PUSH,
+    POST_CHECKOUT,
+    POST_MERGE,
+    POST_REWRITE,
+];
 
 const MIN_GIT_VERSION: (u32, u32) = (2, 36);
 const TO_STDIN_VERSION: (u32, u32) = (2, 40);
@@ -207,9 +218,14 @@ fn pick_runner(
         return Ok(Runner::Direct(file));
     }
     let (major, minor) = git.version;
+    let input = if name == PRE_PUSH {
+        "the refs being pushed"
+    } else {
+        "the rewritten commits"
+    };
     Err(format!(
-        "The {name} hook did not run because git {major}.{minor} cannot hand it the refs being \
-         pushed. Git 2.40 or newer is needed to run it."
+        "The {name} hook did not run because git {major}.{minor} cannot hand it {input}. Git \
+         2.40 or newer is needed to run it."
     ))
 }
 
@@ -522,6 +538,134 @@ fn rejected_as_non_fast_forward(repo: &Repository, r: &PushedRef) -> bool {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Rewrite {
+    Amend,
+    Rebase,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum PostHook {
+    Checkout {
+        previous: Oid,
+        new: Oid,
+        branch: bool,
+    },
+    Merge,
+    Rewrite {
+        command: Rewrite,
+        pairs: Vec<(Oid, Oid)>,
+    },
+}
+
+impl PostHook {
+    pub(crate) fn merged(outcome: &super::types::OpOutcome) -> Vec<Self> {
+        match outcome.status.as_str() {
+            "ok" | "fast_forward" => vec![PostHook::Merge],
+            _ => Vec::new(),
+        }
+    }
+
+    pub(crate) fn rebased(pairs: Vec<(Oid, Oid)>) -> Option<Self> {
+        let pairs: Vec<(Oid, Oid)> = pairs.into_iter().filter(|(old, new)| old != new).collect();
+        (!pairs.is_empty()).then_some(PostHook::Rewrite {
+            command: Rewrite::Rebase,
+            pairs,
+        })
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            PostHook::Checkout { .. } => POST_CHECKOUT,
+            PostHook::Merge => POST_MERGE,
+            PostHook::Rewrite { .. } => POST_REWRITE,
+        }
+    }
+
+    fn args(&self) -> Vec<String> {
+        match self {
+            PostHook::Checkout {
+                previous,
+                new,
+                branch,
+            } => vec![
+                previous.to_string(),
+                new.to_string(),
+                if *branch { "1" } else { "0" }.to_string(),
+            ],
+            PostHook::Merge => vec!["0".to_string()],
+            PostHook::Rewrite { command, .. } => vec![match command {
+                Rewrite::Amend => "amend".to_string(),
+                Rewrite::Rebase => "rebase".to_string(),
+            }],
+        }
+    }
+
+    fn input(&self) -> Option<String> {
+        match self {
+            PostHook::Rewrite { pairs, .. } => Some(
+                pairs
+                    .iter()
+                    .map(|(old, new)| format!("{old} {new}\n"))
+                    .collect(),
+            ),
+            _ => None,
+        }
+    }
+}
+
+pub(crate) fn run_post(repo: &Repository, hooks: &[PostHook], no_verify: bool) -> Vec<HookWarning> {
+    let mut warnings: Vec<HookWarning> = Vec::new();
+    let Some(workdir) = repo.workdir() else {
+        return warnings;
+    };
+    if no_verify {
+        return warnings;
+    }
+    for hook in hooks {
+        let name = hook.name();
+        let found = match present(repo, name) {
+            Ok(found) => found,
+            Err(error) => {
+                warnings.push(post_warning(name, None, error.to_string(), String::new()));
+                continue;
+            }
+        };
+        if !found {
+            continue;
+        }
+        let input = hook.input();
+        let runner = match runner(repo, workdir, name, input.is_some()) {
+            Ok(runner) => runner,
+            Err(reason) => {
+                if !warnings.iter().any(|w| w.message == reason) {
+                    warnings.push(post_warning(name, None, reason, String::new()));
+                }
+                continue;
+            }
+        };
+        let args = hook.args();
+        let args: Vec<&OsStr> = args.iter().map(OsStr::new).collect();
+        if let Err(error) = run(repo, &runner, name, &args, &[], input.as_deref()) {
+            let (status, output) = match &error {
+                AppError::Hook { status, output, .. } => (Some(*status), output.clone()),
+                _ => (None, String::new()),
+            };
+            warnings.push(post_warning(name, status, error.to_string(), output));
+        }
+    }
+    warnings
+}
+
+fn post_warning(hook: &str, status: Option<i32>, message: String, output: String) -> HookWarning {
+    HookWarning {
+        hook: hook.to_string(),
+        status,
+        message,
+        output,
+    }
+}
+
 fn commit_env(repo: &Repository, author: &git2::Signature<'_>) -> Vec<(&'static str, OsString)> {
     vec![
         ("GIT_INDEX_FILE", repo.path().join("index").into_os_string()),
@@ -589,6 +733,56 @@ mod tests {
             "@1730103456 -0530"
         );
         assert_eq!(git_date(git2::Time::new(0, 0)), "@0 +0000");
+    }
+
+    #[test]
+    fn post_hooks_get_the_args_and_stdin_git_passes() {
+        let a = Oid::from_str("1111111111111111111111111111111111111111").unwrap();
+        let b = Oid::from_str("2222222222222222222222222222222222222222").unwrap();
+        let switched = PostHook::Checkout {
+            previous: a,
+            new: b,
+            branch: true,
+        };
+        assert_eq!(
+            switched.args(),
+            vec![a.to_string(), b.to_string(), "1".into()]
+        );
+        assert_eq!(switched.input(), None);
+        let restored = PostHook::Checkout {
+            previous: a,
+            new: a,
+            branch: false,
+        };
+        assert_eq!(restored.args()[2], "0");
+        assert_eq!(PostHook::Merge.args(), vec!["0".to_string()]);
+        let amended = PostHook::Rewrite {
+            command: Rewrite::Amend,
+            pairs: vec![(a, a)],
+        };
+        assert_eq!(amended.args(), vec!["amend".to_string()]);
+        assert_eq!(amended.input(), Some(format!("{a} {a}\n")));
+        let Some(rebased) = PostHook::rebased(vec![(a, b), (b, b), (b, a)]) else {
+            panic!("a rebase that rewrote commits must run post-rewrite");
+        };
+        assert_eq!(rebased.args(), vec!["rebase".to_string()]);
+        assert_eq!(rebased.input(), Some(format!("{a} {b}\n{b} {a}\n")));
+        assert_eq!(PostHook::rebased(vec![(a, a)]), None);
+    }
+
+    #[test]
+    fn post_merge_follows_only_a_merge_that_moved_head() {
+        let outcome = |status: &str| super::super::types::OpOutcome {
+            status: status.into(),
+            message: String::new(),
+        };
+        assert_eq!(PostHook::merged(&outcome("ok")), vec![PostHook::Merge]);
+        assert_eq!(
+            PostHook::merged(&outcome("fast_forward")),
+            vec![PostHook::Merge]
+        );
+        assert!(PostHook::merged(&outcome("up_to_date")).is_empty());
+        assert!(PostHook::merged(&outcome("conflicts")).is_empty());
     }
 
     #[test]

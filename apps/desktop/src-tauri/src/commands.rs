@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Emitter, State};
 
+use crate::core::post_hooks::{self, Hooked};
 use crate::core::types::*;
 use crate::core::{
     branch, commit, conflict, diff, files, history, hooks, misc, pull_preview, remote, repo, scan,
@@ -7,6 +8,19 @@ use crate::core::{
 };
 use crate::error::AppResult;
 use crate::terminal::TerminalState;
+
+fn report<T>(app: &AppHandle, repo_path: &str, hooked: Hooked<T>) -> T {
+    for warning in hooked.warnings {
+        let _ = app.emit(
+            "hook-warning",
+            HookWarningEvent {
+                repo_path: repo_path.to_string(),
+                warning,
+            },
+        );
+    }
+    hooked.value
+}
 
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> AppResult<T> + Send + 'static,
@@ -62,12 +76,20 @@ pub async fn repo_clone(
     branch: Option<String>,
 ) -> AppResult<String> {
     let emitter = app.clone();
-    let root = blocking(move || {
-        remote::clone(&url, &into, branch.as_deref(), move |pct| {
-            let _ = emitter.emit("clone-progress", pct);
-        })
+    let cloned = blocking(move || {
+        post_hooks::clone(
+            &url,
+            &into,
+            branch.as_deref(),
+            move |pct| {
+                let _ = emitter.emit("clone-progress", pct);
+            },
+            false,
+        )
     })
     .await?;
+    let root = cloned.value.clone();
+    report(&app, &root, cloned);
     crate::state::recent_add(&app, &root)?;
     Ok(root)
 }
@@ -138,23 +160,31 @@ pub async fn unstage_all(path: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn discard_file(path: String, file: String) -> AppResult<bool> {
-    blocking(move || stage::discard_file(&path, &file)).await
+pub async fn discard_file(app: AppHandle, path: String, file: String) -> AppResult<bool> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::discard_file(&path, &file, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
-pub async fn discard_all(path: String) -> AppResult<Vec<String>> {
-    blocking(move || stage::discard_all(&path)).await
+pub async fn discard_all(app: AppHandle, path: String) -> AppResult<Vec<String>> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::discard_all(&path, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
-pub async fn discard_staged_file(path: String, file: String) -> AppResult<bool> {
-    blocking(move || stage::discard_staged_file(&path, &file)).await
+pub async fn discard_staged_file(app: AppHandle, path: String, file: String) -> AppResult<bool> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::discard_staged_file(&path, &file, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
-pub async fn discard_staged_all(path: String) -> AppResult<Vec<String>> {
-    blocking(move || stage::discard_staged_all(&path)).await
+pub async fn discard_staged_all(app: AppHandle, path: String) -> AppResult<Vec<String>> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::discard_staged_all(&path, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
@@ -305,11 +335,16 @@ pub async fn commit_create(
 
 #[tauri::command]
 pub async fn commit_amend(
+    app: AppHandle,
     path: String,
     message: Option<String>,
     noVerify: Option<bool>,
 ) -> AppResult<CommitOutcome> {
-    blocking(move || commit::amend(&path, message.as_deref(), noVerify.unwrap_or(false))).await
+    let repo_path = path.clone();
+    let hooked =
+        blocking(move || post_hooks::amend(&path, message.as_deref(), noVerify.unwrap_or(false)))
+            .await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
@@ -318,8 +353,15 @@ pub async fn repo_hooks(path: String) -> AppResult<Vec<String>> {
 }
 
 #[tauri::command]
-pub async fn commit_reword(path: String, oid: String, message: String) -> AppResult<String> {
-    blocking(move || commit::reword(&path, &oid, &message)).await
+pub async fn commit_reword(
+    app: AppHandle,
+    path: String,
+    oid: String,
+    message: String,
+) -> AppResult<String> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::reword(&path, &oid, &message, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
@@ -390,17 +432,19 @@ pub async fn branch_list(path: String) -> AppResult<Vec<BranchInfo>> {
 
 #[tauri::command]
 pub async fn branch_create(
+    app: AppHandle,
     path: String,
     name: String,
     fromOid: Option<String>,
     checkout: bool,
 ) -> AppResult<()> {
-    blocking(move || {
-        submodule::synced(&path, || {
-            branch::create(&path, &name, fromOid.as_deref(), checkout)
-        })
+    let repo_path = path.clone();
+    let hooked = blocking(move || {
+        post_hooks::branch_create(&path, &name, fromOid.as_deref(), checkout, false)
     })
-    .await
+    .await?;
+    report(&app, &repo_path, hooked);
+    Ok(())
 }
 
 #[tauri::command]
@@ -414,21 +458,32 @@ pub async fn branch_rename(path: String, oldName: String, newName: String) -> Ap
 }
 
 #[tauri::command]
-pub async fn branch_checkout(path: String, name: String) -> AppResult<()> {
-    blocking(move || submodule::synced(&path, || branch::checkout_branch(&path, &name))).await
+pub async fn branch_checkout(app: AppHandle, path: String, name: String) -> AppResult<()> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::checkout_branch(&path, &name, false)).await?;
+    report(&app, &repo_path, hooked);
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn checkout_detached(path: String, rev: String) -> AppResult<()> {
-    blocking(move || submodule::synced(&path, || branch::checkout_detached(&path, &rev))).await
+pub async fn checkout_detached(app: AppHandle, path: String, rev: String) -> AppResult<()> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::checkout_detached(&path, &rev, false)).await?;
+    report(&app, &repo_path, hooked);
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn branch_merge(path: String, name: String, noFf: Option<bool>) -> AppResult<OpOutcome> {
-    blocking(move || {
-        submodule::synced(&path, || branch::merge(&path, &name, noFf.unwrap_or(false)))
-    })
-    .await
+pub async fn branch_merge(
+    app: AppHandle,
+    path: String,
+    name: String,
+    noFf: Option<bool>,
+) -> AppResult<OpOutcome> {
+    let repo_path = path.clone();
+    let hooked =
+        blocking(move || post_hooks::merge(&path, &name, noFf.unwrap_or(false), false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
@@ -437,13 +492,17 @@ pub async fn merge_abort(path: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn branch_rebase(path: String, upstream: String) -> AppResult<OpOutcome> {
-    blocking(move || submodule::synced(&path, || branch::rebase(&path, &upstream))).await
+pub async fn branch_rebase(app: AppHandle, path: String, upstream: String) -> AppResult<OpOutcome> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::rebase(&path, &upstream, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
-pub async fn rebase_continue(path: String) -> AppResult<OpOutcome> {
-    blocking(move || submodule::synced(&path, || branch::rebase_continue(&path))).await
+pub async fn rebase_continue(app: AppHandle, path: String) -> AppResult<OpOutcome> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::rebase_continue(&path, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
@@ -458,14 +517,15 @@ pub async fn rebase_commits(path: String, baseOid: String) -> AppResult<Vec<Comm
 
 #[tauri::command]
 pub async fn rebase_interactive(
+    app: AppHandle,
     path: String,
     baseOid: String,
     todo: Vec<RebaseTodoEntry>,
 ) -> AppResult<String> {
-    blocking(move || {
-        submodule::synced(&path, || branch::rebase_interactive(&path, &baseOid, &todo))
-    })
-    .await
+    let repo_path = path.clone();
+    let hooked =
+        blocking(move || post_hooks::rebase_interactive(&path, &baseOid, &todo, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
@@ -546,8 +606,8 @@ pub async fn repository_group_update(
 }
 
 #[tauri::command]
-pub fn repository_group_start(runId: String) -> AppResult<()> {
-    crate::core::group_update::start(&runId)
+pub fn repository_group_start(runId: String, noVerify: Option<bool>) -> AppResult<()> {
+    crate::core::group_update::start(&runId, noVerify.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -562,12 +622,18 @@ pub async fn repository_group_finish(runId: String) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn remote_pull(
+    app: AppHandle,
     path: String,
     remote: String,
     mode: Option<String>,
+    noVerify: Option<bool>,
 ) -> AppResult<OpOutcome> {
-    blocking(move || submodule::synced(&path, || remote::pull(&path, &remote, mode.as_deref())))
-        .await
+    let repo_path = path.clone();
+    let hooked = blocking(move || {
+        post_hooks::pull(&path, &remote, mode.as_deref(), noVerify.unwrap_or(false))
+    })
+    .await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
@@ -600,8 +666,14 @@ pub async fn pull_preview(path: String, remote: String) -> AppResult<Option<Pull
 }
 
 #[tauri::command]
-pub async fn remote_pull_branch(path: String, branch: String) -> AppResult<OpOutcome> {
-    blocking(move || remote::pull_branch(&path, &branch)).await
+pub async fn remote_pull_branch(
+    app: AppHandle,
+    path: String,
+    branch: String,
+) -> AppResult<OpOutcome> {
+    let repo_path = path.clone();
+    let hooked = blocking(move || post_hooks::pull_branch(&path, &branch, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
@@ -659,11 +731,15 @@ pub async fn stash_files(path: String, index: usize) -> AppResult<Vec<CommitFile
 
 #[tauri::command]
 pub async fn stash_restore_files(
+    app: AppHandle,
     path: String,
     index: usize,
     paths: Vec<String>,
 ) -> AppResult<Vec<String>> {
-    blocking(move || misc::stash_restore_files(&path, index, &paths)).await
+    let repo_path = path.clone();
+    let hooked =
+        blocking(move || post_hooks::stash_restore_files(&path, index, &paths, false)).await?;
+    Ok(report(&app, &repo_path, hooked))
 }
 
 #[tauri::command]
@@ -702,8 +778,14 @@ pub async fn worktree_list(path: String) -> AppResult<Vec<WorktreeInfo>> {
 }
 
 #[tauri::command]
-pub async fn worktree_add(path: String, request: WorktreeAddRequest) -> AppResult<String> {
-    blocking(move || worktree::add(&path, &request)).await
+pub async fn worktree_add(
+    app: AppHandle,
+    path: String,
+    request: WorktreeAddRequest,
+) -> AppResult<String> {
+    let added = blocking(move || post_hooks::worktree_add(&path, &request, false)).await?;
+    let created = added.value.clone();
+    Ok(report(&app, &created, added))
 }
 
 #[tauri::command]
@@ -950,18 +1032,20 @@ pub async fn forge_request(
 
 #[tauri::command]
 pub async fn pr_checkout(
+    app: AppHandle,
     path: String,
     remote: String,
     sourceRef: String,
     branch: String,
     track: bool,
 ) -> AppResult<()> {
-    blocking(move || {
-        submodule::synced(&path, || {
-            remote::checkout_remote_ref(&path, &remote, &sourceRef, &branch, track)
-        })
+    let repo_path = path.clone();
+    let hooked = blocking(move || {
+        post_hooks::checkout_remote_ref(&path, &remote, &sourceRef, &branch, track, false)
     })
-    .await
+    .await?;
+    report(&app, &repo_path, hooked);
+    Ok(())
 }
 
 #[tauri::command]

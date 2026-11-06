@@ -1160,6 +1160,53 @@ test('the commit box has no Skip hooks box when the repository has no hooks', as
   await page.getByRole('button', { name: 'Push options' }).click();
   await expect(page.getByRole('menuitem', { name: 'Force push' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Push without hooks' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Pull with rebase' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Pull without hooks' })).toHaveCount(0);
+});
+
+test('a failing post-checkout hook warns after the checkout and its output opens in a dialog', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-post-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-checkout', '1');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTitle('develop — click to filter graph, double-click to checkout').dblclick();
+  await expect(page.getByText('Checkout develop done')).toBeVisible();
+  const warning = page.locator('[data-sonner-toast]', { hasText: 'The post-checkout hook failed (exit code 1).' });
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText('Nothing was undone in angkorgit.');
+  await warning.getByRole('button', { name: 'Show output' }).click();
+
+  const dialog = page.locator('[data-hook-warning="post-checkout"]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'The post-checkout hook failed' })).toBeVisible();
+  await expect(dialog).toContainText('Nothing was undone in angkorgit: git ignores the exit code of this hook.');
+  const output = dialog.locator('[data-hook-output]');
+  await expect(output).toContainText('npm ERR! network request to registry.npmjs.org failed');
+  expect(await output.textContent()).not.toContain('\u001b');
+  await expect(dialog.locator('[data-hook-actions]').getByRole('button')).toHaveText(['Copy output', 'Close']);
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+});
+
+test('Pull without hooks skips the post-merge hook that a plain pull runs', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-post-hooks', 'fail'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await page.getByRole('menuitem', { name: 'Pull without hooks' }).click();
+  await expect(page.getByText('Fast-forwarded main to origin/main (demo)')).toBeVisible();
+  await expect(page.getByText('The post-merge hook failed (exit code 1).')).toHaveCount(0);
+
+  await page.getByRole('button', { name: /^Pull/ }).first().click();
+  await expect(page.getByText('The post-merge hook failed (exit code 1).')).toBeVisible();
 });
 
 test('a submodule left at an older commit offers Update submodule instead of Discard', async ({ page }) => {
@@ -3493,6 +3540,43 @@ test('stepping through changes marks the active one and counts it in the header'
   await expect(activeRows().first()).toBeVisible();
 });
 
+
+test('a failing post-merge hook warns on its group pull row and Pull all without hooks skips it', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-post-hooks', 'fail'));
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const [{ useSettings }, { useRepo }] = await Promise.all([
+      import('/src/features/settings/store.ts'), import('/src/features/repository/store.ts'),
+    ]);
+    const repos = ['api', 'web'].map((name) => ({ path: `/projects/${name}`, name, lastOpenedAt: 0 }));
+    useRepo.setState({ recents: repos });
+    useSettings.getState().addRepoGroup('Services', 0, repos.map((r) => r.path));
+  });
+  const header = page.locator('[data-group-header]', { hasText: 'Services' });
+  await header.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled({ timeout: 10_000 });
+  await expect(dialog.getByRole('status')).toContainText('2 updated');
+  await expect(dialog.getByRole('status')).toContainText('2 hook warnings');
+  const warning = dialog.locator('[data-group-hook-warning="post-merge"]').first();
+  await expect(warning).toContainText('The post-merge hook failed (exit code 1). Git ignores its exit code, so the pull stands.');
+  await expect(warning.locator('[data-hook-output]')).toBeHidden();
+  await warning.getByText('Hook output').click();
+  await expect(warning.locator('[data-hook-output]')).toContainText('npm ERR! network request to registry.npmjs.org failed');
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(dialog).toBeHidden();
+
+  await header.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pull all without hooks', exact: true }).click();
+  await expect(dialog.getByRole('heading', { name: 'Pull all without hooks (fast-forward only) — Services' })).toBeVisible();
+  await expect(dialog).toContainText('The post-merge hooks do not run.');
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled({ timeout: 10_000 });
+  await expect(dialog.getByRole('status')).toContainText('2 updated');
+  await expect(dialog.getByRole('status')).not.toContainText('hook warning');
+  await expect(dialog.locator('[data-group-hook-warning]')).toHaveCount(0);
+});
 
 test('group pull summary shows moved refs, skips, failures and unchanged repositories', async ({ page }) => {
   await page.goto('/');

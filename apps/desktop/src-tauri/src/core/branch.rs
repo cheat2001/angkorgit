@@ -2,6 +2,7 @@ use git2::{build::CheckoutBuilder, BranchType, Repository, ResetType};
 
 use crate::error::{AppError, AppResult};
 
+use super::hooks::PostHook;
 use super::types::{BranchInfo, CommitInfo, OpOutcome, RebaseTodoEntry};
 
 pub fn list(path: &str) -> AppResult<Vec<BranchInfo>> {
@@ -264,22 +265,43 @@ pub fn abort_merge(path: &str) -> AppResult<()> {
 }
 
 pub fn rebase(path: &str, upstream: &str) -> AppResult<OpOutcome> {
+    rebase_reporting(path, upstream).map(|(outcome, _)| outcome)
+}
+
+pub(crate) fn rebase_reporting(
+    path: &str,
+    upstream: &str,
+) -> AppResult<(OpOutcome, Vec<PostHook>)> {
     let repo = super::repo::open(path)?;
     let reference = resolve_branch_ref(&repo, upstream)?;
     let upstream_annotated = repo.reference_to_annotated_commit(&reference)?;
     let sig = repo.signature()?;
+    let previous = repo.head()?.peel_to_commit()?.id();
+
+    let onto = upstream_annotated.id();
 
     let mut opts = git2::RebaseOptions::new();
     let mut rebase = repo.rebase(None, Some(&upstream_annotated), None, Some(&mut opts))?;
+    let mut hooks: Vec<PostHook> = (previous != onto)
+        .then_some(PostHook::Checkout {
+            previous,
+            new: onto,
+            branch: true,
+        })
+        .into_iter()
+        .collect();
 
     while let Some(op) = rebase.next() {
         op?;
         let index = repo.index()?;
         if index.has_conflicts() {
-            return Ok(OpOutcome {
-                status: "conflicts".into(),
-                message: "Rebase paused on conflicts. Resolve them, then continue.".into(),
-            });
+            return Ok((
+                OpOutcome {
+                    status: "conflicts".into(),
+                    message: "Rebase paused on conflicts. Resolve them, then continue.".into(),
+                },
+                hooks,
+            ));
         }
         match rebase.commit(None, &sig, None) {
             Ok(_) => {}
@@ -287,14 +309,34 @@ pub fn rebase(path: &str, upstream: &str) -> AppResult<OpOutcome> {
             Err(e) => return Err(e.into()),
         }
     }
+    let rewritten = rewritten_pairs(&repo);
     rebase.finish(Some(&sig))?;
-    Ok(OpOutcome {
-        status: "ok".into(),
-        message: format!("Rebased onto {upstream}"),
-    })
+    hooks.extend(PostHook::rebased(rewritten));
+    Ok((
+        OpOutcome {
+            status: "ok".into(),
+            message: format!("Rebased onto {upstream}"),
+        },
+        hooks,
+    ))
 }
 
-pub fn rebase_continue(path: &str) -> AppResult<OpOutcome> {
+fn rewritten_pairs(repo: &Repository) -> Vec<(git2::Oid, git2::Oid)> {
+    let file = repo.path().join("rebase-merge").join("rewritten");
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| {
+            let mut ids = line.split_whitespace();
+            let old = git2::Oid::from_str(ids.next()?).ok()?;
+            let new = git2::Oid::from_str(ids.next()?).ok()?;
+            Some((old, new))
+        })
+        .collect()
+}
+
+pub(crate) fn rebase_continue(path: &str) -> AppResult<(OpOutcome, Vec<PostHook>)> {
     let repo = super::repo::open(path)?;
     let sig = repo.signature()?;
     let mut rebase = repo.open_rebase(None)?;
@@ -302,10 +344,13 @@ pub fn rebase_continue(path: &str) -> AppResult<OpOutcome> {
     {
         let index = repo.index()?;
         if index.has_conflicts() {
-            return Ok(OpOutcome {
-                status: "conflicts".into(),
-                message: "Conflicts are still unresolved.".into(),
-            });
+            return Ok((
+                OpOutcome {
+                    status: "conflicts".into(),
+                    message: "Conflicts are still unresolved.".into(),
+                },
+                Vec::new(),
+            ));
         }
     }
     match rebase.commit(None, &sig, None) {
@@ -318,10 +363,13 @@ pub fn rebase_continue(path: &str) -> AppResult<OpOutcome> {
         op?;
         let index = repo.index()?;
         if index.has_conflicts() {
-            return Ok(OpOutcome {
-                status: "conflicts".into(),
-                message: "Rebase paused on conflicts. Resolve them, then continue.".into(),
-            });
+            return Ok((
+                OpOutcome {
+                    status: "conflicts".into(),
+                    message: "Rebase paused on conflicts. Resolve them, then continue.".into(),
+                },
+                Vec::new(),
+            ));
         }
         match rebase.commit(None, &sig, None) {
             Ok(_) => {}
@@ -329,11 +377,15 @@ pub fn rebase_continue(path: &str) -> AppResult<OpOutcome> {
             Err(e) => return Err(e.into()),
         }
     }
+    let rewritten = rewritten_pairs(&repo);
     rebase.finish(Some(&sig))?;
-    Ok(OpOutcome {
-        status: "ok".into(),
-        message: "Rebase complete".into(),
-    })
+    Ok((
+        OpOutcome {
+            status: "ok".into(),
+            message: "Rebase complete".into(),
+        },
+        PostHook::rebased(rewritten).into_iter().collect(),
+    ))
 }
 
 pub fn rebase_abort(path: &str) -> AppResult<()> {
@@ -398,9 +450,18 @@ fn ensure_tracked_clean(repo: &Repository) -> AppResult<()> {
 }
 
 pub fn rebase_interactive(path: &str, base: &str, todo: &[RebaseTodoEntry]) -> AppResult<String> {
+    rebase_interactive_reporting(path, base, todo).map(|(head, _)| head)
+}
+
+pub(crate) fn rebase_interactive_reporting(
+    path: &str,
+    base: &str,
+    todo: &[RebaseTodoEntry],
+) -> AppResult<(String, Vec<PostHook>)> {
     let repo = super::repo::open(path)?;
     let sig = super::commit::default_signature(&repo)?;
     ensure_tracked_clean(&repo)?;
+    let previous = repo.head()?.peel_to_commit()?.id();
 
     let range = rebase_commits(path, base)?;
     let allowed: std::collections::HashSet<&str> = range.iter().map(|c| c.oid.as_str()).collect();
@@ -426,8 +487,11 @@ pub fn rebase_interactive(path: &str, base: &str, todo: &[RebaseTodoEntry]) -> A
     }
 
     let base_commit = repo.find_commit(git2::Oid::from_str(base)?)?;
+    let onto = base_commit.id();
     let mut parent = base_commit;
     let mut built_any = false;
+    let mut rewritten: Vec<(git2::Oid, git2::Oid)> = Vec::new();
+    let mut chain: Vec<git2::Oid> = Vec::new();
     for entry in todo {
         if entry.action == "drop" {
             continue;
@@ -464,7 +528,9 @@ pub fn rebase_interactive(path: &str, base: &str, todo: &[RebaseTodoEntry]) -> A
             let parent_refs: Vec<&git2::Commit> = grandparents.iter().collect();
             let oid = repo.commit(None, &parent.author(), &sig, &message, &tree, &parent_refs)?;
             parent = repo.find_commit(oid)?;
+            chain.push(commit.id());
         } else {
+            rewritten.extend(chain.drain(..).map(|old| (old, parent.id())));
             let message = match entry.message.as_deref().map(str::trim) {
                 Some(m) if entry.action == "reword" && !m.is_empty() => m.to_string(),
                 _ => commit.message().unwrap_or("").to_string(),
@@ -472,11 +538,19 @@ pub fn rebase_interactive(path: &str, base: &str, todo: &[RebaseTodoEntry]) -> A
             let oid = repo.commit(None, &commit.author(), &sig, &message, &tree, &[&parent])?;
             parent = repo.find_commit(oid)?;
             built_any = true;
+            chain.push(commit.id());
         }
     }
+    rewritten.extend(chain.drain(..).map(|old| (old, parent.id())));
 
     repo.reset(parent.as_object(), ResetType::Hard, None)?;
-    Ok(parent.id().to_string())
+    let mut hooks = vec![PostHook::Checkout {
+        previous,
+        new: onto,
+        branch: true,
+    }];
+    hooks.extend(PostHook::rebased(rewritten));
+    Ok((parent.id().to_string(), hooks))
 }
 
 fn is_trailer_line(line: &str) -> bool {
