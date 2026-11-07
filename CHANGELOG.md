@@ -6,26 +6,7 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.27.0] — 2026-11-09
-
-The review release. Text is easier to read in every theme, diffs are calmer to review,
-and you can compare any two commits. It also fixes two bugs that cost people work:
-Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
-
 ### Added
-- **Compare two commits** (#55). Select two commits in the graph and choose Compare
-  these commits to see everything that changed between them, with the same file list,
-  diff panel and all files view as a single commit. A swap button turns the direction
-  around, and it works for commits on different branches too.
-- **Copy the path and line from a diff** (#90). Right-click a line in a diff or in file
-  history and choose Copy path and line to get `path:line`, or `path:line:column`
-  when you clicked on the code itself, ready to paste into Vim, Zed or VS Code.
-- **Show only the commits your search matches.** A search still highlights its
-  matches in the full graph. The new filter button next to the match counter narrows
-  the graph to just those commits, for example every "into staging" merge, with the
-  count beside it. It works with the author search and a branch picked in the
-  sidebar, and turning it off brings the full graph back on the commit you had
-  selected.
 - **Checkouts, merges and rewrites run your `post-*` hooks.** `post-checkout`,
   `post-merge` and `post-rewrite` now run after the operations that run them in `git`,
   with the same arguments and input:
@@ -56,6 +37,40 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
   repository past the hook's original deadline. (#69, #82)
 
 ### Changed
+- **Rebasing a branch that already sits on top of its target does nothing**, like
+  `git rebase`: it reports "Already up to date" instead of re-creating the branch's
+  commits with new commit dates. Uncommitted changes or an unfinished operation still
+  stop it first.
+- **Fast-forward merges and pulls set `ORIG_HEAD`** to the commit you were on, like
+  `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
+
+### Fixed
+- **Discarding several files, or all staged changes, no longer stops at a file it
+  cannot remove.** The other files are still restored, and AngKorGit names the files
+  it could not discard instead of reporting every change as discarded.
+
+## [0.27.0] — 2026-11-09
+
+The review release. Text is easier to read in every theme, diffs are calmer to review,
+and you can compare any two commits. It also fixes two bugs that cost people work:
+Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
+
+### Added
+- **Compare two commits** (#55). Select two commits in the graph and choose Compare
+  these commits to see everything that changed between them, with the same file list,
+  diff panel and all files view as a single commit. A swap button turns the direction
+  around, and it works for commits on different branches too.
+- **Copy the path and line from a diff** (#90). Right-click a line in a diff or in file
+  history and choose Copy path and line to get `path:line`, or `path:line:column`
+  when you clicked on the code itself, ready to paste into Vim, Zed or VS Code.
+- **Show only the commits your search matches.** A search still highlights its
+  matches in the full graph. The new filter button next to the match counter narrows
+  the graph to just those commits, for example every "into staging" merge, with the
+  count beside it. It works with the author search and a branch picked in the
+  sidebar, and turning it off brings the full graph back on the commit you had
+  selected.
+
+### Changed
 - **Smoother sideways scrolling in the graph.** Scrolling a wide graph sideways no
   longer repaints every row, so it keeps up with the trackpad. Avatars and merge
   dots whose lane is out of view now stay pinned to the left or right edge of the
@@ -70,12 +85,6 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
   code's own colours show through, and the changed words keep their strong highlight.
   Inline, Split, History and Blame in the diff header now have text labels when
   there is room, and the file name stays whole while the folder part shortens.
-- **Rebasing a branch that already sits on top of its target does nothing**, like
-  `git rebase`: it reports "Already up to date" instead of re-creating the branch's
-  commits with new commit dates. Uncommitted changes or an unfinished operation still
-  stop it first.
-- **Fast-forward merges and pulls set `ORIG_HEAD`** to the commit you were on, like
-  `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
 
 ### Fixed
 - **Continue rebase no longer loses a commit** (#88). When a rebase stopped because
@@ -97,9 +106,6 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
   folder name, each shows its parent folder after the name. On a full tab strip that
   hint could shrink to its last letter, which looked like a typo next to the
   shortcut. It now keeps a few letters and the ellipsis.
-- **Discarding several files, or all staged changes, no longer stops at a file it
-  cannot remove.** The other files are still restored, and AngKorGit names the files
-  it could not discard instead of reporting every change as discarded.
 
 ## [0.26.0] — 2026-11-06
 

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use git2::{Oid, Repository};
@@ -394,8 +394,20 @@ impl Drop for InputFile {
 pub(crate) struct PendingHook {
     name: String,
     timeout: Duration,
-    output: String,
+    output: Arc<OnceLock<String>>,
     processes: BackgroundProcesses,
+}
+
+pub(crate) struct PendingHookWarning {
+    warning: HookWarning,
+    output: Arc<OnceLock<String>>,
+}
+
+impl PendingHookWarning {
+    pub(crate) fn into_warning(mut self) -> HookWarning {
+        self.warning.output = self.output.get().cloned().unwrap_or_default();
+        self.warning
+    }
 }
 
 impl PendingHook {
@@ -403,7 +415,7 @@ impl PendingHook {
         self.processes.retain_for_cancel()
     }
 
-    pub(crate) fn poll_on_cancel(&mut self) -> CancelPoll<HookWarning> {
+    pub(crate) fn poll_on_cancel(&mut self) -> CancelPoll<PendingHookWarning> {
         let outcome = match self.processes.poll_on_cancel() {
             CancelPoll::Waiting(deadline) => return CancelPoll::Waiting(deadline),
             CancelPoll::Finished(outcome) => outcome,
@@ -411,7 +423,7 @@ impl PendingHook {
         CancelPoll::Finished(outcome.map(|outcome| self.cancel_warning(outcome)))
     }
 
-    fn cancel_warning(&mut self, outcome: CancelOutcome) -> HookWarning {
+    fn cancel_warning(&self, outcome: CancelOutcome) -> PendingHookWarning {
         let (timed_out, message) = match outcome {
             CancelOutcome::Unconfirmed => (false, format!(
                 "After the {} hook, Cancel could not confirm that all processes exited. Hook processes may still be running.",
@@ -428,13 +440,10 @@ impl PendingHook {
                 }
             )),
         };
-        post_warning(
-            &self.name,
-            None,
-            timed_out,
-            message,
-            std::mem::take(&mut self.output),
-        )
+        PendingHookWarning {
+            warning: post_warning(&self.name, None, timed_out, message, String::new()),
+            output: self.output.clone(),
+        }
     }
 }
 
@@ -532,9 +541,21 @@ fn run_watched(
         Runner::Direct(_) => input.unwrap_or(""),
         Runner::Git(_) => "",
     };
-    let run = run_tree(child, piped, watch.timeout);
+    let mut background_output = None;
+    let run = run_tree(child, piped, watch.timeout, |processes| {
+        if let Some(retain) = watch.retain {
+            let output = Arc::new(OnceLock::new());
+            background_output = Some(output.clone());
+            retain(PendingHook {
+                name: name.to_string(),
+                timeout: watch.timeout,
+                output,
+                processes,
+            });
+        }
+    });
     let captured = run.captured;
-    if captured.status == 0 && !run.timed_out && run.background.is_none() {
+    if captured.status == 0 && !run.timed_out && background_output.is_none() {
         return Ok(());
     }
     let output = [captured.stdout.trim_end(), captured.stderr.trim_end()]
@@ -543,13 +564,8 @@ fn run_watched(
         .collect::<Vec<_>>()
         .join("\n");
     let output = output_tail(&output, OUTPUT_CAP);
-    if let (Some(retain), Some(processes)) = (watch.retain, run.background) {
-        retain(PendingHook {
-            name: name.to_string(),
-            timeout: watch.timeout,
-            output: output.clone(),
-            processes,
-        });
+    if let Some(background_output) = background_output {
+        let _ = background_output.set(output.clone());
     }
     if captured.status == 0 && !run.timed_out {
         return Ok(());
@@ -1217,6 +1233,82 @@ mod tests {
         assert!(warning.timed_out);
         assert_eq!(warning.output, "installing");
         assert!(receipts.iter().any(|receipt| receipt.path == "later"));
+    }
+
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn group_cancel_enforces_the_hook_deadline_during_output_drain() {
+        use super::super::group_update::GroupUpdateControl;
+        use super::super::types::GroupUpdateResult;
+        use std::time::Instant;
+
+        if !runner_available() {
+            return;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let mut command = crate::proc::hidden("/bin/sh");
+            command.args(["-c", "sleep 1 >/dev/null 2>&1 &"]);
+            let child = spawn_tree(command, true).unwrap();
+            let mut tracking = false;
+            let run = run_tree(child, "", Duration::from_secs(2), |processes| {
+                tracking = processes.is_tracking();
+            });
+            assert!(!run.timed_out);
+            if !tracking {
+                eprintln!("skipping: the kernel cannot track the hook process group");
+                return;
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        let hooks = repo.path().join("hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        let hook = hooks.join(POST_MERGE);
+        let started = repo.path().join("foreground-started");
+        let late_write = repo.path().join("late-write");
+        std::fs::write(&hook, "#!/bin/sh\necho foreground\n: > .git/foreground-started\nsleep 2.4\n(sleep 0.15; echo draining; sleep 0.65; echo late > .git/late-write) &\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let control = &GroupUpdateControl::default();
+        let receipts = std::thread::scope(|scope| {
+            let active = scope.spawn(move || {
+                let retain = |hook| control.record_background_hook("repo", hook);
+                let watch = Watch {
+                    timeout: Duration::from_secs(3),
+                    retain: Some(&retain),
+                };
+                control.with_active_result("repo", || {
+                    let warnings = run_post_watched(&repo, &[PostHook::Merge], false, watch);
+                    assert!(warnings.is_empty(), "{warnings:?}");
+                    Ok(GroupUpdateResult::default())
+                })
+            });
+            let until = Instant::now() + Duration::from_secs(5);
+            while !started.exists() && Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            assert!(started.exists());
+            let receipts = control.cancel_results().unwrap();
+            active.join().unwrap().unwrap();
+            receipts
+        });
+        assert!(
+            !late_write.exists(),
+            "background work wrote past the deadline during output drain"
+        );
+        assert_eq!(receipts.len(), 1);
+        let warnings = &receipts[0].result.hook_warnings;
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].timed_out);
+        assert_eq!(
+            warnings[0].output.lines().collect::<Vec<_>>(),
+            ["foreground", "draining"]
+        );
     }
 
     #[test]

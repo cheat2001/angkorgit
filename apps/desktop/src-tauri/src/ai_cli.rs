@@ -251,11 +251,15 @@ pub(crate) struct TreeRun {
     pub(crate) captured: Captured,
     pub(crate) timed_out: bool,
     pub(crate) exit_unconfirmed: bool,
-    pub(crate) background: Option<BackgroundProcesses>,
 }
 
-pub(crate) fn run_tree(tree: TreeChild, stdin: &str, timeout: Duration) -> TreeRun {
-    gather(tree.child, stdin, timeout, true, tree.leftovers)
+pub(crate) fn run_tree(
+    tree: TreeChild,
+    stdin: &str,
+    timeout: Duration,
+    retain: impl FnOnce(BackgroundProcesses),
+) -> TreeRun {
+    gather(tree.child, stdin, timeout, true, tree.leftovers, retain)
 }
 
 fn timed_out(timeout: Duration) -> AppError {
@@ -640,7 +644,7 @@ mod job {
 }
 
 fn collect(child: Child, stdin: &str, timeout: Duration, whole_tree: bool) -> AppResult<Captured> {
-    let run = gather(child, stdin, timeout, whole_tree, None);
+    let run = gather(child, stdin, timeout, whole_tree, None, |_| {});
     if run.timed_out {
         return Err(timed_out(timeout));
     }
@@ -653,6 +657,7 @@ fn gather(
     timeout: Duration,
     whole_tree: bool,
     mut leftovers: Option<Leftovers>,
+    retain: impl FnOnce(BackgroundProcesses),
 ) -> TreeRun {
     let deadline = Instant::now() + timeout;
     let stdin_data = stdin.as_bytes().to_vec();
@@ -685,6 +690,16 @@ fn gather(
             -1
         }
     };
+    if let Some(leftovers) = leftovers {
+        let mut background = BackgroundProcesses {
+            leftovers: Some(leftovers),
+            deadline,
+            stop_deadline: None,
+        };
+        if background.retain_for_cancel() {
+            retain(background);
+        }
+    }
     let drain_until = Instant::now() + OUTPUT_DRAIN;
     while !(stdout_thread.is_finished() && stderr_thread.is_finished())
         && Instant::now() < drain_until
@@ -707,14 +722,6 @@ fn gather(
         captured,
         timed_out: expired,
         exit_unconfirmed,
-        background: leftovers.and_then(|leftovers| {
-            let mut background = BackgroundProcesses {
-                leftovers: Some(leftovers),
-                deadline,
-                stop_deadline: None,
-            };
-            background.retain_for_cancel().then_some(background)
-        }),
     }
 }
 
@@ -935,6 +942,12 @@ pub fn run(request: CliRunRequest) -> AppResult<CliRunResult> {
 mod tests {
     use super::*;
 
+    fn run_test_tree(tree: TreeChild, timeout: Duration) -> (TreeRun, Option<BackgroundProcesses>) {
+        let mut background = None;
+        let run = run_tree(tree, "", timeout, |processes| background = Some(processes));
+        (run, background)
+    }
+
     #[test]
     fn cursor_version_keys_follow_the_date_and_ignore_other_folders() {
         assert_eq!(cursor_version_key("2026.09.26-abcdef01"), Some(20_260_926));
@@ -1116,7 +1129,7 @@ mod tests {
         ));
         let started = Instant::now();
         let child = spawn_tree(command, false).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(1));
+        let (run, _) = run_test_tree(child, Duration::from_secs(1));
         assert!(run.timed_out, "the sleeping shell must time out");
         assert!(started.elapsed() < Duration::from_secs(10));
         let grandchild: libc::pid_t = std::fs::read_to_string(&pid_file)
@@ -1148,9 +1161,9 @@ mod tests {
         command.args(["/C", "start", "", "/B", "ping", "-n", "3", "127.0.0.1"]);
         let started = Instant::now();
         let child = spawn_tree(command, true).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(30));
+        let (run, background) = run_test_tree(child, Duration::from_secs(30));
         assert!(!run.timed_out);
-        assert_eq!(run.background.unwrap().wait_on_cancel(), None);
+        assert_eq!(background.unwrap().wait_on_cancel(), None);
         assert!(
             started.elapsed() >= Duration::from_millis(1500),
             "returned after {:?}, before the background ping finished",
@@ -1174,10 +1187,10 @@ mod tests {
         command.args(["/C", "start", "", "/B", "ping", "-n", "30", "127.0.0.1"]);
         let started = Instant::now();
         let child = spawn_tree(command, true).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(2));
+        let (run, background) = run_test_tree(child, Duration::from_secs(2));
         assert!(!run.timed_out);
         assert_eq!(
-            run.background.unwrap().wait_on_cancel(),
+            background.unwrap().wait_on_cancel(),
             Some(CancelOutcome::TimedOut { confirmed: true })
         );
         assert!(started.elapsed() < Duration::from_secs(15));
@@ -1189,7 +1202,7 @@ mod tests {
         let mut command = crate::proc::hidden("/bin/sh");
         command.arg("-c").arg("echo started; exec sleep 30");
         let child = spawn_tree(command, true).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(1));
+        let (run, _) = run_test_tree(child, Duration::from_secs(1));
         assert!(run.timed_out);
         assert!(run.exit_unconfirmed);
         assert_eq!(run.captured.stdout.trim(), "started");
@@ -1203,7 +1216,7 @@ mod tests {
             .arg("-c")
             .arg("echo started; echo warming up >&2; sleep 30");
         let child = spawn_tree(command, false).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(1));
+        let (run, _) = run_test_tree(child, Duration::from_secs(1));
         assert!(run.timed_out);
         assert!(run.exit_unconfirmed);
         assert_eq!(run.captured.stdout.trim(), "started");
@@ -1229,7 +1242,7 @@ mod tests {
             .arg("hook")
             .arg(&pid_file);
         let child = spawn_tree(command, track_descendants).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(3));
+        let (run, _) = run_test_tree(child, Duration::from_secs(3));
         let detached: libc::pid_t = std::fs::read_to_string(pid_file)
             .unwrap()
             .trim()
@@ -1266,9 +1279,9 @@ mod tests {
             marker.display()
         ));
         let child = spawn_tree(command, true).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(20));
+        let (run, background) = run_test_tree(child, Duration::from_secs(20));
         assert!(!marker.exists());
-        let background = run.background.unwrap();
+        let background = background.unwrap();
         let tracks_group = background.is_tracking();
         assert_eq!(
             background.wait_on_cancel(),
@@ -1291,10 +1304,10 @@ mod tests {
         command.arg("-c").arg("sleep 30 > /dev/null 2>&1 & echo $!");
         let started = Instant::now();
         let child = spawn_tree(command, true).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(1));
+        let (run, processes) = run_test_tree(child, Duration::from_secs(1));
         assert!(!run.timed_out);
         let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
-        let processes = run.background.unwrap();
+        let processes = processes.unwrap();
         let tracks_group = processes.is_tracking();
         let outcome = processes.wait_on_cancel();
         if !tracks_group {
@@ -1331,7 +1344,7 @@ mod tests {
         command.arg("-c").arg("sleep 30 > /dev/null 2>&1 & echo $!");
         let original = spawn_tree(command, true).unwrap();
         let group = original.child.id();
-        let run = run_tree(original, "", Duration::from_secs(1));
+        let (run, background) = run_test_tree(original, Duration::from_secs(1));
         assert!(!run.timed_out);
         let orphan: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
         assert_eq!(unsafe { libc::kill(orphan, libc::SIGKILL) }, 0);
@@ -1345,7 +1358,7 @@ mod tests {
         command.arg("-c").arg("exec sleep 30");
         let mut unrelated = spawn_tree(command, false).unwrap();
         assert_eq!(unrelated.child.id(), group);
-        let outcome = run.background.unwrap().wait_on_cancel();
+        let outcome = background.unwrap().wait_on_cancel();
         let survived = unrelated.child.try_wait().unwrap().is_none();
         if survived {
             unrelated.child.kill().unwrap();
@@ -1363,7 +1376,7 @@ mod tests {
         command.arg("-c").arg("sleep 30 & echo $!; echo done");
         let started = Instant::now();
         let child = spawn_tree(command, false).unwrap();
-        let run = run_tree(child, "", Duration::from_secs(60));
+        let (run, _) = run_test_tree(child, Duration::from_secs(60));
         assert!(!run.timed_out);
         let captured = run.captured;
         let elapsed = started.elapsed();

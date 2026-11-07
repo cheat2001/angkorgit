@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, TryLockError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, TryLockError};
 use std::time::{Duration, Instant};
 
 use super::hooks::PendingHook;
@@ -14,6 +14,7 @@ pub struct GroupUpdateControl {
     active: Mutex<()>,
     completed: Mutex<HashMap<String, Completed>>,
     background_hooks: Mutex<Vec<(String, PendingHook)>>,
+    background_changed: Condvar,
     cancel_receipt: Mutex<()>,
     no_verify: bool,
 }
@@ -89,8 +90,12 @@ impl GroupUpdateControl {
             if active_done && hooks.is_empty() {
                 break;
             }
-            drop(hooks);
-            std::thread::sleep(next_poll.saturating_duration_since(Instant::now()));
+            let wait = next_poll.saturating_duration_since(Instant::now());
+            drop(
+                self.background_changed
+                    .wait_timeout(hooks, wait)
+                    .map_err(|_| AppError::other("Group hook lock poisoned"))?,
+            );
         }
         let completed = {
             let mut completed = self
@@ -99,7 +104,7 @@ impl GroupUpdateControl {
                 .map_err(|_| AppError::other("Group results lock poisoned"))?;
             for (path, warning) in warnings {
                 if let Some(Completed::Result(result)) = completed.get_mut(&path) {
-                    result.hook_warnings.push(warning);
+                    result.hook_warnings.push(warning.into_warning());
                 }
             }
             completed.clone()
@@ -145,6 +150,7 @@ impl GroupUpdateControl {
             hooks.retain_mut(|(_, hook)| hook.retain_for_cancel());
         }
         hooks.push((path.into(), hook));
+        self.background_changed.notify_one();
     }
 
     pub(super) fn record_fetch(&self, path: &str, progress: FetchProgress) -> AppResult<()> {

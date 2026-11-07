@@ -389,6 +389,10 @@ fn rewritten_pairs(repo: &Repository) -> Vec<(git2::Oid, git2::Oid)> {
         .collect()
 }
 
+pub fn rebase_continue(path: &str) -> AppResult<OpOutcome> {
+    rebase_continue_with_hooks(path, &mut PostHooks::off())
+}
+
 pub(crate) fn rebase_continue_with_hooks(
     path: &str,
     hooks: &mut PostHooks,
@@ -400,7 +404,7 @@ pub(crate) fn rebase_continue_with_hooks(
         hooks.skip();
     }
     if reapply_stopped_step(&repo, &mut rebase)? {
-        return paused_rebase(&repo, hooks);
+        return Ok(paused_rebase());
     }
 
     {
