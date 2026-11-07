@@ -4390,7 +4390,9 @@ update CLAUDE.md or docs/ — never the code.
   file cleanup can work in a writable, searchable directory without read
   permission. The exact-spelling check for symlinks opens a readable descriptor
   only when it needs to list names. Windows holds each checked directory
-  open without write or delete sharing and skips reparse-point parents.
+  open without write or delete sharing and skips reparse-point parents. To move
+  or restore a destination backup under these guards, rename the open file to
+  a sibling basename with `NtSetInformationFile(FileRenameInformation)`.
   Complete these checks before changing the index and retain the checked
   directory handles through removal. An unreadable parent can block a symlink
   check, in which case the staged blob stays in the index.

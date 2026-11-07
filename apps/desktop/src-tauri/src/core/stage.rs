@@ -930,27 +930,19 @@ impl WorktreeFileRemoval {
 
     fn back_up(self, _path: &Path) -> AppResult<WorktreeFileBackup> {
         let parent = self.path.parent().expect("path is inside the worktree");
-        let saved_path = tempfile::Builder::new()
+        let (saved_path, kind) = tempfile::Builder::new()
             .prefix(".angkorgit-discard-")
             .disable_cleanup(true)
             .make_in(parent, |path| {
-                move_worktree_entry(&self.path, path)?;
-                Ok(path.to_path_buf())
+                let kind = rename_worktree_entry(&self.path, path)?;
+                Ok((path.to_path_buf(), kind))
             })?
             .into_file();
-        let backup = WorktreeFileBackup {
+        Ok(WorktreeFileBackup {
             original: self,
             saved_path,
-        };
-        let error = match backup.saved_path.symlink_metadata() {
-            Ok(metadata) if metadata.is_file() || metadata.is_symlink() => return Ok(backup),
-            Ok(_) => AppError::Conflict("the rename destination changed during discard".into()),
-            Err(error) => error.into(),
-        };
-        backup
-            .restore()
-            .map_err(|rollback| AppError::other(format!("{error}. {rollback}")))?;
-        Err(error)
+            kind,
+        })
     }
 }
 
@@ -958,17 +950,19 @@ impl WorktreeFileRemoval {
 struct WorktreeFileBackup {
     original: WorktreeFileRemoval,
     saved_path: PathBuf,
+    kind: fs::FileType,
 }
 
 #[cfg(windows)]
 impl WorktreeFileBackup {
     fn restore(self) -> AppResult<()> {
-        move_worktree_entry(&self.saved_path, &self.original.path)
+        rename_worktree_entry(&self.saved_path, &self.original.path)
+            .map(|_| ())
             .map_err(|error| destination_restore_error(&self.saved_path, error))
     }
 
     fn discard(self) -> AppResult<()> {
-        remove_worktree_entry(&self.saved_path, self.original.kind).map_err(|error| {
+        remove_worktree_entry(&self.saved_path, self.kind).map_err(|error| {
             AppError::other(format!(
                 "Could not remove the backup at {}: {error}",
                 self.saved_path.display()
@@ -978,22 +972,61 @@ impl WorktreeFileBackup {
 }
 
 #[cfg(windows)]
-fn move_worktree_entry(from: &Path, to: &Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
-
-    let wide = |path: &Path| {
-        path.as_os_str()
-            .encode_wide()
-            .chain([0])
-            .collect::<Vec<_>>()
+fn rename_worktree_entry(from: &Path, to: &Path) -> std::io::Result<fs::FileType> {
+    use std::mem::size_of;
+    use std::os::windows::{ffi::OsStrExt, fs::OpenOptionsExt, io::AsRawHandle};
+    use std::ptr;
+    use windows_sys::Wdk::Storage::FileSystem::{
+        FileRenameInformation, NtSetInformationFile, FILE_RENAME_INFORMATION,
     };
-    let from = wide(from);
-    let to = wide(to);
-    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), 0) } == 0 {
-        return Err(std::io::Error::last_os_error());
+    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
+    use windows_sys::Win32::Storage::FileSystem::{
+        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ, FILE_SHARE_WRITE,
+    };
+    use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
+
+    debug_assert_eq!(from.parent(), to.parent());
+    let entry = fs::OpenOptions::new()
+        .access_mode(DELETE | FILE_READ_ATTRIBUTES)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(from)?;
+    let kind = entry.metadata()?.file_type();
+    if !kind.is_file() && !kind.is_symlink() {
+        return Err(std::io::Error::other(
+            "the rename destination changed during discard",
+        ));
     }
-    Ok(())
+    let name: Vec<_> = to
+        .file_name()
+        .expect("rename destination has a name")
+        .encode_wide()
+        .collect();
+    let name_bytes = name.len() * size_of::<u16>();
+    let buffer_size = size_of::<FILE_RENAME_INFORMATION>() + name_bytes;
+    let mut buffer = vec![0usize; buffer_size.div_ceil(size_of::<usize>())];
+    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+    let mut status_block = IO_STATUS_BLOCK::default();
+    let status = unsafe {
+        (*info).FileNameLength = name_bytes as u32;
+        ptr::addr_of_mut!((*info).FileName)
+            .cast::<u16>()
+            .copy_from_nonoverlapping(name.as_ptr(), name.len());
+        NtSetInformationFile(
+            entry.as_raw_handle(),
+            &mut status_block,
+            info.cast(),
+            buffer_size as u32,
+            FileRenameInformation,
+        )
+    };
+    if status < 0 {
+        return Err(std::io::Error::from_raw_os_error(
+            unsafe { RtlNtStatusToDosError(status) } as i32,
+        ));
+    }
+    Ok(kind)
 }
 
 fn destination_restore_error(path: &Path, error: impl std::fmt::Display) -> AppError {
