@@ -6,6 +6,14 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Show only the commits your search matches.** A search still highlights its
+  matches in the full graph. The new filter button next to the match counter narrows
+  the graph to just those commits, for example every "into staging" merge, with the
+  count beside it. It works with the author search and a branch picked in the
+  sidebar, and turning it off brings the full graph back on the commit you had
+  selected.
+
 ## [0.26.0] — 2026-11-06
 
 The hooks release. Commits and pushes now run your Git hooks the way `git` does, the
