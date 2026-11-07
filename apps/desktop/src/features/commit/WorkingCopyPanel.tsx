@@ -72,6 +72,10 @@ function statusBadge(kind: string | null) {
 
 const COMMIT_HOOKS = ['pre-commit', 'commit-msg'];
 
+function hookList(names: string[]): string {
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? '');
+}
+
 function submoduleDrift(file: FileStatus, staged: boolean): string | null {
   if (staged || !file.submodule) return null;
   return `Submodule checked out at ${file.submodule.checkedOut.slice(0, 7)}, this repository records ${file.submodule.recorded.slice(0, 7)}`;
@@ -354,7 +358,10 @@ export function WorkingCopyPanel() {
   const statusVersion = useRepo((s) => s.statusVersion);
   const statusReady = status !== null;
   const repoHooks = useRepoHooks(path);
-  const commitHooks = useMemo(() => repoHooks.filter((name) => COMMIT_HOOKS.includes(name)), [repoHooks]);
+  const commitHooks = useMemo(
+    () => repoHooks.found.filter((name) => COMMIT_HOOKS.includes(name) || (amend && name === 'post-rewrite')),
+    [repoHooks, amend],
+  );
   const skipHooks = useCommitWork((s) => !!s.skipHooks[path]);
   const setSkipHooks = (skip: boolean) => useCommitWork.getState().setSkipHooks(path, skip);
   const [indexPaths, setIndexPaths] = useState<string[] | null>(null);
@@ -515,24 +522,32 @@ export function WorkingCopyPanel() {
     );
 
   const discardMany = async (paths: string[], staged: boolean) => {
-    const leftovers: string[] = [];
+    let batch: Awaited<ReturnType<typeof ipc.discardFiles>>;
     try {
-      for (const file of paths) {
-        const clean = staged ? await ipc.discardStagedFile(path, file) : await ipc.discardFile(path, file);
-        if (!clean) leftovers.push(file);
-      }
+      batch = await ipc.discardFiles(path, paths, staged);
     } catch (error) {
       toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
+      await refreshStatus();
+      return;
     }
     await refreshStatus();
+    const { leftovers, failed } = batch;
+    const list = (files: string[]) =>
+      files.slice(0, 3).join(', ') + (files.length > 3 ? ` +${files.length - 3} more` : '');
+    if (failed.length > 0) {
+      toast.error(`${failed.length} of ${paths.length} files could not be discarded: ${list(failed.map((f) => f.path))}`, {
+        description: failed[0].message,
+      });
+    }
     if (leftovers.length > 0) {
-      const listed = leftovers.slice(0, 3).join(', ') + (leftovers.length > 3 ? ` +${leftovers.length - 3} more` : '');
+      const listed = list(leftovers);
       toast.error(
         leftovers.some(isSubmodule)
           ? `${leftovers.length} change${leftovers.length === 1 ? '' : 's'} could not be discarded (${listed}). Submodule changes must be discarded inside the submodule repository.`
           : `${leftovers.length} change${leftovers.length === 1 ? '' : 's'} could not be discarded: ${listed}`,
       );
-    } else {
+    }
+    if (failed.length === 0 && leftovers.length === 0) {
       toast.success(`Discarded ${paths.length} change${paths.length === 1 ? '' : 's'}`);
     }
   };
@@ -552,17 +567,28 @@ export function WorkingCopyPanel() {
 
   const discardAllStaged = async () => {
     const before = allStaged.length;
+    let batch: Awaited<ReturnType<typeof ipc.discardStagedAll>>;
     try {
-      const remaining = await ipc.discardStagedAll(path);
-      await refreshStatus();
-      if (remaining.length > 0) {
-        const listed = remaining.slice(0, 3).join(', ') + (remaining.length > 3 ? ` +${remaining.length - 3} more` : '');
-        toast.error(`${remaining.length} staged change${remaining.length === 1 ? '' : 's'} could not be discarded: ${listed}`);
-      } else if (before > 0) {
-        toast.success(`Discarded ${before} staged change${before === 1 ? '' : 's'}`);
-      }
+      batch = await ipc.discardStagedAll(path);
     } catch (error) {
       toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
+      await refreshStatus();
+      return;
+    }
+    await refreshStatus();
+    const { leftovers: remaining, failed } = batch;
+    const list = (files: string[]) =>
+      files.slice(0, 3).join(', ') + (files.length > 3 ? ` +${files.length - 3} more` : '');
+    if (failed.length > 0) {
+      toast.error(`${failed.length} of ${before} staged files could not be discarded: ${list(failed.map((f) => f.path))}`, {
+        description: failed[0].message,
+      });
+    }
+    if (remaining.length > 0) {
+      toast.error(`${remaining.length} staged change${remaining.length === 1 ? '' : 's'} could not be discarded: ${list(remaining)}`);
+    }
+    if (failed.length === 0 && remaining.length === 0 && before > 0) {
+      toast.success(`Discarded ${before} staged change${before === 1 ? '' : 's'}`);
     }
   };
 
@@ -1484,7 +1510,9 @@ export function WorkingCopyPanel() {
                 <Undo2 className="size-3" /> Amend
               </label>
               {commitHooks.length > 0 && (
-                <Hint label={`Commit without running the ${commitHooks.join(' and ')} hook${commitHooks.length === 1 ? '' : 's'}, like --no-verify`}>
+                <Hint
+                  label={`${amend ? 'Amend' : 'Commit'} without running the ${hookList(commitHooks)} hook${commitHooks.length === 1 ? '' : 's'}${commitHooks.includes('post-rewrite') ? '' : ', like --no-verify'}`}
+                >
                   <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted" data-skip-hooks>
                     <Checkbox
                       checked={skipHooks}

@@ -10,6 +10,7 @@ pub mod group_update;
 pub mod history;
 pub mod hooks;
 pub mod misc;
+pub mod post_hooks;
 pub mod pull_preview;
 pub mod remote;
 pub mod repo;

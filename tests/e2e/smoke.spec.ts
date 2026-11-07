@@ -1160,6 +1160,212 @@ test('the commit box has no Skip hooks box when the repository has no hooks', as
   await page.getByRole('button', { name: 'Push options' }).click();
   await expect(page.getByRole('menuitem', { name: 'Force push' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Push without hooks' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Pull with rebase' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Pull without hooks' })).toHaveCount(0);
+});
+
+test('a failing post-checkout hook warns after the checkout and its output opens in a dialog', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-post-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-checkout', '1');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTitle('develop — click to filter graph, double-click to checkout').dblclick();
+  await expect(page.getByText('Checkout develop done')).toBeVisible();
+  const warning = page.locator('[data-sonner-toast]', { hasText: 'The post-checkout hook failed (exit code 1).' });
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText('Nothing was undone in angkorgit.');
+  await warning.getByRole('button', { name: 'Show output' }).click();
+
+  const dialog = page.locator('[data-hook-warning="post-checkout"]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'The post-checkout hook failed' })).toBeVisible();
+  await expect(dialog).toContainText('Nothing was undone in angkorgit: git ignores the exit code of this hook.');
+  const output = dialog.locator('[data-hook-output]');
+  await expect(output).toContainText('npm ERR! network request to registry.npmjs.org failed');
+  expect(await output.textContent()).not.toContain('\u001b');
+  await expect(dialog.locator('[data-hook-actions]').getByRole('button')).toHaveText(['Copy output', 'Close']);
+  await dialog.locator('[data-hook-actions]').getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+});
+
+test('an unconfirmed post-hook timeout exposes details without hook output', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const { reportHookWarning } = await import('/src/components/hookWarnings.tsx');
+    reportHookWarning({
+      repoPath: '/projects/angkorgit',
+      hook: 'post-checkout',
+      status: null,
+      timedOut: true,
+      message: 'The post-checkout hook did not finish within 600 seconds. AngKorGit could not confirm that all hook processes exited.',
+      output: '',
+    });
+  });
+
+  const warning = page.locator('[data-sonner-toast]', { hasText: 'The post-checkout hook timed out' });
+  await expect(warning).toContainText('AngKorGit could not confirm that all hook processes exited.');
+  await expect(warning).not.toContainText('It was stopped.');
+  await warning.getByRole('button', { name: 'Show details' }).click();
+  const dialog = page.locator('[data-hook-warning="post-checkout"]');
+  await expect(dialog).toContainText('AngKorGit could not confirm that all hook processes exited.');
+  await expect(dialog.getByText('The hook printed nothing.')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Copy output' })).toBeDisabled();
+});
+
+test('a running post-checkout is visible and prevents another checkout in the same repository', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-post-hooks', 'pass');
+    localStorage.setItem('angkorgit-demo-hooks-delay', '2500');
+    localStorage.setItem('angkorgit-demo-checkout', '1');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTitle('develop — click to filter graph, double-click to checkout').dblclick();
+  const running = page.getByText('Running post-checkout…', { exact: true });
+  await expect(running).toBeVisible();
+  const main = page.getByTitle('main — click to filter graph, double-click to checkout');
+  await main.dblclick();
+  await expect(page.getByText(/Checkout main failed: Another operation is still running/)).toBeVisible();
+  await expect(page.getByText('Checkout develop done')).toBeVisible();
+  await expect(running).toBeHidden();
+
+  await main.dblclick();
+  await expect(running).toBeVisible();
+  await expect(page.getByText('Checkout main done')).toBeVisible();
+  await expect(running).toBeHidden();
+});
+
+test('a hook folder inside the worktree offers the without-hooks pulls before any hook exists', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-hooks-in-worktree', '1'));
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const { useSettings } = await import('/src/features/settings/store.ts');
+    const { useRepo } = await import('/src/features/repository/store.ts');
+    const paths = useRepo.getState().recents.slice(0, 2).map((r) => r.path);
+    useSettings.getState().addRepoGroup('Husky', 0, paths);
+  });
+  await page.locator('[data-group-header]', { hasText: 'Husky' }).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Pull all without hooks', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Pull without hooks' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Push options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Force push' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Push without hooks' })).toHaveCount(0);
+});
+
+test('the Pull menu checks the hooks again each time it opens', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Pull with rebase' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Pull without hooks' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  await page.evaluate(() => localStorage.setItem('angkorgit-demo-hooks-in-worktree', '1'));
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Pull without hooks' })).toBeVisible();
+});
+
+test('Pull without hooks goes through the conflict check first and still skips the hook', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-post-hooks', 'fail');
+    localStorage.setItem('angkorgit-demo-pull-preview', 'conflicts');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.locator('[data-pull-warning="conflicts"]')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await page.getByRole('menuitem', { name: 'Pull without hooks' }).click();
+  const check = page.locator('[data-pull-check="conflicts"]');
+  await expect(check.getByText('This pull will conflict')).toBeVisible();
+  await check.getByRole('button', { name: 'Pull and resolve' }).click();
+  await expect(page.getByText('Fast-forwarded main to origin/main (demo)')).toBeVisible();
+  await page.waitForTimeout(1000);
+  expect(await page.getByText('The post-merge hook failed (exit code 1).').count()).toBe(0);
+});
+
+test('a bulk discard that fails for one file says so and does not claim success', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-discard-fails', 'src/data/palette-seed.sql'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByText('ipc.ts', { exact: true }).first().click();
+  await page.getByText('Architecture.md', { exact: true }).first().click({ modifiers: ['Shift'] });
+  await page.getByText('palette-seed.sql', { exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /Discard changes in 3 files/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Discard' }).click();
+  await expect(page.getByText('1 of 3 files could not be discarded: src/data/palette-seed.sql')).toBeVisible();
+  await expect(page.getByText('Permission denied (os error 13)')).toBeVisible();
+  await page.waitForTimeout(1000);
+  expect(await page.locator('[data-sonner-toast]', { hasText: 'Discarded 3 changes' }).count()).toBe(0);
+});
+
+test('discarding every staged change names the file that failed and does not claim success', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-discard-fails', 'src/old-layout.tsx'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  const stagedCount = demoStatus.files.filter((file) => file.staged).length;
+  await page.getByRole('button', { name: 'Discard all staged changes' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Discard all' }).click();
+  await expect(
+    page.getByText(`1 of ${stagedCount} staged files could not be discarded: src/old-layout.tsx`),
+  ).toBeVisible();
+  await expect(page.getByText('Permission denied (os error 13)')).toBeVisible();
+  await page.waitForTimeout(1000);
+  expect(await page.locator('[data-sonner-toast]', { hasText: /^Discarded/ }).count()).toBe(0);
+});
+
+test('discarding several files at once runs post-checkout once', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-post-hooks', 'fail'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByText('ipc.ts', { exact: true }).first().click();
+  await page.getByText('Architecture.md', { exact: true }).first().click({ modifiers: ['Shift'] });
+  await expect(page.locator('[data-selected-file-row]')).toHaveCount(3);
+  await page.getByText('palette-seed.sql', { exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /Discard changes in 3 files/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Discard' }).click();
+  await expect(page.getByText('The post-checkout hook failed (exit code 1).')).toHaveCount(1);
+  await page.waitForTimeout(1000);
+  await expect(page.getByText('The post-checkout hook failed (exit code 1).')).toHaveCount(1);
+});
+
+test('Pull without hooks skips the post-merge hook that a plain pull runs', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-post-hooks', 'fail'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByRole('button', { name: 'Pull options' }).click();
+  await page.getByRole('menuitem', { name: 'Pull without hooks' }).click();
+  await expect(page.getByText('Fast-forwarded main to origin/main (demo)')).toBeVisible();
+  await page.waitForTimeout(1000);
+  expect(await page.getByText('The post-merge hook failed (exit code 1).').count()).toBe(0);
+
+  await page.getByRole('button', { name: /^Pull/ }).first().click();
+  await expect(page.getByText('The post-merge hook failed (exit code 1).')).toBeVisible();
 });
 
 test('a submodule left at an older commit offers Update submodule instead of Discard', async ({ page }) => {
@@ -3529,6 +3735,80 @@ test('stepping through changes marks the active one and counts it in the header'
   await expect(activeRows().first()).toBeVisible();
 });
 
+
+test('a failing post-merge hook warns on its group pull row and Pull all without hooks skips it', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-post-hooks', 'fail'));
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const [{ useSettings }, { useRepo }] = await Promise.all([
+      import('/src/features/settings/store.ts'), import('/src/features/repository/store.ts'),
+    ]);
+    const repos = ['api', 'web'].map((name) => ({ path: `/projects/${name}`, name, lastOpenedAt: 0 }));
+    useRepo.setState({ recents: repos });
+    useSettings.getState().addRepoGroup('Services', 0, repos.map((r) => r.path));
+  });
+  const header = page.locator('[data-group-header]', { hasText: 'Services' });
+  await header.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled({ timeout: 10_000 });
+  await expect(dialog.getByRole('status')).toContainText('2 updated');
+  await expect(dialog.getByRole('status')).toContainText('2 hook warnings');
+  const warning = dialog.locator('[data-group-hook-warning="post-merge"]').first();
+  await expect(warning).toContainText('The post-merge hook failed (exit code 1). Git ignores its exit code, so the pull stands.');
+  await expect(warning.locator('[data-hook-output]')).toBeHidden();
+  await warning.getByText('Hook output').click();
+  await expect(warning.locator('[data-hook-output]')).toContainText('npm ERR! network request to registry.npmjs.org failed');
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(dialog).toBeHidden();
+
+  await header.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pull all without hooks', exact: true }).click();
+  await expect(dialog.getByRole('heading', { name: 'Pull all without hooks (fast-forward only) — Services' })).toBeVisible();
+  await expect(dialog).toContainText('The post-merge hooks do not run.');
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeEnabled({ timeout: 10_000 });
+  await expect(dialog.getByRole('status')).toContainText('2 updated');
+  await expect(dialog.getByRole('status')).not.toContainText('hook warning');
+  await expect(dialog.locator('[data-group-hook-warning]')).toHaveCount(0);
+});
+
+test('group pull waits for the cancellation receipt after the last pull returns', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const [{ ipc }, { useSettings }, { useRepo }] = await Promise.all([
+      import('/src/core/ipc.ts'), import('/src/features/settings/store.ts'), import('/src/features/repository/store.ts'),
+    ]);
+    const repo = { path: '/projects/api', name: 'api', lastOpenedAt: 0 };
+    useRepo.setState({ recents: [repo] });
+    useSettings.getState().addRepoGroup('Services', 0, [repo.path]);
+    const tracker = window as unknown as { finishPull: () => void; finishCancel: () => void };
+    const result = {
+      status: 'ok', message: 'Fast-forwarded main', changes: [{ name: 'main', oldOid: '1234567', newOid: 'abcdef0', commits: 1 }],
+    };
+    ipc.groupUpdate = () => new Promise((resolve) => { tracker.finishPull = () => resolve(result); });
+    ipc.groupCancel = () => new Promise((resolve) => {
+      tracker.finishCancel = () => resolve([{ path: repo.path, result: { ...result, hookWarnings: [{
+        hook: 'post-merge', status: null, timedOut: true, message: 'Background processes were stopped.', output: '',
+      }] } }]);
+    });
+  });
+  await page.locator('[data-group-header]', { hasText: 'Services' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await page.waitForFunction(() => typeof (window as unknown as { finishPull?: unknown }).finishPull === 'function');
+  await dialog.getByRole('button', { name: 'Cancel run' }).click();
+  await page.evaluate(() => (window as unknown as { finishPull: () => void }).finishPull());
+  await expect(dialog.getByText('Fast-forwarded main')).toBeVisible();
+  await expect(dialog.getByRole('status')).toContainText('Cancelling…');
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeDisabled();
+
+  await page.evaluate(() => (window as unknown as { finishCancel: () => void }).finishCancel());
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeEnabled();
+  await expect(dialog.getByRole('status')).toContainText('1 hook warning');
+  await expect(dialog.getByText('Background processes were stopped. The pull stands.')).toBeVisible();
+});
 
 test('group pull summary shows moved refs, skips, failures and unchanged repositories', async ({ page }) => {
   await page.goto('/');

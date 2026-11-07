@@ -1,14 +1,19 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
+use super::hooks::PendingHook;
 use super::types::{GroupUpdateReceipt, GroupUpdateResult};
 use crate::error::{AppError, AppResult};
 
 #[derive(Default)]
 pub struct GroupUpdateControl {
-    cancelled: Mutex<bool>,
+    cancelled: AtomicBool,
+    active: Mutex<()>,
     completed: Mutex<HashMap<String, Completed>>,
+    background_hooks: Mutex<Vec<(String, PendingHook)>>,
+    no_verify: bool,
 }
 
 #[derive(Clone)]
@@ -26,21 +31,49 @@ pub(super) struct FetchProgress {
 }
 
 impl GroupUpdateControl {
+    pub fn skipping_hooks(no_verify: bool) -> Self {
+        GroupUpdateControl {
+            no_verify,
+            ..Default::default()
+        }
+    }
+
+    pub fn skips_hooks(&self) -> bool {
+        self.no_verify
+    }
+
     pub fn cancel(&self) -> AppResult<()> {
-        *self
-            .cancelled
-            .lock()
-            .map_err(|_| AppError::other("Group update lock poisoned"))? = true;
+        self.cancelled.store(true, Ordering::Release);
+        drop(
+            self.active
+                .lock()
+                .map_err(|_| AppError::other("Group update lock poisoned"))?,
+        );
         Ok(())
     }
 
     pub fn cancel_results(&self) -> AppResult<Vec<GroupUpdateReceipt>> {
         self.cancel()?;
-        let completed = self
-            .completed
-            .lock()
-            .map_err(|_| AppError::other("Group results lock poisoned"))?
-            .clone();
+        let completed = {
+            let mut hooks = self
+                .background_hooks
+                .lock()
+                .map_err(|_| AppError::other("Group hook lock poisoned"))?;
+            let warnings: Vec<_> = hooks
+                .drain(..)
+                .filter_map(|(path, hook)| hook.wait_on_cancel().map(|warning| (path, warning)))
+                .collect();
+            let mut completed = self
+                .completed
+                .lock()
+                .map_err(|_| AppError::other("Group results lock poisoned"))?;
+            for (path, warning) in warnings {
+                if let Some(Completed::Result(result)) = completed.get_mut(&path) {
+                    result.hook_warnings.push(warning);
+                }
+            }
+            completed.clone()
+        };
         Ok(completed
             .into_iter()
             .map(|(path, completed)| {
@@ -71,6 +104,15 @@ impl GroupUpdateControl {
                 GroupUpdateReceipt { path, result }
             })
             .collect())
+    }
+
+    pub(super) fn record_background_hook(&self, path: &str, hook: PendingHook) {
+        let mut hooks = self
+            .background_hooks
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        hooks.retain(|(_, hook)| hook.running());
+        hooks.push((path.into(), hook));
     }
 
     pub(super) fn record_fetch(&self, path: &str, progress: FetchProgress) -> AppResult<()> {
@@ -104,6 +146,7 @@ impl GroupUpdateControl {
                     status: "failed".into(),
                     message: error.to_string(),
                     changes: Vec::new(),
+                    ..Default::default()
                 },
             };
             self.completed
@@ -122,21 +165,18 @@ impl GroupUpdateControl {
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled
-            .lock()
-            .map(|cancelled| *cancelled)
-            .unwrap_or(true)
+        self.cancelled.load(Ordering::Acquire)
     }
 
-    fn active_guard(&self) -> AppResult<MutexGuard<'_, bool>> {
-        let cancelled = self
-            .cancelled
+    fn active_guard(&self) -> AppResult<MutexGuard<'_, ()>> {
+        let guard = self
+            .active
             .lock()
             .map_err(|_| AppError::other("Group update lock poisoned"))?;
-        if *cancelled {
+        if self.is_cancelled() {
             return Err(AppError::other("Group update cancelled"));
         }
-        Ok(cancelled)
+        Ok(guard)
     }
 
     pub fn ensure_active(&self) -> AppResult<()> {
@@ -168,9 +208,9 @@ fn prune_expired(runs: &mut Runs, now: Instant) {
         if now.saturating_duration_since(run.last_used) < RUN_TTL {
             return true;
         }
-        match run.control.cancelled.try_lock() {
-            Ok(mut cancelled) => {
-                *cancelled = true;
+        match run.control.active.try_lock() {
+            Ok(_guard) => {
+                run.control.cancelled.store(true, Ordering::Release);
                 false
             }
             Err(std::sync::TryLockError::WouldBlock) => true,
@@ -179,7 +219,7 @@ fn prune_expired(runs: &mut Runs, now: Instant) {
     });
 }
 
-pub fn start(id: &str) -> AppResult<()> {
+pub fn start(id: &str, no_verify: bool) -> AppResult<()> {
     let mut runs = runs()
         .lock()
         .map_err(|_| AppError::other("Group update registry poisoned"))?;
@@ -191,7 +231,7 @@ pub fn start(id: &str) -> AppResult<()> {
     runs.insert(
         id.into(),
         Run {
-            control: Arc::new(GroupUpdateControl::default()),
+            control: Arc::new(GroupUpdateControl::skipping_hooks(no_verify)),
             last_used: now,
         },
     );
@@ -275,10 +315,10 @@ mod tests {
                 last_used: now - RUN_TTL,
             },
         )]);
-        let guard = control.cancelled.lock().unwrap();
+        let guard = control.active.lock().unwrap();
         prune_expired(&mut runs, now);
         assert_eq!(runs.len(), 1);
-        assert!(!*guard);
+        assert!(!control.is_cancelled());
         drop(guard);
         prune_expired(&mut runs, now);
         assert!(runs.is_empty());

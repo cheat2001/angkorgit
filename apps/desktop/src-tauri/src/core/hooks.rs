@@ -1,17 +1,30 @@
+use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use git2::{Oid, Repository};
+use same_file::Handle;
 
-use crate::ai_cli::{capture, capture_tree_child, search_path, spawn_tree};
+use super::types::{HookWarning, RepoHooks};
+use crate::ai_cli::{capture, run_tree, search_path, spawn_tree, BackgroundProcesses};
 use crate::error::{AppError, AppResult};
 
 pub const PRE_COMMIT: &str = "pre-commit";
 pub const COMMIT_MSG: &str = "commit-msg";
 pub const PRE_PUSH: &str = "pre-push";
-const REPO_HOOKS: &[&str] = &[PRE_COMMIT, COMMIT_MSG, PRE_PUSH];
+pub const POST_CHECKOUT: &str = "post-checkout";
+pub const POST_MERGE: &str = "post-merge";
+pub const POST_REWRITE: &str = "post-rewrite";
+const REPO_HOOKS: &[&str] = &[
+    PRE_COMMIT,
+    COMMIT_MSG,
+    PRE_PUSH,
+    POST_CHECKOUT,
+    POST_MERGE,
+    POST_REWRITE,
+];
 
 const MIN_GIT_VERSION: (u32, u32) = (2, 36);
 const TO_STDIN_VERSION: (u32, u32) = (2, 40);
@@ -109,18 +122,151 @@ fn configured_for(repo: &Repository, name: &str) -> AppResult<bool> {
     Ok(false)
 }
 
-pub fn repo_hooks(path: &str) -> AppResult<Vec<String>> {
+pub fn repo_hooks(path: &str) -> AppResult<RepoHooks> {
     let repo = super::repo::open(path)?;
-    if repo.workdir().is_none() {
-        return Ok(Vec::new());
-    }
+    let Some(workdir) = repo.workdir() else {
+        return Ok(RepoHooks::default());
+    };
     let mut found = Vec::new();
     for name in REPO_HOOKS {
         if present(&repo, name)? {
             found.push(name.to_string());
         }
     }
-    Ok(found)
+    let in_worktree = hooks_live_in_worktree(&repo, workdir)?;
+    Ok(RepoHooks { found, in_worktree })
+}
+
+const SYMLINK_HOPS: usize = 40;
+
+fn hooks_live_in_worktree(repo: &Repository, workdir: &Path) -> AppResult<bool> {
+    let Ok(workdir) = Handle::from_path(workdir) else {
+        return Ok(false);
+    };
+    let gitdirs: Vec<Handle> = [repo.path(), repo.commondir()]
+        .into_iter()
+        .filter_map(|dir| Handle::from_path(dir).ok())
+        .collect();
+    let dir = hooks_dir(repo)?;
+    let hook_paths = REPO_HOOKS
+        .iter()
+        .flat_map(|name| hook_candidates(&dir, name))
+        .any(|hook| visits_worktree(&hook, &workdir, &gitdirs));
+    Ok(hook_paths || config_lives_in_worktree(repo, &workdir, &gitdirs))
+}
+
+const CONFIG_FILE_LIMIT: usize = 64;
+
+#[cfg(windows)]
+fn config_include_home() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .or_else(|| {
+            let mut drive = std::env::var_os("HOMEDRIVE")?;
+            drive.push(std::env::var_os("HOMEPATH")?);
+            let path = PathBuf::from(drive);
+            path.is_dir().then_some(path)
+        })
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+}
+
+#[cfg(not(windows))]
+fn config_include_home() -> Option<PathBuf> {
+    super::remote::home_dir()
+}
+
+fn config_lives_in_worktree(repo: &Repository, workdir: &Handle, gitdirs: &[Handle]) -> bool {
+    let mut pending = vec![
+        repo.commondir().join("config"),
+        repo.path().join("config.worktree"),
+    ];
+    pending.extend(git2::Config::find_global().ok());
+    pending.extend(git2::Config::find_xdg().ok());
+    pending.extend(git2::Config::find_system().ok());
+    let home = config_include_home();
+    let mut seen = std::collections::HashSet::new();
+    while let Some(file) = pending.pop() {
+        if seen.contains(&file) {
+            continue;
+        }
+        if seen.len() >= CONFIG_FILE_LIMIT {
+            return true;
+        }
+        seen.insert(file.clone());
+        if visits_worktree(&file, workdir, gitdirs) {
+            return true;
+        }
+        pending.extend(include_targets(&file, home.as_deref()));
+    }
+    false
+}
+
+fn include_targets(file: &Path, home: Option<&Path>) -> Vec<PathBuf> {
+    let Ok(config) = git2::Config::open(file) else {
+        return Vec::new();
+    };
+    let Ok(mut entries) = config.entries(Some(r"^include(if\..+)?\.path$")) else {
+        return Vec::new();
+    };
+    let base = file.parent().unwrap_or(Path::new(""));
+    let mut targets = Vec::new();
+    while let Some(Ok(entry)) = entries.next() {
+        if entry.include_depth() > 0 {
+            continue;
+        }
+        let Some(value) = entry.value() else {
+            continue;
+        };
+        targets.push(base.join(super::remote::expand_home(value, home)));
+    }
+    targets
+}
+
+fn visits_worktree(path: &Path, workdir: &Handle, gitdirs: &[Handle]) -> bool {
+    let mut current = PathBuf::new();
+    let mut rest = path.to_path_buf();
+    let mut hops = 0;
+    loop {
+        let mut parts = rest.components();
+        let Some(part) = parts.next() else {
+            return false;
+        };
+        let remaining = parts.as_path().to_path_buf();
+        match part {
+            Component::Prefix(_) | Component::RootDir => current.push(part),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                current.pop();
+            }
+            Component::Normal(name) => {
+                let next = current.join(name);
+                let link = std::fs::read_link(&next).ok();
+                let in_git = gitdirs
+                    .iter()
+                    .any(|gitdir| within(&next, gitdir, link.is_some()));
+                if within(&next, workdir, true) && !in_git {
+                    return true;
+                }
+                if let Some(target) = link {
+                    hops += 1;
+                    if hops > SYMLINK_HOPS {
+                        return false;
+                    }
+                    rest = target.join(remaining);
+                    continue;
+                }
+                current = next;
+            }
+        }
+        rest = remaining;
+    }
+}
+
+fn within(path: &Path, root: &Handle, strictly: bool) -> bool {
+    path.ancestors()
+        .skip(usize::from(strictly))
+        .any(|dir| Handle::from_path(dir).is_ok_and(|handle| &handle == root))
 }
 
 pub fn runner_available() -> bool {
@@ -207,9 +353,14 @@ fn pick_runner(
         return Ok(Runner::Direct(file));
     }
     let (major, minor) = git.version;
+    let input = if name == PRE_PUSH {
+        "the refs being pushed"
+    } else {
+        "the rewritten commits"
+    };
     Err(format!(
-        "The {name} hook did not run because git {major}.{minor} cannot hand it the refs being \
-         pushed. Git 2.40 or newer is needed to run it."
+        "The {name} hook did not run because git {major}.{minor} cannot hand it {input}. Git \
+         2.40 or newer is needed to run it."
     ))
 }
 
@@ -238,6 +389,54 @@ impl Drop for InputFile {
     }
 }
 
+pub(crate) struct PendingHook {
+    name: String,
+    timeout: Duration,
+    output: String,
+    processes: BackgroundProcesses,
+}
+
+impl PendingHook {
+    pub(crate) fn running(&self) -> bool {
+        self.processes.running()
+    }
+
+    pub(crate) fn wait_on_cancel(self) -> Option<HookWarning> {
+        let confirmed = self.processes.wait_on_cancel()?;
+        let message = format!(
+            "Background processes from the {} hook exceeded its {} second limit during cancellation. {}",
+            self.name,
+            self.timeout.as_secs(),
+            if confirmed {
+                "They were stopped."
+            } else {
+                "Could not confirm that all processes stopped."
+            }
+        );
+        Some(post_warning(&self.name, None, true, message, self.output))
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Watch<'a> {
+    timeout: Duration,
+    retain: Option<&'a dyn Fn(PendingHook)>,
+}
+
+impl<'a> Watch<'a> {
+    const PLAIN: Self = Self {
+        timeout: HOOK_TIMEOUT,
+        retain: None,
+    };
+
+    pub(crate) fn track_background(retain: &'a dyn Fn(PendingHook)) -> Self {
+        Self {
+            retain: Some(retain),
+            ..Self::PLAIN
+        }
+    }
+}
+
 pub(crate) fn run(
     repo: &Repository,
     runner: &Runner,
@@ -245,6 +444,18 @@ pub(crate) fn run(
     args: &[&OsStr],
     env: &[(&str, &OsStr)],
     input: Option<&str>,
+) -> AppResult<()> {
+    run_watched(repo, runner, name, args, env, input, Watch::PLAIN)
+}
+
+fn run_watched(
+    repo: &Repository,
+    runner: &Runner,
+    name: &str,
+    args: &[&OsStr],
+    env: &[(&str, &OsStr)],
+    input: Option<&str>,
+    watch: Watch<'_>,
 ) -> AppResult<()> {
     let cwd = repo.workdir().unwrap_or_else(|| repo.path());
     let input_file = match (runner, input) {
@@ -274,18 +485,18 @@ pub(crate) fn run(
                 command.arg("--").args(args);
             }
             configure(&mut command);
-            spawn_tree(command)
+            spawn_tree(command, watch.retain.is_some())
         }
         Runner::Direct(hook) => {
             let mut command = crate::proc::hidden(hook);
             command.args(args);
             configure(&mut command);
-            match spawn_tree(command) {
+            match spawn_tree(command, watch.retain.is_some()) {
                 Err(error) if is_exec_format_error(&error) => {
                     let mut command = crate::proc::hidden(SHELL_PATH);
                     command.arg(hook).args(args);
                     configure(&mut command);
-                    spawn_tree(command)
+                    spawn_tree(command, watch.retain.is_some())
                 }
                 spawned => spawned,
             }
@@ -300,9 +511,9 @@ pub(crate) fn run(
         Runner::Direct(_) => input.unwrap_or(""),
         Runner::Git(_) => "",
     };
-    let captured = capture_tree_child(child, piped, HOOK_TIMEOUT)
-        .map_err(|e| AppError::other(format!("The {name} hook could not run: {e}")))?;
-    if captured.status == 0 {
+    let run = run_tree(child, piped, watch.timeout);
+    let captured = run.captured;
+    if captured.status == 0 && !run.timed_out && run.background.is_none() {
         return Ok(());
     }
     let output = [captured.stdout.trim_end(), captured.stderr.trim_end()]
@@ -310,10 +521,30 @@ pub(crate) fn run(
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join("\n");
+    let output = output_tail(&output, OUTPUT_CAP);
+    if let (Some(retain), Some(processes)) = (watch.retain, run.background) {
+        retain(PendingHook {
+            name: name.to_string(),
+            timeout: watch.timeout,
+            output: output.clone(),
+            processes,
+        });
+    }
+    if captured.status == 0 && !run.timed_out {
+        return Ok(());
+    }
+    if run.timed_out {
+        return Err(AppError::HookTimeout {
+            hook: name.to_string(),
+            seconds: watch.timeout.as_secs(),
+            exit_unconfirmed: run.exit_unconfirmed,
+            output,
+        });
+    }
     Err(AppError::Hook {
         hook: name.to_string(),
         status: captured.status,
-        output: output_tail(&output, OUTPUT_CAP),
+        output,
     })
 }
 
@@ -522,6 +753,268 @@ fn rejected_as_non_fast_forward(repo: &Repository, r: &PushedRef) -> bool {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Rewrite {
+    Amend,
+    Rebase,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum PostHook {
+    Checkout {
+        previous: Oid,
+        new: Oid,
+        branch: bool,
+    },
+    Merge,
+    Rewrite {
+        command: Rewrite,
+        pairs: Vec<(Oid, Oid)>,
+    },
+}
+
+impl PostHook {
+    pub(crate) fn merged(outcome: &super::types::OpOutcome) -> Option<Self> {
+        matches!(outcome.status.as_str(), "ok" | "fast_forward").then_some(PostHook::Merge)
+    }
+
+    pub(crate) fn rebased(pairs: Vec<(Oid, Oid)>) -> Option<Self> {
+        let pairs: Vec<(Oid, Oid)> = pairs.into_iter().filter(|(old, new)| old != new).collect();
+        (!pairs.is_empty()).then_some(PostHook::Rewrite {
+            command: Rewrite::Rebase,
+            pairs,
+        })
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            PostHook::Checkout { .. } => POST_CHECKOUT,
+            PostHook::Merge => POST_MERGE,
+            PostHook::Rewrite { .. } => POST_REWRITE,
+        }
+    }
+
+    fn args(&self) -> Vec<String> {
+        match self {
+            PostHook::Checkout {
+                previous,
+                new,
+                branch,
+            } => vec![
+                previous.to_string(),
+                new.to_string(),
+                if *branch { "1" } else { "0" }.to_string(),
+            ],
+            PostHook::Merge => vec!["0".to_string()],
+            PostHook::Rewrite { command, .. } => vec![match command {
+                Rewrite::Amend => "amend".to_string(),
+                Rewrite::Rebase => "rebase".to_string(),
+            }],
+        }
+    }
+
+    fn input(&self) -> Option<String> {
+        match self {
+            PostHook::Rewrite { pairs, .. } => Some(
+                pairs
+                    .iter()
+                    .map(|(old, new)| format!("{old} {new}\n"))
+                    .collect(),
+            ),
+            _ => None,
+        }
+    }
+}
+
+pub(crate) struct PostHooks {
+    run: bool,
+    skipped: bool,
+    pending: Vec<PostHook>,
+    warnings: Vec<HookWarning>,
+}
+
+impl PostHooks {
+    pub(crate) fn new(no_verify: bool) -> Self {
+        PostHooks {
+            run: !no_verify,
+            skipped: no_verify,
+            pending: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    pub(crate) fn off() -> Self {
+        PostHooks {
+            run: false,
+            skipped: false,
+            pending: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    pub(crate) fn skipped(&self) -> bool {
+        self.skipped
+    }
+
+    pub(crate) fn skip(&mut self) {
+        self.run = false;
+        self.skipped = true;
+        self.pending.clear();
+    }
+
+    pub(crate) fn run_now(&mut self, repo: &Repository, hook: PostHook) {
+        if self.run {
+            let warnings = run_post(repo, &[hook], false);
+            self.warnings.extend(warnings);
+        }
+    }
+
+    pub(crate) fn later(&mut self, hook: PostHook) {
+        if self.run {
+            self.pending.push(hook);
+        }
+    }
+
+    pub(crate) fn abandon(self) -> Vec<HookWarning> {
+        self.warnings
+    }
+
+    pub(crate) fn finish(mut self, repo: Option<&Repository>) -> Vec<HookWarning> {
+        if let Some(repo) = repo.filter(|_| !self.pending.is_empty()) {
+            let warnings = run_post(repo, &self.pending, false);
+            self.warnings.extend(warnings);
+        }
+        self.warnings
+    }
+}
+
+pub(crate) fn run_post(repo: &Repository, hooks: &[PostHook], no_verify: bool) -> Vec<HookWarning> {
+    run_post_watched(repo, hooks, no_verify, Watch::PLAIN)
+}
+
+type PostHookObserver = Box<dyn Fn(&Path, &str, bool)>;
+
+thread_local! {
+    static POST_HOOK_OBSERVER: RefCell<Option<PostHookObserver>> = const { RefCell::new(None) };
+}
+
+struct ObserverScope(Option<PostHookObserver>);
+
+impl Drop for ObserverScope {
+    fn drop(&mut self) {
+        POST_HOOK_OBSERVER.with(|slot| slot.replace(self.0.take()));
+    }
+}
+
+pub(crate) fn observe_post_hooks<T>(
+    observer: impl Fn(&Path, &str, bool) + 'static,
+    action: impl FnOnce() -> T,
+) -> T {
+    let _scope =
+        ObserverScope(POST_HOOK_OBSERVER.with(|slot| slot.replace(Some(Box::new(observer)))));
+    action()
+}
+
+struct PostHookActivity<'a> {
+    workdir: &'a Path,
+    name: &'a str,
+}
+
+impl PostHookActivity<'_> {
+    fn notify(&self, running: bool) {
+        POST_HOOK_OBSERVER.with(|slot| {
+            if let Some(observer) = slot.borrow().as_ref() {
+                observer(self.workdir, self.name, running);
+            }
+        });
+    }
+}
+
+impl Drop for PostHookActivity<'_> {
+    fn drop(&mut self) {
+        self.notify(false);
+    }
+}
+
+pub(crate) fn run_post_watched(
+    repo: &Repository,
+    hooks: &[PostHook],
+    no_verify: bool,
+    watch: Watch<'_>,
+) -> Vec<HookWarning> {
+    let mut warnings: Vec<HookWarning> = Vec::new();
+    let Some(workdir) = repo.workdir() else {
+        return warnings;
+    };
+    if no_verify {
+        return warnings;
+    }
+    for hook in hooks {
+        let name = hook.name();
+        let found = match present(repo, name) {
+            Ok(found) => found,
+            Err(error) => {
+                warnings.push(post_warning(
+                    name,
+                    None,
+                    false,
+                    error.to_string(),
+                    String::new(),
+                ));
+                continue;
+            }
+        };
+        if !found {
+            continue;
+        }
+        let input = hook.input();
+        let runner = match runner(repo, workdir, name, input.is_some()) {
+            Ok(runner) => runner,
+            Err(reason) => {
+                if !warnings.iter().any(|w| w.message == reason) {
+                    warnings.push(post_warning(name, None, false, reason, String::new()));
+                }
+                continue;
+            }
+        };
+        let args = hook.args();
+        let args: Vec<&OsStr> = args.iter().map(OsStr::new).collect();
+        let activity = PostHookActivity { workdir, name };
+        activity.notify(true);
+        if let Err(error) = run_watched(repo, &runner, name, &args, &[], input.as_deref(), watch) {
+            let (status, timed_out, output) = match &error {
+                AppError::Hook { status, output, .. } => (Some(*status), false, output.clone()),
+                AppError::HookTimeout { output, .. } => (None, true, output.clone()),
+                _ => (None, false, String::new()),
+            };
+            warnings.push(post_warning(
+                name,
+                status,
+                timed_out,
+                error.to_string(),
+                output,
+            ));
+        }
+    }
+    warnings
+}
+
+fn post_warning(
+    hook: &str,
+    status: Option<i32>,
+    timed_out: bool,
+    message: String,
+    output: String,
+) -> HookWarning {
+    HookWarning {
+        hook: hook.to_string(),
+        status,
+        timed_out,
+        message,
+        output,
+    }
+}
+
 fn commit_env(repo: &Repository, author: &git2::Signature<'_>) -> Vec<(&'static str, OsString)> {
     vec![
         ("GIT_INDEX_FILE", repo.path().join("index").into_os_string()),
@@ -589,6 +1082,85 @@ mod tests {
             "@1730103456 -0530"
         );
         assert_eq!(git_date(git2::Time::new(0, 0)), "@0 +0000");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_post_hook_that_runs_past_its_time_is_a_timeout_warning_with_its_output() {
+        use std::os::unix::fs::PermissionsExt;
+        if !runner_available() {
+            return;
+        }
+        let (dir, repo) = temp_repo("timeout");
+        let hook = dir.join(".git").join("hooks").join("post-merge");
+        std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+        std::fs::write(&hook, "#!/bin/sh\necho installing\nsleep 30\n").unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let watch = Watch {
+            timeout: Duration::from_secs(3),
+            ..Watch::PLAIN
+        };
+        let warnings = run_post_watched(&repo, &[PostHook::Merge], false, watch);
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(warnings.len(), 1);
+        let warning = &warnings[0];
+        assert!(warning.timed_out);
+        assert_eq!(warning.status, None);
+        assert_eq!(warning.output, "installing");
+        assert_eq!(
+            warning.message,
+            "The post-merge hook did not finish within 3 seconds. AngKorGit could not confirm that all hook processes exited."
+        );
+    }
+
+    #[test]
+    fn post_hooks_get_the_args_and_stdin_git_passes() {
+        let a = Oid::from_str("1111111111111111111111111111111111111111").unwrap();
+        let b = Oid::from_str("2222222222222222222222222222222222222222").unwrap();
+        let switched = PostHook::Checkout {
+            previous: a,
+            new: b,
+            branch: true,
+        };
+        assert_eq!(
+            switched.args(),
+            vec![a.to_string(), b.to_string(), "1".into()]
+        );
+        assert_eq!(switched.input(), None);
+        let restored = PostHook::Checkout {
+            previous: a,
+            new: a,
+            branch: false,
+        };
+        assert_eq!(restored.args()[2], "0");
+        assert_eq!(PostHook::Merge.args(), vec!["0".to_string()]);
+        let amended = PostHook::Rewrite {
+            command: Rewrite::Amend,
+            pairs: vec![(a, a)],
+        };
+        assert_eq!(amended.args(), vec!["amend".to_string()]);
+        assert_eq!(amended.input(), Some(format!("{a} {a}\n")));
+        let Some(rebased) = PostHook::rebased(vec![(a, b), (b, b), (b, a)]) else {
+            panic!("a rebase that rewrote commits must run post-rewrite");
+        };
+        assert_eq!(rebased.args(), vec!["rebase".to_string()]);
+        assert_eq!(rebased.input(), Some(format!("{a} {b}\n{b} {a}\n")));
+        assert_eq!(PostHook::rebased(vec![(a, a)]), None);
+    }
+
+    #[test]
+    fn post_merge_follows_only_a_merge_that_moved_head() {
+        let outcome = |status: &str| super::super::types::OpOutcome {
+            status: status.into(),
+            message: String::new(),
+        };
+        assert_eq!(PostHook::merged(&outcome("ok")), Some(PostHook::Merge));
+        assert_eq!(
+            PostHook::merged(&outcome("fast_forward")),
+            Some(PostHook::Merge)
+        );
+        assert_eq!(PostHook::merged(&outcome("up_to_date")), None);
+        assert_eq!(PostHook::merged(&outcome("conflicts")), None);
     }
 
     #[test]

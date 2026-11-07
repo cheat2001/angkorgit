@@ -1,12 +1,30 @@
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+
 use tauri::{AppHandle, Emitter, State};
 
+use crate::core::post_hooks::{self, Hooked};
 use crate::core::types::*;
 use crate::core::{
     branch, commit, conflict, diff, files, history, hooks, misc, pull_preview, remote, repo, scan,
     stage, submodule, worktree,
 };
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::terminal::TerminalState;
+
+fn report<T>(app: &AppHandle, repo_path: &str, hooked: Hooked<T>) -> T {
+    for warning in hooked.warnings {
+        let _ = app.emit(
+            "hook-warning",
+            HookWarningEvent {
+                repo_path: repo_path.to_string(),
+                warning,
+            },
+        );
+    }
+    hooked.value
+}
 
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> AppResult<T> + Send + 'static,
@@ -14,6 +32,79 @@ async fn blocking<T: Send + 'static>(
     tauri::async_runtime::spawn_blocking(f)
         .await
         .map_err(|e| crate::error::AppError::other(e.to_string()))?
+}
+
+static HOOKED_OPERATIONS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+
+struct HookedOperation(PathBuf);
+
+impl HookedOperation {
+    fn start(path: PathBuf) -> AppResult<Self> {
+        let path = path.canonicalize().unwrap_or(path);
+        let mut active = HOOKED_OPERATIONS
+            .get_or_init(Mutex::default)
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if !active.insert(path.clone()) {
+            return Err(AppError::other(
+                "Another operation is still running in this repository",
+            ));
+        }
+        Ok(Self(path))
+    }
+}
+
+impl Drop for HookedOperation {
+    fn drop(&mut self) {
+        HOOKED_OPERATIONS
+            .get_or_init(Mutex::default)
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&self.0);
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PostHookProgress<'a> {
+    repo_path: &'a str,
+    hook: &'a str,
+    running: bool,
+}
+
+async fn blocking_post_hooks<T: Send + 'static>(
+    app: &AppHandle,
+    path: String,
+    action: impl FnOnce(&str) -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    let app = app.clone();
+    blocking(move || {
+        let _operation = HookedOperation::start(PathBuf::from(&path))?;
+        hooks::observe_post_hooks(
+            move |workdir, hook, running| {
+                let workdir = workdir.to_string_lossy();
+                let _ = app.emit(
+                    "post-hook-progress",
+                    PostHookProgress {
+                        repo_path: workdir.trim_end_matches(['/', '\\']),
+                        hook,
+                        running,
+                    },
+                );
+            },
+            || action(&path),
+        )
+    })
+    .await
+}
+
+async fn run_hooked<T: Send + 'static>(
+    app: AppHandle,
+    path: String,
+    action: impl FnOnce(&str) -> AppResult<Hooked<T>> + Send + 'static,
+) -> AppResult<T> {
+    let hooked = blocking_post_hooks(&app, path.clone(), action).await?;
+    Ok(report(&app, &path, hooked))
 }
 
 #[tauri::command]
@@ -62,12 +153,20 @@ pub async fn repo_clone(
     branch: Option<String>,
 ) -> AppResult<String> {
     let emitter = app.clone();
-    let root = blocking(move || {
-        remote::clone(&url, &into, branch.as_deref(), move |pct| {
-            let _ = emitter.emit("clone-progress", pct);
-        })
+    let cloned = blocking_post_hooks(&app, into, move |into| {
+        post_hooks::clone(
+            &url,
+            into,
+            branch.as_deref(),
+            move |pct| {
+                let _ = emitter.emit("clone-progress", pct);
+            },
+            false,
+        )
     })
     .await?;
+    let root = cloned.value.clone();
+    report(&app, &root, cloned);
     crate::state::recent_add(&app, &root)?;
     Ok(root)
 }
@@ -138,23 +237,45 @@ pub async fn unstage_all(path: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn discard_file(path: String, file: String) -> AppResult<bool> {
-    blocking(move || stage::discard_file(&path, &file)).await
+pub async fn discard_file(app: AppHandle, path: String, file: String) -> AppResult<bool> {
+    run_hooked(app, path, move |path| {
+        post_hooks::discard_file(path, &file, false)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn discard_all(path: String) -> AppResult<Vec<String>> {
-    blocking(move || stage::discard_all(&path)).await
+pub async fn discard_files(
+    app: AppHandle,
+    path: String,
+    files: Vec<String>,
+    staged: bool,
+) -> AppResult<DiscardBatch> {
+    run_hooked(app, path, move |path| {
+        post_hooks::discard_files(path, &files, staged, false)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn discard_staged_file(path: String, file: String) -> AppResult<bool> {
-    blocking(move || stage::discard_staged_file(&path, &file)).await
+pub async fn discard_all(app: AppHandle, path: String) -> AppResult<Vec<String>> {
+    run_hooked(app, path, move |path| post_hooks::discard_all(path, false)).await
 }
 
 #[tauri::command]
-pub async fn discard_staged_all(path: String) -> AppResult<Vec<String>> {
-    blocking(move || stage::discard_staged_all(&path)).await
+pub async fn discard_staged_file(app: AppHandle, path: String, file: String) -> AppResult<bool> {
+    run_hooked(app, path, move |path| {
+        post_hooks::discard_staged_file(path, &file, false)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn discard_staged_all(app: AppHandle, path: String) -> AppResult<DiscardBatch> {
+    run_hooked(app, path, move |path| {
+        post_hooks::discard_staged_all(path, false)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -305,21 +426,33 @@ pub async fn commit_create(
 
 #[tauri::command]
 pub async fn commit_amend(
+    app: AppHandle,
     path: String,
     message: Option<String>,
     noVerify: Option<bool>,
 ) -> AppResult<CommitOutcome> {
-    blocking(move || commit::amend(&path, message.as_deref(), noVerify.unwrap_or(false))).await
+    run_hooked(app, path, move |path| {
+        post_hooks::amend(path, message.as_deref(), noVerify.unwrap_or(false))
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn repo_hooks(path: String) -> AppResult<Vec<String>> {
+pub async fn repo_hooks(path: String) -> AppResult<RepoHooks> {
     blocking(move || hooks::repo_hooks(&path)).await
 }
 
 #[tauri::command]
-pub async fn commit_reword(path: String, oid: String, message: String) -> AppResult<String> {
-    blocking(move || commit::reword(&path, &oid, &message)).await
+pub async fn commit_reword(
+    app: AppHandle,
+    path: String,
+    oid: String,
+    message: String,
+) -> AppResult<String> {
+    run_hooked(app, path, move |path| {
+        post_hooks::reword(path, &oid, &message, false)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -390,15 +523,14 @@ pub async fn branch_list(path: String) -> AppResult<Vec<BranchInfo>> {
 
 #[tauri::command]
 pub async fn branch_create(
+    app: AppHandle,
     path: String,
     name: String,
     fromOid: Option<String>,
     checkout: bool,
 ) -> AppResult<()> {
-    blocking(move || {
-        submodule::synced(&path, || {
-            branch::create(&path, &name, fromOid.as_deref(), checkout)
-        })
+    run_hooked(app, path, move |path| {
+        post_hooks::branch_create(path, &name, fromOid.as_deref(), checkout, false)
     })
     .await
 }
@@ -414,19 +546,30 @@ pub async fn branch_rename(path: String, oldName: String, newName: String) -> Ap
 }
 
 #[tauri::command]
-pub async fn branch_checkout(path: String, name: String) -> AppResult<()> {
-    blocking(move || submodule::synced(&path, || branch::checkout_branch(&path, &name))).await
+pub async fn branch_checkout(app: AppHandle, path: String, name: String) -> AppResult<()> {
+    run_hooked(app, path, move |path| {
+        post_hooks::checkout_branch(path, &name, false)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn checkout_detached(path: String, rev: String) -> AppResult<()> {
-    blocking(move || submodule::synced(&path, || branch::checkout_detached(&path, &rev))).await
+pub async fn checkout_detached(app: AppHandle, path: String, rev: String) -> AppResult<()> {
+    run_hooked(app, path, move |path| {
+        post_hooks::checkout_detached(path, &rev, false)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn branch_merge(path: String, name: String, noFf: Option<bool>) -> AppResult<OpOutcome> {
-    blocking(move || {
-        submodule::synced(&path, || branch::merge(&path, &name, noFf.unwrap_or(false)))
+pub async fn branch_merge(
+    app: AppHandle,
+    path: String,
+    name: String,
+    noFf: Option<bool>,
+) -> AppResult<OpOutcome> {
+    run_hooked(app, path, move |path| {
+        post_hooks::merge(path, &name, noFf.unwrap_or(false), false)
     })
     .await
 }
@@ -437,13 +580,19 @@ pub async fn merge_abort(path: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn branch_rebase(path: String, upstream: String) -> AppResult<OpOutcome> {
-    blocking(move || submodule::synced(&path, || branch::rebase(&path, &upstream))).await
+pub async fn branch_rebase(app: AppHandle, path: String, upstream: String) -> AppResult<OpOutcome> {
+    run_hooked(app, path, move |path| {
+        Ok(post_hooks::rebase(path, &upstream, false))
+    })
+    .await?
 }
 
 #[tauri::command]
-pub async fn rebase_continue(path: String) -> AppResult<OpOutcome> {
-    blocking(move || submodule::synced(&path, || branch::rebase_continue(&path))).await
+pub async fn rebase_continue(app: AppHandle, path: String) -> AppResult<OpOutcome> {
+    run_hooked(app, path, move |path| {
+        post_hooks::rebase_continue(path, false)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -458,12 +607,13 @@ pub async fn rebase_commits(path: String, baseOid: String) -> AppResult<Vec<Comm
 
 #[tauri::command]
 pub async fn rebase_interactive(
+    app: AppHandle,
     path: String,
     baseOid: String,
     todo: Vec<RebaseTodoEntry>,
 ) -> AppResult<String> {
-    blocking(move || {
-        submodule::synced(&path, || branch::rebase_interactive(&path, &baseOid, &todo))
+    run_hooked(app, path, move |path| {
+        post_hooks::rebase_interactive(path, &baseOid, &todo, false)
     })
     .await
 }
@@ -537,17 +687,24 @@ pub async fn remote_fetch(
 
 #[tauri::command]
 pub async fn repository_group_update(
+    app: AppHandle,
     path: String,
     pull: bool,
     runId: String,
 ) -> AppResult<crate::core::types::GroupUpdateResult> {
     let control = crate::core::group_update::control(&runId)?;
-    blocking(move || remote::group_update_controlled(&path, pull, &control)).await
+    if !pull {
+        return blocking(move || remote::group_update_controlled(&path, false, &control)).await;
+    }
+    blocking_post_hooks(&app, path, move |path| {
+        remote::group_update_controlled(path, true, &control)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn repository_group_start(runId: String) -> AppResult<()> {
-    crate::core::group_update::start(&runId)
+pub fn repository_group_start(runId: String, noVerify: Option<bool>) -> AppResult<()> {
+    crate::core::group_update::start(&runId, noVerify.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -562,12 +719,21 @@ pub async fn repository_group_finish(runId: String) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn remote_pull(
+    app: AppHandle,
     path: String,
     remote: String,
     mode: Option<String>,
+    noVerify: Option<bool>,
 ) -> AppResult<OpOutcome> {
-    blocking(move || submodule::synced(&path, || remote::pull(&path, &remote, mode.as_deref())))
-        .await
+    run_hooked(app, path, move |path| {
+        Ok(post_hooks::pull(
+            path,
+            &remote,
+            mode.as_deref(),
+            noVerify.unwrap_or(false),
+        ))
+    })
+    .await?
 }
 
 #[tauri::command]
@@ -600,8 +766,15 @@ pub async fn pull_preview(path: String, remote: String) -> AppResult<Option<Pull
 }
 
 #[tauri::command]
-pub async fn remote_pull_branch(path: String, branch: String) -> AppResult<OpOutcome> {
-    blocking(move || remote::pull_branch(&path, &branch)).await
+pub async fn remote_pull_branch(
+    app: AppHandle,
+    path: String,
+    branch: String,
+) -> AppResult<OpOutcome> {
+    run_hooked(app, path, move |path| {
+        post_hooks::pull_branch(path, &branch, false)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -659,11 +832,15 @@ pub async fn stash_files(path: String, index: usize) -> AppResult<Vec<CommitFile
 
 #[tauri::command]
 pub async fn stash_restore_files(
+    app: AppHandle,
     path: String,
     index: usize,
     paths: Vec<String>,
 ) -> AppResult<Vec<String>> {
-    blocking(move || misc::stash_restore_files(&path, index, &paths)).await
+    run_hooked(app, path, move |path| {
+        post_hooks::stash_restore_files(path, index, &paths, false)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -702,8 +879,17 @@ pub async fn worktree_list(path: String) -> AppResult<Vec<WorktreeInfo>> {
 }
 
 #[tauri::command]
-pub async fn worktree_add(path: String, request: WorktreeAddRequest) -> AppResult<String> {
-    blocking(move || worktree::add(&path, &request)).await
+pub async fn worktree_add(
+    app: AppHandle,
+    path: String,
+    request: WorktreeAddRequest,
+) -> AppResult<String> {
+    let added = blocking_post_hooks(&app, path, move |path| {
+        post_hooks::worktree_add(path, &request, false)
+    })
+    .await?;
+    let created = added.value.clone();
+    Ok(report(&app, &created, added))
 }
 
 #[tauri::command]
@@ -950,16 +1136,15 @@ pub async fn forge_request(
 
 #[tauri::command]
 pub async fn pr_checkout(
+    app: AppHandle,
     path: String,
     remote: String,
     sourceRef: String,
     branch: String,
     track: bool,
 ) -> AppResult<()> {
-    blocking(move || {
-        submodule::synced(&path, || {
-            remote::checkout_remote_ref(&path, &remote, &sourceRef, &branch, track)
-        })
+    run_hooked(app, path, move |path| {
+        post_hooks::checkout_remote_ref(path, &remote, &sourceRef, &branch, track, false)
     })
     .await
 }

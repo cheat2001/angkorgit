@@ -307,12 +307,53 @@ pub struct GeneratedKey {
     pub public_key: String,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupUpdateResult {
     pub status: String,
     pub message: String,
     pub changes: Vec<RefMovement>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hook_warnings: Vec<HookWarning>,
+}
+
+#[derive(Serialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardBatch {
+    pub leftovers: Vec<String>,
+    pub failed: Vec<DiscardFailure>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardFailure {
+    pub path: String,
+    pub message: String,
+}
+
+#[derive(Serialize, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoHooks {
+    pub found: Vec<String>,
+    pub in_worktree: bool,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HookWarning {
+    pub hook: String,
+    pub status: Option<i32>,
+    pub timed_out: bool,
+    pub message: String,
+    pub output: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HookWarningEvent {
+    pub repo_path: String,
+    #[serde(flatten)]
+    pub warning: HookWarning,
 }
 
 #[derive(Serialize, Debug, Clone)]

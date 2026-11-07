@@ -227,6 +227,8 @@ function RepoSwitcher() {
   );
 }
 
+const PULL_HOOKS = ['post-merge', 'post-rewrite', 'post-checkout'];
+
 const STATE_LABELS: Record<string, string> = {
   rebase: 'Rebase in progress',
   merge: 'Merge in progress',
@@ -457,7 +459,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const editor = preferredEditor(editors, editorId);
 
   const [pushRejected, setPushRejected] = useState<PushRequest | null>(null);
-  const [pullCheck, setPullCheck] = useState(false);
+  const [pullCheck, setPullCheck] = useState<{ noVerify: boolean } | null>(null);
   const pullWarning = pullWarningOf(pullPreview);
   const pullWarningLine = pullPreview ? pullWarningText(pullPreview) : null;
 
@@ -591,15 +593,16 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       />
 
       <PullCheckDialog
-        open={pullCheck}
+        open={pullCheck !== null}
         preview={pullPreview}
-        onClose={() => setPullCheck(false)}
+        onClose={() => setPullCheck(null)}
         onPull={() => {
-          setPullCheck(false);
-          void run('Pull', () => ipc.pull(repo.path, remote));
+          const noVerify = pullCheck?.noVerify ?? false;
+          setPullCheck(null);
+          void run(noVerify ? 'Pull without hooks' : 'Pull', () => ipc.pull(repo.path, remote, undefined, noVerify));
         }}
         onStash={(paths) => {
-          setPullCheck(false);
+          setPullCheck(null);
           openDialog('createStash', { paths });
         }}
       />
@@ -644,7 +647,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             size="sm"
             className="rounded-r-none"
             disabled={!!busy}
-            onClick={() => (pullWarning ? setPullCheck(true) : void run('Pull', () => ipc.pull(repo.path, remote)))}
+            onClick={() => (pullWarning ? setPullCheck({ noVerify: false }) : void run('Pull', () => ipc.pull(repo.path, remote)))}
           >
             <ArrowDownToLine />
             Pull
@@ -657,7 +660,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             )}
           </Button>
         </Hint>
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={(open) => open && repoHooks.refresh()}>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" className="rounded-l-none" aria-label="Pull options" disabled={!!busy}>
               <ChevronDown className="size-3.5" />
@@ -670,6 +673,17 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             <DropdownMenuItem onClick={() => void run('Pull (rebase)', () => ipc.pull(repo.path, remote, 'rebase'))}>
               Pull with rebase
             </DropdownMenuItem>
+            {(repoHooks.inWorktree || repoHooks.found.some((name) => PULL_HOOKS.includes(name))) && (
+              <DropdownMenuItem
+                onClick={() =>
+                  pullWarning
+                    ? setPullCheck({ noVerify: true })
+                    : void run('Pull without hooks', () => ipc.pull(repo.path, remote, undefined, true))
+                }
+              >
+                Pull without hooks
+              </DropdownMenuItem>
+            )}
             {remotes.length > 1 && (
               <>
                 <DropdownMenuSeparator />
@@ -715,7 +729,7 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             <DropdownMenuItem onClick={() => runPush('Push with tags', pushRequest({ withTags: true }))}>
               Push with tags
             </DropdownMenuItem>
-            {repoHooks.includes('pre-push') && (
+            {repoHooks.found.includes('pre-push') && (
               <DropdownMenuItem
                 onClick={() => runPush('Push without hooks', pushRequest({ noVerify: true }))}
               >

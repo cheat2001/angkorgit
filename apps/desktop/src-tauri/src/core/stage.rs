@@ -1,7 +1,14 @@
-use std::path::Path;
+use std::{
+    collections::HashMap,
+    ffi::OsStr,
+    fs,
+    io::ErrorKind,
+    path::{Component, Path, PathBuf},
+};
 
 use git2::{ApplyLocation, DiffFormat, DiffOptions, Repository};
 
+use super::types::{DiscardBatch, DiscardFailure};
 use crate::error::{AppError, AppResult};
 
 pub fn stage_file(path: &str, file: &str) -> AppResult<()> {
@@ -157,71 +164,747 @@ pub fn discard_staged_file(path: &str, file: &str) -> AppResult<bool> {
 }
 
 pub fn discard_staged_all(path: &str) -> AppResult<Vec<String>> {
-    let repo = super::repo::open(path)?;
-    let mut opts = git2::StatusOptions::new();
-    opts.include_untracked(false);
-    let statuses = repo.statuses(Some(&mut opts))?;
-    let staged: Vec<String> = statuses
-        .iter()
-        .filter(|e| {
-            e.status().intersects(
-                git2::Status::INDEX_NEW
-                    | git2::Status::INDEX_MODIFIED
-                    | git2::Status::INDEX_DELETED
-                    | git2::Status::INDEX_RENAMED
-                    | git2::Status::INDEX_TYPECHANGE,
-            )
-        })
-        .filter_map(|e| {
-            e.head_to_index()
-                .and_then(|d| d.old_file().path().map(|p| p.to_string_lossy().to_string()))
-                .or_else(|| e.path().map(String::from))
-        })
-        .collect();
-    let renamed_targets: Vec<String> = statuses
-        .iter()
-        .filter(|e| e.status().contains(git2::Status::INDEX_RENAMED))
-        .filter_map(|e| {
-            e.head_to_index()
-                .and_then(|d| d.new_file().path().map(|p| p.to_string_lossy().to_string()))
-        })
-        .collect();
-    drop(statuses);
-    for file in staged.iter().chain(renamed_targets.iter()) {
-        discard_to_head(&repo, file)?;
+    let (batch, _) = discard_staged_all_reporting(path)?;
+    if let Some(failure) = batch.failed.first() {
+        return Err(AppError::other(failure.message.clone()));
     }
-    let remaining = touched_paths(&repo)?;
-    Ok(staged
-        .into_iter()
-        .filter(|p| remaining.contains(p))
-        .collect())
+    Ok(batch.leftovers)
 }
 
-fn discard_to_head(repo: &git2::Repository, file: &str) -> AppResult<()> {
+pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatch, bool)> {
+    let repo = super::repo::open(path)?;
+    let mut opts = git2::StatusOptions::new();
+    opts.show(git2::StatusShow::Index)
+        .include_untracked(false)
+        .renames_head_to_index(true);
+    let statuses = repo.statuses(Some(&mut opts))?;
+    let mut staged = staged_discard_paths(&statuses);
+    drop(statuses);
+    let mut batch = DiscardBatch::default();
+    let mut restored_any = false;
+    let mut restored = Vec::new();
+    loop {
+        let mut progress = false;
+        let mut deferred = Vec::new();
+        for (source, destination) in staged {
+            let mut failed_path = &source;
+            let source_result = match destination.as_deref() {
+                Some(file) => {
+                    checkout_with_rollback(&repo, &source, Some(file), |destination_backed_up| {
+                        restore_rename_source(&repo, &source, file, destination_backed_up)
+                    })
+                }
+                None => discard_to_head(&repo, &source).map(|()| (None, None)),
+            };
+            let result = source_result.and_then(|(backup, removal)| {
+                progress = true;
+                restored_any = true;
+                if let Some(file) = &destination {
+                    failed_path = file;
+                    if let Some(removal) = removal {
+                        removal.remove()?;
+                    }
+                    if let Some(backup) = backup {
+                        close_checkout_backup(backup)?;
+                    }
+                }
+                Ok(())
+            });
+            match result {
+                Ok(()) => restored.push((source, destination)),
+                Err(error) => {
+                    repo.index()?.read(true)?;
+                    let failure = DiscardFailure {
+                        path: failed_path.clone(),
+                        message: error.to_string(),
+                    };
+                    if failed_path == &source && matches!(error, AppError::Conflict(_)) {
+                        deferred.push((source, destination, failure));
+                    } else {
+                        batch.failed.push(failure);
+                    }
+                }
+            }
+        }
+        if deferred.is_empty() || !progress {
+            batch
+                .failed
+                .extend(deferred.into_iter().map(|(_, _, failure)| failure));
+            break;
+        }
+        staged = deferred
+            .into_iter()
+            .map(|(source, destination, _)| (source, destination))
+            .collect();
+    }
+    let remaining = touched_paths(&repo)?;
+    batch.leftovers = restored
+        .into_iter()
+        .filter_map(|(source, destination)| {
+            std::iter::once(source)
+                .chain(destination)
+                .find(|file| remaining.contains(file))
+        })
+        .collect();
+    Ok((batch, restored_any))
+}
+
+fn staged_discard_paths(statuses: &git2::Statuses<'_>) -> Vec<(String, Option<String>)> {
+    let mut staged = Vec::new();
+    let mut symlinks: HashMap<git2::Oid, (Vec<usize>, Vec<usize>)> = HashMap::new();
+    for entry in statuses.iter() {
+        let status = entry.status();
+        if !status.intersects(
+            git2::Status::INDEX_NEW
+                | git2::Status::INDEX_MODIFIED
+                | git2::Status::INDEX_DELETED
+                | git2::Status::INDEX_RENAMED
+                | git2::Status::INDEX_TYPECHANGE,
+        ) {
+            continue;
+        }
+        let Some(delta) = entry.head_to_index() else {
+            continue;
+        };
+        let old = delta.old_file();
+        let new = delta.new_file();
+        let Some(source) = old.path() else {
+            continue;
+        };
+        let destination = if status.is_index_renamed() {
+            let Some(destination) = new.path() else {
+                continue;
+            };
+            Some(destination.to_string_lossy().into_owned())
+        } else {
+            None
+        };
+        if status.is_index_deleted() && old.mode() == git2::FileMode::Link {
+            symlinks.entry(old.id()).or_default().0.push(staged.len());
+        } else if status.is_index_new() && new.mode() == git2::FileMode::Link {
+            symlinks.entry(new.id()).or_default().1.push(staged.len());
+        }
+        staged.push(Some((source.to_string_lossy().into_owned(), destination)));
+    }
+    for (sources, destinations) in symlinks.into_values() {
+        if let ([source], [destination]) = (sources.as_slice(), destinations.as_slice()) {
+            let (destination, _) = staged[*destination]
+                .take()
+                .expect("staged symlink addition");
+            staged[*source].as_mut().expect("staged symlink deletion").1 = Some(destination);
+        }
+    }
+    staged.into_iter().flatten().collect()
+}
+
+fn checkout_with_rollback<T>(
+    repo: &Repository,
+    source: &str,
+    destination: Option<&str>,
+    checkout: impl FnOnce(bool) -> AppResult<T>,
+) -> AppResult<(Option<tempfile::TempDir>, T)> {
     let workdir = repo
         .workdir()
-        .ok_or_else(|| AppError::other("bare repository"))?
-        .to_path_buf();
-    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
-    let in_head = head_tree
-        .as_ref()
-        .map(|t| t.get_path(Path::new(file)).is_ok())
-        .unwrap_or(false);
-    if in_head {
-        let tree = head_tree.as_ref().expect("checked above");
-        let mut builder = git2::build::CheckoutBuilder::new();
-        builder.path(file).force();
-        repo.checkout_tree(tree.as_object(), Some(&mut builder))?;
+        .ok_or_else(|| AppError::other("bare repository"))?;
+    let source_path = workdir.join(source);
+    let destination_path = destination.map(|file| workdir.join(file));
+    let destination_blocker = match &destination_path {
+        Some(path) => rename_blocker(&source_path, path)?,
+        None => None,
+    };
+    let blocker = destination_blocker.unwrap_or(&source_path);
+    check_checkout_parents(workdir, blocker, None)?;
+    if let Some(blocker) = destination_blocker {
+        check_checkout_parents(workdir, &source_path, Some(blocker))?;
+    }
+    let metadata = match blocker.symlink_metadata() {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            let error = match checkout(false) {
+                Ok(result) => return Ok((None, result)),
+                Err(error) => error,
+            };
+            if let Err(rollback) = remove_created_rename_source(&source_path) {
+                return Err(AppError::other(format!(
+                    "{error}. Could not remove the newly created {source} ({rollback})"
+                )));
+            }
+            return Err(error);
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.is_dir() {
+        let safe_to_move =
+            if let (Some(_), Some(destination)) = (destination_blocker, &destination_path) {
+                contains_only_rename_destination(blocker, destination)?
+            } else {
+                contains_only_empty_directories(blocker)?
+            };
+        if !safe_to_move {
+            return Err(AppError::Conflict(format!(
+                "a directory containing other files occupies {source}"
+            )));
+        }
+    }
+
+    let blocker = if destination.is_none() || metadata.is_symlink() {
+        checkout_entry_path(blocker)?
     } else {
-        let mut index = repo.index()?;
-        let _ = index.remove_path(Path::new(file));
-        index.write()?;
-        let full = workdir.join(file);
-        if full.is_file() || full.is_symlink() {
-            std::fs::remove_file(full)?;
+        blocker.to_path_buf()
+    };
+    let parent = blocker.parent().expect("path is inside the worktree");
+    let backup = tempfile::Builder::new()
+        .prefix(".angkorgit-discard-")
+        .tempdir_in(parent)?;
+    let original = backup.path().join("original");
+    fs::rename(&blocker, &original)?;
+    let error = match checkout(destination_blocker.is_some()) {
+        Ok(result) => return Ok((Some(backup), result)),
+        Err(error) => error,
+    };
+    let replacement = backup.path().join("replacement");
+    let rollback = match fs::rename(&blocker, replacement) {
+        Ok(()) => fs::rename(&original, &blocker),
+        Err(error) if error.kind() == ErrorKind::NotFound => fs::rename(&original, &blocker),
+        Err(error) => Err(error),
+    };
+    if let Err(rollback) = rollback {
+        let backup_path = backup.keep().join("original");
+        return Err(AppError::other(format!(
+            "{error}. Could not put the original back ({rollback}). It is saved at {}",
+            backup_path.display()
+        )));
+    }
+    Err(error)
+}
+
+fn check_checkout_parents(
+    workdir: &Path,
+    path: &Path,
+    movable_blocker: Option<&Path>,
+) -> AppResult<()> {
+    let relative = path
+        .strip_prefix(workdir)
+        .map_err(|_| AppError::other(format!("Invalid worktree path: {}", path.display())))?;
+    let (_, parents) = worktree_file_parts(relative)?;
+    let mut parent = workdir.to_path_buf();
+    for part in parents {
+        parent.push(part);
+        match parent.symlink_metadata() {
+            Ok(metadata) if is_real_directory(&metadata) => {}
+            Ok(_) => {
+                if let Some(blocker) = movable_blocker {
+                    if same_checkout_path(&parent, blocker)? {
+                        return Ok(());
+                    }
+                }
+                return Err(AppError::Conflict(format!(
+                    "another path occupies {}",
+                    relative.display()
+                )));
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
         }
     }
     Ok(())
+}
+
+fn remove_created_rename_source(path: &Path) -> std::io::Result<()> {
+    match path.symlink_metadata() {
+        Ok(metadata) => remove_worktree_entry(path, metadata.file_type()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn restore_rename_source(
+    repo: &Repository,
+    source: &str,
+    destination: &str,
+    destination_backed_up: bool,
+) -> AppResult<Option<WorktreeFileRemoval>> {
+    let tree = repo.head()?.peel_to_tree()?;
+    let source_path = Path::new(source);
+    let destination_path = Path::new(destination);
+    let head_entry = tree.get_path(source_path)?;
+    checkout_head_file(repo, &tree, source, false)?;
+    let removal = if destination_backed_up {
+        None
+    } else {
+        let workdir = repo
+            .workdir()
+            .ok_or_else(|| AppError::other("bare repository"))?;
+        prepare_worktree_file_removal(workdir, destination)?
+    };
+
+    let mut index = repo.index()?;
+    index.read(true)?;
+    if index
+        .get_path(destination_path, 0)
+        .is_some_and(|entry| entry.path == destination.as_bytes())
+    {
+        index.remove(destination_path, 0)?;
+    }
+    let entry = git2::IndexEntry {
+        ctime: git2::IndexTime::new(0, 0),
+        mtime: git2::IndexTime::new(0, 0),
+        dev: 0,
+        ino: 0,
+        mode: head_entry.filemode() as u32,
+        uid: 0,
+        gid: 0,
+        file_size: 0,
+        id: head_entry.id(),
+        flags: 0,
+        flags_extended: 0,
+        path: source.as_bytes().to_vec(),
+    };
+    let expected_len = index.len()
+        + usize::from(
+            !index
+                .get_path(source_path, 0)
+                .is_some_and(|existing| existing.path == entry.path),
+        );
+    index.add(&entry)?;
+    if index.len() != expected_len {
+        return Err(AppError::Conflict(format!(
+            "another staged path occupies {source}"
+        )));
+    }
+    if !index.get_path(source_path, 0).is_some_and(|restored| {
+        restored.path == entry.path && restored.id == entry.id && restored.mode == entry.mode
+    }) {
+        return Err(AppError::other(format!(
+            "Could not restore {source} in the index"
+        )));
+    }
+    index.write()?;
+    Ok(removal)
+}
+
+fn rename_blocker<'a>(source: &Path, destination: &'a Path) -> AppResult<Option<&'a Path>> {
+    let source_depth = source.components().count();
+    let destination_depth = destination.components().count();
+    let (Some(source_root), Some(destination_root)) = (
+        source
+            .ancestors()
+            .nth(source_depth.saturating_sub(destination_depth)),
+        destination
+            .ancestors()
+            .nth(destination_depth.saturating_sub(source_depth)),
+    ) else {
+        return Ok(None);
+    };
+    Ok(same_checkout_path(source_root, destination_root)?.then_some(destination_root))
+}
+
+fn same_checkout_path(source: &Path, destination: &Path) -> AppResult<bool> {
+    if source == destination {
+        return Ok(true);
+    }
+    let Ok(source_metadata) = source.symlink_metadata() else {
+        return Ok(false);
+    };
+    let Ok(destination_metadata) = destination.symlink_metadata() else {
+        return Ok(false);
+    };
+    if source_metadata.is_symlink() || destination_metadata.is_symlink() {
+        if source_metadata.is_symlink() && destination_metadata.is_symlink() {
+            return same_symlink_entry(source, destination);
+        }
+        return Ok(false);
+    }
+    Ok(source.canonicalize().is_ok_and(|source| {
+        destination
+            .canonicalize()
+            .is_ok_and(|destination| source == destination)
+    }))
+}
+
+fn same_symlink_entry(source: &Path, destination: &Path) -> AppResult<bool> {
+    let parent = source.parent().expect("symlink has a parent directory");
+    let destination_parent = destination
+        .parent()
+        .expect("symlink has a parent directory");
+    if !same_file::is_same_file(parent, destination_parent)? {
+        return Ok(false);
+    }
+    Ok(checkout_entry_path(source)?.file_name() == checkout_entry_path(destination)?.file_name())
+}
+
+fn checkout_entry_path(path: &Path) -> AppResult<PathBuf> {
+    let name = path.file_name().expect("checkout path has a file name");
+    let parent = path.parent().expect("checkout path has a parent directory");
+    for entry in fs::read_dir(parent)? {
+        if entry?.file_name() == name {
+            return Ok(path.to_path_buf());
+        }
+    }
+    let identity = checkout_entry_identity(path)?;
+    let mut actual = None;
+    let unidentified = || {
+        AppError::other(format!(
+            "Could not identify a unique directory entry for {}",
+            path.display()
+        ))
+    };
+    for entry in fs::read_dir(parent)? {
+        let candidate = entry?.path();
+        if checkout_entry_identity(&candidate).is_ok_and(|candidate| candidate == identity) {
+            if actual.is_some() {
+                return Err(unidentified());
+            }
+            actual = Some(candidate);
+        }
+    }
+    actual.ok_or_else(unidentified)
+}
+
+#[cfg(unix)]
+fn checkout_entry_identity(path: &Path) -> std::io::Result<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = path.symlink_metadata()?;
+    Ok((metadata.dev(), metadata.ino()))
+}
+
+#[cfg(windows)]
+fn checkout_entry_identity(path: &Path) -> std::io::Result<same_file::Handle> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    };
+
+    let file = fs::OpenOptions::new()
+        .access_mode(0)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)?;
+    same_file::Handle::from_file(file)
+}
+
+fn contains_only_rename_destination(blocker: &Path, destination: &Path) -> AppResult<bool> {
+    match destination.symlink_metadata() {
+        Ok(metadata) if metadata.is_dir() => return Ok(false),
+        Err(error) if error.kind() != ErrorKind::NotFound => return Err(error.into()),
+        _ => {}
+    }
+    let mut child = destination;
+    while let Some(parent) = child.parent().filter(|parent| parent.starts_with(blocker)) {
+        if !parent.symlink_metadata()?.is_dir() {
+            return Ok(false);
+        }
+        for entry in fs::read_dir(parent)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path != child && !contains_only_empty_directories(&path)? {
+                return Ok(false);
+            }
+        }
+        if parent == blocker {
+            return Ok(true);
+        }
+        child = parent;
+    }
+    Ok(false)
+}
+
+fn contains_only_empty_directories(path: &Path) -> AppResult<bool> {
+    if !path.symlink_metadata()?.is_dir() {
+        return Ok(false);
+    }
+    for child in fs::read_dir(path)? {
+        if !contains_only_empty_directories(&child?.path())? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn close_checkout_backup(backup: tempfile::TempDir) -> AppResult<()> {
+    let backup_path = backup.path().to_path_buf();
+    backup.close().map_err(|error| {
+        AppError::other(format!(
+            "Could not remove the backup at {}: {error}",
+            backup_path.display()
+        ))
+    })
+}
+
+fn discard_to_head(repo: &Repository, file: &str) -> AppResult<()> {
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| AppError::other("bare repository"))?;
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+    if let Some((tree, entry)) = head_tree.as_ref().and_then(|tree| {
+        tree.get_path(Path::new(file))
+            .ok()
+            .map(|entry| (tree, entry))
+    }) {
+        let checkout = || checkout_head_file(repo, tree, file, true);
+        if entry.filemode() != i32::from(git2::FileMode::Link) {
+            return checkout();
+        }
+        let (backup, ()) = checkout_with_rollback(repo, file, None, |_| checkout())?;
+        if let Some(backup) = backup {
+            close_checkout_backup(backup)?;
+        }
+        Ok(())
+    } else {
+        let removal = prepare_worktree_file_removal(workdir, file)?;
+        let mut index = repo.index()?;
+        let _ = index.remove_path(Path::new(file));
+        index.write()?;
+        if let Some(removal) = removal {
+            removal.remove()?;
+        }
+        Ok(())
+    }
+}
+
+fn checkout_head_file(
+    repo: &Repository,
+    tree: &git2::Tree<'_>,
+    file: &str,
+    update_index: bool,
+) -> AppResult<()> {
+    let mut builder = git2::build::CheckoutBuilder::new();
+    builder
+        .path(file)
+        .disable_pathspec_match(true)
+        .force()
+        .update_index(update_index);
+    repo.checkout_tree(tree.as_object(), Some(&mut builder))?;
+    Ok(())
+}
+
+fn prepare_worktree_file_removal(
+    workdir: &Path,
+    file: &str,
+) -> AppResult<Option<WorktreeFileRemoval>> {
+    let (name, parents) = worktree_file_parts(Path::new(file))?;
+    Ok(prepare_worktree_file_removal_at(workdir, &parents, name)?)
+}
+
+fn worktree_file_parts(path: &Path) -> AppResult<(&OsStr, Vec<&OsStr>)> {
+    let invalid = || AppError::other(format!("Invalid worktree path: {}", path.display()));
+    let mut components = path
+        .components()
+        .map(|part| match part {
+            Component::Normal(name) if Path::new(name).file_name() == Some(name) => Ok(name),
+            _ => Err(invalid()),
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    let name = components.pop().ok_or_else(invalid)?;
+    Ok((name, components))
+}
+
+fn is_real_directory(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return false;
+        }
+    }
+    metadata.is_dir()
+}
+
+#[cfg(unix)]
+struct WorktreeFileRemoval {
+    parent: rustix::fd::OwnedFd,
+    name: std::ffi::OsString,
+}
+
+#[cfg(unix)]
+impl WorktreeFileRemoval {
+    fn remove(self) -> std::io::Result<()> {
+        use rustix::fs::{self, AtFlags};
+        use rustix::io::Errno;
+
+        match fs::unlinkat(&self.parent, &self.name, AtFlags::empty()) {
+            Ok(()) | Err(Errno::NOENT) => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn prepare_worktree_file_removal_at(
+    workdir: &Path,
+    parents: &[&OsStr],
+    name: &OsStr,
+) -> std::io::Result<Option<WorktreeFileRemoval>> {
+    use rustix::fs::{self, AtFlags, FileType, Mode, OFlags};
+    use rustix::io::Errno;
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    let access = OFlags::PATH;
+    #[cfg(any(target_vendor = "apple", target_os = "freebsd", target_os = "netbsd"))]
+    let access = OFlags::from_bits_retain(libc::O_SEARCH as u32);
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_vendor = "apple",
+        target_os = "freebsd",
+        target_os = "netbsd"
+    )))]
+    let access = OFlags::RDONLY;
+    let flags = access | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    let mut dir = fs::open(workdir, flags, Mode::empty())?;
+    let mut ancestors = Vec::with_capacity(parents.len());
+    for parent in parents {
+        let next = match fs::openat(&dir, *parent, flags | OFlags::NOFOLLOW, Mode::empty()) {
+            Ok(next) => next,
+            Err(Errno::NOENT | Errno::NOTDIR | Errno::LOOP) => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        ancestors.push(dir);
+        dir = next;
+    }
+    let entry = match fs::statat(&dir, name, AtFlags::SYMLINK_NOFOLLOW) {
+        Ok(entry) => entry,
+        Err(Errno::NOENT) => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    match FileType::from_raw_mode(entry.st_mode) {
+        FileType::RegularFile => {}
+        FileType::Symlink => {
+            for (parent, spelling) in ancestors.iter().zip(parents).chain([(&dir, &name)]) {
+                if !unix_has_exact_entry(parent, spelling)? {
+                    return Ok(None);
+                }
+            }
+        }
+        _ => return Ok(None),
+    }
+    Ok(Some(WorktreeFileRemoval {
+        parent: dir,
+        name: name.to_os_string(),
+    }))
+}
+
+#[cfg(unix)]
+fn unix_has_exact_entry(dir: &rustix::fd::OwnedFd, name: &OsStr) -> std::io::Result<bool> {
+    use rustix::fs::{self, Mode, OFlags};
+    use std::os::unix::ffi::OsStrExt;
+
+    let readable = fs::openat(
+        dir,
+        ".",
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )?;
+    for entry in fs::Dir::new(readable)? {
+        if entry?.file_name().to_bytes() == name.as_bytes() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(windows)]
+struct WorktreeFileRemoval {
+    path: PathBuf,
+    kind: fs::FileType,
+    _directories: Vec<fs::File>,
+}
+
+#[cfg(windows)]
+impl WorktreeFileRemoval {
+    fn remove(self) -> std::io::Result<()> {
+        match remove_worktree_entry(&self.path, self.kind) {
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+            result => result,
+        }
+    }
+}
+
+#[cfg(windows)]
+fn prepare_worktree_file_removal_at(
+    workdir: &Path,
+    parents: &[&OsStr],
+    name: &OsStr,
+) -> std::io::Result<Option<WorktreeFileRemoval>> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ,
+    };
+
+    let root = workdir.canonicalize()?;
+    let mut dir = root.clone();
+    let mut handles = Vec::with_capacity(parents.len() + 1);
+    for part in std::iter::once(None).chain(parents.iter().map(Some)) {
+        if let Some(part) = part {
+            dir.push(part);
+        }
+        let handle = match fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(&dir)
+        {
+            Ok(handle) => handle,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        if !is_real_directory(&handle.metadata()?) {
+            return Ok(None);
+        }
+        handles.push(handle);
+    }
+    let full = dir.join(name);
+    let kind = match full.symlink_metadata() {
+        Ok(metadata) => metadata.file_type(),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    if kind.is_symlink() {
+        let mut parent = root;
+        for part in parents.iter().copied().chain([name]) {
+            if !windows_has_exact_entry(&parent, part)? {
+                return Ok(None);
+            }
+            parent.push(part);
+        }
+    }
+    if kind.is_file() || kind.is_symlink() {
+        Ok(Some(WorktreeFileRemoval {
+            path: full,
+            kind,
+            _directories: handles,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+#[cfg(windows)]
+fn windows_has_exact_entry(parent: &Path, name: &OsStr) -> std::io::Result<bool> {
+    for entry in fs::read_dir(parent)? {
+        if entry?.file_name() == name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn remove_worktree_entry(path: &Path, kind: fs::FileType) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileTypeExt;
+
+        if kind.is_symlink_dir() {
+            return fs::remove_dir(path);
+        }
+    }
+    if kind.is_dir() {
+        fs::remove_dir(path)
+    } else {
+        fs::remove_file(path)
+    }
 }
 
 fn touched_paths(repo: &git2::Repository) -> AppResult<Vec<String>> {

@@ -7,12 +7,48 @@ All notable changes to AngKorGit are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Checkouts, merges and rewrites run your `post-*` hooks.** `post-checkout`,
+  `post-merge` and `post-rewrite` now run after the operations that run them in `git`,
+  with the same arguments and input:
+  - `post-checkout` after a checkout, a new branch you check out, a detached checkout,
+    a pull request checkout, a clone, a new worktree, and after discarding or applying
+    files from a stash (`git restore` runs it too, with flag `0`).
+  - `post-merge` after a merge or a pull that merged or fast-forwarded.
+  - `post-rewrite` after amend, reword, rebase, interactive rebase and a pull with
+    rebase, once with every rewritten commit, also when a paused rebase is continued.
+  As in `git`, a failing hook never undoes the operation: AngKorGit shows a warning
+  with **Show output** instead of an error. A hook that runs past its 10-minute limit is
+  stopped and reported as timed out, with what it printed until then. **Skip hooks** in the commit box also skips
+  `post-rewrite` when amending, and the Pull menu has **Pull without hooks** when the
+  repository has one of these hooks, or keeps its hooks in a folder inside the repository
+  (like `.husky`), links a hook to a file there, or includes a Git config file from the
+  repository, where a pull can bring a new one. A rebase you started without hooks
+  stays without hooks when you continue it after a conflict. (#82)
+- **Pull all runs `post-merge` in each repository it fast-forwarded.** One at a time,
+  never for a repository that was already up to date; a failing hook shows as a warning
+  with its output on that repository's row and the rest of the group still updates.
+  **Pull all without hooks** in the group menu skips it. Cancel waits for a hook that
+  is already running, and for anything it left running in the background, the same way
+  it waits for the checkout before it. (#69, #82)
 - **Show only the commits your search matches.** A search still highlights its
   matches in the full graph. The new filter button next to the match counter narrows
   the graph to just those commits, for example every "into staging" merge, with the
   count beside it. It works with the author search and a branch picked in the
   sidebar, and turning it off brings the full graph back on the commit you had
   selected.
+
+### Changed
+- **Rebasing a branch that already sits on top of its target does nothing**, like
+  `git rebase`: it reports "Already up to date" instead of re-creating the branch's
+  commits with new commit dates. Uncommitted changes or an unfinished operation still
+  stop it first.
+- **Fast-forward merges and pulls set `ORIG_HEAD`** to the commit you were on, like
+  `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
+
+### Fixed
+- **Discarding several files, or all staged changes, no longer stops at a file it
+  cannot remove.** The other files are still restored, and AngKorGit names the files
+  it could not discard instead of reporting every change as discarded.
 
 ## [0.26.0] — 2026-11-06
 

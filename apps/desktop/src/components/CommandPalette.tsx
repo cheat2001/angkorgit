@@ -331,7 +331,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
             label="Push"
             onSelect={() => runPush('Push', (noVerify) => ipc.push(path, remote, false, false, true, headBranch, noVerify))}
           />
-          {repoHooks.includes('pre-push') && (
+          {repoHooks.found.includes('pre-push') && (
             <PaletteItem
               icon={<ShieldOff />}
               label="Push without hooks"
