@@ -6038,7 +6038,9 @@ fn discarding_a_deleted_directory_symlink_removes_the_new_link_on_index_lock() {
     let result = result.unwrap();
     assert_eq!(result.value.failed.len(), 1);
     assert!(
-        result.value.failed[0].message.contains("index.lock"),
+        result.value.failed[0]
+            .message
+            .contains("the index is locked"),
         "{:?}",
         result.value.failed
     );
