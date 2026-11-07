@@ -577,6 +577,7 @@ fn gather(
             } else {
                 if whole_tree {
                     kill_tree(&mut child);
+                    exit_unconfirmed = true;
                 } else {
                     let _ = child.kill();
                 }
@@ -1100,8 +1101,39 @@ mod tests {
         let child = spawn_tree(command, false).unwrap();
         let run = run_tree(child, "", Duration::from_secs(1));
         assert!(run.timed_out);
+        assert!(run.exit_unconfirmed);
         assert_eq!(run.captured.stdout.trim(), "started");
         assert_eq!(run.captured.stderr.trim(), "warming up");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_ordinary_hook_timeout_cannot_confirm_a_detached_child_exited() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("child-pid");
+        let mut command = crate::proc::hidden("/bin/sh");
+        command
+            .arg("-c")
+            .arg("setsid sleep 30 > /dev/null 2>&1 & echo $! > \"$1\"; wait")
+            .arg("hook")
+            .arg(&pid_file);
+        let child = spawn_tree(command, false).unwrap();
+        let run = run_tree(child, "", Duration::from_secs(3));
+        let detached: libc::pid_t = std::fs::read_to_string(pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let alive = unsafe { libc::kill(detached, 0) == 0 };
+        if alive {
+            unsafe { libc::kill(detached, libc::SIGKILL) };
+        }
+        assert!(
+            alive,
+            "the fixture child should outlive its original process group"
+        );
+        assert!(run.timed_out);
+        assert!(run.exit_unconfirmed);
     }
 
     #[cfg(unix)]
