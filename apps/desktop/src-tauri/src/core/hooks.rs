@@ -406,7 +406,7 @@ impl PendingHook {
     pub(crate) fn wait_on_cancel(self) -> Option<HookWarning> {
         let (timed_out, message) = match self.processes.wait_on_cancel()? {
             CancelOutcome::Unconfirmed => (false, format!(
-                "After the {} hook, Cancel could not confirm that all processes exited. Detached processes may still be running.",
+                "After the {} hook, Cancel could not confirm that all processes exited. Hook processes may still be running.",
                 self.name,
             )),
             CancelOutcome::TimedOut { confirmed } => (true, format!(

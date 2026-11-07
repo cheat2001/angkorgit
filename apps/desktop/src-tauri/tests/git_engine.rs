@@ -7455,7 +7455,7 @@ fn group_pull_runs_post_merge_only_where_it_fast_forwarded() {
 }
 
 #[test]
-fn group_pull_leaves_background_hooks_running_and_waits_for_them_on_cancel() {
+fn group_pull_leaves_background_hooks_running_and_reports_their_state_on_cancel() {
     use std::time::{Duration, Instant};
 
     if !hooks_runnable() {
@@ -7494,10 +7494,12 @@ fn group_pull_leaves_background_hooks_running_and_waits_for_them_on_cancel() {
     let cancel_marker = also_behind.dir.join(".git/background-done");
     assert!(!cancel_marker.exists());
     let receipts = control.cancel_results().unwrap();
-    assert!(
-        cancel_marker.exists(),
-        "Cancel returned before background work finished"
-    );
+    if cfg!(windows) {
+        assert!(
+            cancel_marker.exists(),
+            "Cancel returned before background work finished"
+        );
+    }
     assert_eq!(receipts.len(), 1);
     assert_eq!(receipts[0].result.status, "ok");
     let warnings = &receipts[0].result.hook_warnings;
@@ -7512,12 +7514,16 @@ fn group_pull_leaves_background_hooks_running_and_waits_for_them_on_cancel() {
     }
 
     let deadline = Instant::now() + Duration::from_secs(5);
-    while !marker.exists() && Instant::now() < deadline {
+    while (!marker.exists() || !cancel_marker.exists()) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(25));
     }
     assert!(
         marker.exists(),
         "normal completion stopped the background job"
+    );
+    assert!(
+        cancel_marker.exists(),
+        "Cancel stopped background work before the deadline"
     );
     std::fs::remove_dir_all(origin).unwrap();
 }

@@ -230,7 +230,14 @@ pub(crate) fn spawn_tree(
     own_process_group(&mut command);
     let child = spawn_piped(command)?;
     #[cfg(unix)]
-    let leftovers = track_descendants.then(|| Leftovers { group: child.id() });
+    let leftovers = if track_descendants {
+        Some(Leftovers {
+            #[cfg(target_os = "linux")]
+            group: ProcessGroup::open(&child),
+        })
+    } else {
+        None
+    };
     #[cfg(not(unix))]
     let leftovers = None;
     Ok(TreeChild { child, leftovers })
@@ -295,9 +302,41 @@ fn kill_tree(child: &mut Child) {
     let _ = child.kill();
 }
 
+#[cfg(target_os = "linux")]
+struct ProcessGroup(std::os::fd::OwnedFd);
+
+#[cfg(target_os = "linux")]
+impl ProcessGroup {
+    fn open(child: &Child) -> Option<Self> {
+        use std::os::fd::{FromRawFd, OwnedFd, RawFd};
+
+        let pid = libc::pid_t::try_from(child.id()).ok()?;
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0u32) };
+        if fd < 0 {
+            return None;
+        }
+        let group = Self(unsafe { OwnedFd::from_raw_fd(fd as RawFd) });
+        group.signal(0).then_some(group)
+    }
+
+    fn signal(&self, signal: libc::c_int) -> bool {
+        use std::os::fd::AsRawFd;
+
+        unsafe {
+            libc::syscall(
+                libc::SYS_pidfd_send_signal,
+                self.0.as_raw_fd(),
+                signal,
+                std::ptr::null::<libc::siginfo_t>(),
+                libc::PIDFD_SIGNAL_PROCESS_GROUP,
+            ) == 0
+        }
+    }
+}
+
 struct Leftovers {
-    #[cfg(unix)]
-    group: u32,
+    #[cfg(target_os = "linux")]
+    group: Option<ProcessGroup>,
     #[cfg(windows)]
     job: job::Job,
 }
@@ -343,19 +382,15 @@ impl BackgroundProcesses {
 
 impl Leftovers {
     fn running(&self) -> bool {
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         {
-            let Ok(group) = libc::pid_t::try_from(self.group) else {
-                return true;
-            };
-            let present = unsafe { libc::killpg(group, 0) == 0 };
-            present || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+            self.group.as_ref().is_some_and(|group| group.signal(0))
         }
         #[cfg(windows)]
         {
             self.job.running()
         }
-        #[cfg(not(any(unix, windows)))]
+        #[cfg(not(any(target_os = "linux", windows)))]
         {
             false
         }
@@ -383,19 +418,18 @@ impl Leftovers {
     }
 
     fn stop_background(self) -> bool {
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
+        if let Some(group) = self.group {
+            let _ = group.signal(libc::SIGKILL);
+            let _ = wait_for_process_exit(PROCESS_EXIT_GRACE, || Some(!group.signal(0)));
+        }
+        #[cfg(not(windows))]
         {
-            kill_group(self.group);
-            let _ = wait_for_process_exit(PROCESS_EXIT_GRACE, || Some(!self.running()));
             false
         }
         #[cfg(windows)]
         {
             self.job.stop()
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            true
         }
     }
 }
@@ -1187,8 +1221,10 @@ mod tests {
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(20));
         assert!(!marker.exists());
+        let background = run.background.unwrap();
+        let tracks_group = background.leftovers.is_some();
         assert_eq!(
-            run.background.unwrap().wait_on_cancel(),
+            background.wait_on_cancel(),
             Some(CancelOutcome::Unconfirmed)
         );
         let written = marker.exists();
@@ -1196,26 +1232,31 @@ mod tests {
         assert!(!run.timed_out);
         assert_eq!(run.captured.stdout.trim(), "done");
         assert!(
-            written,
+            !tracks_group || written,
             "the run returned before its background work finished"
         );
     }
 
     #[cfg(unix)]
     #[test]
-    fn cancellation_stops_background_work_at_the_deadline() {
+    fn cancellation_stops_verified_background_work_at_the_deadline() {
         let mut command = crate::proc::hidden("/bin/sh");
         command.arg("-c").arg("sleep 30 > /dev/null 2>&1 & echo $!");
         let started = Instant::now();
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(1));
         assert!(!run.timed_out);
-        assert_eq!(
-            run.background.unwrap().wait_on_cancel(),
-            Some(CancelOutcome::TimedOut { confirmed: false })
-        );
-        assert!(started.elapsed() < Duration::from_secs(10));
         let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
+        let processes = run.background.unwrap();
+        let tracks_group = processes.leftovers.is_some();
+        let outcome = processes.wait_on_cancel();
+        if !tracks_group {
+            unsafe { libc::kill(background, libc::SIGKILL) };
+            assert_eq!(outcome, Some(CancelOutcome::Unconfirmed));
+            return;
+        }
+        assert_eq!(outcome, Some(CancelOutcome::TimedOut { confirmed: false }));
+        assert!(started.elapsed() < Duration::from_secs(10));
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut alive = true;
         while alive && Instant::now() < deadline {
@@ -1230,6 +1271,42 @@ mod tests {
             }
         }
         assert!(!alive, "the leftover process outlived the deadline");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "run the test binary in a private PID namespace as PID 1"]
+    fn cancellation_does_not_signal_a_reused_process_group() {
+        assert_eq!(std::process::id(), 1);
+        assert_eq!(std::fs::read_link("/proc/self").unwrap(), Path::new("1"));
+
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("sleep 30 > /dev/null 2>&1 & echo $!");
+        let original = spawn_tree(command, true).unwrap();
+        let group = original.child.id();
+        let run = run_tree(original, "", Duration::from_secs(1));
+        assert!(!run.timed_out);
+        let orphan: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
+        assert_eq!(unsafe { libc::kill(orphan, libc::SIGKILL) }, 0);
+        assert_eq!(
+            unsafe { libc::waitpid(orphan, std::ptr::null_mut(), 0) },
+            orphan
+        );
+
+        std::fs::write("/proc/sys/kernel/ns_last_pid", (group - 1).to_string()).unwrap();
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("exec sleep 30");
+        let mut unrelated = spawn_tree(command, false).unwrap();
+        assert_eq!(unrelated.child.id(), group);
+        let outcome = run.background.unwrap().wait_on_cancel();
+        let survived = unrelated.child.try_wait().unwrap().is_none();
+        if survived {
+            unrelated.child.kill().unwrap();
+        }
+        unrelated.child.wait().unwrap();
+
+        assert!(survived, "Cancel killed the unrelated process group");
+        assert_eq!(outcome, Some(CancelOutcome::Unconfirmed));
     }
 
     #[cfg(unix)]
