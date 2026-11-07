@@ -5845,7 +5845,7 @@ fn discarding_a_staged_rename_preserves_a_recreated_source_on_index_lock() {
 }
 
 #[cfg(unix)]
-fn assert_case_only_symlink_rename_rollback(recreate_source: bool) {
+fn assert_case_only_symlink_rename_rollback(recreate_source: bool, extra_addition: bool) {
     use std::io::ErrorKind;
     use std::os::unix::fs::symlink;
     use std::path::Path;
@@ -5865,20 +5865,38 @@ fn assert_case_only_symlink_rename_rollback(recreate_source: bool) {
     let mut index = git_repo.index().unwrap();
     index.remove_path(Path::new("Link")).unwrap();
     index.add_path(Path::new("link")).unwrap();
+    if extra_addition {
+        symlink("committed-target", repo.dir.join("another-link")).unwrap();
+        index.add_path(Path::new("another-link")).unwrap();
+    }
     index.write().unwrap();
     std::fs::remove_file(&destination).unwrap();
     symlink("edited-destination", &destination).unwrap();
     if recreate_source {
         symlink("recreated-source", &source).unwrap();
     }
+    let staged = || {
+        git_in(
+            &repo.dir,
+            &["diff", "--cached", "--name-status", "--no-renames"],
+        )
+    };
+    let staged_before = staged();
 
     let lock = repo.dir.join(".git/index.lock");
     std::fs::write(&lock, "").unwrap();
     let result = core::post_hooks::discard_staged_all(repo.path(), true);
     std::fs::remove_file(lock).unwrap();
     let result = result.unwrap();
-    assert_eq!(result.value.failed.len(), 1);
-    assert_eq!(result.value.failed[0].path, "Link");
+    assert_eq!(
+        result.value.failed.len(),
+        if extra_addition { 3 } else { 1 }
+    );
+    assert!(result
+        .value
+        .failed
+        .iter()
+        .any(|failure| failure.path == "Link"));
     assert_eq!(
         std::fs::read_link(&destination).unwrap(),
         Path::new("edited-destination")
@@ -5893,6 +5911,17 @@ fn assert_case_only_symlink_rename_rollback(recreate_source: bool) {
             source.symlink_metadata().unwrap_err().kind(),
             ErrorKind::NotFound
         );
+    }
+    assert_eq!(staged(), staged_before);
+    if extra_addition {
+        assert_eq!(
+            std::fs::read_link(repo.dir.join("another-link")).unwrap(),
+            Path::new("committed-target")
+        );
+        assert!(std::fs::read_dir(&repo.dir)
+            .unwrap()
+            .any(|entry| entry.unwrap().file_name() == "link"));
+        return;
     }
     assert_eq!(
         git_in(
@@ -5918,13 +5947,25 @@ fn assert_case_only_symlink_rename_rollback(recreate_source: bool) {
 #[cfg(unix)]
 #[test]
 fn discarding_a_case_only_symlink_rename_preserves_a_recreated_source_on_index_lock() {
-    assert_case_only_symlink_rename_rollback(true);
+    assert_case_only_symlink_rename_rollback(true, false);
 }
 
 #[cfg(unix)]
 #[test]
 fn discarding_a_case_only_symlink_rename_restores_an_absent_source_on_index_lock() {
-    assert_case_only_symlink_rename_rollback(false);
+    assert_case_only_symlink_rename_rollback(false, false);
+}
+
+#[cfg(unix)]
+#[test]
+fn discarding_an_ambiguous_symlink_rename_preserves_a_recreated_source_on_index_lock() {
+    assert_case_only_symlink_rename_rollback(true, true);
+}
+
+#[cfg(unix)]
+#[test]
+fn discarding_an_ambiguous_symlink_rename_restores_an_absent_source_on_index_lock() {
+    assert_case_only_symlink_rename_rollback(false, true);
 }
 
 #[test]
@@ -6686,6 +6727,69 @@ fn a_quoted_config_include_preserves_trailing_whitespace() {
     let hooks = core::repo_hooks(repo.path()).unwrap();
     assert!(hooks.found.is_empty());
     assert!(hooks.in_worktree);
+}
+
+#[cfg(windows)]
+#[test]
+fn a_config_include_uses_the_windows_home_drive_and_path() {
+    use std::path::{Component, Path};
+
+    const REPO: &str = "ANGKORGIT_TEST_WINDOWS_INCLUDE_REPO";
+    if let Some(path) = std::env::var_os(REPO) {
+        let path = Path::new(&path);
+        assert_eq!(
+            git_in(path, &["config", "--get", "angkorgit-test.marker"]),
+            "included"
+        );
+        let repo = git2::Repository::open(path).unwrap();
+        assert_eq!(
+            repo.config()
+                .unwrap()
+                .get_string("angkorgit-test.marker")
+                .unwrap(),
+            "included"
+        );
+        let hooks = core::repo_hooks(path.to_str().unwrap()).unwrap();
+        assert!(hooks.found.is_empty());
+        assert!(hooks.in_worktree);
+        return;
+    }
+
+    let repo = TempRepo::new();
+    repo.write(
+        "project.gitconfig",
+        "[angkorgit-test]\n\tmarker = included\n",
+    );
+    commit_all(&repo, "track included config");
+    let config = repo.read(".git/config");
+    repo.write(
+        ".git/config",
+        &format!("{config}\n[include]\n\tpath = ~/project.gitconfig\n"),
+    );
+    let profile = tempfile::tempdir().unwrap();
+    let mut home = repo.dir.components();
+    let Some(Component::Prefix(drive)) = home.next() else {
+        panic!("test repository needs a drive prefix");
+    };
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "a_config_include_uses_the_windows_home_drive_and_path",
+            "--nocapture",
+        ])
+        .env(REPO, &repo.dir)
+        .env_remove("HOME")
+        .env("HOMEDRIVE", drive.as_os_str())
+        .env("HOMEPATH", home.as_path())
+        .env("USERPROFILE", profile.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

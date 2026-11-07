@@ -157,6 +157,25 @@ fn hooks_live_in_worktree(repo: &Repository, workdir: &Path) -> AppResult<bool> 
 
 const CONFIG_FILE_LIMIT: usize = 64;
 
+#[cfg(windows)]
+fn config_include_home() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .or_else(|| {
+            let mut drive = std::env::var_os("HOMEDRIVE")?;
+            drive.push(std::env::var_os("HOMEPATH")?);
+            let path = PathBuf::from(drive);
+            path.is_dir().then_some(path)
+        })
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+}
+
+#[cfg(not(windows))]
+fn config_include_home() -> Option<PathBuf> {
+    super::remote::home_dir()
+}
+
 fn config_lives_in_worktree(repo: &Repository, workdir: &Handle, gitdirs: &[Handle]) -> bool {
     let mut pending = vec![
         repo.commondir().join("config"),
@@ -165,7 +184,7 @@ fn config_lives_in_worktree(repo: &Repository, workdir: &Handle, gitdirs: &[Hand
     pending.extend(git2::Config::find_global().ok());
     pending.extend(git2::Config::find_xdg().ok());
     pending.extend(git2::Config::find_system().ok());
-    let home = super::remote::home_dir();
+    let home = config_include_home();
     let mut seen = std::collections::HashSet::new();
     while let Some(file) = pending.pop() {
         if seen.contains(&file) {
