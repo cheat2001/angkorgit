@@ -73,7 +73,7 @@ pub(crate) fn home_dir() -> Option<PathBuf> {
 pub(crate) fn expand_home(path: &str, home: Option<&Path>) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = home {
-            return home.join(rest);
+            return home.join(rest.trim_start_matches('/'));
         }
     }
     PathBuf::from(path)
@@ -1659,6 +1659,14 @@ mod tests {
         assert_eq!(
             expand_home("~/.ssh/work_key", Some(&home())),
             PathBuf::from("/Users/tester/.ssh/work_key")
+        );
+    }
+
+    #[test]
+    fn expands_a_leading_tilde_with_repeated_slashes() {
+        assert_eq!(
+            expand_home("~//src/repo/project.gitconfig", Some(&home())),
+            home().join("src/repo/project.gitconfig")
         );
     }
 

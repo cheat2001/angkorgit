@@ -1,4 +1,4 @@
-use std::{fs, io::ErrorKind, path::Path};
+use std::{collections::HashMap, fs, io::ErrorKind, path::Path};
 
 use git2::{ApplyLocation, DiffFormat, DiffOptions, Repository};
 
@@ -172,28 +172,7 @@ pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatc
         .include_untracked(false)
         .renames_head_to_index(true);
     let statuses = repo.statuses(Some(&mut opts))?;
-    let mut staged: Vec<_> = statuses
-        .iter()
-        .filter(|e| {
-            e.status().intersects(
-                git2::Status::INDEX_NEW
-                    | git2::Status::INDEX_MODIFIED
-                    | git2::Status::INDEX_DELETED
-                    | git2::Status::INDEX_RENAMED
-                    | git2::Status::INDEX_TYPECHANGE,
-            )
-        })
-        .filter_map(|e| {
-            let delta = e.head_to_index()?;
-            let source = delta.old_file().path()?.to_string_lossy().into_owned();
-            let destination = if e.status().is_index_renamed() {
-                Some(delta.new_file().path()?.to_string_lossy().into_owned())
-            } else {
-                None
-            };
-            Some((source, destination))
-        })
-        .collect();
+    let mut staged = staged_discard_paths(&statuses);
     drop(statuses);
     let mut batch = DiscardBatch::default();
     let mut restored_any = false;
@@ -258,6 +237,54 @@ pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatc
     Ok((batch, restored_any))
 }
 
+fn staged_discard_paths(statuses: &git2::Statuses<'_>) -> Vec<(String, Option<String>)> {
+    let mut staged = Vec::new();
+    let mut symlinks: HashMap<git2::Oid, (Vec<usize>, Vec<usize>)> = HashMap::new();
+    for entry in statuses.iter() {
+        let status = entry.status();
+        if !status.intersects(
+            git2::Status::INDEX_NEW
+                | git2::Status::INDEX_MODIFIED
+                | git2::Status::INDEX_DELETED
+                | git2::Status::INDEX_RENAMED
+                | git2::Status::INDEX_TYPECHANGE,
+        ) {
+            continue;
+        }
+        let Some(delta) = entry.head_to_index() else {
+            continue;
+        };
+        let old = delta.old_file();
+        let new = delta.new_file();
+        let Some(source) = old.path() else {
+            continue;
+        };
+        let destination = if status.is_index_renamed() {
+            let Some(destination) = new.path() else {
+                continue;
+            };
+            Some(destination.to_string_lossy().into_owned())
+        } else {
+            None
+        };
+        if status.is_index_deleted() && old.mode() == git2::FileMode::Link {
+            symlinks.entry(old.id()).or_default().0.push(staged.len());
+        } else if status.is_index_new() && new.mode() == git2::FileMode::Link {
+            symlinks.entry(new.id()).or_default().1.push(staged.len());
+        }
+        staged.push(Some((source.to_string_lossy().into_owned(), destination)));
+    }
+    for (sources, destinations) in symlinks.into_values() {
+        if let ([source], [destination]) = (sources.as_slice(), destinations.as_slice()) {
+            let (destination, _) = staged[*destination]
+                .take()
+                .expect("staged symlink addition");
+            staged[*source].as_mut().expect("staged symlink deletion").1 = Some(destination);
+        }
+    }
+    staged.into_iter().flatten().collect()
+}
+
 struct RenameBackup {
     directory: tempfile::TempDir,
     includes_destination: bool,
@@ -273,7 +300,7 @@ fn discard_rename_source(
         .ok_or_else(|| AppError::other("bare repository"))?;
     let source_path = workdir.join(source);
     let destination_path = workdir.join(destination);
-    let destination_blocker = rename_blocker(&source_path, &destination_path);
+    let destination_blocker = rename_blocker(&source_path, &destination_path)?;
     if destination_blocker.is_none()
         && source_path
             .ancestors()
@@ -293,7 +320,15 @@ fn discard_rename_source(
     let metadata = match blocker.symlink_metadata() {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == ErrorKind::NotFound => {
-            return restore_rename_source(repo, source, destination).map(|()| None);
+            if let Err(error) = restore_rename_source(repo, source, destination) {
+                if let Err(rollback) = remove_created_rename_source(&source_path) {
+                    return Err(AppError::other(format!(
+                        "{error}. Could not remove the newly created {source} ({rollback})"
+                    )));
+                }
+                return Err(error);
+            }
+            return Ok(None);
         }
         Err(error) => return Err(error.into()),
     };
@@ -336,6 +371,15 @@ fn discard_rename_source(
         directory: backup,
         includes_destination: destination_blocker.is_some(),
     }))
+}
+
+fn remove_created_rename_source(path: &Path) -> std::io::Result<()> {
+    match path.symlink_metadata() {
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir(path),
+        Ok(_) => fs::remove_file(path),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 fn restore_rename_source(repo: &Repository, source: &str, destination: &str) -> AppResult<()> {
@@ -390,40 +434,76 @@ fn restore_rename_source(repo: &Repository, source: &str, destination: &str) -> 
     Ok(())
 }
 
-fn rename_blocker<'a>(source: &Path, destination: &'a Path) -> Option<&'a Path> {
+fn rename_blocker<'a>(source: &Path, destination: &'a Path) -> AppResult<Option<&'a Path>> {
     let source_depth = source.components().count();
     let destination_depth = destination.components().count();
-    let source_root = source
-        .ancestors()
-        .nth(source_depth.saturating_sub(destination_depth))?;
-    let destination_root = destination
-        .ancestors()
-        .nth(destination_depth.saturating_sub(source_depth))?;
-    same_checkout_path(source_root, destination_root).then_some(destination_root)
+    let (Some(source_root), Some(destination_root)) = (
+        source
+            .ancestors()
+            .nth(source_depth.saturating_sub(destination_depth)),
+        destination
+            .ancestors()
+            .nth(destination_depth.saturating_sub(source_depth)),
+    ) else {
+        return Ok(None);
+    };
+    Ok(same_checkout_path(source_root, destination_root)?.then_some(destination_root))
 }
 
-fn same_checkout_path(source: &Path, destination: &Path) -> bool {
+fn same_checkout_path(source: &Path, destination: &Path) -> AppResult<bool> {
     if source == destination {
-        return true;
+        return Ok(true);
     }
     let Ok(source_metadata) = source.symlink_metadata() else {
-        return false;
+        return Ok(false);
     };
     let Ok(destination_metadata) = destination.symlink_metadata() else {
-        return false;
+        return Ok(false);
     };
     if source_metadata.is_symlink() || destination_metadata.is_symlink() {
-        return source_metadata.is_symlink()
-            && destination_metadata.is_symlink()
-            && source
-                .as_os_str()
-                .eq_ignore_ascii_case(destination.as_os_str());
+        if source_metadata.is_symlink() && destination_metadata.is_symlink() {
+            return same_symlink_entry(source, destination);
+        }
+        return Ok(false);
     }
-    source.canonicalize().is_ok_and(|source| {
+    Ok(source.canonicalize().is_ok_and(|source| {
         destination
             .canonicalize()
             .is_ok_and(|destination| source == destination)
-    })
+    }))
+}
+
+fn same_symlink_entry(source: &Path, destination: &Path) -> AppResult<bool> {
+    let source_name = source.file_name().expect("symlink has a file name");
+    let destination_name = destination.file_name().expect("symlink has a file name");
+    let parent = source.parent().expect("symlink has a parent directory");
+    let destination_parent = destination
+        .parent()
+        .expect("symlink has a parent directory");
+    if !source_name.eq_ignore_ascii_case(destination_name)
+        || !same_file::is_same_file(parent, destination_parent)?
+    {
+        return Ok(false);
+    }
+    if source_name == destination_name {
+        return Ok(true);
+    }
+    let mut found = false;
+    for entry in fs::read_dir(parent)? {
+        if entry?.file_name().eq_ignore_ascii_case(source_name) {
+            if found {
+                return Ok(false);
+            }
+            found = true;
+        }
+    }
+    if !found {
+        return Err(AppError::other(format!(
+            "Could not identify the symlink at {}",
+            source.display()
+        )));
+    }
+    Ok(true)
 }
 
 fn contains_only_rename_destination(blocker: &Path, destination: &Path) -> AppResult<bool> {
