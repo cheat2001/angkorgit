@@ -406,8 +406,9 @@ ai_cli.rs             ← installed AI-CLI transport: detect (which_in over augm
                         spawn_tree(command, track_descendants) + run_tree(tree, stdin, timeout)
                         → TreeRun {captured, timed_out, exit_unconfirmed, background}. A timeout
                         signals the process tree and returns the output so far. For group pull,
-                        the runner returns a handle for surviving background processes. Cancel
-                        waits on the handle up to the original deadline. See G55 (8). OUTPUT IS DRAINED, NOT
+                        the runner keeps a handle for background processes it can identify.
+                        Cancel waits for tracked processes up to the hook's original deadline
+                        and reports when exit cannot be confirmed. See G55 (8). OUTPUT IS DRAINED, NOT
                         JOINED (PR #85 reviews): the readers stream into shared buffers and, once
                         the process has exited, get at most OUTPUT_DRAIN 1 s before collect()
                         returns what was read — a background process that inherited
@@ -4444,8 +4445,10 @@ update CLAUDE.md or docs/ — never the code.
   hook's original deadline Cancel terminates the Windows job or signals the
   group through its pidfd, then gives it one second to exit. If Unix cannot
   acquire a usable group descriptor, Cancel reports uncertainty immediately for
-  that hook. The foreground timeout can still signal its direct child's group
-  while the child is unreaped. Unix
+  that hook. On macOS and Linux without usable process-group pidfd support, the
+  app can clear the busy state while that hook's background processes still
+  write to the repository, even past the original deadline. The foreground timeout
+  can still signal its direct child's group while the child is unreaped. Unix
   reports unconfirmed termination after either timeout because a child may have
   left the group. A timed-out foreground child still waiting to exit on Unix is
   reaped in the background. The Cancel receipt carries a warning for background

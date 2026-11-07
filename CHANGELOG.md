@@ -36,9 +36,10 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
   - `post-rewrite` after amend, reword, rebase, interactive rebase and a pull with
     rebase, once with every rewritten commit, also when a paused rebase is continued.
   As in `git`, a failing hook never undoes the operation: AngKorGit shows a warning
-  with **Show output** instead of an error. A hook that runs past its 10-minute limit is
-  stopped and reported as timed out, with what it printed until then. **Skip hooks** in the commit box also skips
-  `post-rewrite` when amending, and the Pull menu has **Pull without hooks** when the
+  with **Show output** instead of an error. AngKorGit attempts to stop a foreground
+  hook at its 10-minute limit and reports a timeout with any captured output. The
+  warning says when exit could not be confirmed. **Skip hooks** in the commit box
+  also skips `post-rewrite` when amending, and the Pull menu has **Pull without hooks** when the
   repository has one of these hooks, or keeps its hooks in a folder inside the repository
   (like `.husky`), links a hook to a file there, or includes a Git config file from the
   repository, where a pull can bring a new one. A rebase you started without hooks
@@ -46,9 +47,13 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
 - **Pull all runs `post-merge` in each repository it fast-forwarded.** One at a time,
   never for a repository that was already up to date; a failing hook shows as a warning
   with its output on that repository's row and the rest of the group still updates.
-  **Pull all without hooks** in the group menu skips it. Cancel waits for a hook that
-  is already running, and for anything it left running in the background, the same way
-  it waits for the checkout before it. (#69, #82)
+  **Pull all without hooks** in the group menu skips it. **Cancel** waits for the
+  checkout and foreground hook already in progress. It also waits for background
+  hook processes it can track and requests termination at the hook's original deadline.
+  On macOS and on Linux without usable process-group pidfd support, Cancel can finish
+  while background hook processes are still running. The affected repository's row
+  warns that exit could not be confirmed. Those processes may keep writing to the
+  repository past the hook's original deadline. (#69, #82)
 
 ### Changed
 - **Smoother sideways scrolling in the graph.** Scrolling a wide graph sideways no
