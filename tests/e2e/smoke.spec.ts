@@ -1777,6 +1777,42 @@ test('dragging the graph header edge resizes the column, keeps it after a reload
   await expect(bar).toBeVisible();
 });
 
+test('Only matches narrows the graph to the matching commits and brings the full graph back on the same commit', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const toggle = page.getByRole('button', { name: 'Show only matching commits' });
+  await expect(toggle).toHaveCount(0);
+  const search = page.getByPlaceholder('Search commits…');
+  await search.fill('merge');
+  await expect(page.getByLabel(/^Match 1 of \d+/)).toBeVisible();
+  const total = Number((await page.getByLabel(/^Match 1 of \d+/).getAttribute('aria-label'))!.match(/of (\d+)/)![1]);
+  const rows = page.locator('[role=table] [role=row]');
+  const summaries = () => rows.evaluateAll((all) => all.map((row) => row.textContent ?? ''));
+  expect((await summaries()).some((text) => !/merge/i.test(text))).toBe(true);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-matching-count]')).toHaveText(`${total} matching commits`);
+  await expect.poll(async () => (await summaries()).every((text) => /merge/i.test(text))).toBe(true);
+  await search.press('Enter');
+  await search.press('Enter');
+  await expect(page.getByLabel(`Match 3 of ${total}`)).toBeVisible();
+  const selectedHash = async () => ((await page.locator('[role=row][aria-selected=true]').textContent()) ?? '').match(/[0-9a-f]{7}/)?.[0];
+  const picked = (await page.locator('[role=row][aria-selected=true]').textContent())!;
+  expect(picked).toMatch(/merge/i);
+  const pickedHash = await selectedHash();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-matching-count]')).toHaveCount(0);
+  await expect.poll(async () => (await summaries()).some((text) => !/merge/i.test(text))).toBe(true);
+  await expect.poll(selectedHash).toBe(pickedHash);
+  await expect(page.locator('[role=row][aria-selected=true]')).toHaveText(picked);
+  await toggle.click();
+  await expect.poll(async () => (await summaries()).every((text) => /merge/i.test(text))).toBe(true);
+  await search.press('Escape');
+  await expect.poll(async () => (await summaries()).some((text) => !/merge/i.test(text))).toBe(true);
+});
+
 test('the remote menu and the palette open the repository page in the browser', async ({ page }) => {
   await page.goto('/');
   await page.getByText('angkorgit', { exact: true }).first().click();
