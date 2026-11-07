@@ -1,4 +1,9 @@
-use std::{collections::HashMap, ffi::OsString, fs, io::ErrorKind, path::Path};
+use std::{
+    collections::HashMap,
+    fs,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 
 use git2::{ApplyLocation, DiffFormat, DiffOptions, Repository};
 
@@ -205,10 +210,7 @@ pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatc
                         path: failed_path.clone(),
                         message: error.to_string(),
                     };
-                    if destination.is_some()
-                        && failed_path == &source
-                        && matches!(error, AppError::Conflict(_))
-                    {
+                    if failed_path == &source && matches!(error, AppError::Conflict(_)) {
                         deferred.push((source, destination, failure));
                     } else {
                         batch.failed.push(failure);
@@ -352,11 +354,8 @@ fn checkout_with_rollback(
         }
     }
 
-    let blocker = if destination.is_none() {
-        match case_variants(blocker)?.as_slice() {
-            [name] => blocker.with_file_name(name),
-            _ => blocker.to_path_buf(),
-        }
+    let blocker = if destination.is_none() || metadata.is_symlink() {
+        checkout_entry_path(blocker)?
     } else {
         blocker.to_path_buf()
     };
@@ -390,8 +389,7 @@ fn checkout_with_rollback(
 
 fn remove_created_rename_source(path: &Path) -> std::io::Result<()> {
     match path.symlink_metadata() {
-        Ok(metadata) if metadata.is_dir() => fs::remove_dir(path),
-        Ok(_) => fs::remove_file(path),
+        Ok(metadata) => remove_worktree_entry(path, metadata.file_type()),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
     }
@@ -489,41 +487,64 @@ fn same_checkout_path(source: &Path, destination: &Path) -> AppResult<bool> {
 }
 
 fn same_symlink_entry(source: &Path, destination: &Path) -> AppResult<bool> {
-    let source_name = source.file_name().expect("symlink has a file name");
-    let destination_name = destination.file_name().expect("symlink has a file name");
     let parent = source.parent().expect("symlink has a parent directory");
     let destination_parent = destination
         .parent()
         .expect("symlink has a parent directory");
-    if !source_name.eq_ignore_ascii_case(destination_name)
-        || !same_file::is_same_file(parent, destination_parent)?
-    {
+    if !same_file::is_same_file(parent, destination_parent)? {
         return Ok(false);
     }
-    if source_name == destination_name {
-        return Ok(true);
-    }
-    let variants = case_variants(source)?;
-    if variants.is_empty() {
-        return Err(AppError::other(format!(
-            "Could not identify the symlink at {}",
-            source.display()
-        )));
-    }
-    Ok(variants.len() == 1)
+    Ok(checkout_entry_path(source)?.file_name() == checkout_entry_path(destination)?.file_name())
 }
 
-fn case_variants(path: &Path) -> std::io::Result<Vec<OsString>> {
+fn checkout_entry_path(path: &Path) -> AppResult<PathBuf> {
     let name = path.file_name().expect("checkout path has a file name");
     let parent = path.parent().expect("checkout path has a parent directory");
-    let mut variants = Vec::new();
     for entry in fs::read_dir(parent)? {
-        let actual_name = entry?.file_name();
-        if actual_name.eq_ignore_ascii_case(name) {
-            variants.push(actual_name);
+        if entry?.file_name() == name {
+            return Ok(path.to_path_buf());
         }
     }
-    Ok(variants)
+    let identity = checkout_entry_identity(path)?;
+    let mut actual = None;
+    let unidentified = || {
+        AppError::other(format!(
+            "Could not identify a unique directory entry for {}",
+            path.display()
+        ))
+    };
+    for entry in fs::read_dir(parent)? {
+        let candidate = entry?.path();
+        if checkout_entry_identity(&candidate).is_ok_and(|candidate| candidate == identity) {
+            if actual.is_some() {
+                return Err(unidentified());
+            }
+            actual = Some(candidate);
+        }
+    }
+    actual.ok_or_else(unidentified)
+}
+
+#[cfg(unix)]
+fn checkout_entry_identity(path: &Path) -> std::io::Result<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = path.symlink_metadata()?;
+    Ok((metadata.dev(), metadata.ino()))
+}
+
+#[cfg(windows)]
+fn checkout_entry_identity(path: &Path) -> std::io::Result<same_file::Handle> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    };
+
+    let file = fs::OpenOptions::new()
+        .access_mode(0)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)?;
+    same_file::Handle::from_file(file)
 }
 
 fn contains_only_rename_destination(blocker: &Path, destination: &Path) -> AppResult<bool> {
@@ -638,10 +659,29 @@ fn checkout_head_file(
 
 fn remove_worktree_file(workdir: &Path, file: &str) -> AppResult<()> {
     let full = workdir.join(file);
-    if full.is_file() || full.is_symlink() {
-        fs::remove_file(full)?;
+    if let Ok(metadata) = full.symlink_metadata() {
+        let kind = metadata.file_type();
+        if kind.is_file() || kind.is_symlink() {
+            remove_worktree_entry(&full, kind)?;
+        }
     }
     Ok(())
+}
+
+fn remove_worktree_entry(path: &Path, kind: fs::FileType) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileTypeExt;
+
+        if kind.is_symlink_dir() {
+            return fs::remove_dir(path);
+        }
+    }
+    if kind.is_dir() {
+        fs::remove_dir(path)
+    } else {
+        fs::remove_file(path)
+    }
 }
 
 fn touched_paths(repo: &git2::Repository) -> AppResult<Vec<String>> {
