@@ -303,24 +303,41 @@ struct Leftovers {
 }
 
 pub(crate) struct BackgroundProcesses {
-    leftovers: Leftovers,
+    leftovers: Option<Leftovers>,
     deadline: Instant,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CancelOutcome {
+    Unconfirmed,
+    TimedOut { confirmed: bool },
+}
+
 impl BackgroundProcesses {
-    pub(crate) fn running(&self) -> bool {
-        self.leftovers.running()
+    pub(crate) fn retain_for_cancel(&mut self) -> bool {
+        if self
+            .leftovers
+            .as_ref()
+            .is_some_and(|group| !group.running())
+        {
+            self.leftovers = None;
+        }
+        cfg!(unix) || self.leftovers.is_some()
     }
 
-    pub(crate) fn wait_on_cancel(self) -> Option<bool> {
-        while self.running() {
-            let remaining = self.deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return Some(self.leftovers.stop_background());
+    pub(crate) fn wait_on_cancel(self) -> Option<CancelOutcome> {
+        if let Some(leftovers) = self.leftovers {
+            while leftovers.running() {
+                let remaining = self.deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Some(CancelOutcome::TimedOut {
+                        confirmed: leftovers.stop_background(),
+                    });
+                }
+                std::thread::sleep(remaining.min(Duration::from_millis(25)));
             }
-            std::thread::sleep(remaining.min(Duration::from_millis(25)));
         }
-        None
+        cfg!(unix).then_some(CancelOutcome::Unconfirmed)
     }
 }
 
@@ -610,12 +627,13 @@ fn gather(
         captured,
         timed_out: expired,
         exit_unconfirmed,
-        background: leftovers
-            .filter(Leftovers::running)
-            .map(|leftovers| BackgroundProcesses {
-                leftovers,
+        background: leftovers.and_then(|leftovers| {
+            let mut background = BackgroundProcesses {
+                leftovers: Some(leftovers),
                 deadline,
-            }),
+            };
+            background.retain_for_cancel().then_some(background)
+        }),
     }
 }
 
@@ -1077,7 +1095,10 @@ mod tests {
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(2));
         assert!(!run.timed_out);
-        assert_eq!(run.background.unwrap().wait_on_cancel(), Some(true));
+        assert_eq!(
+            run.background.unwrap().wait_on_cancel(),
+            Some(CancelOutcome::TimedOut { confirmed: true })
+        );
         assert!(started.elapsed() < Duration::from_secs(15));
     }
 
@@ -1166,7 +1187,10 @@ mod tests {
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(20));
         assert!(!marker.exists());
-        assert_eq!(run.background.unwrap().wait_on_cancel(), None);
+        assert_eq!(
+            run.background.unwrap().wait_on_cancel(),
+            Some(CancelOutcome::Unconfirmed)
+        );
         let written = marker.exists();
         std::fs::remove_dir_all(&dir).ok();
         assert!(!run.timed_out);
@@ -1186,7 +1210,10 @@ mod tests {
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(1));
         assert!(!run.timed_out);
-        assert_eq!(run.background.unwrap().wait_on_cancel(), Some(false));
+        assert_eq!(
+            run.background.unwrap().wait_on_cancel(),
+            Some(CancelOutcome::TimedOut { confirmed: false })
+        );
         assert!(started.elapsed() < Duration::from_secs(10));
         let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);

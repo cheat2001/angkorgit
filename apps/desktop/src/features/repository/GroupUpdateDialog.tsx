@@ -78,7 +78,7 @@ export function GroupUpdateDialog({ progress, onClose, onCancel }: {
               ))}
               {!pull && result.status === 'ok' && result.changes.length === 0 && <p className="text-xs text-muted">No refs moved.</p>}
               {result.hookWarnings?.map((warning) => (
-                <div key={`${warning.hook}:${warning.timedOut}`} className="mt-1.5 rounded-md bg-surface-raised px-2.5 py-1.5 text-xs" data-group-hook-warning={warning.hook}>
+                <div key={`${warning.hook}:${warning.timedOut}:${warning.status}`} className="mt-1.5 rounded-md bg-surface-raised px-2.5 py-1.5 text-xs" data-group-hook-warning={warning.hook}>
                   <p className="flex items-start gap-1.5">
                     <AlertTriangle className="mt-px size-3.5 shrink-0 text-primary" aria-hidden />
                     <span className="break-words">

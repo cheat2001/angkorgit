@@ -8,7 +8,9 @@ use git2::{Oid, Repository};
 use same_file::Handle;
 
 use super::types::{HookWarning, RepoHooks};
-use crate::ai_cli::{capture, run_tree, search_path, spawn_tree, BackgroundProcesses};
+use crate::ai_cli::{
+    capture, run_tree, search_path, spawn_tree, BackgroundProcesses, CancelOutcome,
+};
 use crate::error::{AppError, AppResult};
 
 pub const PRE_COMMIT: &str = "pre-commit";
@@ -397,23 +399,34 @@ pub(crate) struct PendingHook {
 }
 
 impl PendingHook {
-    pub(crate) fn running(&self) -> bool {
-        self.processes.running()
+    pub(crate) fn retain_for_cancel(&mut self) -> bool {
+        self.processes.retain_for_cancel()
     }
 
     pub(crate) fn wait_on_cancel(self) -> Option<HookWarning> {
-        let confirmed = self.processes.wait_on_cancel()?;
-        let message = format!(
-            "Background processes from the {} hook exceeded its {} second limit during cancellation. {}",
-            self.name,
-            self.timeout.as_secs(),
-            if confirmed {
-                "They were stopped."
-            } else {
-                "Could not confirm that all processes stopped."
-            }
-        );
-        Some(post_warning(&self.name, None, true, message, self.output))
+        let (timed_out, message) = match self.processes.wait_on_cancel()? {
+            CancelOutcome::Unconfirmed => (false, format!(
+                "After the {} hook, Cancel could not confirm that all processes exited. Detached processes may still be running.",
+                self.name,
+            )),
+            CancelOutcome::TimedOut { confirmed } => (true, format!(
+                "Background processes from the {} hook exceeded its {} second limit during cancellation. {}",
+                self.name,
+                self.timeout.as_secs(),
+                if confirmed {
+                    "They were stopped."
+                } else {
+                    "Could not confirm that all processes stopped."
+                }
+            )),
+        };
+        Some(post_warning(
+            &self.name,
+            None,
+            timed_out,
+            message,
+            self.output,
+        ))
     }
 }
 

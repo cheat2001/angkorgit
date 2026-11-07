@@ -111,7 +111,7 @@ impl GroupUpdateControl {
             .background_hooks
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        hooks.retain(|(_, hook)| hook.running());
+        hooks.retain_mut(|(_, hook)| hook.retain_for_cancel());
         hooks.push((path.into(), hook));
     }
 

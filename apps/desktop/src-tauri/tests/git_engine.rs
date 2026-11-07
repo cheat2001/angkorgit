@@ -7500,7 +7500,16 @@ fn group_pull_leaves_background_hooks_running_and_waits_for_them_on_cancel() {
     );
     assert_eq!(receipts.len(), 1);
     assert_eq!(receipts[0].result.status, "ok");
-    assert!(receipts[0].result.hook_warnings.is_empty());
+    let warnings = &receipts[0].result.hook_warnings;
+    if cfg!(unix) {
+        assert_eq!(warnings.len(), 1);
+        assert!(!warnings[0].timed_out);
+        assert!(warnings[0]
+            .message
+            .contains("could not confirm that all processes exited"));
+    } else {
+        assert!(warnings.is_empty());
+    }
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while !marker.exists() && Instant::now() < deadline {
@@ -7510,6 +7519,86 @@ fn group_pull_leaves_background_hooks_running_and_waits_for_them_on_cancel() {
         marker.exists(),
         "normal completion stopped the background job"
     );
+    std::fs::remove_dir_all(origin).unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn group_cancel_warns_when_a_successful_hook_left_its_process_group() {
+    use std::time::{Duration, Instant};
+
+    if !hooks_runnable() {
+        return;
+    }
+    let local = TempRepo::new();
+    local.write("a.txt", "base\n");
+    commit_all(&local, "base");
+    let origin = bare_origin(&local);
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+    let detached = clone_of(&origin, &local, "group-detached-hook");
+    let other = clone_of(&origin, &local, "group-next-hook");
+    write_hook(
+        &default_hooks(&detached),
+        "post-merge",
+        r#"setsid sh -c '
+            echo ready > .git/detached-ready
+            attempts=0
+            while [ "$attempts" -lt 200 ]; do
+                if [ -f .git/detached-release ]; then
+                    echo finished > .git/detached-done
+                    exit 0
+                fi
+                sleep 0.05
+                attempts=$((attempts + 1))
+            done
+        ' </dev/null >/dev/null 2>&1 &
+        attempts=0
+        while [ ! -f .git/detached-ready ] && [ "$attempts" -lt 100 ]; do
+            sleep 0.05
+            attempts=$((attempts + 1))
+        done
+        test -f .git/detached-ready"#,
+    );
+    write_hook(&default_hooks(&other), "post-merge", "exit 0");
+    local.write("a.txt", "next\n");
+    commit_all(&local, "next");
+    core::push(local.path(), "origin", None, false, false, true, false).unwrap();
+
+    let control = core::GroupUpdateControl::default();
+    for repo in [&detached, &other] {
+        let pulled = core::group_update_controlled(repo.path(), true, &control).unwrap();
+        assert_eq!(pulled.status, "ok");
+        assert!(
+            pulled.hook_warnings.is_empty(),
+            "{:?}",
+            pulled.hook_warnings
+        );
+    }
+    let receipts = control.cancel_results().unwrap();
+    let marker = detached.dir.join(".git/detached-done");
+    assert!(!marker.exists());
+    detached.write(".git/detached-release", "release\n");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !marker.exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        marker.exists(),
+        "the detached child could still write after Cancel"
+    );
+
+    let receipt = receipts
+        .iter()
+        .find(|receipt| receipt.path == detached.path())
+        .unwrap();
+    assert_eq!(receipt.result.status, "ok");
+    assert_eq!(receipt.result.hook_warnings.len(), 1);
+    let warning = &receipt.result.hook_warnings[0];
+    assert_eq!(warning.hook, "post-merge");
+    assert!(!warning.timed_out);
+    assert!(warning
+        .message
+        .contains("could not confirm that all processes exited"));
     std::fs::remove_dir_all(origin).unwrap();
 }
 
