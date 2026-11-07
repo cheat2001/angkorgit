@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
+    ffi::OsStr,
     fs,
     io::ErrorKind,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use git2::{ApplyLocation, DiffFormat, DiffOptions, Repository};
@@ -658,14 +659,141 @@ fn checkout_head_file(
 }
 
 fn remove_worktree_file(workdir: &Path, file: &str) -> AppResult<()> {
-    let full = workdir.join(file);
-    if let Ok(metadata) = full.symlink_metadata() {
-        let kind = metadata.file_type();
-        if kind.is_file() || kind.is_symlink() {
-            remove_worktree_entry(&full, kind)?;
+    let invalid = || AppError::other(format!("Invalid worktree path: {file}"));
+    let components = Path::new(file)
+        .components()
+        .map(|part| match part {
+            Component::Normal(name) if Path::new(name).file_name() == Some(name) => Ok(name),
+            _ => Err(invalid()),
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    let (name, parents) = components.split_last().ok_or_else(invalid)?;
+    remove_worktree_file_at(workdir, parents, name)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn remove_worktree_file_at(
+    workdir: &Path,
+    parents: &[&OsStr],
+    name: &OsStr,
+) -> std::io::Result<()> {
+    use rustix::fs::{self, AtFlags, FileType, Mode, OFlags};
+    use rustix::io::Errno;
+
+    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    let mut dir = fs::open(workdir, flags, Mode::empty())?;
+    let mut ancestors = Vec::with_capacity(parents.len());
+    for parent in parents {
+        let next = match fs::openat(&dir, *parent, flags | OFlags::NOFOLLOW, Mode::empty()) {
+            Ok(next) => next,
+            Err(Errno::NOENT | Errno::NOTDIR | Errno::LOOP) => return Ok(()),
+            Err(error) => return Err(error.into()),
+        };
+        ancestors.push(dir);
+        dir = next;
+    }
+    let entry = match fs::statat(&dir, name, AtFlags::SYMLINK_NOFOLLOW) {
+        Ok(entry) => entry,
+        Err(Errno::NOENT) => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    match FileType::from_raw_mode(entry.st_mode) {
+        FileType::RegularFile => {}
+        FileType::Symlink => {
+            for (parent, spelling) in ancestors.iter().zip(parents).chain([(&dir, &name)]) {
+                if !unix_has_exact_entry(parent, spelling)? {
+                    return Ok(());
+                }
+            }
+        }
+        _ => return Ok(()),
+    }
+    match fs::unlinkat(&dir, name, AtFlags::empty()) {
+        Ok(()) | Err(Errno::NOENT) => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(unix)]
+fn unix_has_exact_entry(dir: &rustix::fd::OwnedFd, name: &OsStr) -> std::io::Result<bool> {
+    use std::os::unix::ffi::OsStrExt;
+
+    for entry in rustix::fs::Dir::read_from(dir)? {
+        if entry?.file_name().to_bytes() == name.as_bytes() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(windows)]
+fn remove_worktree_file_at(
+    workdir: &Path,
+    parents: &[&OsStr],
+    name: &OsStr,
+) -> std::io::Result<()> {
+    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_SHARE_READ,
+    };
+
+    let root = workdir.canonicalize()?;
+    let mut dir = root.clone();
+    let mut handles = Vec::with_capacity(parents.len() + 1);
+    for part in std::iter::once(None).chain(parents.iter().map(Some)) {
+        if let Some(part) = part {
+            dir.push(part);
+        }
+        let handle = match fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(&dir)
+        {
+            Ok(handle) => handle,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let metadata = handle.metadata()?;
+        if !metadata.is_dir() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Ok(());
+        }
+        handles.push(handle);
+    }
+    let full = dir.join(name);
+    let kind = match full.symlink_metadata() {
+        Ok(metadata) => metadata.file_type(),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if kind.is_symlink() {
+        let mut parent = root;
+        for part in parents.iter().copied().chain([name]) {
+            if !windows_has_exact_entry(&parent, part)? {
+                return Ok(());
+            }
+            parent.push(part);
+        }
+    }
+    if kind.is_file() || kind.is_symlink() {
+        match remove_worktree_entry(&full, kind) {
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            result => result?,
         }
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_has_exact_entry(parent: &Path, name: &OsStr) -> std::io::Result<bool> {
+    for entry in fs::read_dir(parent)? {
+        if entry?.file_name() == name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn remove_worktree_entry(path: &Path, kind: fs::FileType) -> std::io::Result<()> {

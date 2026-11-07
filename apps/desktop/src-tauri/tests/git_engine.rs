@@ -5787,22 +5787,82 @@ fn discarding_all_staged_changes_retries_a_symlink_after_removing_its_staged_chi
     assert!(core::status(repo.path()).unwrap().files.is_empty());
 }
 
+#[test]
+fn discarding_a_staged_symlink_rename_leaves_a_symlinked_destination_parent_alone() {
+    use std::path::Path;
+
+    let repo = TempRepo::new();
+    let external = tempfile::tempdir().unwrap();
+    let external_child = external.path().join("child");
+    std::fs::write(&external_child, "outside the repository\n").unwrap();
+    let source = repo.dir.join("z");
+    if !create_directory_symlink(external.path(), &source) {
+        return;
+    }
+    core::set_config(Some(repo.path()), "core.symlinks", "true", false).unwrap();
+    core::stage_file(repo.path(), "z").unwrap();
+    core::commit(repo.path(), "add directory link", false).unwrap();
+
+    let parent = repo.dir.join("a");
+    let destination = parent.join("child");
+    std::fs::create_dir(&parent).unwrap();
+    std::fs::rename(&source, &destination).unwrap();
+    core::stage_files(repo.path(), &["z".into(), "a/child".into()]).unwrap();
+    assert_eq!(
+        git_in(
+            &repo.dir,
+            &["diff", "--cached", "--name-status", "--find-renames"]
+        ),
+        "R100\tz\ta/child"
+    );
+    #[cfg(unix)]
+    std::fs::remove_file(&destination).unwrap();
+    #[cfg(windows)]
+    std::fs::remove_dir(&destination).unwrap();
+    std::fs::remove_dir(&parent).unwrap();
+    assert!(create_directory_symlink(Path::new("z"), &parent));
+
+    let result = core::post_hooks::discard_staged_all(repo.path(), true).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&external_child).unwrap(),
+        "outside the repository\n"
+    );
+    assert!(result.value.failed.is_empty(), "{:?}", result.value.failed);
+    assert!(same_file::is_same_file(&source, external.path()).unwrap());
+    assert_eq!(std::fs::read_link(&parent).unwrap(), Path::new("z"));
+    assert!(git_in(&repo.dir, &["diff", "--cached", "--name-status"]).is_empty());
+}
+
+#[cfg(unix)]
+fn create_directory_symlink(target: &std::path::Path, link: &std::path::Path) -> bool {
+    std::os::unix::fs::symlink(target, link).unwrap();
+    true
+}
+
+#[cfg(windows)]
+fn create_directory_symlink(target: &std::path::Path, link: &std::path::Path) -> bool {
+    if let Err(error) = std::os::windows::fs::symlink_dir(target, link) {
+        if error.raw_os_error() == Some(1314) && std::env::var_os("GITHUB_ACTIONS").is_none() {
+            eprintln!("skipping: creating a directory symlink requires Windows symlink privileges");
+            return false;
+        }
+        panic!("create a directory symlink: {error}");
+    }
+    true
+}
+
 #[cfg(windows)]
 #[test]
 fn discarding_a_deleted_directory_symlink_removes_the_new_link_on_index_lock() {
     use std::io::ErrorKind;
-    use std::os::windows::fs::{symlink_dir, FileTypeExt};
+    use std::os::windows::fs::FileTypeExt;
 
     let repo = TempRepo::new();
     let link = repo.dir.join("Link");
     let target = repo.dir.join("target");
     repo.write("target/keep.txt", "keep\n");
-    if let Err(error) = symlink_dir(&target, &link) {
-        if error.raw_os_error() == Some(1314) && std::env::var_os("GITHUB_ACTIONS").is_none() {
-            eprintln!("skipping: creating a directory symlink requires Windows symlink privileges");
-            return;
-        }
-        panic!("create a directory symlink: {error}");
+    if !create_directory_symlink(&target, &link) {
+        return;
     }
     core::set_config(Some(repo.path()), "core.symlinks", "true", false).unwrap();
     core::stage_file(repo.path(), "Link").unwrap();
@@ -5841,6 +5901,70 @@ fn discarding_a_deleted_directory_symlink_removes_the_new_link_on_index_lock() {
         .unwrap()
         .file_type()
         .is_symlink_dir());
+}
+
+#[cfg(windows)]
+#[test]
+fn discarding_an_ambiguous_case_only_directory_symlink_rename_keeps_the_restored_link() {
+    use std::os::windows::fs::FileTypeExt;
+    use std::path::Path;
+
+    let repo = TempRepo::new();
+    let target = tempfile::tempdir().unwrap();
+    let source = repo.dir.join("Link");
+    let destination = repo.dir.join("link");
+    if !create_directory_symlink(target.path(), &source) {
+        return;
+    }
+    if destination.symlink_metadata().is_err() {
+        assert!(
+            std::env::var_os("GITHUB_ACTIONS").is_none(),
+            "the CI worktree must be on a case-insensitive volume for this test"
+        );
+        return;
+    }
+    core::set_config(Some(repo.path()), "core.symlinks", "true", false).unwrap();
+    core::set_config(Some(repo.path()), "core.ignorecase", "false", false).unwrap();
+    core::stage_file(repo.path(), "Link").unwrap();
+    core::commit(repo.path(), "add directory link", false).unwrap();
+    std::fs::remove_dir(&source).unwrap();
+    assert!(create_directory_symlink(target.path(), &destination));
+    assert!(create_directory_symlink(
+        target.path(),
+        &repo.dir.join("other")
+    ));
+
+    let git_repo = git2::Repository::open(repo.path()).unwrap();
+    let mut index = git_repo.index().unwrap();
+    index.remove_path(Path::new("Link")).unwrap();
+    index.add_path(Path::new("link")).unwrap();
+    index.add_path(Path::new("other")).unwrap();
+    index.write().unwrap();
+    assert_eq!(
+        git_in(
+            &repo.dir,
+            &["diff", "--cached", "--name-status", "--no-renames"]
+        ),
+        "D\tLink\nA\tlink\nA\tother"
+    );
+
+    let result = core::post_hooks::discard_staged_all(repo.path(), true).unwrap();
+    assert!(result.value.failed.is_empty(), "{:?}", result.value.failed);
+    assert!(
+        result.value.leftovers.is_empty(),
+        "{:?}",
+        result.value.leftovers
+    );
+    assert!(source
+        .symlink_metadata()
+        .unwrap()
+        .file_type()
+        .is_symlink_dir());
+    assert!(!repo.dir.join("other").exists());
+    assert!(std::fs::read_dir(&repo.dir)
+        .unwrap()
+        .any(|entry| entry.unwrap().file_name() == "Link"));
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
 }
 
 #[test]

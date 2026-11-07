@@ -39,6 +39,7 @@ fontdb = { version = "0.24", default-features = false, features = ["std", "fs", 
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
