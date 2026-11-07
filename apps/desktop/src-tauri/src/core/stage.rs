@@ -310,22 +310,11 @@ fn checkout_with_rollback(
         Some(path) => rename_blocker(&source_path, path)?,
         None => None,
     };
-    if destination_blocker.is_none()
-        && source_path
-            .ancestors()
-            .skip(1)
-            .take_while(|parent| *parent != workdir)
-            .any(|parent| {
-                parent
-                    .symlink_metadata()
-                    .is_ok_and(|metadata| !metadata.is_dir())
-            })
-    {
-        return Err(AppError::Conflict(format!(
-            "another path occupies {source}"
-        )));
-    }
     let blocker = destination_blocker.unwrap_or(&source_path);
+    check_checkout_parents(workdir, blocker, None)?;
+    if let Some(blocker) = destination_blocker {
+        check_checkout_parents(workdir, &source_path, Some(blocker))?;
+    }
     let metadata = match blocker.symlink_metadata() {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -386,6 +375,38 @@ fn checkout_with_rollback(
         directory: backup,
         includes_destination: destination_blocker.is_some(),
     }))
+}
+
+fn check_checkout_parents(
+    workdir: &Path,
+    path: &Path,
+    movable_blocker: Option<&Path>,
+) -> AppResult<()> {
+    let relative = path
+        .strip_prefix(workdir)
+        .map_err(|_| AppError::other(format!("Invalid worktree path: {}", path.display())))?;
+    let (_, parents) = worktree_file_parts(relative)?;
+    let mut parent = workdir.to_path_buf();
+    for part in parents {
+        parent.push(part);
+        match parent.symlink_metadata() {
+            Ok(metadata) if is_real_directory(&metadata) => {}
+            Ok(_) => {
+                if let Some(blocker) = movable_blocker {
+                    if same_checkout_path(&parent, blocker)? {
+                        return Ok(());
+                    }
+                }
+                return Err(AppError::Conflict(format!(
+                    "another path occupies {}",
+                    relative.display()
+                )));
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }
 
 fn remove_created_rename_source(path: &Path) -> std::io::Result<()> {
@@ -659,17 +680,35 @@ fn checkout_head_file(
 }
 
 fn remove_worktree_file(workdir: &Path, file: &str) -> AppResult<()> {
-    let invalid = || AppError::other(format!("Invalid worktree path: {file}"));
-    let components = Path::new(file)
+    let (name, parents) = worktree_file_parts(Path::new(file))?;
+    remove_worktree_file_at(workdir, &parents, name)?;
+    Ok(())
+}
+
+fn worktree_file_parts(path: &Path) -> AppResult<(&OsStr, Vec<&OsStr>)> {
+    let invalid = || AppError::other(format!("Invalid worktree path: {}", path.display()));
+    let mut components = path
         .components()
         .map(|part| match part {
             Component::Normal(name) if Path::new(name).file_name() == Some(name) => Ok(name),
             _ => Err(invalid()),
         })
         .collect::<AppResult<Vec<_>>>()?;
-    let (name, parents) = components.split_last().ok_or_else(invalid)?;
-    remove_worktree_file_at(workdir, parents, name)?;
-    Ok(())
+    let name = components.pop().ok_or_else(invalid)?;
+    Ok((name, components))
+}
+
+fn is_real_directory(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return false;
+        }
+    }
+    metadata.is_dir()
 }
 
 #[cfg(unix)]
@@ -681,7 +720,19 @@ fn remove_worktree_file_at(
     use rustix::fs::{self, AtFlags, FileType, Mode, OFlags};
     use rustix::io::Errno;
 
-    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    let access = OFlags::PATH;
+    #[cfg(any(target_vendor = "apple", target_os = "freebsd", target_os = "netbsd"))]
+    let access = OFlags::from_bits_retain(libc::O_SEARCH as u32);
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_vendor = "apple",
+        target_os = "freebsd",
+        target_os = "netbsd"
+    )))]
+    let access = OFlags::RDONLY;
+    let flags = access | OFlags::DIRECTORY | OFlags::CLOEXEC;
     let mut dir = fs::open(workdir, flags, Mode::empty())?;
     let mut ancestors = Vec::with_capacity(parents.len());
     for parent in parents {
@@ -717,9 +768,16 @@ fn remove_worktree_file_at(
 
 #[cfg(unix)]
 fn unix_has_exact_entry(dir: &rustix::fd::OwnedFd, name: &OsStr) -> std::io::Result<bool> {
+    use rustix::fs::{self, Mode, OFlags};
     use std::os::unix::ffi::OsStrExt;
 
-    for entry in rustix::fs::Dir::read_from(dir)? {
+    let readable = fs::openat(
+        dir,
+        ".",
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )?;
+    for entry in fs::Dir::new(readable)? {
         if entry?.file_name().to_bytes() == name.as_bytes() {
             return Ok(true);
         }
@@ -733,10 +791,9 @@ fn remove_worktree_file_at(
     parents: &[&OsStr],
     name: &OsStr,
 ) -> std::io::Result<()> {
-    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+    use std::os::windows::fs::OpenOptionsExt;
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_SHARE_READ,
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ,
     };
 
     let root = workdir.canonicalize()?;
@@ -756,8 +813,7 @@ fn remove_worktree_file_at(
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(error),
         };
-        let metadata = handle.metadata()?;
-        if !metadata.is_dir() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        if !is_real_directory(&handle.metadata()?) {
             return Ok(());
         }
         handles.push(handle);
