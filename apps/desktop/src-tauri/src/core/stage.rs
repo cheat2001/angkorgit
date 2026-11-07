@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, io::ErrorKind, path::Path};
+use std::{collections::HashMap, ffi::OsString, fs, io::ErrorKind, path::Path};
 
 use git2::{ApplyLocation, DiffFormat, DiffOptions, Repository};
 
@@ -183,7 +183,9 @@ pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatc
         for (source, destination) in staged {
             let mut failed_path = &source;
             let source_result = match destination.as_deref() {
-                Some(file) => discard_rename_source(&repo, &source, file),
+                Some(file) => checkout_with_rollback(&repo, &source, Some(file), || {
+                    restore_rename_source(&repo, &source, file)
+                }),
                 None => discard_to_head(&repo, &source).map(|()| None),
             };
             let result = source_result.and_then(|backup| {
@@ -290,17 +292,21 @@ struct RenameBackup {
     includes_destination: bool,
 }
 
-fn discard_rename_source(
+fn checkout_with_rollback(
     repo: &Repository,
     source: &str,
-    destination: &str,
+    destination: Option<&str>,
+    checkout: impl FnOnce() -> AppResult<()>,
 ) -> AppResult<Option<RenameBackup>> {
     let workdir = repo
         .workdir()
         .ok_or_else(|| AppError::other("bare repository"))?;
     let source_path = workdir.join(source);
-    let destination_path = workdir.join(destination);
-    let destination_blocker = rename_blocker(&source_path, &destination_path)?;
+    let destination_path = destination.map(|file| workdir.join(file));
+    let destination_blocker = match &destination_path {
+        Some(path) => rename_blocker(&source_path, path)?,
+        None => None,
+    };
     if destination_blocker.is_none()
         && source_path
             .ancestors()
@@ -320,7 +326,7 @@ fn discard_rename_source(
     let metadata = match blocker.symlink_metadata() {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == ErrorKind::NotFound => {
-            if let Err(error) = restore_rename_source(repo, source, destination) {
+            if let Err(error) = checkout() {
                 if let Err(rollback) = remove_created_rename_source(&source_path) {
                     return Err(AppError::other(format!(
                         "{error}. Could not remove the newly created {source} ({rollback})"
@@ -333,11 +339,12 @@ fn discard_rename_source(
         Err(error) => return Err(error.into()),
     };
     if metadata.is_dir() {
-        let safe_to_move = if destination_blocker.is_some() {
-            contains_only_rename_destination(blocker, &destination_path)?
-        } else {
-            contains_only_empty_directories(blocker)?
-        };
+        let safe_to_move =
+            if let (Some(_), Some(destination)) = (destination_blocker, &destination_path) {
+                contains_only_rename_destination(blocker, destination)?
+            } else {
+                contains_only_empty_directories(blocker)?
+            };
         if !safe_to_move {
             return Err(AppError::Conflict(format!(
                 "a directory containing other files occupies {source}"
@@ -345,17 +352,25 @@ fn discard_rename_source(
         }
     }
 
+    let blocker = if destination.is_none() {
+        match case_variants(blocker)?.as_slice() {
+            [name] => blocker.with_file_name(name),
+            _ => blocker.to_path_buf(),
+        }
+    } else {
+        blocker.to_path_buf()
+    };
     let parent = blocker.parent().expect("path is inside the worktree");
     let backup = tempfile::Builder::new()
         .prefix(".angkorgit-discard-")
         .tempdir_in(parent)?;
     let original = backup.path().join("original");
-    fs::rename(blocker, &original)?;
-    if let Err(error) = restore_rename_source(repo, source, destination) {
+    fs::rename(&blocker, &original)?;
+    if let Err(error) = checkout() {
         let replacement = backup.path().join("replacement");
-        let rollback = match fs::rename(blocker, replacement) {
-            Ok(()) => fs::rename(&original, blocker),
-            Err(error) if error.kind() == ErrorKind::NotFound => fs::rename(&original, blocker),
+        let rollback = match fs::rename(&blocker, replacement) {
+            Ok(()) => fs::rename(&original, &blocker),
+            Err(error) if error.kind() == ErrorKind::NotFound => fs::rename(&original, &blocker),
             Err(error) => Err(error),
         };
         if let Err(rollback) = rollback {
@@ -488,22 +503,27 @@ fn same_symlink_entry(source: &Path, destination: &Path) -> AppResult<bool> {
     if source_name == destination_name {
         return Ok(true);
     }
-    let mut found = false;
-    for entry in fs::read_dir(parent)? {
-        if entry?.file_name().eq_ignore_ascii_case(source_name) {
-            if found {
-                return Ok(false);
-            }
-            found = true;
-        }
-    }
-    if !found {
+    let variants = case_variants(source)?;
+    if variants.is_empty() {
         return Err(AppError::other(format!(
             "Could not identify the symlink at {}",
             source.display()
         )));
     }
-    Ok(true)
+    Ok(variants.len() == 1)
+}
+
+fn case_variants(path: &Path) -> std::io::Result<Vec<OsString>> {
+    let name = path.file_name().expect("checkout path has a file name");
+    let parent = path.parent().expect("checkout path has a parent directory");
+    let mut variants = Vec::new();
+    for entry in fs::read_dir(parent)? {
+        let actual_name = entry?.file_name();
+        if actual_name.eq_ignore_ascii_case(name) {
+            variants.push(actual_name);
+        }
+    }
+    Ok(variants)
 }
 
 fn contains_only_rename_destination(blocker: &Path, destination: &Path) -> AppResult<bool> {
@@ -559,15 +579,19 @@ fn discard_rename_destination(
         remove_worktree_file(workdir, file)?;
     }
     if let Some(backup) = backup {
-        let backup_path = backup.directory.path().to_path_buf();
-        backup.directory.close().map_err(|error| {
-            AppError::other(format!(
-                "Could not remove the backup at {}: {error}",
-                backup_path.display()
-            ))
-        })?;
+        close_checkout_backup(backup.directory)?;
     }
     Ok(())
+}
+
+fn close_checkout_backup(backup: tempfile::TempDir) -> AppResult<()> {
+    let backup_path = backup.path().to_path_buf();
+    backup.close().map_err(|error| {
+        AppError::other(format!(
+            "Could not remove the backup at {}: {error}",
+            backup_path.display()
+        ))
+    })
 }
 
 fn discard_to_head(repo: &Repository, file: &str) -> AppResult<()> {
@@ -575,8 +599,19 @@ fn discard_to_head(repo: &Repository, file: &str) -> AppResult<()> {
         .workdir()
         .ok_or_else(|| AppError::other("bare repository"))?;
     let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
-    if let Some(tree) = head_tree.filter(|tree| tree.get_path(Path::new(file)).is_ok()) {
-        checkout_head_file(repo, &tree, file, true)
+    if let Some((tree, entry)) = head_tree.as_ref().and_then(|tree| {
+        tree.get_path(Path::new(file))
+            .ok()
+            .map(|entry| (tree, entry))
+    }) {
+        let checkout = || checkout_head_file(repo, tree, file, true);
+        if entry.filemode() != i32::from(git2::FileMode::Link) {
+            return checkout();
+        }
+        if let Some(backup) = checkout_with_rollback(repo, file, None, checkout)? {
+            close_checkout_backup(backup.directory)?;
+        }
+        Ok(())
     } else {
         let mut index = repo.index()?;
         let _ = index.remove_path(Path::new(file));
