@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
-import { Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronUp, Cloud, Combine, Copy, FastForward, Filter, FolderTree, GitBranchPlus, GitCommitHorizontal, Settings2, GitMerge, ListOrdered, ListRestart, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronUp, Cloud, Combine, Copy, FastForward, Filter, FolderTree, ListFilter, GitBranchPlus, GitCommitHorizontal, Settings2, GitMerge, ListOrdered, ListRestart, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
 import { pickRemote, type CommitInfo, type RefInfo } from '@angkorgit/core';
 import {
   Button,
@@ -58,7 +58,7 @@ export function CommitGraph() {
   const worktrees = useRepo((s) => s.worktrees);
   const branches = useRepo((s) => s.branches);
   const remotes = useRepo((s) => s.remotes);
-  const { rows, commits, maxLane, hasMore, loading, error, filters, find, locatedOid, selectedOid, selectedOids, pendingScrollIndex, loadMore, reload, setFilters, setFind, stepFind, select, toggleSelect, rangeSelect, clearPendingScroll } =
+  const { rows, commits, maxLane, hasMore, loading, error, filters, find, matchesOnly, onlyMatches, setOnlyMatches, locatedOid, selectedOid, selectedOids, pendingScrollIndex, loadMore, reload, setFilters, setFind, stepFind, select, toggleSelect, rangeSelect, clearPendingScroll } =
     useGraph();
   const openDialog = useUi((s) => s.openDialog);
   const requestEditMessage = useUi((s) => s.requestEditMessage);
@@ -161,7 +161,7 @@ export function CommitGraph() {
   const graphLimit = graphWidth ?? GUTTER_DEFAULT_WIDTH;
   const gutterWidth = gutterWidthFor(maxLane, laneWidth, graphLimit);
   const graphOverflow = gutterOverflowFor(maxLane, laneWidth, graphLimit);
-  const filtersActive = Boolean(filters.branch);
+  const filtersActive = Boolean(filters.branch) || matchesOnly !== null;
 
   const moveSelection = useCallback(
     (step: 1 | -1 | 'home' | 'end') => {
@@ -461,6 +461,21 @@ export function CommitGraph() {
               </Hint>
             </span>
           ))}
+        {find && (
+          <Hint label={onlyMatches ? 'Show the full graph' : 'Show only the matching commits'}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Show only matching commits"
+              aria-pressed={onlyMatches}
+              data-only-matches={onlyMatches ? 'on' : 'off'}
+              className={cn(onlyMatches && 'bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary')}
+              onClick={() => void setOnlyMatches(path, !onlyMatches)}
+            >
+              <ListFilter className="size-3.5" />
+            </Button>
+          </Hint>
+        )}
         <div className="relative w-44">
           <User className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
           <Input
@@ -480,12 +495,19 @@ export function CommitGraph() {
             </button>
           </span>
         )}
-        <div className="ml-auto flex items-center gap-2 text-xs text-faint">
+        <div className="ml-auto flex items-center gap-2 whitespace-nowrap text-xs text-faint">
           {loading && <Spinner className="size-3.5" />}
-          <span>
-            {commits.length.toLocaleString()}
-            {hasMore ? '+' : ''} commit{commits.length === 1 && !hasMore ? '' : 's'}
-          </span>
+          {matchesOnly && find && !find.loading ? (
+            <span data-matching-count>
+              {find.matches.length.toLocaleString()}
+              {find.truncated ? '+' : ''} matching commit{find.matches.length === 1 && !find.truncated ? '' : 's'}
+            </span>
+          ) : (
+            <span>
+              {commits.length.toLocaleString()}
+              {hasMore ? '+' : ''} commit{commits.length === 1 && !hasMore ? '' : 's'}
+            </span>
+          )}
           <DropdownMenu>
             <Hint label="Graph display">
               <DropdownMenuTrigger asChild>
@@ -612,7 +634,11 @@ export function CommitGraph() {
                   : 'The first commit will appear here.'
               }
             >
-              {filtersActive ? (
+              {matchesOnly ? (
+                <Button variant="ghost" size="sm" onClick={() => void setOnlyMatches(path, false)}>
+                  Show the full graph
+                </Button>
+              ) : filtersActive ? (
                 <Button variant="ghost" size="sm" onClick={() => setFilters(path, { branch: '' })}>
                   Clear filters
                 </Button>
@@ -631,7 +657,7 @@ export function CommitGraph() {
                   className={cn(
                     locatedOid === commit.oid
                       ? 'animate-locate rounded-md bg-primary/10 shadow-[inset_3px_0_0_hsl(var(--primary))]'
-                      : matchOids.has(commit.oid) && 'shadow-[inset_2px_0_0_hsl(var(--primary)/0.45)]',
+                      : !matchesOnly && matchOids.has(commit.oid) && 'shadow-[inset_2px_0_0_hsl(var(--primary)/0.45)]',
                   )}
                   data-search-match={matchOids.has(commit.oid) ? (locatedOid === commit.oid ? 'active' : 'true') : undefined}
                   style={{

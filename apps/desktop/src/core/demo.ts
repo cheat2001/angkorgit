@@ -192,7 +192,7 @@ export function demoHistory(query: HistoryQuery): HistoryPage {
   if (query.search) {
     const q = query.search.toLowerCase();
     commits = commits.filter(
-      (c) => c.summary.toLowerCase().includes(q) || c.oid.startsWith(q),
+      (c) => c.summary.toLowerCase().includes(q) || c.oid.includes(q),
     );
   }
   if (query.author) {

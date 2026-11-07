@@ -30,6 +30,12 @@ All notable changes to AngKorGit are documented here. The format follows
   **Pull all without hooks** in the group menu skips it. Cancel waits for a hook that
   is already running, and for anything it left running in the background, the same way
   it waits for the checkout before it. (#69, #82)
+- **Show only the commits your search matches.** A search still highlights its
+  matches in the full graph. The new filter button next to the match counter narrows
+  the graph to just those commits, for example every "into staging" merge, with the
+  count beside it. It works with the author search and a branch picked in the
+  sidebar, and turning it off brings the full graph back on the commit you had
+  selected.
 
 ### Changed
 - **Rebasing a branch that already sits on top of its target does nothing**, like
