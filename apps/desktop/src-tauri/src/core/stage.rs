@@ -258,30 +258,38 @@ pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatc
     Ok((batch, restored_any))
 }
 
+struct RenameBackup {
+    directory: tempfile::TempDir,
+    includes_destination: bool,
+}
+
 fn discard_rename_source(
     repo: &Repository,
     source: &str,
     destination: &str,
-) -> AppResult<Option<tempfile::TempDir>> {
+) -> AppResult<Option<RenameBackup>> {
     let workdir = repo
         .workdir()
         .ok_or_else(|| AppError::other("bare repository"))?;
     let source_path = workdir.join(source);
     let destination_path = workdir.join(destination);
-    let Some(blocker) = rename_blocker(&source_path, &destination_path) else {
-        if (source_path.is_dir() && !contains_only_empty_directories(&source_path)?)
-            || source_path
-                .ancestors()
-                .skip(1)
-                .take_while(|parent| *parent != workdir)
-                .any(Path::is_file)
-        {
-            return Err(AppError::Conflict(format!(
-                "another path occupies {source}"
-            )));
-        }
-        return restore_rename_source(repo, source, destination).map(|()| None);
-    };
+    let destination_blocker = rename_blocker(&source_path, &destination_path);
+    if destination_blocker.is_none()
+        && source_path
+            .ancestors()
+            .skip(1)
+            .take_while(|parent| *parent != workdir)
+            .any(|parent| {
+                parent
+                    .symlink_metadata()
+                    .is_ok_and(|metadata| !metadata.is_dir())
+            })
+    {
+        return Err(AppError::Conflict(format!(
+            "another path occupies {source}"
+        )));
+    }
+    let blocker = destination_blocker.unwrap_or(&source_path);
     let metadata = match blocker.symlink_metadata() {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -289,10 +297,17 @@ fn discard_rename_source(
         }
         Err(error) => return Err(error.into()),
     };
-    if metadata.is_dir() && !contains_only_rename_destination(blocker, &destination_path)? {
-        return Err(AppError::Conflict(format!(
-            "a directory containing other files occupies {source}"
-        )));
+    if metadata.is_dir() {
+        let safe_to_move = if destination_blocker.is_some() {
+            contains_only_rename_destination(blocker, &destination_path)?
+        } else {
+            contains_only_empty_directories(blocker)?
+        };
+        if !safe_to_move {
+            return Err(AppError::Conflict(format!(
+                "a directory containing other files occupies {source}"
+            )));
+        }
     }
 
     let parent = blocker.parent().expect("path is inside the worktree");
@@ -317,7 +332,10 @@ fn discard_rename_source(
         }
         return Err(error);
     }
-    Ok(Some(backup))
+    Ok(Some(RenameBackup {
+        directory: backup,
+        includes_destination: destination_blocker.is_some(),
+    }))
 }
 
 fn restore_rename_source(repo: &Repository, source: &str, destination: &str) -> AppResult<()> {
@@ -449,21 +467,27 @@ fn contains_only_empty_directories(path: &Path) -> AppResult<bool> {
 fn discard_rename_destination(
     repo: &Repository,
     file: &str,
-    backup: Option<tempfile::TempDir>,
+    backup: Option<RenameBackup>,
 ) -> AppResult<()> {
-    let Some(backup) = backup else {
+    if !backup
+        .as_ref()
+        .is_some_and(|backup| backup.includes_destination)
+    {
         let workdir = repo
             .workdir()
             .ok_or_else(|| AppError::other("bare repository"))?;
-        return remove_worktree_file(workdir, file);
-    };
-    let backup_path = backup.path().to_path_buf();
-    backup.close().map_err(|error| {
-        AppError::other(format!(
-            "Could not remove the backup at {}: {error}",
-            backup_path.display()
-        ))
-    })
+        remove_worktree_file(workdir, file)?;
+    }
+    if let Some(backup) = backup {
+        let backup_path = backup.directory.path().to_path_buf();
+        backup.directory.close().map_err(|error| {
+            AppError::other(format!(
+                "Could not remove the backup at {}: {error}",
+                backup_path.display()
+            ))
+        })?;
+    }
+    Ok(())
 }
 
 fn discard_to_head(repo: &Repository, file: &str) -> AppResult<()> {

@@ -71,13 +71,12 @@ pub(crate) fn home_dir() -> Option<PathBuf> {
 }
 
 pub(crate) fn expand_home(path: &str, home: Option<&Path>) -> PathBuf {
-    let trimmed = path.trim();
-    if let Some(rest) = trimmed.strip_prefix("~/") {
+    if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = home {
             return home.join(rest);
         }
     }
-    PathBuf::from(trimmed)
+    PathBuf::from(path)
 }
 
 const MAX_SSH_KEYS: usize = 5;
@@ -126,7 +125,7 @@ fn discover_ssh_keys(home: Option<&Path>) -> Vec<PathBuf> {
 }
 
 fn resolved_key_path(path: &str) -> AppResult<PathBuf> {
-    let resolved = expand_home(path, home_dir().as_deref());
+    let resolved = expand_home(path.trim(), home_dir().as_deref());
     if resolved.as_os_str().is_empty() {
         return Err(AppError::other("choose a path for the key"));
     }
