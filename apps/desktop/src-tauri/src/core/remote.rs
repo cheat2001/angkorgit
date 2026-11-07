@@ -718,7 +718,9 @@ fn group_update_inner(
             &repo,
             &[PostHook::Merge],
             control.skips_hooks(),
-            super::hooks::Watch::UNTIL_LEFTOVERS_EXIT,
+            super::hooks::Watch::track_background(&|hook| {
+                control.record_background_hook(path, hook);
+            }),
         );
         Ok(GroupUpdateResult {
             status: "ok".into(),

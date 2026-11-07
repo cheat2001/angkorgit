@@ -212,11 +212,14 @@ pub(crate) struct TreeChild {
     leftovers: Option<Leftovers>,
 }
 
-pub(crate) fn spawn_tree(mut command: Command, wait_for_group: bool) -> std::io::Result<TreeChild> {
+pub(crate) fn spawn_tree(
+    mut command: Command,
+    track_descendants: bool,
+) -> std::io::Result<TreeChild> {
     #[cfg(not(any(unix, windows)))]
-    let _ = wait_for_group;
+    let _ = track_descendants;
     #[cfg(windows)]
-    if wait_for_group {
+    if track_descendants {
         let job = job::Job::new()?;
         let child = job::spawn_assigned(command, |child| job.assign(child))?;
         return Ok(TreeChild {
@@ -227,7 +230,7 @@ pub(crate) fn spawn_tree(mut command: Command, wait_for_group: bool) -> std::io:
     own_process_group(&mut command);
     let child = spawn_piped(command)?;
     #[cfg(unix)]
-    let leftovers = wait_for_group.then(|| Leftovers { group: child.id() });
+    let leftovers = track_descendants.then(|| Leftovers { group: child.id() });
     #[cfg(not(unix))]
     let leftovers = None;
     Ok(TreeChild { child, leftovers })
@@ -241,6 +244,7 @@ pub(crate) struct TreeRun {
     pub(crate) captured: Captured,
     pub(crate) timed_out: bool,
     pub(crate) exit_unconfirmed: bool,
+    pub(crate) background: Option<BackgroundProcesses>,
 }
 
 pub(crate) fn run_tree(tree: TreeChild, stdin: &str, timeout: Duration) -> TreeRun {
@@ -261,12 +265,17 @@ fn own_process_group(command: &mut Command) {
 fn own_process_group(_command: &mut Command) {}
 
 #[cfg(unix)]
-fn kill_tree(child: &mut Child) {
-    if let Ok(group) = libc::pid_t::try_from(child.id()) {
+fn kill_group(id: u32) {
+    if let Ok(group) = libc::pid_t::try_from(id) {
         unsafe {
             libc::killpg(group, libc::SIGKILL);
         }
     }
+}
+
+#[cfg(unix)]
+fn kill_tree(child: &mut Child) {
+    kill_group(child.id());
     let _ = child.kill();
 }
 
@@ -291,6 +300,28 @@ struct Leftovers {
     group: u32,
     #[cfg(windows)]
     job: job::Job,
+}
+
+pub(crate) struct BackgroundProcesses {
+    leftovers: Leftovers,
+    deadline: Instant,
+}
+
+impl BackgroundProcesses {
+    pub(crate) fn running(&self) -> bool {
+        self.leftovers.running()
+    }
+
+    pub(crate) fn wait_on_cancel(self) -> Option<bool> {
+        while self.running() {
+            let remaining = self.deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Some(self.leftovers.stop_background());
+            }
+            std::thread::sleep(remaining.min(Duration::from_millis(25)));
+        }
+        None
+    }
 }
 
 impl Leftovers {
@@ -332,6 +363,22 @@ impl Leftovers {
             true
         }
     }
+
+    fn stop_background(self) -> bool {
+        #[cfg(unix)]
+        {
+            kill_group(self.group);
+            wait_for_process_exit(PROCESS_EXIT_GRACE, || Some(!self.running()))
+        }
+        #[cfg(windows)]
+        {
+            self.job.stop()
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            true
+        }
+    }
 }
 
 #[cfg(any(unix, windows, test))]
@@ -364,9 +411,7 @@ mod job {
     };
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
-        JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
-        TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        QueryInformationJobObject, TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
     };
     use windows_sys::Win32::System::Threading::{
         OpenThread, ResumeThread, CREATE_SUSPENDED, THREAD_SUSPEND_RESUME,
@@ -380,21 +425,7 @@ mod job {
             if handle.is_null() {
                 return Err(windows_error("could not create the hook job"));
             }
-            let job = Job(unsafe { OwnedHandle::from_raw_handle(handle) });
-            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            let configured = unsafe {
-                SetInformationJobObject(
-                    job.0.as_raw_handle(),
-                    JobObjectExtendedLimitInformation,
-                    std::ptr::addr_of!(limits).cast(),
-                    std::mem::size_of_val(&limits) as u32,
-                )
-            };
-            if configured == 0 {
-                return Err(windows_error("could not configure the hook job"));
-            }
-            Ok(job)
+            Ok(Job(unsafe { OwnedHandle::from_raw_handle(handle) }))
         }
 
         pub(super) fn assign(&self, child: &Child) -> io::Result<()> {
@@ -554,16 +585,6 @@ fn gather(
             -1
         }
     };
-    if let Some(leftovers) = leftovers {
-        while leftovers.running() {
-            if Instant::now() >= deadline {
-                expired = true;
-                exit_unconfirmed = !leftovers.stop(&mut child);
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-    }
     let drain_until = Instant::now() + OUTPUT_DRAIN;
     while !(stdout_thread.is_finished() && stderr_thread.is_finished())
         && Instant::now() < drain_until
@@ -586,15 +607,21 @@ fn gather(
         captured,
         timed_out: expired,
         exit_unconfirmed,
+        background: leftovers
+            .filter(Leftovers::running)
+            .map(|leftovers| BackgroundProcesses {
+                leftovers,
+                deadline,
+            }),
     }
 }
 
-type SharedOutput = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
+type SharedOutput = std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>;
 
 fn read_pipe<R: Read + Send + 'static>(
     pipe: Option<R>,
 ) -> (SharedOutput, std::thread::JoinHandle<()>) {
-    let output = SharedOutput::default();
+    let output = SharedOutput::new(std::sync::Mutex::new(Some(Vec::new())));
     let sink = std::sync::Arc::clone(&output);
     let handle = std::thread::spawn(move || {
         let Some(mut pipe) = pipe else {
@@ -605,8 +632,10 @@ fn read_pipe<R: Read + Send + 'static>(
             match pipe.read(&mut chunk) {
                 Ok(0) => break,
                 Ok(read) => {
-                    if let Ok(mut buffer) = sink.lock() {
-                        buffer.extend_from_slice(&chunk[..read]);
+                    if let Ok(mut output) = sink.lock() {
+                        if let Some(buffer) = output.as_mut() {
+                            buffer.extend_from_slice(&chunk[..read]);
+                        }
                     }
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
@@ -620,7 +649,8 @@ fn read_pipe<R: Read + Send + 'static>(
 fn take_output(output: &SharedOutput) -> String {
     let bytes = output
         .lock()
-        .map(|mut buffer| std::mem::take(&mut *buffer))
+        .ok()
+        .and_then(|mut buffer| buffer.take())
         .unwrap_or_default();
     String::from_utf8_lossy(&bytes).into_owned()
 }
@@ -1011,13 +1041,14 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn waiting_for_leftovers_tracks_a_windows_background_child() {
+    fn cancellation_waits_for_a_windows_background_child() {
         let mut command = crate::proc::hidden("cmd");
         command.args(["/C", "start", "", "/B", "ping", "-n", "3", "127.0.0.1"]);
         let started = Instant::now();
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(30));
         assert!(!run.timed_out);
+        assert_eq!(run.background.unwrap().wait_on_cancel(), None);
         assert!(
             started.elapsed() >= Duration::from_millis(1500),
             "returned after {:?}, before the background ping finished",
@@ -1036,14 +1067,14 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn a_windows_background_child_left_at_the_deadline_is_stopped() {
+    fn cancellation_stops_a_windows_background_child_at_the_deadline() {
         let mut command = crate::proc::hidden("cmd");
         command.args(["/C", "start", "", "/B", "ping", "-n", "30", "127.0.0.1"]);
         let started = Instant::now();
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(2));
-        assert!(run.timed_out);
-        assert!(!run.exit_unconfirmed);
+        assert!(!run.timed_out);
+        assert_eq!(run.background.unwrap().wait_on_cancel(), Some(true));
         assert!(started.elapsed() < Duration::from_secs(15));
     }
 
@@ -1075,7 +1106,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn waiting_for_leftovers_returns_only_after_the_background_work_finished() {
+    fn cancellation_waits_for_background_work_to_finish() {
         let dir = std::env::temp_dir().join(format!(
             "angkorgit-leftovers-{}-{}",
             std::process::id(),
@@ -1093,6 +1124,8 @@ mod tests {
         ));
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(20));
+        assert!(!marker.exists());
+        assert_eq!(run.background.unwrap().wait_on_cancel(), None);
         let written = marker.exists();
         std::fs::remove_dir_all(&dir).ok();
         assert!(!run.timed_out);
@@ -1105,13 +1138,14 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn leftovers_still_running_at_the_deadline_are_stopped_and_count_as_a_timeout() {
+    fn cancellation_stops_background_work_at_the_deadline() {
         let mut command = crate::proc::hidden("/bin/sh");
         command.arg("-c").arg("sleep 30 > /dev/null 2>&1 & echo $!");
         let started = Instant::now();
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(1));
-        assert!(run.timed_out);
+        assert!(!run.timed_out);
+        assert_eq!(run.background.unwrap().wait_on_cancel(), Some(true));
         assert!(started.elapsed() < Duration::from_secs(10));
         let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);

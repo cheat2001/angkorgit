@@ -46,6 +46,12 @@ export interface IpcError {
   detail?: string;
 }
 
+export interface PostHookProgress {
+  repoPath: string;
+  hook: string;
+  running: boolean;
+}
+
 export interface CommitOutcome {
   oid: string;
   hookWarning: string | null;
@@ -206,8 +212,24 @@ function demoPostHookWarning(path: string, hook: string): HookWarningEvent {
   };
 }
 
-function demoRunPostHook(path: string, hook: string, noVerify = false): void {
-  if (demoPostHooks() === 'fail' && !noVerify) demoEmit('hook-warning', demoPostHookWarning(path, hook));
+const demoRunningPostHooks = new Set<string>();
+
+async function demoRunPostHook(path: string, hook: string, noVerify = false, reportWarning = true): Promise<HookWarningEvent | null> {
+  if (demoRunningPostHooks.has(path)) throw new Error('Another operation is still running in this repository');
+  const mode = demoPostHooks();
+  if (!mode || noVerify) return null;
+  const progress: PostHookProgress = { repoPath: path, hook, running: true };
+  demoRunningPostHooks.add(path);
+  demoEmit('post-hook-progress', progress);
+  try {
+    await delay(demoHooksDelay());
+  } finally {
+    demoRunningPostHooks.delete(path);
+    demoEmit('post-hook-progress', { ...progress, running: false });
+  }
+  const warning = mode === 'fail' ? demoPostHookWarning(path, hook) : null;
+  if (warning && reportWarning) demoEmit('hook-warning', warning);
+  return warning;
 }
 
 const demoGroupRunsSkippingHooks = new Set<string>();
@@ -452,7 +474,7 @@ export const ipc = {
   },
   async discardFiles(path: string, files: string[], staged: boolean): Promise<DiscardBatch> {
     if (!isTauri()) {
-      demoRunPostHook(path, 'post-checkout');
+      await demoRunPostHook(path, 'post-checkout');
       const failing = demoDiscardFails();
       return {
         leftovers: [],
@@ -615,18 +637,24 @@ export const ipc = {
   },
   async checkout(path: string, name: string): Promise<void> {
     if (!isTauri()) {
+      await demoRunPostHook(path, 'post-checkout');
       if (demoCheckoutMovesHead()) demo.demoCheckout(name);
-      demoRunPostHook(path, 'post-checkout');
       return;
     }
     return invoke('branch_checkout', { path, name });
   },
   async checkoutDetached(path: string, rev: string): Promise<void> {
-    if (!isTauri()) return;
+    if (!isTauri()) {
+      await demoRunPostHook(path, 'post-checkout');
+      return;
+    }
     return invoke('checkout_detached', { path, rev });
   },
   async merge(path: string, name: string, noFf = false): Promise<OpOutcome> {
-    if (!isTauri()) return { status: 'ok', message: `Merged ${name} (demo)` };
+    if (!isTauri()) {
+      await demoRunPostHook(path, 'post-merge');
+      return { status: 'ok', message: `Merged ${name} (demo)` };
+    }
     return invoke('branch_merge', { path, name, noFf });
   },
   async mergeAbort(path: string): Promise<void> {
@@ -732,7 +760,7 @@ export const ipc = {
       await delay(400);
       if (pull && demoPostHooks()) {
         const skipping = demoGroupRunsSkippingHooks.has(runId);
-        const warning = demoPostHooks() === 'fail' && !skipping ? demoPostHookWarning(path, 'post-merge') : null;
+        const warning = await demoRunPostHook(path, 'post-merge', skipping, false);
         return {
           status: 'ok',
           message: 'Fast-forwarded main by 2 commit(s) (demo)',
@@ -754,7 +782,7 @@ export const ipc = {
     if (!isTauri()) {
       await delay(400);
       if (!demoPostHooks()) return { status: 'ok', message: 'Already up to date (demo)' };
-      demoRunPostHook(path, 'post-merge', noVerify);
+      await demoRunPostHook(path, 'post-merge', noVerify);
       return { status: 'fast_forward', message: `Fast-forwarded main to ${remote}/main (demo)` };
     }
     return invoke('remote_pull', { path, remote, mode: mode ?? null, noVerify });

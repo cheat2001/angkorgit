@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
@@ -7,7 +8,7 @@ use git2::{Oid, Repository};
 use same_file::Handle;
 
 use super::types::{HookWarning, RepoHooks};
-use crate::ai_cli::{capture, run_tree, search_path, spawn_tree};
+use crate::ai_cli::{capture, run_tree, search_path, spawn_tree, BackgroundProcesses};
 use crate::error::{AppError, AppResult};
 
 pub const PRE_COMMIT: &str = "pre-commit";
@@ -369,21 +370,52 @@ impl Drop for InputFile {
     }
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct Watch {
+pub(crate) struct PendingHook {
+    name: String,
     timeout: Duration,
-    leftovers: bool,
+    output: String,
+    processes: BackgroundProcesses,
 }
 
-impl Watch {
-    pub(crate) const PLAIN: Watch = Watch {
+impl PendingHook {
+    pub(crate) fn running(&self) -> bool {
+        self.processes.running()
+    }
+
+    pub(crate) fn wait_on_cancel(self) -> Option<HookWarning> {
+        let confirmed = self.processes.wait_on_cancel()?;
+        let message = format!(
+            "Background processes from the {} hook exceeded its {} second limit during cancellation. {}",
+            self.name,
+            self.timeout.as_secs(),
+            if confirmed {
+                "They were stopped."
+            } else {
+                "Could not confirm that all processes stopped."
+            }
+        );
+        Some(post_warning(&self.name, None, true, message, self.output))
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Watch<'a> {
+    timeout: Duration,
+    retain: Option<&'a dyn Fn(PendingHook)>,
+}
+
+impl<'a> Watch<'a> {
+    const PLAIN: Self = Self {
         timeout: HOOK_TIMEOUT,
-        leftovers: false,
+        retain: None,
     };
-    pub(crate) const UNTIL_LEFTOVERS_EXIT: Watch = Watch {
-        timeout: HOOK_TIMEOUT,
-        leftovers: true,
-    };
+
+    pub(crate) fn track_background(retain: &'a dyn Fn(PendingHook)) -> Self {
+        Self {
+            retain: Some(retain),
+            ..Self::PLAIN
+        }
+    }
 }
 
 pub(crate) fn run(
@@ -397,14 +429,14 @@ pub(crate) fn run(
     run_watched(repo, runner, name, args, env, input, Watch::PLAIN)
 }
 
-pub(crate) fn run_watched(
+fn run_watched(
     repo: &Repository,
     runner: &Runner,
     name: &str,
     args: &[&OsStr],
     env: &[(&str, &OsStr)],
     input: Option<&str>,
-    watch: Watch,
+    watch: Watch<'_>,
 ) -> AppResult<()> {
     let cwd = repo.workdir().unwrap_or_else(|| repo.path());
     let input_file = match (runner, input) {
@@ -434,18 +466,18 @@ pub(crate) fn run_watched(
                 command.arg("--").args(args);
             }
             configure(&mut command);
-            spawn_tree(command, watch.leftovers)
+            spawn_tree(command, watch.retain.is_some())
         }
         Runner::Direct(hook) => {
             let mut command = crate::proc::hidden(hook);
             command.args(args);
             configure(&mut command);
-            match spawn_tree(command, watch.leftovers) {
+            match spawn_tree(command, watch.retain.is_some()) {
                 Err(error) if is_exec_format_error(&error) => {
                     let mut command = crate::proc::hidden(SHELL_PATH);
                     command.arg(hook).args(args);
                     configure(&mut command);
-                    spawn_tree(command, watch.leftovers)
+                    spawn_tree(command, watch.retain.is_some())
                 }
                 spawned => spawned,
             }
@@ -462,7 +494,7 @@ pub(crate) fn run_watched(
     };
     let run = run_tree(child, piped, watch.timeout);
     let captured = run.captured;
-    if captured.status == 0 && !run.timed_out {
+    if captured.status == 0 && !run.timed_out && run.background.is_none() {
         return Ok(());
     }
     let output = [captured.stdout.trim_end(), captured.stderr.trim_end()]
@@ -470,18 +502,30 @@ pub(crate) fn run_watched(
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join("\n");
+    let output = output_tail(&output, OUTPUT_CAP);
+    if let (Some(retain), Some(processes)) = (watch.retain, run.background) {
+        retain(PendingHook {
+            name: name.to_string(),
+            timeout: watch.timeout,
+            output: output.clone(),
+            processes,
+        });
+    }
+    if captured.status == 0 && !run.timed_out {
+        return Ok(());
+    }
     if run.timed_out {
         return Err(AppError::HookTimeout {
             hook: name.to_string(),
             seconds: watch.timeout.as_secs(),
             exit_unconfirmed: run.exit_unconfirmed,
-            output: output_tail(&output, OUTPUT_CAP),
+            output,
         });
     }
     Err(AppError::Hook {
         hook: name.to_string(),
         status: captured.status,
-        output: output_tail(&output, OUTPUT_CAP),
+        output,
     })
 }
 
@@ -829,11 +873,55 @@ pub(crate) fn run_post(repo: &Repository, hooks: &[PostHook], no_verify: bool) -
     run_post_watched(repo, hooks, no_verify, Watch::PLAIN)
 }
 
+type PostHookObserver = Box<dyn Fn(&Path, &str, bool)>;
+
+thread_local! {
+    static POST_HOOK_OBSERVER: RefCell<Option<PostHookObserver>> = const { RefCell::new(None) };
+}
+
+struct ObserverScope(Option<PostHookObserver>);
+
+impl Drop for ObserverScope {
+    fn drop(&mut self) {
+        POST_HOOK_OBSERVER.with(|slot| slot.replace(self.0.take()));
+    }
+}
+
+pub(crate) fn observe_post_hooks<T>(
+    observer: impl Fn(&Path, &str, bool) + 'static,
+    action: impl FnOnce() -> T,
+) -> T {
+    let _scope =
+        ObserverScope(POST_HOOK_OBSERVER.with(|slot| slot.replace(Some(Box::new(observer)))));
+    action()
+}
+
+struct PostHookActivity<'a> {
+    workdir: &'a Path,
+    name: &'a str,
+}
+
+impl PostHookActivity<'_> {
+    fn notify(&self, running: bool) {
+        POST_HOOK_OBSERVER.with(|slot| {
+            if let Some(observer) = slot.borrow().as_ref() {
+                observer(self.workdir, self.name, running);
+            }
+        });
+    }
+}
+
+impl Drop for PostHookActivity<'_> {
+    fn drop(&mut self) {
+        self.notify(false);
+    }
+}
+
 pub(crate) fn run_post_watched(
     repo: &Repository,
     hooks: &[PostHook],
     no_verify: bool,
-    watch: Watch,
+    watch: Watch<'_>,
 ) -> Vec<HookWarning> {
     let mut warnings: Vec<HookWarning> = Vec::new();
     let Some(workdir) = repo.workdir() else {
@@ -872,6 +960,8 @@ pub(crate) fn run_post_watched(
         };
         let args = hook.args();
         let args: Vec<&OsStr> = args.iter().map(OsStr::new).collect();
+        let activity = PostHookActivity { workdir, name };
+        activity.notify(true);
         if let Err(error) = run_watched(repo, &runner, name, &args, &[], input.as_deref(), watch) {
             let (status, timed_out, output) = match &error {
                 AppError::Hook { status, output, .. } => (Some(*status), false, output.clone()),
@@ -988,8 +1078,8 @@ mod tests {
         std::fs::write(&hook, "#!/bin/sh\necho installing\nsleep 30\n").unwrap();
         std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         let watch = Watch {
-            timeout: Duration::from_secs(1),
-            leftovers: false,
+            timeout: Duration::from_secs(3),
+            ..Watch::PLAIN
         };
         let warnings = run_post_watched(&repo, &[PostHook::Merge], false, watch);
         let _ = std::fs::remove_dir_all(dir);
@@ -1000,7 +1090,7 @@ mod tests {
         assert_eq!(warning.output, "installing");
         assert_eq!(
             warning.message,
-            "The post-merge hook did not finish within 1 seconds and was stopped."
+            "The post-merge hook did not finish within 3 seconds and was stopped."
         );
     }
 
