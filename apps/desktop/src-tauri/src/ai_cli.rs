@@ -348,9 +348,10 @@ impl Leftovers {
         #[cfg(unix)]
         {
             kill_tree(child);
-            wait_for_process_exit(PROCESS_EXIT_GRACE, || {
+            let _ = wait_for_process_exit(PROCESS_EXIT_GRACE, || {
                 Some(child.try_wait().ok()?.is_some() && !self.running())
-            })
+            });
+            false
         }
         #[cfg(not(unix))]
         let _ = child;
@@ -368,7 +369,8 @@ impl Leftovers {
         #[cfg(unix)]
         {
             kill_group(self.group);
-            wait_for_process_exit(PROCESS_EXIT_GRACE, || Some(!self.running()))
+            let _ = wait_for_process_exit(PROCESS_EXIT_GRACE, || Some(!self.running()));
+            false
         }
         #[cfg(windows)]
         {
@@ -1081,13 +1083,13 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn a_timed_out_group_hook_confirms_exit_after_reaping_its_direct_child() {
+    fn a_timed_out_group_hook_cannot_confirm_descendant_exit_after_reaping_its_direct_child() {
         let mut command = crate::proc::hidden("/bin/sh");
         command.arg("-c").arg("echo started; exec sleep 30");
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(1));
         assert!(run.timed_out);
-        assert!(!run.exit_unconfirmed);
+        assert!(run.exit_unconfirmed);
         assert_eq!(run.captured.stdout.trim(), "started");
     }
 
@@ -1108,7 +1110,14 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn an_ordinary_hook_timeout_cannot_confirm_a_detached_child_exited() {
+    fn hook_timeouts_cannot_confirm_a_detached_child_exited() {
+        for track_descendants in [false, true] {
+            assert_detached_child_exit_unconfirmed(track_descendants);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn assert_detached_child_exit_unconfirmed(track_descendants: bool) {
         let dir = tempfile::tempdir().unwrap();
         let pid_file = dir.path().join("child-pid");
         let mut command = crate::proc::hidden("/bin/sh");
@@ -1117,7 +1126,7 @@ mod tests {
             .arg("setsid sleep 30 > /dev/null 2>&1 & echo $! > \"$1\"; wait")
             .arg("hook")
             .arg(&pid_file);
-        let child = spawn_tree(command, false).unwrap();
+        let child = spawn_tree(command, track_descendants).unwrap();
         let run = run_tree(child, "", Duration::from_secs(3));
         let detached: libc::pid_t = std::fs::read_to_string(pid_file)
             .unwrap()
@@ -1177,7 +1186,7 @@ mod tests {
         let child = spawn_tree(command, true).unwrap();
         let run = run_tree(child, "", Duration::from_secs(1));
         assert!(!run.timed_out);
-        assert_eq!(run.background.unwrap().wait_on_cancel(), Some(true));
+        assert_eq!(run.background.unwrap().wait_on_cancel(), Some(false));
         assert!(started.elapsed() < Duration::from_secs(10));
         let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);

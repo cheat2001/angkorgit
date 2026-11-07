@@ -5845,6 +5845,54 @@ fn discarding_a_staged_rename_preserves_a_recreated_source_on_index_lock() {
 }
 
 #[cfg(unix)]
+#[test]
+fn a_rename_destination_removal_failure_preserves_the_staged_rename_and_worktree() {
+    use std::io::ErrorKind;
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo = TempRepo::new();
+    repo.write("old.txt", "original contents\n");
+    commit_all(&repo, "one file");
+    let locked = repo.dir.join("locked");
+    std::fs::create_dir(&locked).unwrap();
+    git_in(&repo.dir, &["mv", "old.txt", "locked/new.txt"]);
+    repo.write("old.txt", "recreated after staging\n");
+    repo.write("locked/new.txt", "edited after staging\n");
+    let probe = locked.join("probe");
+    std::fs::write(&probe, "").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let can_remove = std::fs::remove_file(&probe);
+    if can_remove.is_ok() {
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+        eprintln!("skipping: the directory stayed writable");
+        return;
+    }
+    let result = core::post_hooks::discard_staged_all(repo.path(), true);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(can_remove.unwrap_err().kind(), ErrorKind::PermissionDenied);
+    std::fs::remove_file(&probe).unwrap();
+
+    let result = result.unwrap();
+    assert_eq!(result.value.failed.len(), 1);
+    assert_eq!(result.value.failed[0].path, "locked/new.txt");
+    assert_eq!(repo.read("old.txt"), "recreated after staging\n");
+    assert_eq!(repo.read("locked/new.txt"), "edited after staging\n");
+    assert_eq!(
+        git_in(
+            &repo.dir,
+            &["diff", "--cached", "--name-status", "--find-renames"]
+        ),
+        "R100\told.txt\tlocked/new.txt"
+    );
+
+    let retried = core::post_hooks::discard_staged_all(repo.path(), true).unwrap();
+    assert!(retried.value.failed.is_empty());
+    assert_eq!(repo.read("old.txt"), "original contents\n");
+    assert!(!repo.dir.join("locked/new.txt").exists());
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
+}
+
+#[cfg(unix)]
 fn assert_case_only_symlink_rename_rollback(
     source_name: &str,
     destination_name: &str,
@@ -6150,8 +6198,7 @@ fn a_symlink_cleanup_check_failure_preserves_its_staged_target() {
         std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
         let result = result.unwrap();
         assert_eq!(result.value.failed.len(), 1, "{:?}", result.value.failed);
-        let failed_path = if rename { "old" } else { "private/new" };
-        assert_eq!(result.value.failed[0].path, failed_path);
+        assert_eq!(result.value.failed[0].path, "private/new");
         assert!(source.symlink_metadata().is_err());
         assert_eq!(
             std::fs::read_link(&link).unwrap(),

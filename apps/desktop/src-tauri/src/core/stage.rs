@@ -187,24 +187,38 @@ pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatc
         let mut progress = false;
         let mut deferred = Vec::new();
         for (source, destination) in staged {
-            let mut failed_path = &source;
+            let mut failed_path = source.as_str();
             let source_result = match destination.as_deref() {
                 Some(file) => {
                     checkout_with_rollback(&repo, &source, Some(file), |destination_backed_up| {
-                        restore_rename_source(&repo, &source, file, destination_backed_up)
+                        restore_rename_source(
+                            &repo,
+                            &source,
+                            file,
+                            destination_backed_up,
+                            &mut failed_path,
+                        )
                     })
                 }
                 None => discard_to_head(&repo, &source).map(|()| (None, None)),
             };
-            let result = source_result.and_then(|(backup, removal)| {
+            let result = source_result.and_then(|(source_backup, destination_backup)| {
                 progress = true;
                 restored_any = true;
                 if let Some(file) = &destination {
                     failed_path = file;
-                    if let Some(removal) = removal {
-                        removal.remove()?;
+                    if let Err(error) =
+                        destination_backup.map_or(Ok(()), WorktreeFileBackup::discard)
+                    {
+                        let Some(backup) = source_backup else {
+                            return Err(error);
+                        };
+                        return Err(AppError::other(format!(
+                            "{error}. The original {source} is saved at {}",
+                            backup.keep().join("original").display()
+                        )));
                     }
-                    if let Some(backup) = backup {
+                    if let Some(backup) = source_backup {
                         close_checkout_backup(backup)?;
                     }
                 }
@@ -215,10 +229,10 @@ pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatc
                 Err(error) => {
                     repo.index()?.read(true)?;
                     let failure = DiscardFailure {
-                        path: failed_path.clone(),
+                        path: failed_path.to_owned(),
                         message: error.to_string(),
                     };
-                    if failed_path == &source && matches!(error, AppError::Conflict(_)) {
+                    if failed_path == source && matches!(error, AppError::Conflict(_)) {
                         deferred.push((source, destination, failure));
                     } else {
                         batch.failed.push(failure);
@@ -418,25 +432,18 @@ fn remove_created_rename_source(path: &Path) -> std::io::Result<()> {
     }
 }
 
-fn restore_rename_source(
+fn restore_rename_source<'a>(
     repo: &Repository,
     source: &str,
-    destination: &str,
+    destination: &'a str,
     destination_backed_up: bool,
-) -> AppResult<Option<WorktreeFileRemoval>> {
+    failed_path: &mut &'a str,
+) -> AppResult<Option<WorktreeFileBackup>> {
     let tree = repo.head()?.peel_to_tree()?;
     let source_path = Path::new(source);
     let destination_path = Path::new(destination);
     let head_entry = tree.get_path(source_path)?;
     checkout_head_file(repo, &tree, source, false)?;
-    let removal = if destination_backed_up {
-        None
-    } else {
-        let workdir = repo
-            .workdir()
-            .ok_or_else(|| AppError::other("bare repository"))?;
-        prepare_worktree_file_removal(workdir, destination)?
-    };
 
     let mut index = repo.index()?;
     index.read(true)?;
@@ -479,8 +486,28 @@ fn restore_rename_source(
             "Could not restore {source} in the index"
         )));
     }
-    index.write()?;
-    Ok(removal)
+    let backup = if destination_backed_up {
+        None
+    } else {
+        let workdir = repo
+            .workdir()
+            .ok_or_else(|| AppError::other("bare repository"))?;
+        let result = prepare_worktree_file_removal(workdir, destination).and_then(|removal| {
+            removal
+                .map(|removal| removal.back_up(&workdir.join(destination)))
+                .transpose()
+        });
+        result.inspect_err(|_| *failed_path = destination)?
+    };
+    if let Err(error) = index.write() {
+        if let Some(backup) = backup {
+            backup
+                .restore()
+                .map_err(|rollback| AppError::other(format!("{error}. {rollback}")))?;
+        }
+        return Err(error.into());
+    }
+    Ok(backup)
 }
 
 fn rename_blocker<'a>(source: &Path, destination: &'a Path) -> AppResult<Option<&'a Path>> {
@@ -721,13 +748,93 @@ struct WorktreeFileRemoval {
 #[cfg(unix)]
 impl WorktreeFileRemoval {
     fn remove(self) -> std::io::Result<()> {
-        use rustix::fs::{self, AtFlags};
-        use rustix::io::Errno;
+        unlink_worktree_entry(&self.parent, &self.name)
+    }
 
-        match fs::unlinkat(&self.parent, &self.name, AtFlags::empty()) {
-            Ok(()) | Err(Errno::NOENT) => Ok(()),
-            Err(error) => Err(error.into()),
+    fn back_up(self, path: &Path) -> AppResult<WorktreeFileBackup> {
+        use rustix::fs::{self, Mode, OFlags};
+
+        let parent_path = path.parent().expect("path is inside the worktree");
+        let name = tempfile::Builder::new()
+            .prefix(".angkorgit-discard-")
+            .disable_cleanup(true)
+            .make_in(parent_path, |path| {
+                let name = path.file_name().expect("temporary path has a name");
+                fs::openat(
+                    &self.parent,
+                    name,
+                    OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::CLOEXEC,
+                    Mode::RUSR | Mode::WUSR,
+                )?;
+                Ok(name.to_os_string())
+            })?
+            .into_file();
+        if let Err(error) = fs::renameat(&self.parent, &self.name, &self.parent, &name) {
+            let _ = unlink_worktree_entry(&self.parent, &name);
+            return Err(std::io::Error::from(error).into());
         }
+        Ok(WorktreeFileBackup {
+            saved_path: parent_path.join(&name),
+            original: self,
+            name,
+        })
+    }
+}
+
+#[cfg(unix)]
+struct WorktreeFileBackup {
+    original: WorktreeFileRemoval,
+    name: std::ffi::OsString,
+    saved_path: PathBuf,
+}
+
+#[cfg(unix)]
+impl WorktreeFileBackup {
+    fn restore(self) -> AppResult<()> {
+        use rustix::fs;
+
+        let parent = &self.original.parent;
+        let original = &self.original.name;
+        let put_back = || {
+            #[cfg(any(target_vendor = "apple", target_os = "linux", target_os = "android"))]
+            {
+                use rustix::io::Errno;
+
+                match fs::renameat_with(
+                    parent,
+                    &self.name,
+                    parent,
+                    original,
+                    fs::RenameFlags::NOREPLACE,
+                ) {
+                    Err(Errno::INVAL | Errno::NOSYS | Errno::NOTSUP) => {}
+                    result => return result,
+                }
+            }
+            fs::linkat(parent, &self.name, parent, original, fs::AtFlags::empty())?;
+            fs::unlinkat(parent, &self.name, fs::AtFlags::empty())
+        };
+        put_back().map_err(|error| destination_restore_error(&self.saved_path, error))
+    }
+
+    fn discard(self) -> AppResult<()> {
+        unlink_worktree_entry(&self.original.parent, &self.name).map_err(|error| {
+            AppError::other(format!(
+                "Could not remove the backup at {}: {error}",
+                self.saved_path.display()
+            ))
+        })
+    }
+}
+
+#[cfg(unix)]
+fn unlink_worktree_entry(parent: &rustix::fd::OwnedFd, name: &OsStr) -> std::io::Result<()> {
+    use rustix::fs::{self, AtFlags};
+    use rustix::io::Errno;
+
+    match fs::unlinkat(parent, name, AtFlags::empty()) {
+        Ok(()) | Err(Errno::NOENT) => Ok(()),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -820,6 +927,68 @@ impl WorktreeFileRemoval {
             result => result,
         }
     }
+
+    fn back_up(self, _path: &Path) -> AppResult<WorktreeFileBackup> {
+        let parent = self.path.parent().expect("path is inside the worktree");
+        let directory = tempfile::Builder::new()
+            .prefix(".angkorgit-discard-")
+            .tempdir_in(parent)?;
+        let saved_path = directory.path().join("original");
+        fs::rename(&self.path, &saved_path)?;
+        let backup = WorktreeFileBackup {
+            original: self,
+            directory,
+        };
+        let error = match saved_path.symlink_metadata() {
+            Ok(metadata) if metadata.is_file() || metadata.is_symlink() => return Ok(backup),
+            Ok(_) => AppError::Conflict("the rename destination changed during discard".into()),
+            Err(error) => error.into(),
+        };
+        backup
+            .restore()
+            .map_err(|rollback| AppError::other(format!("{error}. {rollback}")))?;
+        Err(error)
+    }
+}
+
+#[cfg(windows)]
+struct WorktreeFileBackup {
+    original: WorktreeFileRemoval,
+    directory: tempfile::TempDir,
+}
+
+#[cfg(windows)]
+impl WorktreeFileBackup {
+    fn restore(self) -> AppResult<()> {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::MoveFileW;
+
+        let wide = |path: &Path| {
+            path.as_os_str()
+                .encode_wide()
+                .chain([0])
+                .collect::<Vec<_>>()
+        };
+        let saved = wide(&self.directory.path().join("original"));
+        let original = wide(&self.original.path);
+        if unsafe { MoveFileW(saved.as_ptr(), original.as_ptr()) } == 0 {
+            let error = std::io::Error::last_os_error();
+            let saved_path = self.directory.keep().join("original");
+            return Err(destination_restore_error(&saved_path, error));
+        }
+        close_checkout_backup(self.directory)
+    }
+
+    fn discard(self) -> AppResult<()> {
+        close_checkout_backup(self.directory)
+    }
+}
+
+fn destination_restore_error(path: &Path, error: impl std::fmt::Display) -> AppError {
+    AppError::other(format!(
+        "Could not put the rename destination back ({error}). It is saved at {}",
+        path.display()
+    ))
 }
 
 #[cfg(windows)]
