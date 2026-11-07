@@ -930,16 +930,19 @@ impl WorktreeFileRemoval {
 
     fn back_up(self, _path: &Path) -> AppResult<WorktreeFileBackup> {
         let parent = self.path.parent().expect("path is inside the worktree");
-        let directory = tempfile::Builder::new()
+        let saved_path = tempfile::Builder::new()
             .prefix(".angkorgit-discard-")
-            .tempdir_in(parent)?;
-        let saved_path = directory.path().join("original");
-        fs::rename(&self.path, &saved_path)?;
+            .disable_cleanup(true)
+            .make_in(parent, |path| {
+                move_worktree_entry(&self.path, path)?;
+                Ok(path.to_path_buf())
+            })?
+            .into_file();
         let backup = WorktreeFileBackup {
             original: self,
-            directory,
+            saved_path,
         };
-        let error = match saved_path.symlink_metadata() {
+        let error = match backup.saved_path.symlink_metadata() {
             Ok(metadata) if metadata.is_file() || metadata.is_symlink() => return Ok(backup),
             Ok(_) => AppError::Conflict("the rename destination changed during discard".into()),
             Err(error) => error.into(),
@@ -954,34 +957,43 @@ impl WorktreeFileRemoval {
 #[cfg(windows)]
 struct WorktreeFileBackup {
     original: WorktreeFileRemoval,
-    directory: tempfile::TempDir,
+    saved_path: PathBuf,
 }
 
 #[cfg(windows)]
 impl WorktreeFileBackup {
     fn restore(self) -> AppResult<()> {
-        use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::Storage::FileSystem::MoveFileW;
-
-        let wide = |path: &Path| {
-            path.as_os_str()
-                .encode_wide()
-                .chain([0])
-                .collect::<Vec<_>>()
-        };
-        let saved = wide(&self.directory.path().join("original"));
-        let original = wide(&self.original.path);
-        if unsafe { MoveFileW(saved.as_ptr(), original.as_ptr()) } == 0 {
-            let error = std::io::Error::last_os_error();
-            let saved_path = self.directory.keep().join("original");
-            return Err(destination_restore_error(&saved_path, error));
-        }
-        close_checkout_backup(self.directory)
+        move_worktree_entry(&self.saved_path, &self.original.path)
+            .map_err(|error| destination_restore_error(&self.saved_path, error))
     }
 
     fn discard(self) -> AppResult<()> {
-        close_checkout_backup(self.directory)
+        remove_worktree_entry(&self.saved_path, self.original.kind).map_err(|error| {
+            AppError::other(format!(
+                "Could not remove the backup at {}: {error}",
+                self.saved_path.display()
+            ))
+        })
     }
+}
+
+#[cfg(windows)]
+fn move_worktree_entry(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+
+    let wide = |path: &Path| {
+        path.as_os_str()
+            .encode_wide()
+            .chain([0])
+            .collect::<Vec<_>>()
+    };
+    let from = wide(from);
+    let to = wide(to);
+    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), 0) } == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 fn destination_restore_error(path: &Path, error: impl std::fmt::Display) -> AppError {

@@ -5790,7 +5790,9 @@ fn discarding_staged_renames_preserves_destinations_on_index_lock_and_retries_cl
             "{source} → {destination}"
         );
         assert_eq!(result.value.failed.len(), 1, "{source} → {destination}");
-        assert_eq!(result.value.failed[0].path, source);
+        let failure = &result.value.failed[0];
+        assert_eq!(failure.path, source, "{}", failure.message);
+        assert!(repo.dir.join(destination).exists(), "{}", failure.message);
         assert_eq!(repo.read(destination), "edited after staging\n");
         let status = core::status(repo.path()).unwrap();
         let staged: Vec<_> = status.files.iter().filter(|f| f.staged.is_some()).collect();
@@ -5826,7 +5828,9 @@ fn discarding_a_staged_rename_preserves_a_recreated_source_on_index_lock() {
     std::fs::remove_file(lock).unwrap();
     let result = result.unwrap();
     assert_eq!(result.value.failed.len(), 1);
-    assert_eq!(result.value.failed[0].path, "z.txt");
+    let failure = &result.value.failed[0];
+    assert_eq!(failure.path, "z.txt", "{}", failure.message);
+    assert!(repo.dir.join("a.txt").exists(), "{}", failure.message);
     assert_eq!(repo.read("z.txt"), "recreated after staging\n");
     assert_eq!(repo.read("a.txt"), "edited after staging\n");
     assert_eq!(
