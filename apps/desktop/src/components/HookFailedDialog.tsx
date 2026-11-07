@@ -117,7 +117,8 @@ export function HookWarningDialog({ warning, onClose }: { warning: HookWarningVi
             The {warning?.hook ?? 'post-checkout'} hook {warning?.timedOut ? 'timed out' : 'failed'}
           </DialogTitle>
           <DialogDescription>
-            {warning?.message} Nothing was undone in {warning?.repoName}: git ignores the exit code of this hook.
+            {warning?.message} Nothing was undone in {warning?.repoName}
+            {warning?.timedOut ? '.' : ': git ignores the exit code of this hook.'}
           </DialogDescription>
         </DialogHeader>
         <HookOutput output={output} />

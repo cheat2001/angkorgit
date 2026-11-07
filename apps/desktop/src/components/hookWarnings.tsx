@@ -22,11 +22,11 @@ function showHookWarning(warning: HookWarningEvent): void {
   }
   toast.warning(warning.timedOut ? `The ${warning.hook} hook timed out` : warning.message, {
     description: warning.timedOut
-      ? `It was stopped. Nothing was undone in ${repoName}; what it changed before stays.`
+      ? `${warning.message} Nothing was undone in ${repoName}.`
       : `Nothing was undone in ${repoName}.`,
     duration: 12000,
-    action: warning.output
-      ? { label: 'Show output', onClick: () => useHookWarnings.setState({ open: warning }) }
+    action: warning.output || warning.timedOut
+      ? { label: warning.output ? 'Show output' : 'Show details', onClick: () => useHookWarnings.setState({ open: warning }) }
       : undefined,
   });
 }

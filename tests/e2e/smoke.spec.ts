@@ -1194,6 +1194,31 @@ test('a failing post-checkout hook warns after the checkout and its output opens
   await expect(dialog).toBeHidden();
 });
 
+test('an unconfirmed post-hook timeout exposes details without hook output', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const { reportHookWarning } = await import('/src/components/hookWarnings.tsx');
+    reportHookWarning({
+      repoPath: '/projects/angkorgit',
+      hook: 'post-checkout',
+      status: null,
+      timedOut: true,
+      message: 'The post-checkout hook did not finish within 600 seconds. AngKorGit could not confirm that all hook processes exited.',
+      output: '',
+    });
+  });
+
+  const warning = page.locator('[data-sonner-toast]', { hasText: 'The post-checkout hook timed out' });
+  await expect(warning).toContainText('AngKorGit could not confirm that all hook processes exited.');
+  await expect(warning).not.toContainText('It was stopped.');
+  await warning.getByRole('button', { name: 'Show details' }).click();
+  const dialog = page.locator('[data-hook-warning="post-checkout"]');
+  await expect(dialog).toContainText('AngKorGit could not confirm that all hook processes exited.');
+  await expect(dialog.getByText('The hook printed nothing.')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Copy output' })).toBeDisabled();
+});
+
 test('a running post-checkout is visible and prevents another checkout in the same repository', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('angkorgit-demo-post-hooks', 'pass');

@@ -6053,6 +6053,65 @@ fn discarding_a_staged_symlink_rename_leaves_a_symlinked_destination_parent_alon
     assert!(git_in(&repo.dir, &["diff", "--cached", "--name-status"]).is_empty());
 }
 
+#[test]
+fn discarding_an_overlapping_rename_refuses_to_back_up_through_a_symlinked_parent() {
+    let repo = TempRepo::new();
+    let external = tempfile::tempdir().unwrap();
+    let external_child = external.path().join("z/child");
+    std::fs::create_dir(external.path().join("z")).unwrap();
+    std::fs::write(&external_child, "outside the repository\n").unwrap();
+    repo.write("a/z", "renamed contents\n");
+    commit_all(&repo, "add source");
+
+    std::fs::remove_file(repo.dir.join("a/z")).unwrap();
+    repo.write("a/z/child", "renamed contents\n");
+    core::stage_all(repo.path()).unwrap();
+    let staged = || {
+        git_in(
+            &repo.dir,
+            &["diff", "--cached", "--name-status", "--find-renames"],
+        )
+    };
+    assert_eq!(staged(), "R100\ta/z\ta/z/child");
+    let parent = repo.dir.join("a");
+    std::fs::remove_dir_all(&parent).unwrap();
+    if !create_directory_symlink(external.path(), &parent) {
+        return;
+    }
+
+    let result = core::post_hooks::discard_staged_all(repo.path(), true).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&external_child).unwrap(),
+        "outside the repository\n"
+    );
+    assert!(same_file::is_same_file(&parent, external.path()).unwrap());
+    assert_eq!(result.value.failed.len(), 1, "{:?}", result.value.failed);
+    assert_eq!(result.value.failed[0].path, "a/z");
+    assert_eq!(staged(), "R100\ta/z\ta/z/child");
+}
+
+#[cfg(unix)]
+#[test]
+fn discarding_a_staged_addition_in_a_searchable_directory_does_not_require_read_permission() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo = TempRepo::new();
+    repo.write("base", "base\n");
+    commit_all(&repo, "base");
+    repo.write("private/new", "staged contents\n");
+    core::stage_file(repo.path(), "private/new").unwrap();
+    let parent = repo.dir.join("private");
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o300)).unwrap();
+    let result = core::post_hooks::discard_staged_all(repo.path(), true);
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    let result = result.unwrap();
+    assert!(result.value.failed.is_empty(), "{:?}", result.value.failed);
+    assert!(result.value.leftovers.is_empty());
+    assert!(!repo.dir.join("private/new").exists());
+    assert!(git_in(&repo.dir, &["diff", "--cached", "--name-status"]).is_empty());
+}
+
 #[cfg(unix)]
 fn create_directory_symlink(target: &std::path::Path, link: &std::path::Path) -> bool {
     std::os::unix::fs::symlink(target, link).unwrap();
