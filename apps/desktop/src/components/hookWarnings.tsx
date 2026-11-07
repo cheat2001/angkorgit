@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import { toast } from 'sonner';
 import type { HookWarningEvent } from '@angkorgit/core';
-import { listen } from '@/core/ipc';
+import { listen, type PostHookProgress } from '@/core/ipc';
 import { basename } from '@/shared/utils';
 import { HookWarningDialog } from './HookFailedDialog';
 
@@ -31,18 +31,32 @@ function showHookWarning(warning: HookWarningEvent): void {
   });
 }
 
+function showPostHookProgress({ repoPath, hook, running }: PostHookProgress): void {
+  const id = `post-hook:${repoPath}:${hook}`;
+  if (running) {
+    toast.loading(`Running ${hook}…`, { id, description: basename(repoPath), closeButton: false });
+  } else {
+    toast.dismiss(id);
+  }
+}
+
 export function HookWarningHost() {
   const open = useHookWarnings((s) => s.open);
   useEffect(() => {
     let cancelled = false;
-    let unlisten: (() => void) | undefined;
-    void listen('hook-warning', (payload) => reportHookWarning(payload as HookWarningEvent)).then((stop) => {
-      if (cancelled) stop();
-      else unlisten = stop;
-    });
+    const unlisten: Array<() => void> = [];
+    for (const listener of [
+      listen('hook-warning', (payload) => reportHookWarning(payload as HookWarningEvent)),
+      listen('post-hook-progress', (payload) => showPostHookProgress(payload as PostHookProgress)),
+    ]) {
+      void listener.then((stop) => {
+        if (cancelled) stop();
+        else unlisten.push(stop);
+      });
+    }
     return () => {
       cancelled = true;
-      unlisten?.();
+      unlisten.forEach((stop) => stop());
     };
   }, []);
   return (

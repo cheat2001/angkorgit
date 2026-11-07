@@ -6571,7 +6571,9 @@ fn group_pull_runs_post_merge_only_where_it_fast_forwarded() {
 }
 
 #[test]
-fn group_pull_waits_for_what_post_merge_left_running_before_it_lets_go() {
+fn group_pull_leaves_background_hooks_running_and_waits_for_them_on_cancel() {
+    use std::time::{Duration, Instant};
+
     if !hooks_runnable() {
         return;
     }
@@ -6581,20 +6583,49 @@ fn group_pull_waits_for_what_post_merge_left_running_before_it_lets_go() {
     let origin = bare_origin(&local);
     core::push(local.path(), "origin", None, false, false, true, false).unwrap();
     let behind = clone_of(&origin, &local, "group-leftovers");
-    write_hook(
-        &default_hooks(&behind),
-        "post-merge",
-        "(sleep 1; echo finished > .git/background-done) > /dev/null 2>&1 &",
-    );
+    let also_behind = clone_of(&origin, &local, "group-leftovers-cancel");
+    for repo in [&behind, &also_behind] {
+        write_hook(
+            &default_hooks(repo),
+            "post-merge",
+            "(sleep 2; echo finished > .git/background-done) > /dev/null 2>&1 &",
+        );
+    }
     local.write("a.txt", "next\n");
     commit_all(&local, "next");
     core::push(local.path(), "origin", None, false, false, true, false).unwrap();
 
-    let control = core::GroupUpdateControl::default();
-    let pulled = core::group_update_controlled(behind.path(), true, &control).unwrap();
+    let pulled = core::group_update(behind.path(), true).unwrap();
     assert_eq!(pulled.status, "ok");
     assert!(pulled.hook_warnings.is_empty());
-    assert!(behind.dir.join(".git").join("background-done").exists());
+    let marker = behind.dir.join(".git/background-done");
+    assert!(
+        !marker.exists(),
+        "normal completion waited for background work"
+    );
+
+    let control = core::GroupUpdateControl::default();
+    let pulled = core::group_update_controlled(also_behind.path(), true, &control).unwrap();
+    assert_eq!(pulled.status, "ok");
+    let cancel_marker = also_behind.dir.join(".git/background-done");
+    assert!(!cancel_marker.exists());
+    let receipts = control.cancel_results().unwrap();
+    assert!(
+        cancel_marker.exists(),
+        "Cancel returned before background work finished"
+    );
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].result.status, "ok");
+    assert!(receipts[0].result.hook_warnings.is_empty());
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !marker.exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        marker.exists(),
+        "normal completion stopped the background job"
+    );
     std::fs::remove_dir_all(origin).unwrap();
 }
 

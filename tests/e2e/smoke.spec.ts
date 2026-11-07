@@ -1194,6 +1194,31 @@ test('a failing post-checkout hook warns after the checkout and its output opens
   await expect(dialog).toBeHidden();
 });
 
+test('a running post-checkout is visible and prevents another checkout in the same repository', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('angkorgit-demo-post-hooks', 'pass');
+    localStorage.setItem('angkorgit-demo-hooks-delay', '2500');
+    localStorage.setItem('angkorgit-demo-checkout', '1');
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTitle('develop — click to filter graph, double-click to checkout').dblclick();
+  const running = page.getByText('Running post-checkout…', { exact: true });
+  await expect(running).toBeVisible();
+  const main = page.getByTitle('main — click to filter graph, double-click to checkout');
+  await main.dblclick();
+  await expect(page.getByText(/Checkout main failed: Another operation is still running/)).toBeVisible();
+  await expect(page.getByText('Checkout develop done')).toBeVisible();
+  await expect(running).toBeHidden();
+
+  await main.dblclick();
+  await expect(running).toBeVisible();
+  await expect(page.getByText('Checkout main done')).toBeVisible();
+  await expect(running).toBeHidden();
+});
+
 test('a hook folder inside the worktree offers the without-hooks pulls before any hook exists', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('angkorgit-demo-hooks-in-worktree', '1'));
   await page.goto('/');
@@ -3685,6 +3710,43 @@ test('a failing post-merge hook warns on its group pull row and Pull all without
   await expect(dialog.getByRole('status')).toContainText('2 updated');
   await expect(dialog.getByRole('status')).not.toContainText('hook warning');
   await expect(dialog.locator('[data-group-hook-warning]')).toHaveCount(0);
+});
+
+test('group pull waits for the cancellation receipt after the last pull returns', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Recent repositories')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(async () => {
+    const [{ ipc }, { useSettings }, { useRepo }] = await Promise.all([
+      import('/src/core/ipc.ts'), import('/src/features/settings/store.ts'), import('/src/features/repository/store.ts'),
+    ]);
+    const repo = { path: '/projects/api', name: 'api', lastOpenedAt: 0 };
+    useRepo.setState({ recents: [repo] });
+    useSettings.getState().addRepoGroup('Services', 0, [repo.path]);
+    const tracker = window as unknown as { finishPull: () => void; finishCancel: () => void };
+    const result = {
+      status: 'ok', message: 'Fast-forwarded main', changes: [{ name: 'main', oldOid: '1234567', newOid: 'abcdef0', commits: 1 }],
+    };
+    ipc.groupUpdate = () => new Promise((resolve) => { tracker.finishPull = () => resolve(result); });
+    ipc.groupCancel = () => new Promise((resolve) => {
+      tracker.finishCancel = () => resolve([{ path: repo.path, result: { ...result, hookWarnings: [{
+        hook: 'post-merge', status: null, timedOut: true, message: 'Background processes were stopped.', output: '',
+      }] } }]);
+    });
+  });
+  await page.locator('[data-group-header]', { hasText: 'Services' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Pull all (fast-forward only)', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await page.waitForFunction(() => typeof (window as unknown as { finishPull?: unknown }).finishPull === 'function');
+  await dialog.getByRole('button', { name: 'Cancel run' }).click();
+  await page.evaluate(() => (window as unknown as { finishPull: () => void }).finishPull());
+  await expect(dialog.getByText('Fast-forwarded main')).toBeVisible();
+  await expect(dialog.getByRole('status')).toContainText('Cancelling…');
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeDisabled();
+
+  await page.evaluate(() => (window as unknown as { finishCancel: () => void }).finishCancel());
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeEnabled();
+  await expect(dialog.getByRole('status')).toContainText('1 hook warning');
+  await expect(dialog.getByText('Background processes were stopped. The pull stands.')).toBeVisible();
 });
 
 test('group pull summary shows moved refs, skips, failures and unchanged repositories', async ({ page }) => {
