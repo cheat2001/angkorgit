@@ -617,21 +617,21 @@ fn ensure_clean(repo: &Repository, submodules: git2::SubmoduleIgnore) -> AppResu
 }
 
 fn submodule_changed(repo: &Repository, ignore: git2::SubmoduleIgnore) -> AppResult<bool> {
-    let changed = git2::SubmoduleStatus::INDEX_ADDED
-        | git2::SubmoduleStatus::INDEX_DELETED
-        | git2::SubmoduleStatus::INDEX_MODIFIED
-        | git2::SubmoduleStatus::WD_ADDED
+    let worktree_changed = git2::SubmoduleStatus::WD_ADDED
         | git2::SubmoduleStatus::WD_DELETED
         | git2::SubmoduleStatus::WD_MODIFIED
         | git2::SubmoduleStatus::WD_INDEX_MODIFIED
         | git2::SubmoduleStatus::WD_WD_MODIFIED
         | git2::SubmoduleStatus::WD_UNTRACKED;
     for submodule in repo.submodules()? {
+        if submodule.head_id() != submodule.index_id() {
+            return Ok(true);
+        }
         let Some(name) = submodule.name() else {
             continue;
         };
         let status = repo.submodule_status(name, ignore)?;
-        if status.intersects(changed) {
+        if status.intersects(worktree_changed) {
             return Ok(true);
         }
     }

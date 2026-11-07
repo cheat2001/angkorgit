@@ -5811,6 +5811,40 @@ fn discarding_staged_renames_preserves_destinations_on_index_lock_and_retries_cl
 }
 
 #[test]
+fn discarding_a_staged_rename_preserves_a_recreated_source_on_index_lock() {
+    let repo = TempRepo::new();
+    repo.write("z.txt", "original contents\n");
+    commit_all(&repo, "one file");
+    std::fs::rename(repo.dir.join("z.txt"), repo.dir.join("a.txt")).unwrap();
+    core::stage_all(repo.path()).unwrap();
+    repo.write("z.txt", "recreated after staging\n");
+    repo.write("a.txt", "edited after staging\n");
+
+    let lock = repo.dir.join(".git/index.lock");
+    std::fs::write(&lock, "").unwrap();
+    let result = core::post_hooks::discard_staged_all(repo.path(), true);
+    std::fs::remove_file(lock).unwrap();
+    let result = result.unwrap();
+    assert_eq!(result.value.failed.len(), 1);
+    assert_eq!(result.value.failed[0].path, "z.txt");
+    assert_eq!(repo.read("z.txt"), "recreated after staging\n");
+    assert_eq!(repo.read("a.txt"), "edited after staging\n");
+    assert_eq!(
+        git_in(
+            &repo.dir,
+            &["diff", "--cached", "--name-status", "--find-renames"]
+        ),
+        "R100\tz.txt\ta.txt"
+    );
+
+    let retried = core::post_hooks::discard_staged_all(repo.path(), true).unwrap();
+    assert!(retried.value.failed.is_empty());
+    assert_eq!(repo.read("z.txt"), "original contents\n");
+    assert!(!repo.dir.join("a.txt").exists());
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
+}
+
+#[test]
 fn discarding_all_staged_changes_retries_a_rename_after_another_removes_its_blocker() {
     for (other_destination, remove_from_worktree) in [
         ("a/second", false),
@@ -6551,6 +6585,26 @@ fn a_tracked_config_include_offers_the_skip_before_it_sets_a_hooks_path() {
     std::fs::remove_dir_all(origin).unwrap();
 }
 
+#[cfg(unix)]
+#[test]
+fn a_quoted_config_include_preserves_trailing_whitespace() {
+    let repo = TempRepo::new();
+    repo.write("project.gitconfig", "# project settings come later\n");
+    commit_all(&repo, "project config");
+    assert!(!core::repo_hooks(repo.path()).unwrap().in_worktree);
+
+    std::os::unix::fs::symlink("../project.gitconfig", repo.dir.join(".git/project ")).unwrap();
+    let config = repo.read(".git/config");
+    repo.write(
+        ".git/config",
+        &format!("{config}\n[include]\n\tpath = \"project \"\n"),
+    );
+
+    let hooks = core::repo_hooks(repo.path()).unwrap();
+    assert!(hooks.found.is_empty());
+    assert!(hooks.in_worktree);
+}
+
 #[test]
 fn a_config_scan_that_hits_its_file_limit_still_offers_the_skip() {
     let repo = TempRepo::new();
@@ -6604,6 +6658,47 @@ fn interactive_rebase_keeps_honouring_a_submodule_ignore_dirty_setting() {
     commit_all(local, "topic");
     let ordinary = core::post_hooks::rebase(local.path(), "master", false).into_result();
     assert!(ordinary.is_err());
+}
+
+#[test]
+fn interactive_rebase_and_reword_refuse_a_staged_pointer_for_an_ignored_submodule() {
+    let fixture = SubmoduleFixture::new();
+    let local = &fixture.local;
+    let gitmodules = local.read(".gitmodules");
+    local.write(".gitmodules", &format!("{gitmodules}\tignore = all\n"));
+    let configured = commit_all(local, "ignore the submodule worktree");
+    local.write("one.txt", "one\n");
+    let first = commit_all(local, "one");
+    local.write("two.txt", "two\n");
+    let head = commit_all(local, "two");
+    git_in(
+        &local.dir,
+        &[
+            "update-index",
+            "--cacheinfo",
+            &format!("160000,{},deps/lib", fixture.second),
+        ],
+    );
+
+    let todo = [
+        todo_entry(&first, "pick", None),
+        todo_entry(&head, "reword", Some("two, reworded")),
+    ];
+    let rebase = core::post_hooks::rebase_interactive(local.path(), &configured, &todo, true)
+        .err()
+        .expect("interactive rebase must refuse the staged gitlink");
+    let reword = core::post_hooks::reword(local.path(), &first, "one, reworded", true)
+        .err()
+        .expect("reword must refuse the staged gitlink");
+    for refused in [rebase.to_string(), reword.to_string()] {
+        assert!(refused.contains("uncommitted changes"));
+    }
+    assert_eq!(rev(local, "HEAD"), head);
+    assert_eq!(
+        git_in(&local.dir, &["rev-parse", ":deps/lib"]),
+        fixture.second
+    );
+    assert_eq!(fixture.checked_out(), fixture.first);
 }
 
 #[test]
