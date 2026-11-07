@@ -6113,6 +6113,59 @@ fn discarding_a_staged_addition_in_a_searchable_directory_does_not_require_read_
 }
 
 #[cfg(unix)]
+#[test]
+fn a_symlink_cleanup_check_failure_preserves_its_staged_target() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    use std::path::Path;
+
+    for rename in [false, true] {
+        let repo = TempRepo::new();
+        repo.write("base", "base\n");
+        let source = repo.dir.join("old");
+        if rename {
+            symlink("staged-target", &source).unwrap();
+        }
+        commit_all(&repo, "base");
+        let parent = repo.dir.join("private");
+        let link = parent.join("new");
+        std::fs::create_dir(&parent).unwrap();
+        if rename {
+            git_in(&repo.dir, &["mv", "old", "private/new"]);
+        } else {
+            symlink("staged-target", &link).unwrap();
+            core::stage_file(repo.path(), "private/new").unwrap();
+        }
+        let staged_changes = || git_in(&repo.dir, &["diff", "--cached", "--name-status"]);
+        let before = staged_changes();
+        std::fs::remove_file(&link).unwrap();
+        symlink("edited-target", &link).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o300)).unwrap();
+        if std::fs::read_dir(&parent).is_ok() {
+            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+            eprintln!("skipping: the directory stayed readable");
+            return;
+        }
+
+        let result = core::post_hooks::discard_staged_all(repo.path(), true);
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let result = result.unwrap();
+        assert_eq!(result.value.failed.len(), 1, "{:?}", result.value.failed);
+        let failed_path = if rename { "old" } else { "private/new" };
+        assert_eq!(result.value.failed[0].path, failed_path);
+        assert!(source.symlink_metadata().is_err());
+        assert_eq!(
+            std::fs::read_link(&link).unwrap(),
+            Path::new("edited-target")
+        );
+        assert_eq!(staged_changes(), before);
+        assert_eq!(
+            git_in(&repo.dir, &["show", ":private/new"]),
+            "staged-target"
+        );
+    }
+}
+
+#[cfg(unix)]
 fn create_directory_symlink(target: &std::path::Path, link: &std::path::Path) -> bool {
     std::os::unix::fs::symlink(target, link).unwrap();
     true
