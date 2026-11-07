@@ -48,8 +48,8 @@ Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
   never for a repository that was already up to date; a failing hook shows as a warning
   with its output on that repository's row and the rest of the group still updates.
   **Pull all without hooks** in the group menu skips it. **Cancel** waits for the
-  checkout and foreground hook already in progress. It also waits for background
-  hook processes it can track and requests termination at the hook's original deadline.
+  checkout and foreground hook already in progress. During that wait, it monitors
+  tracked background hooks and requests termination at each hook's original deadline.
   On macOS and on Linux without usable process-group pidfd support, Cancel can finish
   while background hook processes are still running. The affected repository's row
   warns that exit could not be confirmed. Those processes may keep writing to the

@@ -20,8 +20,8 @@ const AGENTS: &[(&str, &str, &[&str])] = &[
 const OUTPUT_FILE_PLACEHOLDER: &str = "{OUTPUT_FILE}";
 const VERSION_TIMEOUT: Duration = Duration::from_secs(15);
 const OUTPUT_DRAIN: Duration = Duration::from_secs(1);
-#[cfg(any(unix, windows))]
 const PROCESS_EXIT_GRACE: Duration = Duration::from_secs(1);
+pub(crate) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const CURSOR_LAUNCHERS: &[&str] = &["cursor-agent", "agent"];
 
 #[derive(Serialize, Clone)]
@@ -344,6 +344,7 @@ struct Leftovers {
 pub(crate) struct BackgroundProcesses {
     leftovers: Option<Leftovers>,
     deadline: Instant,
+    stop_deadline: Option<Instant>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -352,7 +353,17 @@ pub(crate) enum CancelOutcome {
     TimedOut { confirmed: bool },
 }
 
+pub(crate) enum CancelPoll<T> {
+    Waiting(Instant),
+    Finished(Option<T>),
+}
+
 impl BackgroundProcesses {
+    #[cfg(test)]
+    pub(crate) fn is_tracking(&self) -> bool {
+        self.leftovers.is_some()
+    }
+
     pub(crate) fn retain_for_cancel(&mut self) -> bool {
         if self
             .leftovers
@@ -364,19 +375,49 @@ impl BackgroundProcesses {
         cfg!(unix) || self.leftovers.is_some()
     }
 
-    pub(crate) fn wait_on_cancel(self) -> Option<CancelOutcome> {
-        if let Some(leftovers) = self.leftovers {
-            while leftovers.running() {
-                let remaining = self.deadline.saturating_duration_since(Instant::now());
-                if remaining.is_zero() {
-                    return Some(CancelOutcome::TimedOut {
-                        confirmed: leftovers.stop_background(),
-                    });
-                }
-                std::thread::sleep(remaining.min(Duration::from_millis(25)));
+    pub(crate) fn poll_on_cancel(&mut self) -> CancelPoll<CancelOutcome> {
+        let unconfirmed = || CancelPoll::Finished(cfg!(unix).then_some(CancelOutcome::Unconfirmed));
+        let Some(leftovers) = &self.leftovers else {
+            return unconfirmed();
+        };
+        let running = leftovers.running();
+        let now = Instant::now();
+        if let Some(deadline) = self.stop_deadline {
+            if running && now < deadline {
+                return CancelPoll::Waiting(deadline);
+            }
+            return CancelPoll::Finished(Some(CancelOutcome::TimedOut {
+                confirmed: cfg!(windows) && !running,
+            }));
+        }
+        if !running {
+            return unconfirmed();
+        }
+        if now < self.deadline {
+            return CancelPoll::Waiting(self.deadline);
+        }
+        let grace = if leftovers.request_stop() {
+            PROCESS_EXIT_GRACE
+        } else {
+            Duration::ZERO
+        };
+        let deadline = Instant::now() + grace;
+        self.stop_deadline = Some(deadline);
+        CancelPoll::Waiting(deadline)
+    }
+
+    #[cfg(test)]
+    fn wait_on_cancel(mut self) -> Option<CancelOutcome> {
+        loop {
+            match self.poll_on_cancel() {
+                CancelPoll::Waiting(deadline) => std::thread::sleep(
+                    deadline
+                        .saturating_duration_since(Instant::now())
+                        .min(PROCESS_POLL_INTERVAL),
+                ),
+                CancelPoll::Finished(outcome) => return outcome,
             }
         }
-        cfg!(unix).then_some(CancelOutcome::Unconfirmed)
     }
 }
 
@@ -417,19 +458,20 @@ impl Leftovers {
         }
     }
 
-    fn stop_background(self) -> bool {
+    fn request_stop(&self) -> bool {
         #[cfg(target_os = "linux")]
-        if let Some(group) = self.group {
-            let _ = group.signal(libc::SIGKILL);
-            let _ = wait_for_process_exit(PROCESS_EXIT_GRACE, || Some(!group.signal(0)));
+        {
+            self.group
+                .as_ref()
+                .is_some_and(|group| group.signal(libc::SIGKILL))
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(target_os = "linux", windows)))]
         {
             false
         }
         #[cfg(windows)]
         {
-            self.job.stop()
+            self.job.terminate()
         }
     }
 }
@@ -447,7 +489,7 @@ fn wait_for_process_exit(timeout: Duration, mut exited: impl FnMut() -> Option<b
         if remaining.is_zero() {
             return false;
         }
-        std::thread::sleep(remaining.min(Duration::from_millis(25)));
+        std::thread::sleep(remaining.min(PROCESS_POLL_INTERVAL));
     }
 }
 
@@ -510,8 +552,12 @@ mod job {
             (queried != 0).then_some(info.ActiveProcesses)
         }
 
+        pub(super) fn terminate(&self) -> bool {
+            unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) != 0 }
+        }
+
         pub(super) fn stop(self) -> bool {
-            if unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) } == 0 {
+            if !self.terminate() {
                 return self.active_processes() == Some(0);
             }
             super::wait_for_process_exit(super::PROCESS_EXIT_GRACE, || {
@@ -665,6 +711,7 @@ fn gather(
             let mut background = BackgroundProcesses {
                 leftovers: Some(leftovers),
                 deadline,
+                stop_deadline: None,
             };
             background.retain_for_cancel().then_some(background)
         }),
@@ -1222,7 +1269,7 @@ mod tests {
         let run = run_tree(child, "", Duration::from_secs(20));
         assert!(!marker.exists());
         let background = run.background.unwrap();
-        let tracks_group = background.leftovers.is_some();
+        let tracks_group = background.is_tracking();
         assert_eq!(
             background.wait_on_cancel(),
             Some(CancelOutcome::Unconfirmed)
@@ -1248,7 +1295,7 @@ mod tests {
         assert!(!run.timed_out);
         let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
         let processes = run.background.unwrap();
-        let tracks_group = processes.leftovers.is_some();
+        let tracks_group = processes.is_tracking();
         let outcome = processes.wait_on_cancel();
         if !tracks_group {
             unsafe { libc::kill(background, libc::SIGKILL) };

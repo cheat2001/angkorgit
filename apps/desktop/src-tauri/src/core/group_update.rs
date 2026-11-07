@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, TryLockError};
 use std::time::{Duration, Instant};
 
 use super::hooks::PendingHook;
 use super::types::{GroupUpdateReceipt, GroupUpdateResult};
+use crate::ai_cli::{CancelPoll, PROCESS_POLL_INTERVAL};
 use crate::error::{AppError, AppResult};
 
 #[derive(Default)]
@@ -13,6 +14,7 @@ pub struct GroupUpdateControl {
     active: Mutex<()>,
     completed: Mutex<HashMap<String, Completed>>,
     background_hooks: Mutex<Vec<(String, PendingHook)>>,
+    cancel_receipt: Mutex<()>,
     no_verify: bool,
 }
 
@@ -53,16 +55,44 @@ impl GroupUpdateControl {
     }
 
     pub fn cancel_results(&self) -> AppResult<Vec<GroupUpdateReceipt>> {
-        self.cancel()?;
-        let completed = {
+        self.cancelled.store(true, Ordering::Release);
+        let _receipt = self
+            .cancel_receipt
+            .lock()
+            .map_err(|_| AppError::other("Group cancellation lock poisoned"))?;
+        let mut warnings = Vec::new();
+        loop {
+            let active_done = match self.active.try_lock() {
+                Ok(_) => true,
+                Err(TryLockError::WouldBlock) => false,
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err(AppError::other("Group update lock poisoned"));
+                }
+            };
+            let mut next_poll = Instant::now() + PROCESS_POLL_INTERVAL;
             let mut hooks = self
                 .background_hooks
                 .lock()
                 .map_err(|_| AppError::other("Group hook lock poisoned"))?;
-            let warnings: Vec<_> = hooks
-                .drain(..)
-                .filter_map(|(path, hook)| hook.wait_on_cancel().map(|warning| (path, warning)))
-                .collect();
+            hooks.retain_mut(|(path, hook)| match hook.poll_on_cancel() {
+                CancelPoll::Waiting(deadline) => {
+                    next_poll = next_poll.min(deadline);
+                    true
+                }
+                CancelPoll::Finished(warning) => {
+                    if let Some(warning) = warning {
+                        warnings.push((std::mem::take(path), warning));
+                    }
+                    false
+                }
+            });
+            if active_done && hooks.is_empty() {
+                break;
+            }
+            drop(hooks);
+            std::thread::sleep(next_poll.saturating_duration_since(Instant::now()));
+        }
+        let completed = {
             let mut completed = self
                 .completed
                 .lock()
@@ -111,7 +141,9 @@ impl GroupUpdateControl {
             .background_hooks
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        hooks.retain_mut(|(_, hook)| hook.retain_for_cancel());
+        if !self.is_cancelled() {
+            hooks.retain_mut(|(_, hook)| hook.retain_for_cancel());
+        }
         hooks.push((path.into(), hook));
     }
 
@@ -213,8 +245,8 @@ fn prune_expired(runs: &mut Runs, now: Instant) {
                 run.control.cancelled.store(true, Ordering::Release);
                 false
             }
-            Err(std::sync::TryLockError::WouldBlock) => true,
-            Err(std::sync::TryLockError::Poisoned(_)) => false,
+            Err(TryLockError::WouldBlock) => true,
+            Err(TryLockError::Poisoned(_)) => false,
         }
     });
 }

@@ -9,7 +9,7 @@ use same_file::Handle;
 
 use super::types::{HookWarning, RepoHooks};
 use crate::ai_cli::{
-    capture, run_tree, search_path, spawn_tree, BackgroundProcesses, CancelOutcome,
+    capture, run_tree, search_path, spawn_tree, BackgroundProcesses, CancelOutcome, CancelPoll,
 };
 use crate::error::{AppError, AppResult};
 
@@ -403,8 +403,16 @@ impl PendingHook {
         self.processes.retain_for_cancel()
     }
 
-    pub(crate) fn wait_on_cancel(self) -> Option<HookWarning> {
-        let (timed_out, message) = match self.processes.wait_on_cancel()? {
+    pub(crate) fn poll_on_cancel(&mut self) -> CancelPoll<HookWarning> {
+        let outcome = match self.processes.poll_on_cancel() {
+            CancelPoll::Waiting(deadline) => return CancelPoll::Waiting(deadline),
+            CancelPoll::Finished(outcome) => outcome,
+        };
+        CancelPoll::Finished(outcome.map(|outcome| self.cancel_warning(outcome)))
+    }
+
+    fn cancel_warning(&mut self, outcome: CancelOutcome) -> HookWarning {
+        let (timed_out, message) = match outcome {
             CancelOutcome::Unconfirmed => (false, format!(
                 "After the {} hook, Cancel could not confirm that all processes exited. Hook processes may still be running.",
                 self.name,
@@ -420,13 +428,13 @@ impl PendingHook {
                 }
             )),
         };
-        Some(post_warning(
+        post_warning(
             &self.name,
             None,
             timed_out,
             message,
-            self.output,
-        ))
+            std::mem::take(&mut self.output),
+        )
     }
 }
 
@@ -1124,6 +1132,91 @@ mod tests {
             warning.message,
             "The post-merge hook did not finish within 3 seconds. AngKorGit could not confirm that all hook processes exited."
         );
+    }
+
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn group_cancel_enforces_an_earlier_hooks_deadline_while_a_later_pull_is_active() {
+        use super::super::group_update::GroupUpdateControl;
+        use super::super::types::GroupUpdateResult;
+        use std::cell::Cell;
+        use std::sync::mpsc;
+        use std::time::Instant;
+
+        if !runner_available() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        let hooks = repo.path().join("hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        let hook = hooks.join(POST_MERGE);
+        let marker = repo.path().join("late-write");
+        std::fs::write(
+            &hook,
+            "#!/bin/sh\necho installing\n(sleep 4; echo late > .git/late-write) >/dev/null 2>&1 &\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let control = &GroupUpdateControl::default();
+        let tracked = Cell::new(None);
+        let retain = |hook: PendingHook| {
+            tracked.set(Some(hook.processes.is_tracking()));
+            control.record_background_hook("earlier", hook);
+        };
+        let watch = Watch {
+            timeout: Duration::from_secs(2),
+            retain: Some(&retain),
+        };
+        control
+            .with_active_result("earlier", || {
+                let warnings = run_post_watched(&repo, &[PostHook::Merge], false, watch);
+                assert!(warnings.is_empty(), "{warnings:?}");
+                Ok(GroupUpdateResult::default())
+            })
+            .unwrap();
+        if cfg!(target_os = "linux") && tracked.get() == Some(false) {
+            eprintln!("skipping: the kernel cannot track the hook process group");
+            return;
+        }
+        assert_eq!(tracked.get(), Some(true));
+
+        let receipts = std::thread::scope(|scope| {
+            let (active, entered) = mpsc::channel();
+            let (release, held) = mpsc::channel();
+            let later = scope.spawn(move || {
+                control.with_active_result("later", || {
+                    active.send(()).unwrap();
+                    held.recv_timeout(Duration::from_secs(8)).unwrap();
+                    Ok(GroupUpdateResult::default())
+                })
+            });
+            entered.recv_timeout(Duration::from_secs(3)).unwrap();
+            let cancel = scope.spawn(|| control.cancel_results());
+            let until = Instant::now() + Duration::from_secs(5);
+            while !marker.exists() && Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            release.send(()).unwrap();
+            later.join().unwrap().unwrap();
+            cancel.join().unwrap().unwrap()
+        });
+
+        assert!(!marker.exists(), "the earlier hook wrote past its deadline");
+        let earlier = receipts
+            .iter()
+            .find(|receipt| receipt.path == "earlier")
+            .unwrap();
+        assert_eq!(earlier.result.hook_warnings.len(), 1);
+        let warning = &earlier.result.hook_warnings[0];
+        assert!(warning.timed_out);
+        assert_eq!(warning.output, "installing");
+        assert!(receipts.iter().any(|receipt| receipt.path == "later"));
     }
 
     #[test]
