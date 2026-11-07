@@ -5624,6 +5624,89 @@ fn discarding_a_staged_rename_preserves_a_recreated_source_on_index_lock() {
     assert!(core::status(repo.path()).unwrap().files.is_empty());
 }
 
+#[cfg(unix)]
+fn assert_case_only_symlink_rename_rollback(recreate_source: bool) {
+    use std::io::ErrorKind;
+    use std::os::unix::fs::symlink;
+    use std::path::Path;
+
+    let repo = TempRepo::new();
+    let source = repo.dir.join("Link");
+    let destination = repo.dir.join("link");
+    symlink("committed-target", &source).unwrap();
+    let ignores_case = destination.symlink_metadata().is_ok();
+    if ignores_case && recreate_source {
+        return;
+    }
+    commit_all(&repo, "add symlink");
+    std::fs::remove_file(&source).unwrap();
+    symlink("committed-target", &destination).unwrap();
+    let git_repo = git2::Repository::open(repo.path()).unwrap();
+    let mut index = git_repo.index().unwrap();
+    index.remove_path(Path::new("Link")).unwrap();
+    index.add_path(Path::new("link")).unwrap();
+    index.write().unwrap();
+    std::fs::remove_file(&destination).unwrap();
+    symlink("edited-destination", &destination).unwrap();
+    if recreate_source {
+        symlink("recreated-source", &source).unwrap();
+    }
+
+    let lock = repo.dir.join(".git/index.lock");
+    std::fs::write(&lock, "").unwrap();
+    let result = core::post_hooks::discard_staged_all(repo.path(), true);
+    std::fs::remove_file(lock).unwrap();
+    let result = result.unwrap();
+    assert_eq!(result.value.failed.len(), 1);
+    assert_eq!(result.value.failed[0].path, "Link");
+    assert_eq!(
+        std::fs::read_link(&destination).unwrap(),
+        Path::new("edited-destination")
+    );
+    if recreate_source {
+        assert_eq!(
+            std::fs::read_link(&source).unwrap(),
+            Path::new("recreated-source")
+        );
+    } else if !ignores_case {
+        assert_eq!(
+            source.symlink_metadata().unwrap_err().kind(),
+            ErrorKind::NotFound
+        );
+    }
+    assert_eq!(
+        git_in(
+            &repo.dir,
+            &["diff", "--cached", "--name-status", "--find-renames"]
+        ),
+        "R100\tLink\tlink"
+    );
+
+    let retried = core::post_hooks::discard_staged_all(repo.path(), true).unwrap();
+    assert!(
+        retried.value.failed.is_empty(),
+        "{:?}",
+        retried.value.failed
+    );
+    assert_eq!(
+        std::fs::read_link(&source).unwrap(),
+        Path::new("committed-target")
+    );
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn discarding_a_case_only_symlink_rename_preserves_a_recreated_source_on_index_lock() {
+    assert_case_only_symlink_rename_rollback(true);
+}
+
+#[cfg(unix)]
+#[test]
+fn discarding_a_case_only_symlink_rename_restores_an_absent_source_on_index_lock() {
+    assert_case_only_symlink_rename_rollback(false);
+}
+
 #[test]
 fn discarding_all_staged_changes_retries_a_rename_after_another_removes_its_blocker() {
     for (other_destination, remove_from_worktree) in [
