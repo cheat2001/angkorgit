@@ -20,6 +20,11 @@ All notable changes to AngKorGit are documented here. The format follows
   dots whose lane is out of view now stay pinned to the left or right edge of the
   graph column while the lines scroll under them, so every row still shows who made
   the commit.
+- **Easier to read, in every theme.** Secondary text such as folder names, hashes,
+  dates and hints was too faint to read comfortably, in some themes barely visible.
+  All 16 themes now keep body, secondary and faint text clearly readable, with the
+  biggest change in Nord, One Dark Pro, Tokyo Night and both Ayu themes. Code
+  comments keep each theme's own comment colour, so code looks the same as before.
 
 ### Fixed
 - **A squeezed tab no longer shows a stray letter.** When two open tabs share a

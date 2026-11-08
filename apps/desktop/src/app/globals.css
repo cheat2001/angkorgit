@@ -61,7 +61,7 @@ body {
 .hljs-keyword, .hljs-literal, .hljs-built_in { color: hsl(var(--syntax-keyword)); }
 .hljs-string, .hljs-regexp { color: hsl(var(--syntax-string)); }
 .hljs-number { color: hsl(var(--syntax-number)); }
-.hljs-comment { color: hsl(var(--faint-foreground)); font-style: italic; }
+.hljs-comment { color: hsl(var(--syntax-comment)); font-style: italic; }
 .hljs-title, .hljs-function { color: hsl(var(--syntax-function)); }
 .hljs-attr, .hljs-attribute, .hljs-property, .hljs-variable, .hljs-selector-attr { color: hsl(var(--syntax-variable)); }
 .hljs-type, .hljs-class, .hljs-selector-tag, .hljs-selector-class, .hljs-selector-id { color: hsl(var(--syntax-type)); }

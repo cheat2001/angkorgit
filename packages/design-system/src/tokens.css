@@ -41,7 +41,8 @@
   --border-subtle: 219 24% 17%;
   --foreground: 216 20% 92%;
   --muted-foreground: 218 12% 62%;
-  --faint-foreground: 219 10% 44%;
+  --faint-foreground: 219 10% 52%;
+  --syntax-comment: 219 10% 44%;
 
   --primary: 32 93% 50%;
   --primary-foreground: 30 90% 8%;
@@ -87,7 +88,8 @@
   --border-subtle: 219 20% 91%;
   --foreground: 221 39% 14%;
   --muted-foreground: 218 12% 40%;
-  --faint-foreground: 219 10% 58%;
+  --faint-foreground: 219 10% 46%;
+  --syntax-comment: 219 10% 58%;
 
   --primary: 32 93% 44%;
   --primary-foreground: 0 0% 100%;
