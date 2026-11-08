@@ -53,6 +53,7 @@
 
   --diff-add-bg: 142 60% 45%;
   --diff-del-bg: 0 70% 58%;
+  --diff-row-alpha: 0.08;
 
   --syntax-keyword: 292 60% 68%;
   --syntax-string: 95 40% 62%;
@@ -100,6 +101,7 @@
 
   --diff-add-bg: 142 60% 40%;
   --diff-del-bg: 0 70% 52%;
+  --diff-row-alpha: 0.12;
 
   --syntax-keyword: 292 70% 42%;
   --syntax-string: 95 60% 30%;

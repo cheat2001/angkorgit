@@ -30,6 +30,8 @@ const preset: Partial<Config> = {
         info: 'hsl(var(--info) / <alpha-value>)',
         'diff-add': 'hsl(var(--diff-add-bg) / <alpha-value>)',
         'diff-del': 'hsl(var(--diff-del-bg) / <alpha-value>)',
+        'diff-add-row': 'hsl(var(--diff-add-bg) / var(--diff-row-alpha))',
+        'diff-del-row': 'hsl(var(--diff-del-bg) / var(--diff-row-alpha))',
       },
       fontFamily: {
         sans: ['var(--font-sans)'],

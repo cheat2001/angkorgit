@@ -134,8 +134,8 @@ export interface SearchRange {
 export type SearchRanges = Map<DiffLine, SearchRange[]>;
 
 export function lineBg(kind: DiffLine['kind']): string {
-  if (kind === 'addition') return 'bg-diff-add/15';
-  if (kind === 'deletion') return 'bg-diff-del/15';
+  if (kind === 'addition') return 'bg-diff-add-row';
+  if (kind === 'deletion') return 'bg-diff-del-row';
   return '';
 }
 

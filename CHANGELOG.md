@@ -25,6 +25,10 @@ All notable changes to AngKorGit are documented here. The format follows
   All 16 themes now keep body, secondary and faint text clearly readable, with the
   biggest change in Nord, One Dark Pro, Tokyo Night and both Ayu themes. Code
   comments keep each theme's own comment colour, so code looks the same as before.
+- **Calmer diffs for code review.** Changed lines get a lighter green or red, so the
+  code's own colours show through, and the changed words keep their strong highlight.
+  Inline, Split, History and Blame in the diff header now have text labels when
+  there is room, and the file name stays whole while the folder part shortens.
 
 ### Fixed
 - **A squeezed tab no longer shows a stray letter.** When two open tabs share a

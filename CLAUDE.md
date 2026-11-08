@@ -2068,6 +2068,19 @@ features/
 │                               inserted before a rewritten line, and the issue's
 │                               `load` hunk) and the e2e asserts the row indices across
 │                               data-diff-pane old/new for each.
+│                               READABILITY PASS (owner 2026-11-08, users comparing with
+│                               GitKraken found the app "hard to look at" and code review
+│                               hard): changed ROWS use bg-diff-add-row / bg-diff-del-row =
+│                               the diff colour at --diff-row-alpha (0.08 dark, 0.12 light;
+│                               was a flat /15) so syntax colours show through, while the
+│                               WORD highlight stays /40 and carries the change; Inline,
+│                               Split, History and Blame carry TEXT LABELS while the header
+│                               is full (DiffViewControls `labelled`, DiffPanel passes
+│                               !compact; AllChangesView stays icon-only), icon-only in
+│                               compact mode; the header path keeps the FILE NAME whole and
+│                               truncates the folder from the front (rtl span + basename,
+│                               title = full path) because the labels take its room. The
+│                               mockup was approved as one before/after image first.
 │                               HEADER FITS NARROW PANELS (UX audit 2026-09-24): the h-10
 │                               header is `overflow-hidden whitespace-nowrap`, word diff /
 │                               wrap / whole file / ignore whitespace live in ONE "View

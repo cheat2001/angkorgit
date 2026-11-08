@@ -1970,7 +1970,7 @@ test('shift-click selects a range of working copy files and the menu acts on all
   await expect(dialog.getByText('Architecture.md', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
 
-  await page.getByText('ipc.ts', { exact: true }).first().click();
+  await page.locator('[data-selected-file-row]').getByText('ipc.ts', { exact: true }).click();
   await expect(page.locator('[data-selected-file-row]')).toHaveCount(1);
 });
 

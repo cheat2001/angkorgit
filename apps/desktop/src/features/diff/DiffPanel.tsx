@@ -30,6 +30,7 @@ import { DiffAiStrip } from './DiffAiStrip';
 import { EXPLAIN_WAIT_MESSAGES, REVIEW_WAIT_MESSAGES } from '@/features/ai/waitMessages';
 import { fileAiKeyFor, useAiWork, type FileAiKind } from '@/features/ai/workStore';
 import { useShortcuts } from '@/shared/useShortcuts';
+import { basename, dirname } from '@/shared/utils';
 import { captureSelectionRanges, useKeepSelection } from '@/shared/useKeepSelection';
 import { useUi, type CenterDiffTarget } from '@/features/ui/store';
 import { DiffViewer } from './DiffViewer';
@@ -458,7 +459,14 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             <X className="size-4" />
           </Button>
         </Hint>
-        <span className="min-w-0 flex-1 truncate font-mono text-xs">{target.path}</span>
+        <span className="flex min-w-0 flex-1 font-mono text-xs" title={target.path}>
+          {dirname(target.path) && (
+            <span dir="rtl" className="min-w-0 truncate text-left text-muted">
+              <bdi>{dirname(target.path)}/</bdi>
+            </span>
+          )}
+          <span className="max-w-full shrink-0 truncate">{basename(target.path)}</span>
+        </span>
         {target.oid && (
           <Badge tone="neutral" className="font-mono">
             {target.oid.slice(0, 8)}
@@ -480,6 +488,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         <Separator orientation="vertical" className="mx-1 h-4" />
         {target.oid && !target.unchanged && !target.stash && <DiffLayoutToggle />}
         <DiffViewControls
+          labelled={!compact}
           wrapDisabled={!!textDiff && wrapUnavailable(textDiff)}
           notes={
             <>
@@ -493,11 +502,13 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         <Hint label="File history">
           <Button
             variant="ghost"
-            size="icon-sm"
+            size={compact ? 'icon-sm' : 'sm'}
             aria-label="File history"
+            className={cn(!compact && 'gap-1.5')}
             onClick={() => openFileHistory(target.path)}
           >
             <History className="size-3.5" />
+            {!compact && 'History'}
           </Button>
         </Hint>
         <Hint
@@ -511,12 +522,14 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         >
           <Button
             variant="ghost"
-            size="icon-sm"
+            size={compact ? 'icon-sm' : 'sm'}
             aria-label="Blame"
+            className={cn(!compact && 'gap-1.5')}
             disabled={!blameable}
             onClick={() => openBlame(target.path, target.oid ?? null)}
           >
             <UserRoundSearch className="size-3.5" />
+            {!compact && 'Blame'}
           </Button>
         </Hint>
         <DropdownMenu>
