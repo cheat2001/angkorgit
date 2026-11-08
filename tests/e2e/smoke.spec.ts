@@ -3801,3 +3801,21 @@ test('pull warns before a conflicting pull and before one that would stop at loc
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('[data-pull-warning]')).toHaveCount(0);
 });
+
+test('a squeezed same-name tab hint keeps a few letters instead of one', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    const names = ['tycho', 'kirby', 'picasso', 'core.api', 'coloris', 'monika', 'crosspromotionmodule', 'promodia', 'schedudia', 'eyebreak', 'angkorgit'];
+    const paths = [...names.map((name) => `/Users/demo/projects/${name}`), '/Users/demo/forks/angkorgit'];
+    localStorage.setItem('angkorgit-ui', JSON.stringify({ state: { repoTabs: paths, worktreeTabs: [] }, version: 0 }));
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const hint = page.locator('[data-tab-path="/Users/demo/forks/angkorgit"] [data-tab-hint]');
+  await expect(hint).toHaveText('forks');
+  await page.setViewportSize({ width: 480, height: 900 });
+  await expect(page.locator('[data-tab-overflow]')).toBeVisible();
+  expect((await hint.boundingBox())!.width).toBeGreaterThanOrEqual(18);
+});

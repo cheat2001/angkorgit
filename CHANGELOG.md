@@ -14,6 +14,12 @@ All notable changes to AngKorGit are documented here. The format follows
   sidebar, and turning it off brings the full graph back on the commit you had
   selected.
 
+### Fixed
+- **A squeezed tab no longer shows a stray letter.** When two open tabs share a
+  folder name, each shows its parent folder after the name. On a full tab strip that
+  hint could shrink to its last letter, which looked like a typo next to the
+  shortcut. It now keeps a few letters and the ellipsis.
+
 ## [0.26.0] — 2026-11-06
 
 The hooks release. Commits and pushes now run your Git hooks the way `git` does, the

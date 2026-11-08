@@ -59,6 +59,7 @@ const GROUP_DRAG_TYPE = 'text/angkorgit-repo-group';
 const COMPACT_TAB_WIDTH = 112;
 const TAB_NAME_MIN_CH = 4;
 const ACTIVE_NAME_MIN_CH = 8;
+const HINT_MIN_CH = 4;
 const chipZone = (group: RepoGroup) => `group:${group.id}`;
 
 export function RepoTabs() {
@@ -281,7 +282,10 @@ export function RepoTabs() {
           {label(path)}
         </span>
         {labels.get(path)?.hint && (
-          <span className="relative h-4 min-w-0 text-[10px] leading-4">
+          <span
+            className="relative h-4 text-[10px] leading-4"
+            style={{ minWidth: `${Math.min(labels.get(path)?.hint?.length ?? 0, HINT_MIN_CH)}ch` }}
+          >
             <span aria-hidden className="invisible block h-0 overflow-hidden break-all">
               {labels.get(path)?.hint}
             </span>
