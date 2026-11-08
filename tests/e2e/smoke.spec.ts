@@ -1715,7 +1715,7 @@ test('a graph with more lanes than its column scrolls sideways under its own scr
   const bar = page.locator('[data-graph-scrollbar]');
   await expect(bar).toBeVisible();
   const list = page.getByRole('table', { name: 'Commits' });
-  const offset = () => list.evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue('--graph-scroll-x') || '0'));
+  const offset = () => list.evaluate((el) => parseFloat(el.getAttribute('data-graph-scroll-x') ?? '0'));
   const node = page.getByRole('row').nth(4).locator('span.rounded-full').first();
   const start = (await node.boundingBox())!.x;
   const listBox = (await list.boundingBox())!;
@@ -3800,6 +3800,39 @@ test('pull warns before a conflicting pull and before one that would stop at loc
   await page.getByText('angkorgit', { exact: true }).first().click();
   await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('[data-pull-warning]')).toHaveCount(0);
+});
+
+test('graph nodes whose lanes leave the column pin to its edges while the lanes scroll under them', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('angkorgit-demo-busy-graph', '1'));
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-graph-scrollbar]')).toBeVisible();
+  const placement = () =>
+    page.evaluate(() => {
+      const nodes = [...document.querySelectorAll<HTMLElement>('[role=table] [role=row] [data-graph-node]')];
+      let outside = 0;
+      let pinned = 0;
+      for (const node of nodes) {
+        const box = node.getBoundingClientRect();
+        const gutter = node.parentElement!.getBoundingClientRect();
+        if (box.left < gutter.left - 1 || box.right > gutter.right + 1) outside++;
+        if (node.style.transform) pinned++;
+      }
+      return { nodes: nodes.length, outside, pinned };
+    });
+  const rest = await placement();
+  expect(rest.nodes).toBeGreaterThan(10);
+  expect(rest.outside).toBe(0);
+  expect(rest.pinned).toBeGreaterThan(0);
+  const list = page.getByRole('table', { name: 'Commits' });
+  const box = (await list.boundingBox())!;
+  await page.mouse.move(box.x + 300, box.y + 200);
+  for (let i = 0; i < 30; i++) await page.mouse.wheel(20, 0);
+  await expect.poll(() => list.evaluate((el) => Number(el.getAttribute('data-graph-scroll-x')))).toBeGreaterThan(100);
+  const scrolled = await placement();
+  expect(scrolled.outside).toBe(0);
+  expect(scrolled.pinned).toBeGreaterThan(0);
 });
 
 test('a squeezed same-name tab hint keeps a few letters instead of one', async ({ page }) => {

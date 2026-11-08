@@ -14,6 +14,13 @@ All notable changes to AngKorGit are documented here. The format follows
   sidebar, and turning it off brings the full graph back on the commit you had
   selected.
 
+### Changed
+- **Smoother sideways scrolling in the graph.** Scrolling a wide graph sideways no
+  longer repaints every row, so it keeps up with the trackpad. Avatars and merge
+  dots whose lane is out of view now stay pinned to the left or right edge of the
+  graph column while the lines scroll under them, so every row still shows who made
+  the commit.
+
 ### Fixed
 - **A squeezed tab no longer shows a stray letter.** When two open tabs share a
   folder name, each shows its parent folder after the name. On a full tab strip that

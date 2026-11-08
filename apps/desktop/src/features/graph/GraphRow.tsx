@@ -65,8 +65,15 @@ export function gutterOverflowFor(maxLane: number, laneWidth: number = LANE_WIDT
 
 export const clampGraphWidth = (width: number) => Math.round(Math.min(GUTTER_MAX_WIDTH, Math.max(GUTTER_MIN_WIDTH, width)));
 
-export const GRAPH_SCROLL_VAR = '--graph-scroll-x';
-export const graphShift = { transform: `translateX(calc(var(${GRAPH_SCROLL_VAR}, 0px) * -1))` } as const;
+export const GRAPH_LANES_SELECTOR = '[data-graph-lanes]';
+export const GRAPH_NODE_SELECTOR = '[data-graph-node]';
+const NODE_REACH = AVATAR_SIZE / 2 + NODE_RING + NODE_HALO;
+const MERGE_DOT_SIZE = 2 * NODE_RADIUS + 1;
+
+export function stickyNodeShift(x: number, min: number, max: number, offset: number): number {
+  return Math.min(Math.max(x - offset, min), Math.max(min, max)) - x;
+}
+export const GRAPH_SCROLL_ATTR = 'data-graph-scroll-x';
 const CY = ROW_HEIGHT / 2;
 const RAIL_RADIUS = 6;
 
@@ -127,10 +134,22 @@ function GraphGutter({
   const x = (lane: number) => laneX(lane, laneWidth);
   const nx = x(node.lane);
   const total = width + GUTTER_GAP;
+  const layerWidth = total + 2 * overflow;
+  const nodeData = {
+    'data-graph-node': '',
+    'data-node-x': nx,
+    'data-node-min': NODE_REACH + 1,
+    'data-node-max': total - TAIL_EDGE - 1 - NODE_REACH,
+  };
   return (
     <div className="relative shrink-0 overflow-hidden" style={{ width: total, height: ROW_HEIGHT }}>
-      <svg width={total} height={ROW_HEIGHT} aria-hidden>
-        <g style={graphShift}>
+      <div
+        data-graph-lanes
+        className="absolute top-0"
+        style={{ left: -overflow, width: layerWidth, height: ROW_HEIGHT, willChange: overflow > 0 ? 'transform' : undefined }}
+      >
+      <svg width={layerWidth} height={ROW_HEIGHT} className="block" aria-hidden>
+        <g transform={overflow > 0 ? `translate(${overflow} 0)` : undefined}>
         {showTail && (
           <rect
             data-graph-tail
@@ -144,7 +163,7 @@ function GraphGutter({
         {hasRefs && (
           <line
             data-graph-connector
-            x1={-overflow - 1}
+            x1={-overflow}
             y1={CY}
             x2={nx}
             y2={CY}
@@ -188,30 +207,39 @@ function GraphGutter({
         {node.continues && (
           <line x1={nx} y1={CY} x2={nx} y2={ROW_HEIGHT} stroke={laneColor(node.color)} strokeWidth={2} />
         )}
-        {node.isMerge && (
-          <circle
-            cx={nx}
-            cy={CY}
-            r={NODE_RADIUS - 0.5}
-            fill="hsl(var(--surface))"
-            stroke={laneColor(node.color)}
-            strokeWidth={2}
-          />
-        )}
         </g>
-        {showTail && (
-          <rect
-            data-graph-tail-edge
-            x={total - TAIL_EDGE}
-            y={2}
-            width={TAIL_EDGE}
-            height={ROW_HEIGHT - 4}
-            fill={laneColor(node.color)}
-          />
-        )}
       </svg>
-      {!node.isMerge && (
+      </div>
+      {hasRefs && overflow > 0 && (
         <span
+          className="absolute"
+          style={{ left: 0, top: CY - 0.75, width: NODE_REACH + 1, height: 1.5, background: laneColor(node.color), opacity: 0.85 }}
+        />
+      )}
+      {showTail && (
+        <span
+          data-graph-tail-edge
+          className="absolute"
+          style={{ left: total - TAIL_EDGE, top: 2, width: TAIL_EDGE, height: ROW_HEIGHT - 4, background: laneColor(node.color) }}
+        />
+      )}
+      {node.isMerge ? (
+        <span
+          {...nodeData}
+          className="absolute rounded-full"
+          style={{
+            left: nx - MERGE_DOT_SIZE / 2,
+            top: CY - MERGE_DOT_SIZE / 2,
+            width: MERGE_DOT_SIZE,
+            height: MERGE_DOT_SIZE,
+            border: `2px solid ${laneColor(node.color)}`,
+            background: 'hsl(var(--surface))',
+            willChange: overflow > 0 ? 'transform' : undefined,
+          }}
+        />
+      ) : (
+        <span
+          {...nodeData}
           className="absolute overflow-hidden rounded-full"
           title={isStash ? 'Stash' : author.name}
           style={{
@@ -222,8 +250,8 @@ function GraphGutter({
             boxShadow: `0 0 0 ${NODE_HALO}px hsl(var(--background)), 0 0 0 ${NODE_HALO + NODE_RING}px ${laneColor(node.color)}`,
             background: 'hsl(var(--surface))',
             outline: isStash ? `1.5px dashed ${laneColor(node.color)}` : undefined,
-            ...graphShift,
             outlineOffset: isStash ? -1.5 : undefined,
+            willChange: overflow > 0 ? 'transform' : undefined,
           }}
         >
           {isStash ? <StashNode color={node.color} /> : <Avatar name={author.name} email={author.email} oid={oid} size={AVATAR_SIZE} />}
