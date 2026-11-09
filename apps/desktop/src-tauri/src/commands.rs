@@ -741,8 +741,16 @@ pub async fn diff_commit(
 }
 
 #[tauri::command]
-pub async fn diff_commit_files(path: String, oid: String) -> AppResult<Vec<CommitFileInfo>> {
-    blocking(move || diff::commit_files(&path, &oid)).await
+pub async fn diff_commit_files(
+    path: String,
+    oid: String,
+    base: Option<String>,
+) -> AppResult<Vec<CommitFileInfo>> {
+    blocking(move || match base {
+        Some(base) => diff::compare_files(&path, &base, &oid),
+        None => diff::commit_files(&path, &oid),
+    })
+    .await
 }
 
 #[tauri::command]
@@ -753,17 +761,27 @@ pub async fn diff_commit_file(
     oldPath: Option<String>,
     contextLines: Option<u32>,
     ignoreWhitespace: Option<bool>,
+    base: Option<String>,
 ) -> AppResult<FileDiff> {
     let ignore = ignoreWhitespace.unwrap_or(false);
-    blocking(move || {
-        diff::commit_file_diff_with(
+    blocking(move || match base {
+        Some(base) => diff::compare_file_diff_with(
+            &path,
+            &base,
+            &oid,
+            &file,
+            oldPath.as_deref(),
+            contextLines.unwrap_or(3),
+            ignore,
+        ),
+        None => diff::commit_file_diff_with(
             &path,
             &oid,
             &file,
             oldPath.as_deref(),
             contextLines.unwrap_or(3),
             ignore,
-        )
+        ),
     })
     .await
 }

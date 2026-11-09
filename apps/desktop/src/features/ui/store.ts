@@ -43,6 +43,7 @@ export interface CenterDiffTarget {
   path: string;
   staged?: boolean;
   oid?: string;
+  base?: string;
   oldPath?: string | null;
   unchanged?: boolean;
   stash?: boolean;

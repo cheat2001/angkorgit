@@ -3950,3 +3950,50 @@ test('a diff line menu copies the file location with the clicked column', async 
   await expect(item).toHaveAttribute('data-copy-location', `src/data/palette-seed.sql:${target.lineNo}`);
   await page.keyboard.press('Escape');
 });
+
+test('two selected commits can be compared with the same file list and diff panel', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  const rows = page.getByRole('row');
+  const hashOf = async (n: number) => (await rows.nth(n).getByTitle('Copy full hash').textContent())!.trim();
+  const newer = await hashOf(1);
+  const older = await hashOf(3);
+
+  await rows.nth(1).click();
+  await rows.nth(3).click({ modifiers: ['ControlOrMeta'] });
+  await rows.nth(3).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Compare these commits' }).click();
+
+  const inspector = page.locator('aside[aria-label="Inspector"]');
+  const header = inspector.locator('[data-compare-header]');
+  await expect(inspector.getByText('Compare', { exact: true })).toBeVisible();
+  await expect(header.locator('[data-compare-row="from"]')).toContainText(older);
+  await expect(header.locator('[data-compare-row="to"]')).toContainText(newer);
+  await expect(inspector.getByRole('button', { name: 'Edit commit message' })).toHaveCount(0);
+  await expect(inspector.getByRole('button', { name: /Explain with AI/ })).toHaveCount(0);
+
+  await inspector.getByText('GraphRow.tsx').first().click();
+  await expect(page.locator('[data-diff-range]')).toHaveText(`${older}..${newer}`);
+  await page.getByRole('button', { name: 'Show all files' }).click();
+  await expect(page.locator('[data-all-changes]')).toContainText(`${older}..${newer}`);
+  await page.getByRole('button', { name: 'Show one file' }).click();
+  await expect(page.locator('[data-diff-range]')).toHaveText(`${older}..${newer}`);
+
+  await header.getByRole('button', { name: 'Swap the compared commits' }).click();
+  await expect(header.locator('[data-compare-row="from"]')).toContainText(newer);
+  await expect(header.locator('[data-compare-row="to"]')).toContainText(older);
+  await expect(page.locator('[data-diff-range]')).toHaveCount(0);
+
+  await rows.nth(2).click();
+  await expect(inspector.locator('[data-compare-header]')).toHaveCount(0);
+  await expect(inspector.getByText('Commit', { exact: true })).toBeVisible();
+
+  await rows.nth(1).click();
+  await rows.nth(2).click({ modifiers: ['ControlOrMeta'] });
+  await rows.nth(3).click({ modifiers: ['ControlOrMeta'] });
+  await rows.nth(3).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: /Cherry-pick 3 commits/ })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Compare these commits' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+});

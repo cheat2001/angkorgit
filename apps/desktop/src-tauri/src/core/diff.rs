@@ -234,6 +234,7 @@ pub fn file_diff_with(
 fn commit_tree_diff<'a>(
     repo: &'a Repository,
     oid: &str,
+    base: Option<&str>,
     file: Option<&str>,
     old_path: Option<&str>,
     context_lines: u32,
@@ -241,7 +242,10 @@ fn commit_tree_diff<'a>(
 ) -> AppResult<Diff<'a>> {
     let commit = repo.find_commit(git2::Oid::from_str(oid)?)?;
     let tree = commit.tree()?;
-    let parent_tree = commit.parent(0).ok().map(|p| p.tree()).transpose()?;
+    let parent_tree = match base {
+        Some(base) => Some(repo.find_commit(git2::Oid::from_str(base)?)?.tree()?),
+        None => commit.parent(0).ok().map(|p| p.tree()).transpose()?,
+    };
 
     let mut opts = base_opts(file, context_lines, ignore_whitespace);
     if let Some(old) = old_path {
@@ -261,7 +265,15 @@ pub fn commit_diff_with(
     ignore_whitespace: bool,
 ) -> AppResult<Vec<FileDiff>> {
     let repo = super::repo::open(path)?;
-    let diff = commit_tree_diff(&repo, oid, None, None, context_lines, ignore_whitespace)?;
+    let diff = commit_tree_diff(
+        &repo,
+        oid,
+        None,
+        None,
+        None,
+        context_lines,
+        ignore_whitespace,
+    )?;
     let count = diff.deltas().len();
     let mut result = Vec::with_capacity(count);
     for i in 0..count {
@@ -275,8 +287,21 @@ pub fn commit_files(path: &str, oid: &str) -> AppResult<Vec<CommitFileInfo>> {
     files_of_commit(&repo, oid)
 }
 
+pub fn compare_files(path: &str, base: &str, oid: &str) -> AppResult<Vec<CommitFileInfo>> {
+    let repo = super::repo::open(path)?;
+    files_between(&repo, oid, Some(base))
+}
+
 pub fn files_of_commit(repo: &Repository, oid: &str) -> AppResult<Vec<CommitFileInfo>> {
-    let diff = commit_tree_diff(repo, oid, None, None, 0, false)?;
+    files_between(repo, oid, None)
+}
+
+fn files_between(
+    repo: &Repository,
+    oid: &str,
+    base: Option<&str>,
+) -> AppResult<Vec<CommitFileInfo>> {
+    let diff = commit_tree_diff(repo, oid, base, None, None, 0, false)?;
     let count = diff.deltas().len();
     let mut result = Vec::with_capacity(count);
     for i in 0..count {
@@ -329,10 +354,51 @@ pub fn commit_file_diff_with(
     context_lines: u32,
     ignore_whitespace: bool,
 ) -> AppResult<FileDiff> {
+    file_diff_between(
+        path,
+        oid,
+        None,
+        file,
+        old_path,
+        context_lines,
+        ignore_whitespace,
+    )
+}
+
+pub fn compare_file_diff_with(
+    path: &str,
+    base: &str,
+    oid: &str,
+    file: &str,
+    old_path: Option<&str>,
+    context_lines: u32,
+    ignore_whitespace: bool,
+) -> AppResult<FileDiff> {
+    file_diff_between(
+        path,
+        oid,
+        Some(base),
+        file,
+        old_path,
+        context_lines,
+        ignore_whitespace,
+    )
+}
+
+fn file_diff_between(
+    path: &str,
+    oid: &str,
+    base: Option<&str>,
+    file: &str,
+    old_path: Option<&str>,
+    context_lines: u32,
+    ignore_whitespace: bool,
+) -> AppResult<FileDiff> {
     let repo = super::repo::open(path)?;
     let diff = commit_tree_diff(
         &repo,
         oid,
+        base,
         Some(file),
         old_path,
         context_lines,

@@ -7,6 +7,10 @@ All notable changes to AngKorGit are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Compare two commits** (#55). Select two commits in the graph and choose Compare
+  these commits to see everything that changed between them, with the same file list,
+  diff panel and all files view as a single commit. A swap button turns the direction
+  around, and it works for commits on different branches too.
 - **Copy a code location from a diff** (#90). Right-click a line in a diff or in file
   history and choose Copy location to get `path:line`, or `path:line:column` when you
   clicked on the code itself, ready to paste into Vim, Zed or VS Code.

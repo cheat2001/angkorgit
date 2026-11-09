@@ -773,9 +773,9 @@ export const ipc = {
       ignoreWhitespace: ignoreWhitespace ?? null,
     });
   },
-  async commitFiles(path: string, oid: string): Promise<CommitFileInfo[]> {
+  async commitFiles(path: string, oid: string, base?: string | null): Promise<CommitFileInfo[]> {
     if (!isTauri()) return demo.demoCommitFiles();
-    return invoke('diff_commit_files', { path, oid });
+    return invoke('diff_commit_files', { path, oid, base: base ?? null });
   },
   async treeFiles(path: string, oid: string): Promise<string[]> {
     if (!isTauri()) return demo.demoTreeFiles();
@@ -796,6 +796,7 @@ export const ipc = {
     oldPath?: string | null,
     contextLines?: number,
     ignoreWhitespace?: boolean,
+    base?: string | null,
   ): Promise<FileDiff> {
     if (!isTauri()) return demo.demoFileDiffFor(file, ignoreWhitespace);
     return invoke('diff_commit_file', {
@@ -805,6 +806,7 @@ export const ipc = {
       oldPath: oldPath ?? null,
       contextLines: contextLines ?? null,
       ignoreWhitespace: ignoreWhitespace ?? null,
+      base: base ?? null,
     });
   },
   async stagedPatch(path: string): Promise<string> {

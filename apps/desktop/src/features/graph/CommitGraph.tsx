@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
-import { Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronUp, Cloud, Combine, Copy, FastForward, Filter, FolderTree, ListFilter, GitBranchPlus, GitCommitHorizontal, Settings2, GitMerge, ListOrdered, ListRestart, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Check, ChevronDown, ChevronUp, Cloud, Combine, Copy, FastForward, Filter, FolderTree, GitCompareArrows, ListFilter, GitBranchPlus, GitCommitHorizontal, Settings2, GitMerge, ListOrdered, ListRestart, Pencil, RotateCcw, Search, Tag as TagIcon, Trash2, Undo2, User, X } from 'lucide-react';
 import { pickRemote, type CommitInfo, type RefInfo } from '@angkorgit/core';
 import {
   Button,
@@ -298,6 +298,14 @@ export function CommitGraph() {
       count: selectedOids.length,
       contiguous: max - min === selectedOids.length - 1,
     };
+  }, [menu, selectedOids, commits]);
+
+  const compareSelection = useMemo(() => {
+    if (!menu || selectedOids.length !== 2 || !selectedOids.includes(menu.commit.oid)) return null;
+    const [first, second] = selectedOids.map((oid) => commits.findIndex((c) => c.oid === oid));
+    if (first < 0 || second < 0) return null;
+    const [newer, older] = first < second ? [first, second] : [second, first];
+    return { from: commits[older].oid, to: commits[newer].oid };
   }, [menu, selectedOids, commits]);
 
   const pickSelection = useMemo(() => {
@@ -924,6 +932,20 @@ export function CommitGraph() {
                       )}
                     </DropdownMenuItem>
                   ))}
+                <DropdownMenuSeparator />
+              </>
+            )}
+            {compareSelection && (
+              <>
+                <DropdownMenuItem
+                  data-compare-commits
+                  onClick={() => {
+                    useUi.getState().closeCenterDiff();
+                    useGraph.getState().setCompare(compareSelection);
+                  }}
+                >
+                  <GitCompareArrows /> Compare these commits
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
             )}

@@ -38,6 +38,8 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
   const fullFileDiff = useUi((s) => s.fullFileDiff);
   const diffView = useUi((s) => s.diffView);
   const oid = target.oid;
+  const base = target.base;
+  const label = base ? `${base.slice(0, 7)}..${oid.slice(0, 7)}` : oid.slice(0, 8);
 
   const [files, setFiles] = useState<CommitFileInfo[] | null>(null);
   const [filesError, setFilesError] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
     setFiles(null);
     setFilesError(null);
     void ipc
-      .commitFiles(repoPath, oid)
+      .commitFiles(repoPath, oid, base)
       .then((list) => {
         if (cancelled) return;
         setFiles(list);
@@ -78,7 +80,7 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
     return () => {
       cancelled = true;
     };
-  }, [repoPath, oid]);
+  }, [repoPath, oid, base]);
 
   const fileByPath = useMemo(() => new Map((files ?? []).map((f) => [f.path, f])), [files]);
 
@@ -97,6 +99,7 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
           file.oldPath,
           fullFileDiff ? 10_000_000 : undefined,
           ignoreWhitespace,
+          base,
         )
         .then((diff) => {
           if (gen !== generation.current) return;
@@ -117,7 +120,7 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
           pump();
         });
     }
-  }, [fileByPath, repoPath, oid, fullFileDiff, ignoreWhitespace]);
+  }, [fileByPath, repoPath, oid, base, fullFileDiff, ignoreWhitespace]);
 
   const request = useCallback(
     (path: string) => {
@@ -225,7 +228,7 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
       setActive(current);
       syncedFromScroll.current = current;
       const file = fileByPath.get(current);
-      openCenterDiff({ path: current, oid, oldPath: file?.oldPath ?? null });
+      openCenterDiff({ path: current, oid, base, oldPath: file?.oldPath ?? null });
     });
   };
 
@@ -235,7 +238,7 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
     const next = files[index + direction];
     if (!next) return;
     syncedFromScroll.current = null;
-    openCenterDiff({ path: next.path, oid, oldPath: next.oldPath });
+    openCenterDiff({ path: next.path, oid, base, oldPath: next.oldPath });
   };
   const goFileRef = useRef(goFile);
   goFileRef.current = goFile;
@@ -297,7 +300,7 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
 
   const openInFileView = (file: CommitFileInfo) => {
     setDiffLayout('file');
-    openCenterDiff({ path: file.path, oid: file.sourceOid ?? oid, oldPath: file.oldPath });
+    openCenterDiff({ path: file.path, oid: file.sourceOid ?? oid, base, oldPath: file.oldPath });
   };
 
   const totals = useMemo(
@@ -316,7 +319,7 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-      aria-label={`All changes in ${oid.slice(0, 8)}`}
+      aria-label={`All changes in ${label}`}
       data-all-changes
     >
       <div className="flex h-10 shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border-subtle bg-surface px-3">
@@ -333,7 +336,7 @@ export function AllChangesView({ target }: { target: CenterDiffTarget & { oid: s
         </Hint>
         <span className="text-xs font-medium">Changes</span>
         <Badge tone="neutral" className="font-mono">
-          {oid.slice(0, 8)}
+          {label}
         </Badge>
         {files && (
           <span className="shrink-0 text-xs text-muted">

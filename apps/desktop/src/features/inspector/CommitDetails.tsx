@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import {
   ArchiveRestore,
+  ArrowUpDown,
   ChevronDown,
   ChevronUp,
   Cloud,
@@ -178,19 +179,69 @@ function VirtualFileRows({
   );
 }
 
+function CompareRow({ label, commit }: { label: string; commit: CommitInfo | null }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 py-1 text-xs" data-compare-row={label.toLowerCase()}>
+      <span className="w-9 shrink-0 text-faint">{label}</span>
+      {commit ? (
+        <>
+          <Badge tone="neutral" className="shrink-0 font-mono">
+            {commit.shortOid}
+          </Badge>
+          <span className="min-w-0 truncate text-foreground" title={commit.summary}>
+            {commit.summary}
+          </span>
+          <span className="ml-auto shrink-0 text-faint">{timeAgo(commit.author.time)}</span>
+        </>
+      ) : (
+        <span className="text-faint">Loading…</span>
+      )}
+    </div>
+  );
+}
+
+function CompareHeader({ from, to }: { from: CommitInfo | null; to: CommitInfo }) {
+  return (
+    <div data-compare-header className="border-b border-border-subtle px-4 pb-3 pt-3">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-foreground">Changes between two commits</h2>
+        <Hint label="Swap the direction">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Swap the compared commits"
+            disabled={!from}
+            onClick={() => {
+              if (from) useGraph.getState().setCompare({ from: to.oid, to: from.oid });
+            }}
+          >
+            <ArrowUpDown className="size-3.5" />
+          </Button>
+        </Hint>
+      </div>
+      <CompareRow label="From" commit={from} />
+      <CompareRow label="To" commit={to} />
+    </div>
+  );
+}
+
 export function CommitDetails({
   commit,
+  compareFrom,
   diffs,
   loading,
   error,
   onRetry,
 }: {
   commit: CommitInfo;
+  compareFrom?: CommitInfo | null;
   diffs: CommitFileInfo[];
   loading: boolean;
   error: string | null;
   onRetry: () => void;
 }) {
+  const comparing = compareFrom !== undefined;
+  const base = comparing ? (compareFrom?.oid ?? useGraph.getState().compare?.from) : undefined;
   const select = useGraph((s) => s.select);
   const openCenterDiff = useUi((s) => s.openCenterDiff);
   const closeCenterDiff = useUi((s) => s.closeCenterDiff);
@@ -447,18 +498,18 @@ export function CommitDetails({
   const scrollRef = useRef<HTMLDivElement>(null);
   const filesRef = useRef<HTMLDivElement>(null);
   const activeIndex = shownDiffs.findIndex(
-    (d) => centerDiff?.path === d.path && centerDiff.oid === (d.sourceOid ?? commit.oid),
+    (d) => centerDiff?.path === d.path && centerDiff.oid === (d.sourceOid ?? commit.oid) && centerDiff.base === base,
   );
   const openFileAt = useCallback(
     (index: number) => {
       const d = shownDiffs[index];
       if (!d) return;
-      openCenterDiff({ path: d.path, oid: d.sourceOid ?? commit.oid, oldPath: d.oldPath, stash: !!stash });
+      openCenterDiff({ path: d.path, oid: d.sourceOid ?? commit.oid, base, oldPath: d.oldPath, stash: !!stash });
       requestAnimationFrame(() => {
         filesRef.current?.querySelector('[data-active-file]')?.scrollIntoView({ block: 'nearest' });
       });
     },
-    [shownDiffs, openCenterDiff, commit.oid],
+    [shownDiffs, openCenterDiff, commit.oid, base],
   );
   const inspectorFocusSeq = useUi((s) => s.inspectorFocusSeq);
   const wantFirstFile = useRef(false);
@@ -536,7 +587,7 @@ export function CommitDetails({
 
   const renderDiffRow = (diff: CommitFileInfo, depth?: number) => {
     const diffOid = diff.sourceOid ?? commit.oid;
-    const active = centerDiff?.path === diff.path && centerDiff.oid === diffOid;
+    const active = centerDiff?.path === diff.path && centerDiff.oid === diffOid && centerDiff.base === base;
     const meta = statusMeta[diff.status];
     return (
       <Hint key={diff.path} label={diff.path} side="left" className="max-w-[34rem] font-mono">
@@ -582,7 +633,7 @@ export function CommitDetails({
               return;
             }
             if (active) closeCenterDiff();
-            else openCenterDiff({ path: diff.path, oid: diffOid, oldPath: diff.oldPath, stash: !!stash });
+            else openCenterDiff({ path: diff.path, oid: diffOid, base, oldPath: diff.oldPath, stash: !!stash });
           }}
         >
           <ChangeMark tone={meta?.tone ?? 'neutral'} title={meta?.label}>
@@ -703,6 +754,9 @@ export function CommitDetails({
 
   return (
     <div ref={scrollRef} className="flex h-full flex-col overflow-y-auto">
+      {comparing ? (
+        <CompareHeader from={compareFrom ?? null} to={commit} />
+      ) : (
       <div className="border-b border-border-subtle px-4 pb-4 pt-3">
         {editing ? (
           <div
@@ -974,6 +1028,7 @@ export function CommitDetails({
           bodyClassName="max-h-72"
         />
       </div>
+      )}
 
       <div
         ref={filesRef}

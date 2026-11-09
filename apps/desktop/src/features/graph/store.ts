@@ -35,6 +35,7 @@ interface GraphState {
   locatedOid: string | null;
   selectedOid: string | null;
   selectedOids: string[];
+  compare: CompareRange | null;
   layout: GraphLayout;
   lastPath: string | null;
   pendingScrollIndex: number | null;
@@ -51,7 +52,13 @@ interface GraphState {
   select: (oid: string | null) => void;
   toggleSelect: (oid: string) => void;
   rangeSelect: (oid: string) => void;
+  setCompare: (range: CompareRange | null) => void;
   clearPendingScroll: () => void;
+}
+
+export interface CompareRange {
+  from: string;
+  to: string;
 }
 
 let requestSeq = 0;
@@ -145,6 +152,7 @@ export const useGraph = create<GraphState>((set, get) => {
     locatedOid: null,
     selectedOid: null,
     selectedOids: [],
+    compare: null,
     layout: new GraphLayout(),
     lastPath: null,
     pendingScrollIndex: null,
@@ -161,6 +169,7 @@ export const useGraph = create<GraphState>((set, get) => {
           error: null,
           selectedOid: null,
           selectedOids: [],
+          compare: null,
           filters: emptyFilters(),
           find: null,
           onlyMatches: false,
@@ -281,7 +290,7 @@ export const useGraph = create<GraphState>((set, get) => {
           ? listIndex
           : commits.findIndex((c) => c.oid === target.oid);
       if (at === -1) return null;
-      set({ selectedOid: target.oid, selectedOids: [target.oid], locatedOid: target.oid, pendingScrollIndex: at });
+      set({ selectedOid: target.oid, selectedOids: [target.oid], compare: null, locatedOid: target.oid, pendingScrollIndex: at });
       return target.oid;
     },
 
@@ -329,6 +338,7 @@ export const useGraph = create<GraphState>((set, get) => {
       set((s) => ({
         selectedOid: oid,
         selectedOids: oid ? [oid] : [],
+        compare: null,
         locatedOid: null,
         find: withActiveMatch(s.find, oid),
       }));
@@ -342,6 +352,7 @@ export const useGraph = create<GraphState>((set, get) => {
       selectSeq += 1;
       set((s) => ({
         selectedOid: oid,
+        compare: null,
         locatedOid: null,
         find: withActiveMatch(s.find, oid),
         selectedOids: s.selectedOids.includes(oid)
@@ -356,10 +367,12 @@ export const useGraph = create<GraphState>((set, get) => {
         const anchorIdx = s.selectedOid ? s.commits.findIndex((c) => c.oid === s.selectedOid) : -1;
         const clickedIdx = s.commits.findIndex((c) => c.oid === oid);
         if (clickedIdx < 0) return s;
-        if (anchorIdx < 0) return { selectedOid: oid, selectedOids: [oid] };
+        if (anchorIdx < 0) return { selectedOid: oid, selectedOids: [oid], compare: null };
         const [lo, hi] = anchorIdx <= clickedIdx ? [anchorIdx, clickedIdx] : [clickedIdx, anchorIdx];
-        return { selectedOids: s.commits.slice(lo, hi + 1).map((c) => c.oid) };
+        return { selectedOids: s.commits.slice(lo, hi + 1).map((c) => c.oid), compare: null };
       });
     },
+
+    setCompare: (range) => set({ compare: range }),
   };
 });

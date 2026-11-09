@@ -12,6 +12,7 @@ import { CommitDetails } from './CommitDetails';
 
 export function Inspector() {
   const selectedOid = useGraph((s) => s.selectedOid);
+  const compare = useGraph((s) => s.compare);
   const repoPath = useRepo((s) => s.repo?.path);
   const fileView = useUi((s) => s.fileView);
   const setFileView = useUi((s) => s.setFileView);
@@ -22,10 +23,53 @@ export function Inspector() {
   const [commitError, setCommitError] = useState<string | null>(null);
   const [diffsError, setDiffsError] = useState<string | null>(null);
   const [retrySeq, setRetrySeq] = useState(0);
+  const [compareFrom, setCompareFrom] = useState<CommitInfo | null>(null);
 
   useEffect(() => {
     const { centerDiff, closeCenterDiff } = useUi.getState();
-    if (centerDiff?.oid && centerDiff.oid !== selectedOid) closeCenterDiff();
+    const shownOid = compare?.to ?? selectedOid;
+    if (centerDiff?.oid && (centerDiff.oid !== shownOid || (centerDiff.base ?? null) !== (compare?.from ?? null))) {
+      closeCenterDiff();
+    }
+
+    if (compare && repoPath) {
+      const known = (oid: string) => useGraph.getState().commits.find((c) => c.oid === oid) ?? null;
+      const load = (oid: string) => {
+        const local = known(oid);
+        return local ? Promise.resolve(local) : ipc.commitInfo(repoPath, oid);
+      };
+      setCommit(known(compare.to));
+      setCompareFrom(known(compare.from));
+      setDiffs([]);
+      setCommitError(null);
+      setDiffsError(null);
+      setLoadingDiffs(true);
+      let cancelled = false;
+      void Promise.all([load(compare.from), load(compare.to)])
+        .then(([from, to]) => {
+          if (cancelled) return;
+          setCompareFrom(from);
+          setCommit(to);
+        })
+        .catch((error) => {
+          if (!cancelled) setCommitError(String((error as { message?: string }).message ?? error));
+        });
+      void ipc
+        .commitFiles(repoPath, compare.to, compare.from)
+        .then((result) => {
+          if (!cancelled) setDiffs(result);
+        })
+        .catch((error) => {
+          if (!cancelled) setDiffsError(String((error as { message?: string }).message ?? error));
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingDiffs(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    setCompareFrom(null);
 
     if (!selectedOid || !repoPath) {
       setCommit(null);
@@ -69,18 +113,18 @@ export function Inspector() {
     return () => {
       cancelled = true;
     };
-  }, [selectedOid, repoPath, retrySeq]);
+  }, [selectedOid, compare, repoPath, retrySeq]);
 
   const retry = () => setRetrySeq((n) => n + 1);
   const fileFilterOpen = useUi((s) => s.fileFilterOpen);
   const setFileFilterOpen = useUi((s) => s.setFileFilterOpen);
-  const isStash = useRepo((s) => !!selectedOid && s.stashes.some((entry) => entry.oid === selectedOid));
+  const isStash = useRepo((s) => !compare && !!selectedOid && s.stashes.some((entry) => entry.oid === selectedOid));
 
   return (
     <aside className="flex h-full flex-col bg-surface" aria-label="Inspector">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border-subtle px-2">
         <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
-          {commit || commitError ? (isStash ? 'Stash' : 'Commit') : 'Working copy'}
+          {compare ? 'Compare' : commit || commitError ? (isStash ? 'Stash' : 'Commit') : 'Working copy'}
         </span>
         <div className="ml-auto flex items-center gap-0.5">
           <Hint label={fileFilterOpen ? 'Hide file filter' : 'Filter files'}>
@@ -156,8 +200,9 @@ export function Inspector() {
       <div className="min-h-0 flex-1 overflow-hidden">
         {commit ? (
           <CommitDetails
-            key={commit.oid}
+            key={compare ? `${compare.from}..${compare.to}` : commit.oid}
             commit={commit}
+            compareFrom={compare ? compareFrom : undefined}
             diffs={diffs}
             loading={loadingDiffs}
             error={diffsError}

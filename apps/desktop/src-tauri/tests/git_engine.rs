@@ -2241,6 +2241,109 @@ fn ref_fingerprint_tracks_refs_but_not_file_edits() {
     assert_ne!(core::ref_fingerprint(repo.path()).unwrap(), after_commit);
 }
 
+fn git_name_status(repo: &TempRepo, from: &str, to: &str) -> Vec<String> {
+    let output = Command::new("git")
+        .args(["-c", "diff.renames=true", "diff", "--name-status", from, to])
+        .current_dir(&repo.dir)
+        .output()
+        .expect("git CLI available");
+    let mut lines: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|line| {
+            let mut parts = line.split('\t');
+            let status = parts
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .next()
+                .unwrap_or(' ');
+            let path = parts.next_back().unwrap_or_default();
+            format!("{status} {path}")
+        })
+        .collect();
+    lines.sort();
+    lines
+}
+
+#[test]
+fn compare_lists_the_net_change_between_two_commits_like_git_diff() {
+    let repo = TempRepo::new();
+    repo.write("kept.txt", "one\n");
+    repo.write("temp.txt", "temp\n");
+    repo.write(
+        "old-name.txt",
+        "a stable body that is long enough to be found again\n",
+    );
+    let from = commit_all(&repo, "from");
+    repo.write("kept.txt", "one\ntwo\n");
+    repo.write("added.txt", "new\n");
+    repo.write("temp.txt", "changed\n");
+    commit_all(&repo, "middle");
+    repo.write("temp.txt", "temp\n");
+    std::fs::rename(repo.dir.join("old-name.txt"), repo.dir.join("new-name.txt")).unwrap();
+    repo.write("kept.txt", "one\ntwo\nthree\n");
+    let to = commit_all(&repo, "to");
+
+    let files = core::compare_files(repo.path(), &from, &to).unwrap();
+    let mut ours: Vec<String> = files
+        .iter()
+        .map(|f| {
+            let status = match f.status.as_str() {
+                "new" => 'A',
+                "deleted" => 'D',
+                "renamed" => 'R',
+                _ => 'M',
+            };
+            format!("{status} {}", f.path)
+        })
+        .collect();
+    ours.sort();
+    assert_eq!(ours, git_name_status(&repo, &from, &to));
+    assert!(!files.iter().any(|f| f.path == "temp.txt"));
+    let renamed = files.iter().find(|f| f.path == "new-name.txt").unwrap();
+    assert_eq!(renamed.old_path.as_deref(), Some("old-name.txt"));
+    let kept = files.iter().find(|f| f.path == "kept.txt").unwrap();
+    assert_eq!((kept.additions, kept.deletions), (2, 0));
+
+    let diff =
+        core::compare_file_diff_with(repo.path(), &from, &to, "kept.txt", None, 3, false).unwrap();
+    let added: Vec<&str> = diff
+        .hunks
+        .iter()
+        .flat_map(|h| &h.lines)
+        .filter(|l| l.kind == "addition")
+        .map(|l| l.content.as_str())
+        .collect();
+    assert_eq!(added, vec!["two", "three"]);
+
+    let reversed = core::compare_files(repo.path(), &to, &from).unwrap();
+    assert!(reversed
+        .iter()
+        .any(|f| f.path == "added.txt" && f.status == "deleted"));
+}
+
+#[test]
+fn compare_works_across_branches_that_share_no_line() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "other", None, false).unwrap();
+    repo.write("a.txt", "main side\n");
+    let main_tip = commit_all(&repo, "main side");
+    core::checkout_branch(repo.path(), "other").unwrap();
+    repo.write("b.txt", "other side\n");
+    let other_tip = commit_all(&repo, "other side");
+
+    let files = core::compare_files(repo.path(), &main_tip, &other_tip).unwrap();
+    let mut ours: Vec<String> = files
+        .iter()
+        .map(|f| format!("{} {}", if f.status == "new" { 'A' } else { 'M' }, f.path))
+        .collect();
+    ours.sort();
+    assert_eq!(ours, git_name_status(&repo, &main_tip, &other_tip));
+    assert_eq!(ours, vec!["A b.txt".to_string(), "M a.txt".to_string()]);
+}
+
 #[test]
 fn commit_files_reports_per_file_counts_without_hunks() {
     let repo = TempRepo::new();

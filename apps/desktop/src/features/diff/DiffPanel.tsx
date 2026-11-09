@@ -134,6 +134,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         target.oldPath ?? null,
         contextLines,
         ignore,
+        target.base,
       );
       const untouched =
         result.hunks.length === 0 &&
@@ -155,7 +156,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     }
     let cancelled = false;
     void ipc
-      .commitFiles(path, target.oid)
+      .commitFiles(path, target.oid, target.base)
       .then((files) => {
         if (!cancelled) setCommitFileList(files);
       })
@@ -163,7 +164,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     return () => {
       cancelled = true;
     };
-  }, [path, target.oid]);
+  }, [path, target.oid, target.base]);
 
   const workingSiblings = useMemo(
     () =>
@@ -185,6 +186,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
       openCenterDiff({
         path: next,
         oid: target.oid,
+        base: target.base,
         oldPath: commitFileList.find((f) => f.path === next)?.oldPath ?? null,
       });
     } else {
@@ -255,7 +257,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
   const autoJumpKey = useRef<string | null>(null);
   useLayoutEffect(() => {
     if (!diff || loading) return;
-    const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}`;
+    const key = `${path}|${target.path}|${target.base ?? ''}|${target.oid ?? ''}|${target.staged ?? false}`;
     if (autoJumpKey.current === key) return;
     const el = scrollRef.current;
     if (!el) return;
@@ -295,7 +297,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     if (!path) return;
     let cancelled = false;
     const seq = ++requestSeq.current;
-    const key = `${path}|${target.path}|${target.oid ?? ''}|${target.staged ?? false}|${target.unchanged ?? false}|${fullFileDiff}|${ignoreWhitespace}|${reloadToken}`;
+    const key = `${path}|${target.path}|${target.base ?? ''}|${target.oid ?? ''}|${target.staged ?? false}|${target.unchanged ?? false}|${fullFileDiff}|${ignoreWhitespace}|${reloadToken}`;
     if (loadedKey.current !== key) setLoading(true);
     void fetchDiff(fullFileDiff ? 10_000_000 : undefined)
       .then((result) => {
@@ -319,7 +321,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, target.path, target.oid, target.staged, target.unchanged, fullFileDiff, ignoreWhitespace, reloadToken, statusSignature]);
+  }, [path, target.path, target.oid, target.base, target.staged, target.unchanged, fullFileDiff, ignoreWhitespace, reloadToken, statusSignature]);
 
   useEffect(
     () => () => {
@@ -360,10 +362,12 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
         ? {
             kind: 'commit',
             oid: target.oid,
-            summary: await ipc
-              .commitInfo(path, target.oid)
-              .then((info) => info.summary)
-              .catch(() => ''),
+            summary: target.base
+              ? `the changes from ${target.base.slice(0, 7)} to ${target.oid.slice(0, 7)}, several commits compared together`
+              : await ipc
+                  .commitInfo(path, target.oid)
+                  .then((info) => info.summary)
+                  .catch(() => ''),
           }
         : { kind: 'working-copy', staged: target.staged ?? false };
       if (!stillRunning()) return;
@@ -470,8 +474,8 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
           <span className="max-w-full shrink-0 truncate">{basename(target.path)}</span>
         </span>
         {target.oid && (
-          <Badge tone="neutral" className="font-mono">
-            {target.oid.slice(0, 8)}
+          <Badge tone="neutral" className="font-mono" data-diff-range={target.base ? `${target.base.slice(0, 7)}..${target.oid.slice(0, 7)}` : undefined}>
+            {target.base ? `${target.base.slice(0, 7)}..${target.oid.slice(0, 7)}` : target.oid.slice(0, 8)}
           </Badge>
         )}
         {target.unchanged ? (
