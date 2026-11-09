@@ -1396,6 +1396,123 @@ fn rebase_linearizes_history() {
     assert!(repo.dir.join("feature.txt").exists());
 }
 
+fn head_summaries(repo: &TempRepo) -> Vec<String> {
+    let git = git2::Repository::open(repo.path()).unwrap();
+    let mut walk = git.revwalk().unwrap();
+    walk.push_head().unwrap();
+    walk.map(|oid| {
+        git.find_commit(oid.unwrap())
+            .unwrap()
+            .summary()
+            .unwrap_or_default()
+            .to_string()
+    })
+    .collect()
+}
+
+fn rebase_in_progress(repo: &TempRepo) -> bool {
+    git2::Repository::open(repo.path()).unwrap().state() == git2::RepositoryState::RebaseMerge
+}
+
+fn topic_with_a_later_file(repo: &TempRepo) {
+    repo.write("a.txt", "base\n");
+    commit_all(repo, "base");
+    core::branch_create(repo.path(), "topic", None, false).unwrap();
+    repo.write("theirs.txt", "theirs\n");
+    commit_all(repo, "theirs");
+    core::checkout_branch(repo.path(), "topic").unwrap();
+    repo.write("first.txt", "first\n");
+    commit_all(repo, "first");
+    repo.write("later.txt", "later\n");
+    commit_all(repo, "add later");
+    std::fs::remove_file(repo.dir.join("later.txt")).unwrap();
+    commit_all(repo, "remove later");
+}
+
+#[test]
+fn continue_after_a_step_that_stopped_without_a_conflict_keeps_every_commit() {
+    let repo = TempRepo::new();
+    topic_with_a_later_file(&repo);
+    repo.write("later.txt", "mine, untracked\n");
+
+    let error = core::rebase(repo.path(), "master").unwrap_err().to_string();
+    assert!(rebase_in_progress(&repo));
+    assert!(error.contains("later.txt"), "{error}");
+    assert!(error.contains("add later"), "{error}");
+    assert!(!error.contains("class="), "{error}");
+
+    std::fs::remove_file(repo.dir.join("later.txt")).unwrap();
+    let outcome = core::rebase_continue(repo.path()).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert!(!rebase_in_progress(&repo));
+    assert_eq!(
+        head_summaries(&repo),
+        vec!["remove later", "add later", "first", "theirs", "base"]
+    );
+    assert!(!repo.dir.join("later.txt").exists());
+    assert!(repo.dir.join("first.txt").exists());
+}
+
+#[test]
+fn continue_while_the_file_is_still_in_the_way_stops_again_and_can_be_retried() {
+    let repo = TempRepo::new();
+    topic_with_a_later_file(&repo);
+    repo.write("later.txt", "mine, untracked\n");
+    core::rebase(repo.path(), "master").unwrap_err();
+
+    let error = core::rebase_continue(repo.path()).unwrap_err().to_string();
+    assert!(error.contains("later.txt"), "{error}");
+    assert!(rebase_in_progress(&repo));
+    assert_eq!(repo.read("later.txt"), "mine, untracked\n");
+    assert_eq!(head_summaries(&repo), vec!["first", "theirs", "base"]);
+
+    std::fs::remove_file(repo.dir.join("later.txt")).unwrap();
+    core::rebase_continue(repo.path()).unwrap();
+    assert_eq!(
+        head_summaries(&repo),
+        vec!["remove later", "add later", "first", "theirs", "base"]
+    );
+}
+
+#[test]
+fn a_stopped_step_that_conflicts_when_continued_pauses_for_resolution() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "topic", None, false).unwrap();
+    repo.write("a.txt", "theirs\n");
+    commit_all(&repo, "theirs");
+    core::checkout_branch(repo.path(), "topic").unwrap();
+    repo.write("a.txt", "mine\n");
+    repo.write("new.txt", "new\n");
+    commit_all(&repo, "mine");
+    std::fs::remove_file(repo.dir.join("new.txt")).unwrap();
+    commit_all(&repo, "drop new");
+    repo.write("new.txt", "in the way\n");
+
+    let error = core::rebase(repo.path(), "master").unwrap_err().to_string();
+    assert!(error.contains("new.txt"), "{error}");
+    std::fs::remove_file(repo.dir.join("new.txt")).unwrap();
+
+    let outcome = core::rebase_continue(repo.path()).unwrap();
+    assert_eq!(outcome.status, "conflicts");
+    assert!(repo.read("a.txt").contains("<<<<<<<"));
+    assert_eq!(repo.read("new.txt"), "new\n");
+    let conflicted = core::conflict_list(repo.path()).unwrap();
+    assert_eq!(conflicted, vec!["a.txt".to_string()]);
+
+    repo.write("a.txt", "resolved\n");
+    core::stage_all(repo.path()).unwrap();
+    let outcome = core::rebase_continue(repo.path()).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_eq!(
+        head_summaries(&repo),
+        vec!["drop new", "mine", "theirs", "base"]
+    );
+    assert_eq!(repo.read("a.txt"), "resolved\n");
+    assert!(!repo.dir.join("new.txt").exists());
+}
+
 #[test]
 fn interoperates_with_git_cli() {
     let repo = TempRepo::new();

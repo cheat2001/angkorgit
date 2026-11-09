@@ -31,6 +31,11 @@ All notable changes to AngKorGit are documented here. The format follows
   there is room, and the file name stays whole while the folder part shortens.
 
 ### Fixed
+- **Continue rebase no longer loses a commit** (#88). When a rebase stopped because
+  a file was in the way rather than on a conflict, Continue reported "Rebase complete"
+  but had skipped the commit it stopped on, and any later commit that built on it.
+  Continue now applies that commit again, the way `git rebase --continue` does, and the
+  stop itself names the file and the commit instead of a libgit2 error code.
 - **AI works with OpenAI's newer models** (#86). Reasoning models rejected the
   request because it named the answer length `max_tokens` and set a temperature they
   don't accept, so Test connection said the provider was reachable while every request
