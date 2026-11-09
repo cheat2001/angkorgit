@@ -6,12 +6,18 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-11-09
+
+The review release. Text is easier to read in every theme, diffs are calmer to review,
+and you can compare any two commits. It also fixes two bugs that cost people work:
+Continue rebase could drop a commit, and AI failed on OpenAI's newer models.
+
 ### Added
 - **Compare two commits** (#55). Select two commits in the graph and choose Compare
   these commits to see everything that changed between them, with the same file list,
   diff panel and all files view as a single commit. A swap button turns the direction
   around, and it works for commits on different branches too.
-- **Copy a code location from a diff** (#90). Right-click a line in a diff or in file
+- **Copy the path and line from a diff** (#90). Right-click a line in a diff or in file
   history and choose Copy path and line to get `path:line`, or `path:line:column`
   when you clicked on the code itself, ready to paste into Vim, Zed or VS Code.
 - **Show only the commits your search matches.** A search still highlights its
@@ -1928,7 +1934,8 @@ The first release. 🏛️
 - AI assistant with pluggable providers (OpenAI, Anthropic, Gemini, Ollama,
   LM Studio): commit messages, diff/conflict explanations, PR descriptions, reviews
 
-[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/cheat2001/angkorgit/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/cheat2001/angkorgit/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/cheat2001/angkorgit/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/cheat2001/angkorgit/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/cheat2001/angkorgit/compare/v0.23.0...v0.24.0
