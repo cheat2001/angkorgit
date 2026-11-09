@@ -12,8 +12,8 @@ All notable changes to AngKorGit are documented here. The format follows
   diff panel and all files view as a single commit. A swap button turns the direction
   around, and it works for commits on different branches too.
 - **Copy a code location from a diff** (#90). Right-click a line in a diff or in file
-  history and choose Copy location to get `path:line`, or `path:line:column` when you
-  clicked on the code itself, ready to paste into Vim, Zed or VS Code.
+  history and choose Copy path and line to get `path:line`, or `path:line:column`
+  when you clicked on the code itself, ready to paste into Vim, Zed or VS Code.
 - **Show only the commits your search matches.** A search still highlights its
   matches in the full graph. The new filter button next to the match counter narrows
   the graph to just those commits, for example every "into staging" merge, with the

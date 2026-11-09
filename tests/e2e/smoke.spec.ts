@@ -3937,11 +3937,11 @@ test('a diff line menu copies the file location with the clicked column', async 
   });
 
   await page.mouse.click(target.charX, target.y, { button: 'right' });
-  const item = page.getByRole('menuitem', { name: /Copy location/ });
+  const item = page.getByRole('menuitem', { name: /Copy path and line/ });
   await expect(item).toHaveAttribute('data-copy-location', `src/data/palette-seed.sql:${target.lineNo}:7`);
   await expect(item).toContainText(`palette-seed.sql:${target.lineNo}:7`);
   await item.click();
-  await expect(page.getByText('Location copied')).toBeVisible();
+  await expect(page.getByText('Path and line copied')).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __copied: string }).__copied)).toBe(
     `src/data/palette-seed.sql:${target.lineNo}:7`,
   );

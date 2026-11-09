@@ -574,10 +574,10 @@ export function FileHistoryPanel({ file }: { file: string }) {
                 data-copy-location={lineMenu.location}
                 onClick={() => {
                   void navigator.clipboard.writeText(lineMenu.location ?? '');
-                  toast.success('Location copied', { description: lineMenu.location });
+                  toast.success('Path and line copied', { description: lineMenu.location });
                 }}
               >
-                <MapPin /> Copy location
+                <MapPin /> Copy path and line
                 <span className="ml-auto max-w-48 truncate pl-6 font-mono text-[11px] text-faint">
                   {basename(lineMenu.location)}
                 </span>
