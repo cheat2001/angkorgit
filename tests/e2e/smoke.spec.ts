@@ -3887,3 +3887,66 @@ test('switching between dark and light recolours every control in the same frame
   await expect(page.locator('html')).not.toHaveClass(/no-transitions/);
   expect(await page.getByPlaceholder('Search commits…').evaluate((el) => getComputedStyle(el).transitionDuration)).not.toBe('0s');
 });
+
+test('a diff line menu copies the file location with the clicked column', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void ((window as unknown as { __copied: string }).__copied = text) },
+    });
+  });
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await page.getByText('palette-seed.sql').first().click();
+  await page.waitForSelector('[data-diff-layer] [data-diff-row]', { timeout: 10_000 });
+  await page.waitForTimeout(500);
+
+  const target = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-diff-pane="new"] [data-diff-layer] > [data-diff-row]')];
+    const row = rows.find((r) => {
+      const box = r.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + 30, box.top + box.height / 2);
+      const end = document.elementFromPoint(box.left + 600, box.top + box.height / 2);
+      return (r.textContent ?? '').length > 12 && (r.textContent ?? '').length < 60 && !!hit && r.contains(hit) && !!end && r.contains(end) && box.top > 120;
+    })!;
+    const gutter = [...document.querySelectorAll<HTMLElement>('div.absolute.left-0.flex.w-full')].find(
+      (g) => g.style.transform === row.style.transform && g.children.length >= 3,
+    )!;
+    const lineNo = gutter.children[1].textContent || gutter.children[0].textContent;
+    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    let remaining = 6;
+    let rect: DOMRect | null = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const length = node.textContent?.length ?? 0;
+      if (remaining < length) {
+        const range = document.createRange();
+        range.setStart(node, remaining);
+        range.setEnd(node, remaining + 1);
+        rect = range.getBoundingClientRect();
+        break;
+      }
+      remaining -= length;
+    }
+    const box = row.getBoundingClientRect();
+    return {
+      lineNo,
+      charX: rect!.left + rect!.width * 0.75,
+      y: box.top + box.height / 2,
+      endX: box.left + 600,
+    };
+  });
+
+  await page.mouse.click(target.charX, target.y, { button: 'right' });
+  const item = page.getByRole('menuitem', { name: /Copy location/ });
+  await expect(item).toHaveAttribute('data-copy-location', `src/data/palette-seed.sql:${target.lineNo}:7`);
+  await expect(item).toContainText(`palette-seed.sql:${target.lineNo}:7`);
+  await item.click();
+  await expect(page.getByText('Location copied')).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __copied: string }).__copied)).toBe(
+    `src/data/palette-seed.sql:${target.lineNo}:7`,
+  );
+
+  await page.mouse.click(target.endX, target.y, { button: 'right' });
+  await expect(item).toHaveAttribute('data-copy-location', `src/data/palette-seed.sql:${target.lineNo}`);
+  await page.keyboard.press('Escape');
+});

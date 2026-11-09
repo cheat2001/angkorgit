@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Columns2, Copy, FileCheck, FileText, GitCommitHorizontal, History, MousePointerClick, Pencil, Rows3, TextSelect, UserRoundSearch, WholeWord, WrapText, X } from 'lucide-react';
+import { Columns2, Copy, FileCheck, FileText, GitCommitHorizontal, History, MapPin, MousePointerClick, Pencil, Rows3, TextSelect, UserRoundSearch, WholeWord, WrapText, X } from 'lucide-react';
 import type { CommitInfo, FileDiff } from '@angkorgit/core';
 import {
   Badge,
@@ -34,6 +34,7 @@ import { useDiffFind } from '@/features/diff/diffSearch';
 import { useDiffSelectAll } from '@/features/diff/diffCopy';
 import { diffSelectionText } from '@/features/diff/diffSelection';
 import type { LineMenuInfo } from '@/features/diff/VirtualDiff';
+import { menuLocation } from '@/features/diff/lineLocation';
 
 const HISTORY_PAGE = 500;
 const COMMIT_ROW_ESTIMATE = 54;
@@ -133,6 +134,7 @@ export function FileHistoryPanel({ file }: { file: string }) {
     info: LineMenuInfo;
     selection: string;
     ranges: Range[];
+    location: string | null;
   } | null>(null);
   useKeepSelection(lineMenu?.ranges ?? null);
 
@@ -483,6 +485,7 @@ export function FileHistoryPanel({ file }: { file: string }) {
                     y: e.clientY,
                     info,
                     selection: diffSelectionText(scrollRef.current) ?? window.getSelection()?.toString() ?? '',
+                    location: menuLocation(e, info, diff),
                     ranges: captureSelectionRanges(),
                   });
                 }}
@@ -566,6 +569,20 @@ export function FileHistoryPanel({ file }: { file: string }) {
             >
               <Copy /> Copy line
             </DropdownMenuItem>
+            {lineMenu.location && (
+              <DropdownMenuItem
+                data-copy-location={lineMenu.location}
+                onClick={() => {
+                  void navigator.clipboard.writeText(lineMenu.location ?? '');
+                  toast.success('Location copied', { description: lineMenu.location });
+                }}
+              >
+                <MapPin /> Copy location
+                <span className="ml-auto max-w-48 truncate pl-6 font-mono text-[11px] text-faint">
+                  {basename(lineMenu.location)}
+                </span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={() => selectSide(lineMenu.info.side ?? 'new')}
             >

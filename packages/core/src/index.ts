@@ -16,6 +16,7 @@ export * from './diff/linePairs';
 export * from './diff/renderCap';
 export * from './diff/patchText';
 export * from './diff/locateLine';
+export * from './diff/location';
 export * from './conflicts/parse';
 export * from './ai/types';
 export * from './ai/style';

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Copy, FileText, History, Minus, Plus, SearchCheck, Space, Sparkles, TextSelect, Trash2, UserRoundSearch, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, FileText, History, MapPin, Minus, Plus, SearchCheck, Space, Sparkles, TextSelect, Trash2, UserRoundSearch, X } from 'lucide-react';
 import type { CommitFileInfo, FileDiff } from '@angkorgit/core';
 import { aiCapabilities, hasCommittedHistory, hasReviewableText, hashText, locateDiffLine, patchTextOf, PROJECT_REVIEW_FILE } from '@angkorgit/core';
 import {
@@ -31,6 +31,7 @@ import { EXPLAIN_WAIT_MESSAGES, REVIEW_WAIT_MESSAGES } from '@/features/ai/waitM
 import { fileAiKeyFor, useAiWork, type FileAiKind } from '@/features/ai/workStore';
 import { useShortcuts } from '@/shared/useShortcuts';
 import { basename, dirname } from '@/shared/utils';
+import { menuLocation } from './lineLocation';
 import { captureSelectionRanges, useKeepSelection } from '@/shared/useKeepSelection';
 import { useUi, type CenterDiffTarget } from '@/features/ui/store';
 import { DiffViewer } from './DiffViewer';
@@ -97,6 +98,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
     info: LineMenuInfo;
     selection: string;
     ranges: Range[];
+    location: string | null;
   } | null>(null);
   useKeepSelection(lineMenu?.ranges ?? null);
   const textDiff = diff && !diff.isBinary && !diff.isImage ? diff : null;
@@ -698,6 +700,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
                 y: e.clientY,
                 info,
                 selection: diffSelectionText(scrollRef.current) ?? window.getSelection()?.toString() ?? '',
+                location: menuLocation(e, info, diff),
                 ranges: captureSelectionRanges(),
               });
             }}
@@ -842,6 +845,20 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
             >
               <Copy /> Copy line
             </DropdownMenuItem>
+            {lineMenu.location && (
+              <DropdownMenuItem
+                data-copy-location={lineMenu.location}
+                onClick={() => {
+                  void navigator.clipboard.writeText(lineMenu.location ?? '');
+                  toast.success('Location copied', { description: lineMenu.location });
+                }}
+              >
+                <MapPin /> Copy location
+                <span className="ml-auto max-w-48 truncate pl-6 font-mono text-[11px] text-faint">
+                  {basename(lineMenu.location)}
+                </span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={() => selectSide(lineMenu.info.side ?? 'new')}
             >
