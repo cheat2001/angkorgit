@@ -46,7 +46,7 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ### Fixed
 - **Discarding several files, or all staged changes, no longer stops at a file it
-  cannot remove.** The other files are still restored, and AngKorGit names the files
+  cannot discard.** The other files are still restored, and AngKorGit names the files
   it could not discard instead of reporting every change as discarded.
 
 ## [0.27.0] — 2026-11-09
