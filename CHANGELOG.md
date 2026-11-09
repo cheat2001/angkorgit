@@ -31,6 +31,12 @@ All notable changes to AngKorGit are documented here. The format follows
   there is room, and the file name stays whole while the folder part shortens.
 
 ### Fixed
+- **AI works with OpenAI's newer models** (#86). Reasoning models rejected the
+  request because it named the answer length `max_tokens` and set a temperature they
+  don't accept, so Test connection said the provider was reachable while every request
+  failed. AngKorGit now sends what OpenAI expects, adjusts when a provider turns a
+  setting down, and gives a model that runs out of room while thinking a second try
+  with more of it.
 - **Switching between dark and light no longer flickers.** Search boxes, buttons and
   checkboxes used to fade from the old colours for a moment after the rest of the
   window had already changed. Now everything changes in the same frame, and the

@@ -33,6 +33,62 @@ async function postJson(
   }
 }
 
+type TokenParam = 'max_tokens' | 'max_completion_tokens';
+
+interface ChatShape {
+  tokenParam: TokenParam;
+  temperature: boolean;
+  minTokens: number;
+}
+
+export const REASONING_MIN_TOKENS = 8192;
+
+const chatShapes = new Map<string, ChatShape>();
+
+export function resetChatShapes(): void {
+  chatShapes.clear();
+}
+
+function isOfficialOpenAi(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname === 'api.openai.com';
+  } catch {
+    return false;
+  }
+}
+
+function rejectedParam(status: number, body: string): string | null {
+  if (status !== 400 && status !== 422) return null;
+  let param: unknown = null;
+  let message = body;
+  try {
+    const parsed = JSON.parse(body) as { error?: { param?: unknown; message?: unknown } };
+    param = parsed.error?.param;
+    if (typeof parsed.error?.message === 'string') message = parsed.error.message;
+  } catch {
+    message = body;
+  }
+  if (typeof param === 'string' && ADJUSTABLE_PARAMS.test(param)) return param;
+  if (!/unsupported|not supported|unrecognized|unknown|does not support/i.test(message)) return null;
+  return FIRST_ADJUSTABLE_PARAM.exec(message)?.[1] ?? null;
+}
+
+const ADJUSTABLE_PARAMS = /^(max_completion_tokens|max_tokens|temperature)$/;
+const FIRST_ADJUSTABLE_PARAM = /\b(max_completion_tokens|max_tokens|temperature)\b/;
+
+function adapted(shape: ChatShape, param: string, swappedTokens: boolean): ChatShape | null {
+  if (param === 'temperature' && shape.temperature) return { ...shape, temperature: false };
+  if (param === shape.tokenParam && !swappedTokens) {
+    return { ...shape, tokenParam: shape.tokenParam === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens' };
+  }
+  return null;
+}
+
+interface ChatResponse {
+  choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+  usage?: { completion_tokens_details?: { reasoning_tokens?: number } };
+}
+
 function openAiCompatible(
   id: AiProviderKind,
   label: string,
@@ -41,25 +97,74 @@ function openAiCompatible(
   defaultBaseUrl: string,
 ): AiProvider {
   const baseUrl = (config.baseUrl || defaultBaseUrl).replace(/\/$/, '');
+  const shapeKey = `${baseUrl}|${config.model}`;
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...(config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {}),
+  };
+  const send = (request: AiCompletionRequest, shape: ChatShape) => {
+    const budget = Math.max(request.maxTokens ?? 1024, shape.minTokens);
+    return http({
+      url: `${baseUrl}/chat/completions`,
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: config.model,
+        messages: request.messages,
+        [shape.tokenParam]: budget,
+        ...(shape.temperature ? { temperature: request.temperature ?? 0.4 } : {}),
+      }),
+    });
+  };
   return {
     id,
     label,
     async complete(request: AiCompletionRequest): Promise<AiCompletionResult> {
-      const data = (await postJson(
-        http,
-        `${baseUrl}/chat/completions`,
-        config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {},
-        {
-          model: config.model,
-          messages: request.messages,
-          max_tokens: request.maxTokens ?? 1024,
-          temperature: request.temperature ?? 0.4,
-        },
-        label,
-      )) as { choices?: Array<{ message?: { content?: string } }> };
-      const text = data.choices?.[0]?.message?.content;
-      if (typeof text !== 'string' || !text.trim()) throw new AiError(`${label} returned no content`, label);
-      return { text, model: config.model, provider: id };
+      let shape: ChatShape = chatShapes.get(shapeKey) ?? {
+        tokenParam: isOfficialOpenAi(baseUrl) ? 'max_completion_tokens' : 'max_tokens',
+        temperature: true,
+        minTokens: 0,
+      };
+      let widened = false;
+      let swappedTokens = false;
+      for (;;) {
+        const res = await send(request, shape);
+        if (res.status < 200 || res.status >= 300) {
+          const param = rejectedParam(res.status, res.body);
+          const next: ChatShape | null = param ? adapted(shape, param, swappedTokens) : null;
+          if (next) {
+            swappedTokens ||= next.tokenParam !== shape.tokenParam;
+            shape = next;
+            continue;
+          }
+          throw new AiError(`${label} request failed (${res.status}): ${res.body.slice(0, 300)}`, label, res.status);
+        }
+        let data: ChatResponse;
+        try {
+          data = JSON.parse(res.body) as ChatResponse;
+        } catch {
+          throw new AiError(`${label} returned invalid JSON`, label);
+        }
+        const choice = data.choices?.[0];
+        const text = choice?.message?.content;
+        if (typeof text === 'string' && text.trim()) {
+          chatShapes.set(shapeKey, shape);
+          return { text, model: config.model, provider: id };
+        }
+        const reasoning = data.usage?.completion_tokens_details?.reasoning_tokens ?? 0;
+        if (choice?.finish_reason === 'length') {
+          if (reasoning > 0 && !widened) {
+            widened = true;
+            shape = { ...shape, minTokens: Math.max(REASONING_MIN_TOKENS, (request.maxTokens ?? 1024) * 4) };
+            continue;
+          }
+          throw new AiError(
+            `${label} used its whole token budget${reasoning > 0 ? ' thinking' : ''} before it wrote an answer. Try a model with less reasoning, or a shorter change.`,
+            label,
+          );
+        }
+        throw new AiError(`${label} returned no content`, label);
+      }
     },
     async ping() {
       try {
