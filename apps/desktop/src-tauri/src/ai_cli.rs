@@ -1331,13 +1331,16 @@ mod tests {
         command.args(["/C", "exit 0"]);
         let mut tree = spawn_tree(command, true).unwrap();
         assert!(tree.child.wait().unwrap().success());
+        drop(tree.child);
         let mut background = BackgroundProcesses {
             leftovers: tree.leftovers,
             deadline: Instant::now() + Duration::from_secs(20),
             stop_deadline: None,
         };
         assert!(background.is_tracking());
-        assert!(!background.retain_for_cancel());
+        assert!(wait_for_process_exit(PROCESS_EXIT_GRACE, || {
+            Some(!background.retain_for_cancel())
+        }));
         assert!(!background.is_tracking());
     }
 

@@ -4407,6 +4407,10 @@ update CLAUDE.md or docs/ — never the code.
   and resumes it. Assigning the job after Git started let fast hooks escape tracking.
   The job handle can close while processes still run. A job setup or resume failure
   reports a hook launch warning on the group row and terminates Git if it was spawned.
+  The empty-job regression test drops the reaped child handle, then polls with a
+  deadline. Windows job accounting can still report active processes while a
+  reference to the exited process remains open; waiting on the child alone does
+  not close its handle. See Microsoft's [ActiveProcesses documentation](https://learn.microsoft.com/windows/win32/api/winnt/ns-winnt-jobobject_basic_accounting_information).
   Cancel stops new local writes and polls tracked background hooks while active
   writes and foreground hooks finish. It polls each hook's deadline and termination
   grace period independently, then adds the collected warnings to the final receipt
