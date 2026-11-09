@@ -232,6 +232,7 @@ pub(crate) fn spawn_tree(
     #[cfg(unix)]
     let leftovers = if track_descendants {
         Some(Leftovers {
+            pgid: child.id(),
             #[cfg(target_os = "linux")]
             group: ProcessGroup::open(&child),
         })
@@ -338,7 +339,16 @@ impl ProcessGroup {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProcessState {
+    Running,
+    Empty,
+    Unknown,
+}
+
 struct Leftovers {
+    #[cfg(unix)]
+    pgid: u32,
     #[cfg(target_os = "linux")]
     group: Option<ProcessGroup>,
     #[cfg(windows)]
@@ -369,33 +379,42 @@ impl BackgroundProcesses {
     }
 
     pub(crate) fn retain_for_cancel(&mut self) -> bool {
-        if self
+        match self
             .leftovers
             .as_ref()
-            .is_some_and(|group| !group.running())
+            .map_or(ProcessState::Unknown, Leftovers::probe)
         {
-            self.leftovers = None;
+            ProcessState::Empty => {
+                self.leftovers = None;
+                false
+            }
+            ProcessState::Running => true,
+            ProcessState::Unknown => {
+                self.leftovers = None;
+                true
+            }
         }
-        cfg!(unix) || self.leftovers.is_some()
     }
 
     pub(crate) fn poll_on_cancel(&mut self) -> CancelPoll<CancelOutcome> {
-        let unconfirmed = || CancelPoll::Finished(cfg!(unix).then_some(CancelOutcome::Unconfirmed));
         let Some(leftovers) = &self.leftovers else {
-            return unconfirmed();
+            return CancelPoll::Finished(Some(CancelOutcome::Unconfirmed));
         };
-        let running = leftovers.running();
+        let state = leftovers.probe();
         let now = Instant::now();
         if let Some(deadline) = self.stop_deadline {
-            if running && now < deadline {
+            if state == ProcessState::Running && now < deadline {
                 return CancelPoll::Waiting(deadline);
             }
             return CancelPoll::Finished(Some(CancelOutcome::TimedOut {
-                confirmed: cfg!(windows) && !running,
+                confirmed: cfg!(windows) && state == ProcessState::Empty,
             }));
         }
-        if !running {
-            return unconfirmed();
+        if state == ProcessState::Empty {
+            return CancelPoll::Finished(None);
+        }
+        if state == ProcessState::Unknown || !leftovers.can_stop() {
+            return CancelPoll::Finished(Some(CancelOutcome::Unconfirmed));
         }
         if now < self.deadline {
             return CancelPoll::Waiting(self.deadline);
@@ -426,14 +445,53 @@ impl BackgroundProcesses {
 }
 
 impl Leftovers {
-    fn running(&self) -> bool {
+    fn probe(&self) -> ProcessState {
         #[cfg(target_os = "linux")]
+        if let Some(group) = &self.group {
+            return if group.signal(0) {
+                ProcessState::Running
+            } else if std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+                ProcessState::Empty
+            } else {
+                ProcessState::Unknown
+            };
+        }
+        #[cfg(unix)]
         {
-            self.group.as_ref().is_some_and(|group| group.signal(0))
+            let Ok(pgid) = libc::pid_t::try_from(self.pgid) else {
+                return ProcessState::Unknown;
+            };
+            if unsafe { libc::killpg(pgid, 0) } == 0 {
+                return ProcessState::Running;
+            }
+            match std::io::Error::last_os_error().raw_os_error() {
+                Some(libc::ESRCH) => ProcessState::Empty,
+                Some(libc::EPERM) => ProcessState::Running,
+                _ => ProcessState::Unknown,
+            }
         }
         #[cfg(windows)]
         {
-            self.job.running()
+            if self.job.running() {
+                ProcessState::Running
+            } else {
+                ProcessState::Empty
+            }
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            ProcessState::Unknown
+        }
+    }
+
+    fn can_stop(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.group.is_some()
+        }
+        #[cfg(windows)]
+        {
+            true
         }
         #[cfg(not(any(target_os = "linux", windows)))]
         {
@@ -446,7 +504,7 @@ impl Leftovers {
         {
             kill_tree(child);
             let _ = wait_for_process_exit(PROCESS_EXIT_GRACE, || {
-                Some(child.try_wait().ok()?.is_some() && !self.running())
+                Some(child.try_wait().ok()?.is_some() && self.probe() != ProcessState::Running)
             });
             false
         }
@@ -1260,6 +1318,29 @@ mod tests {
         assert!(run.exit_unconfirmed);
     }
 
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn retain_for_cancel_drops_an_exit_zero_tree() {
+        #[cfg(unix)]
+        let mut command = crate::proc::hidden("/bin/sh");
+        #[cfg(unix)]
+        command.args(["-c", "exit 0"]);
+        #[cfg(windows)]
+        let mut command = crate::proc::hidden("cmd");
+        #[cfg(windows)]
+        command.args(["/C", "exit 0"]);
+        let mut tree = spawn_tree(command, true).unwrap();
+        assert!(tree.child.wait().unwrap().success());
+        let mut background = BackgroundProcesses {
+            leftovers: tree.leftovers,
+            deadline: Instant::now() + Duration::from_secs(20),
+            stop_deadline: None,
+        };
+        assert!(background.is_tracking());
+        assert!(!background.retain_for_cancel());
+        assert!(!background.is_tracking());
+    }
+
     #[cfg(unix)]
     #[test]
     fn cancellation_waits_for_background_work_to_finish() {
@@ -1282,17 +1363,29 @@ mod tests {
         let (run, background) = run_test_tree(child, Duration::from_secs(20));
         assert!(!marker.exists());
         let background = background.unwrap();
-        let tracks_group = background.is_tracking();
+        assert!(background.is_tracking());
+        let can_stop = background
+            .leftovers
+            .as_ref()
+            .is_some_and(Leftovers::can_stop);
         assert_eq!(
             background.wait_on_cancel(),
-            Some(CancelOutcome::Unconfirmed)
+            if can_stop {
+                None
+            } else {
+                Some(CancelOutcome::Unconfirmed)
+            }
         );
         let written = marker.exists();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !marker.exists() && Instant::now() < deadline {
+            std::thread::sleep(PROCESS_POLL_INTERVAL);
+        }
         std::fs::remove_dir_all(&dir).ok();
         assert!(!run.timed_out);
         assert_eq!(run.captured.stdout.trim(), "done");
         assert!(
-            !tracks_group || written,
+            !can_stop || written,
             "the run returned before its background work finished"
         );
     }
@@ -1308,9 +1401,13 @@ mod tests {
         assert!(!run.timed_out);
         let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
         let processes = processes.unwrap();
-        let tracks_group = processes.is_tracking();
+        assert!(processes.is_tracking());
+        let can_stop = processes
+            .leftovers
+            .as_ref()
+            .is_some_and(Leftovers::can_stop);
         let outcome = processes.wait_on_cancel();
-        if !tracks_group {
+        if !can_stop {
             unsafe { libc::kill(background, libc::SIGKILL) };
             assert_eq!(outcome, Some(CancelOutcome::Unconfirmed));
             return;
@@ -1358,7 +1455,12 @@ mod tests {
         command.arg("-c").arg("exec sleep 30");
         let mut unrelated = spawn_tree(command, false).unwrap();
         assert_eq!(unrelated.child.id(), group);
-        let outcome = background.unwrap().wait_on_cancel();
+        let background = background.unwrap();
+        let can_stop = background
+            .leftovers
+            .as_ref()
+            .is_some_and(Leftovers::can_stop);
+        let outcome = background.wait_on_cancel();
         let survived = unrelated.child.try_wait().unwrap().is_none();
         if survived {
             unrelated.child.kill().unwrap();
@@ -1366,7 +1468,14 @@ mod tests {
         unrelated.child.wait().unwrap();
 
         assert!(survived, "Cancel killed the unrelated process group");
-        assert_eq!(outcome, Some(CancelOutcome::Unconfirmed));
+        assert_eq!(
+            outcome,
+            if can_stop {
+                None
+            } else {
+                Some(CancelOutcome::Unconfirmed)
+            }
+        );
     }
 
     #[cfg(unix)]

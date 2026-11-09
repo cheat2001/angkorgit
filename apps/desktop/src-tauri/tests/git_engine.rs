@@ -6750,6 +6750,28 @@ fn group_pull_runs_post_merge_only_where_it_fast_forwarded() {
 }
 
 #[test]
+fn group_cancel_does_not_warn_after_an_exit_zero_post_merge_hook() {
+    if !hooks_runnable() {
+        return;
+    }
+    let scene = PullScene::new();
+    write_hook(&default_hooks(&scene.other), "post-merge", "exit 0");
+    scene.upstream_commit("a.txt", "next\n", "next");
+    let control = core::GroupUpdateControl::default();
+    let pulled = core::group_update_controlled(scene.other.path(), true, &control).unwrap();
+    assert_eq!(pulled.status, "ok");
+    assert!(pulled.hook_warnings.is_empty());
+    let receipts = control.cancel_results().unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].result.status, "ok");
+    assert!(
+        receipts[0].result.hook_warnings.is_empty(),
+        "{:?}",
+        receipts[0].result.hook_warnings
+    );
+}
+
+#[test]
 fn group_pull_leaves_background_hooks_running_and_reports_their_state_on_cancel() {
     use std::time::{Duration, Instant};
 
@@ -6789,7 +6811,7 @@ fn group_pull_leaves_background_hooks_running_and_reports_their_state_on_cancel(
     let cancel_marker = also_behind.dir.join(".git/background-done");
     assert!(!cancel_marker.exists());
     let receipts = control.cancel_results().unwrap();
-    if cfg!(windows) {
+    if cfg!(any(target_os = "linux", windows)) {
         assert!(
             cancel_marker.exists(),
             "Cancel returned before background work finished"
@@ -6798,7 +6820,7 @@ fn group_pull_leaves_background_hooks_running_and_reports_their_state_on_cancel(
     assert_eq!(receipts.len(), 1);
     assert_eq!(receipts[0].result.status, "ok");
     let warnings = &receipts[0].result.hook_warnings;
-    if cfg!(unix) {
+    if cfg!(all(unix, not(target_os = "linux"))) {
         assert_eq!(warnings.len(), 1);
         assert!(!warnings[0].timed_out);
         assert!(warnings[0]
@@ -6825,7 +6847,7 @@ fn group_pull_leaves_background_hooks_running_and_reports_their_state_on_cancel(
 
 #[cfg(target_os = "linux")]
 #[test]
-fn group_cancel_warns_when_a_successful_hook_left_its_process_group() {
+fn group_cancel_does_not_see_a_hook_child_that_left_its_process_group() {
     use std::time::{Duration, Instant};
 
     if !hooks_runnable() {
@@ -6888,18 +6910,11 @@ fn group_cancel_warns_when_a_successful_hook_left_its_process_group() {
         "the detached child could still write after Cancel"
     );
 
-    let receipt = receipts
-        .iter()
-        .find(|receipt| receipt.path == detached.path())
-        .unwrap();
-    assert_eq!(receipt.result.status, "ok");
-    assert_eq!(receipt.result.hook_warnings.len(), 1);
-    let warning = &receipt.result.hook_warnings[0];
-    assert_eq!(warning.hook, "post-merge");
-    assert!(!warning.timed_out);
-    assert!(warning
-        .message
-        .contains("could not confirm that all processes exited"));
+    assert_eq!(receipts.len(), 2);
+    for receipt in receipts {
+        assert_eq!(receipt.result.status, "ok");
+        assert!(receipt.result.hook_warnings.is_empty());
+    }
     std::fs::remove_dir_all(origin).unwrap();
 }
 

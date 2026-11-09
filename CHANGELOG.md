@@ -45,6 +45,10 @@ All notable changes to AngKorGit are documented here. The format follows
   `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
 
 ### Fixed
+- **Cancel no longer warns about hooks that already finished.** Pull all treats an
+  empty hook process group as finished on macOS and Linux, including an `exit 0` hook.
+  A live group without a safe signalling handle still warns immediately. Children
+  that leave the group with `setsid` or daemonize are not tracked, as with Git.
 - **Discarding several files, or all staged changes, no longer stops at a file it
   cannot discard.** The other files are still restored, and AngKorGit names the files
   it could not discard instead of reporting every change as discarded.
