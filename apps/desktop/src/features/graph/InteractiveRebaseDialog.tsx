@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { GitCommitHorizontal, GripVertical } from 'lucide-react';
@@ -107,9 +108,7 @@ export function InteractiveRebaseDialog() {
         setLoading(false);
       } catch (error) {
         if (!stillOpenFor(baseOid)) return;
-        toast.error(
-          `Interactive rebase failed: ${(error as { message?: string }).message ?? error}`,
-        );
+        toastActionError('Interactive rebase failed', error);
         useUi.getState().closeDialog();
       }
     })();
@@ -169,9 +168,7 @@ export function InteractiveRebaseDialog() {
       await useRepo.getState().refresh();
       await useGraph.getState().reload(path);
     } catch (error) {
-      toast.error(
-        `Interactive rebase failed: ${(error as { message?: string }).message ?? error}`,
-      );
+      toastActionError('Interactive rebase failed', error);
     } finally {
       setExecuting(false);
     }

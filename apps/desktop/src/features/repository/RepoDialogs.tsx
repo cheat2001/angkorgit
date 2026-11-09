@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -74,7 +75,7 @@ export function RepoDialogs({ onDone }: { onDone: () => Promise<void> }) {
       closeDialog();
       await onDone();
     } catch (error) {
-      toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError(`${label} failed`, error);
     } finally {
       setBusy(false);
     }

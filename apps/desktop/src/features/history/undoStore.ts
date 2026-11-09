@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { create } from 'zustand';
 import { toast } from 'sonner';
 import { ipc } from '@/core/ipc';
@@ -187,7 +188,7 @@ export const useUndo = create<UndoState>((set, get) => ({
       toast.success(`Undid: ${entry.label}`);
       return true;
     } catch (error) {
-      toast.error(`Undo failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Undo failed', error);
       return false;
     }
   },
@@ -217,7 +218,7 @@ export const useUndo = create<UndoState>((set, get) => ({
       toast.success(`Redid: ${entry.label}`);
       return true;
     } catch (error) {
-      toast.error(`Redo failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Redo failed', error);
       return false;
     }
   },

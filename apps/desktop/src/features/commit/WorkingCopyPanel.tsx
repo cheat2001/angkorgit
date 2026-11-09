@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
@@ -462,7 +463,7 @@ export function WorkingCopyPanel() {
           );
         }
       } catch (error) {
-        toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
+        toastActionError('Discard failed', error);
       }
     },
     [path, refreshStatus],
@@ -499,7 +500,7 @@ export function WorkingCopyPanel() {
         toast.success(`Discarded ${before} change${before === 1 ? '' : 's'}`);
       }
     } catch (error) {
-      toast.error(`Discard all failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Discard all failed', error);
     }
   };
 
@@ -526,7 +527,7 @@ export function WorkingCopyPanel() {
     try {
       batch = await ipc.discardFiles(path, paths, staged);
     } catch (error) {
-      toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Discard failed', error);
       await refreshStatus();
       return;
     }
@@ -571,7 +572,7 @@ export function WorkingCopyPanel() {
     try {
       batch = await ipc.discardStagedAll(path);
     } catch (error) {
-      toast.error(`Discard failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Discard failed', error);
       await refreshStatus();
       return;
     }

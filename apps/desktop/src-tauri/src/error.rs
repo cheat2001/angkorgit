@@ -10,6 +10,8 @@ pub enum AppError {
     Other(String),
     #[error("no repository is open")]
     NoRepository,
+    #[error("{} is still running in {repo}", hook.as_deref().unwrap_or("Another operation"))]
+    Busy { hook: Option<String>, repo: String },
     #[error("operation would conflict: {0}")]
     Conflict(String),
     #[error("The {hook} hook failed (exit code {status}).")]
@@ -108,6 +110,7 @@ impl AppError {
             },
             AppError::Other(_) => "other",
             AppError::NoRepository => "no_repository",
+            AppError::Busy { .. } => "operation_running",
             AppError::Conflict(_) => "conflict",
             AppError::Hook { .. } => "hook_failed",
             AppError::HookTimeout { .. } => "hook_timeout",
@@ -210,6 +213,26 @@ mod tests {
             "denied",
         ));
         assert_eq!(denied.code(), "io");
+    }
+
+    #[test]
+    fn busy_operations_name_the_running_hook_and_repository() {
+        for (hook, message) in [
+            (
+                Some("post-checkout".to_string()),
+                "post-checkout is still running in angkorgit",
+            ),
+            (None, "Another operation is still running in angkorgit"),
+        ] {
+            let error = AppError::Busy {
+                hook,
+                repo: "angkorgit".into(),
+            };
+            let payload = serde_json::to_value(error).unwrap();
+            assert_eq!(payload["code"], "operation_running");
+            assert_eq!(payload["message"], message);
+            assert!(payload.get("detail").is_none());
+        }
     }
 
     #[test]

@@ -1,3 +1,4 @@
+import { toastActionError } from './actionError';
 import { useEffect, useMemo, useState } from 'react';
 import { chordLabels, groupRepos, parseChordId, pickRemote, pushSetsUpstream, type RecentRepository } from '@angkorgit/core';
 import { useNavigate } from 'react-router-dom';
@@ -251,7 +252,7 @@ function StateActions({ onRefresh }: { onRefresh: () => Promise<void> }) {
         const outcome = await ipc.rebaseContinue(path);
         toastOutcome(outcome, 'Rebase continued');
       } catch (error) {
-        toast.error(`Continue failed: ${(error as { message?: string }).message ?? error}`);
+        toastActionError('Continue failed', error);
       }
       finish();
     })();
@@ -489,11 +490,12 @@ export function Toolbar({ onRefresh }: { onRefresh: () => Promise<void> }) {
         onNonFastForward();
         return;
       }
-      const text = String((error as { message?: string }).message ?? error);
-      const [headline, ...rest] = text.split('\n');
-      toast.error(`${label} failed: ${headline}`, {
-        description: rest.length > 0 ? <span className="whitespace-pre-line font-mono text-[11px]">{rest.join('\n')}</span> : undefined,
-        duration: rest.length > 0 ? 12_000 : undefined,
+      toastActionError(`${label} failed`, error, (text) => {
+        const [headline, ...rest] = text.split('\n');
+        toast.error(`${label} failed: ${headline}`, {
+          description: rest.length > 0 ? <span className="whitespace-pre-line font-mono text-[11px]">{rest.join('\n')}</span> : undefined,
+          duration: rest.length > 0 ? 12_000 : undefined,
+        });
       });
     } finally {
       setBusy(null);

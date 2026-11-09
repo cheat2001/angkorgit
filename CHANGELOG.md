@@ -45,6 +45,9 @@ All notable changes to AngKorGit are documented here. The format follows
   `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
 
 ### Fixed
+- **A running hook gets an info toast when you try another operation.** It names
+  the hook and repository, such as "post-checkout is still running in angkorgit",
+  while the progress toast stays visible.
 - **Cancel no longer warns about hooks that already finished.** Pull all treats an
   empty hook process group as finished on macOS and Linux, including an `exit 0` hook.
   A live group without a safe signalling handle still warns immediately. Children

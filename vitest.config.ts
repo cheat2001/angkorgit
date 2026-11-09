@@ -6,6 +6,7 @@ export default defineConfig({
     alias: {
       '@angkorgit/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
       '@/shared/highlight': path.resolve(__dirname, 'apps/desktop/src/shared/highlight.ts'),
+      sonner: path.resolve(__dirname, 'apps/desktop/node_modules/sonner'),
       'highlight.js': path.resolve(__dirname, 'apps/desktop/node_modules/highlight.js'),
     },
   },

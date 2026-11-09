@@ -1234,7 +1234,12 @@ test('a running post-checkout is visible and prevents another checkout in the sa
   await expect(running).toBeVisible();
   const main = page.getByTitle('main — click to filter graph, double-click to checkout');
   await main.dblclick();
-  await expect(page.getByText(/Checkout main failed: Another operation is still running/)).toBeVisible();
+  await expect(page.locator('[data-sonner-toast][data-type="info"]', {
+    hasText: 'post-checkout is still running in angkorgit',
+  })).toBeVisible();
+  await page.waitForTimeout(150);
+  expect(await page.getByText(/Checkout main failed/).count()).toBe(0);
+  await expect(running).toBeVisible();
   await expect(page.getByText('Checkout develop done')).toBeVisible();
   await expect(running).toBeHidden();
 

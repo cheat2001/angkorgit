@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
@@ -440,7 +441,7 @@ export function CommitDetails({
       await reloadGraph(repoPath);
       select(newOid);
     } catch (error) {
-      toast.error(`Could not update the message: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Could not update the message', error);
     } finally {
       setSaving(false);
     }
@@ -581,7 +582,7 @@ export function CommitDetails({
       );
       setPicked(new Set());
     } catch (error) {
-      toast.error(`Apply failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Apply failed', error);
     }
   };
 

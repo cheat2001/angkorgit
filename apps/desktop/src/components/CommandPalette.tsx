@@ -1,3 +1,4 @@
+import { toastActionError } from './actionError';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
@@ -173,7 +174,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
           reportHookFailure({ repoPath: path, operation: 'push', error, retry: retryWithoutHooks });
           return;
         }
-        toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
+        toastActionError(`${label} failed`, error);
       }
     })();
   };
@@ -207,7 +208,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
         const outcome = await ipc.rebaseContinue(path);
         toastOutcome(outcome, 'Rebase continued');
       } catch (error) {
-        toast.error(`Continue failed: ${(error as { message?: string }).message ?? error}`);
+        toastActionError('Continue failed', error);
       }
       await onRefresh();
     })();
@@ -512,7 +513,7 @@ export function CommandPalette({ onRefresh }: { onRefresh: () => Promise<void> }
                   onSelect={() => {
                     close();
                     void open(w.path).catch((error) =>
-                      toast.error(`Could not open worktree: ${(error as { message?: string }).message ?? error}`),
+                      toastActionError('Could not open worktree', error),
                     );
                   }}
                 />

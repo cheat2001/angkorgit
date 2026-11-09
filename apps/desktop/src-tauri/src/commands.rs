@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
@@ -34,7 +34,7 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| crate::error::AppError::other(e.to_string()))?
 }
 
-static HOOKED_OPERATIONS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+static HOOKED_OPERATIONS: OnceLock<Mutex<HashMap<PathBuf, Option<String>>>> = OnceLock::new();
 
 struct HookedOperation(PathBuf);
 
@@ -45,11 +45,17 @@ impl HookedOperation {
             .get_or_init(Mutex::default)
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        if !active.insert(path.clone()) {
-            return Err(AppError::other(
-                "Another operation is still running in this repository",
-            ));
+        if let Some(hook) = active.get(&path) {
+            return Err(AppError::Busy {
+                hook: hook.clone(),
+                repo: path
+                    .file_name()
+                    .unwrap_or(path.as_os_str())
+                    .to_string_lossy()
+                    .into_owned(),
+            });
         }
+        active.insert(path.clone(), None);
         Ok(Self(path))
     }
 }
@@ -79,9 +85,18 @@ async fn blocking_post_hooks<T: Send + 'static>(
 ) -> AppResult<T> {
     let app = app.clone();
     blocking(move || {
-        let _operation = HookedOperation::start(PathBuf::from(&path))?;
+        let operation = HookedOperation::start(PathBuf::from(&path))?;
+        let operation_path = operation.0.clone();
         hooks::observe_post_hooks(
             move |workdir, hook, running| {
+                if let Some(active_hook) = HOOKED_OPERATIONS
+                    .get_or_init(Mutex::default)
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .get_mut(&operation_path)
+                {
+                    *active_hook = running.then(|| hook.to_string());
+                }
                 let workdir = workdir.to_string_lossy();
                 let _ = app.emit(
                     "post-hook-progress",

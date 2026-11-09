@@ -212,14 +212,15 @@ function demoPostHookWarning(path: string, hook: string): HookWarningEvent {
   };
 }
 
-const demoRunningPostHooks = new Set<string>();
+const demoRunningPostHooks = new Map<string, string>();
 
 async function demoRunPostHook(path: string, hook: string, noVerify = false, reportWarning = true): Promise<HookWarningEvent | null> {
-  if (demoRunningPostHooks.has(path)) throw new Error('Another operation is still running in this repository');
+  const runningHook = demoRunningPostHooks.get(path);
+  if (runningHook) throw { code: 'operation_running', message: `${runningHook} is still running in ${path.split(/[\\/]/).filter(Boolean).pop() ?? path}` };
   const mode = demoPostHooks();
   if (!mode || noVerify) return null;
   const progress: PostHookProgress = { repoPath: path, hook, running: true };
-  demoRunningPostHooks.add(path);
+  demoRunningPostHooks.set(path, hook);
   demoEmit('post-hook-progress', progress);
   try {
     await delay(demoHooksDelay());

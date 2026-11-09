@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { toastOutcome } from '@/shared/toastOutcome';
@@ -324,7 +325,7 @@ export function Sidebar() {
         reportHookFailure({ repoPath: path, operation: 'push', error, retry: retryWithoutHooks });
         return;
       }
-      toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError(`${label} failed`, error);
     }
   };
 
@@ -400,7 +401,7 @@ export function Sidebar() {
       }
       await act(`Merge ${source} into ${target}`, () => ipc.merge(path, source, noFf), { kind: 'merge' });
     } catch (error) {
-      toast.error(`Merge failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Merge failed', error);
     }
   };
 
@@ -418,7 +419,7 @@ export function Sidebar() {
       }
       await act(`Rebase ${source} onto ${target}`, () => ipc.rebase(path, target), { kind: 'rebase' });
     } catch (error) {
-      toast.error(`Rebase failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Rebase failed', error);
     }
   };
 
