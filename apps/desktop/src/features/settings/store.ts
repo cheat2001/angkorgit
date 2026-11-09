@@ -68,15 +68,27 @@ export const THEMES: ThemeMeta[] = [
 export const themeBase = (id: Theme): 'dark' | 'light' =>
   THEMES.find((t) => t.id === id)?.base ?? 'dark';
 
-export function applyTheme(theme: Theme): void {
+const NO_TRANSITIONS_CLASS = 'no-transitions';
+
+function withoutTransitions(change: () => void): void {
   const el = document.documentElement;
-  const base = themeBase(theme);
-  el.classList.toggle('dark', base === 'dark');
-  el.classList.toggle('light', base === 'light');
-  for (const cls of Array.from(el.classList)) {
-    if (cls.startsWith('theme-')) el.classList.remove(cls);
-  }
-  if (theme !== 'dark' && theme !== 'light') el.classList.add(`theme-${theme}`);
+  el.classList.add(NO_TRANSITIONS_CLASS);
+  change();
+  void getComputedStyle(document.body ?? el).backgroundColor;
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove(NO_TRANSITIONS_CLASS)));
+}
+
+export function applyTheme(theme: Theme): void {
+  withoutTransitions(() => {
+    const el = document.documentElement;
+    const base = themeBase(theme);
+    el.classList.toggle('dark', base === 'dark');
+    el.classList.toggle('light', base === 'light');
+    for (const cls of Array.from(el.classList)) {
+      if (cls.startsWith('theme-')) el.classList.remove(cls);
+    }
+    if (theme !== 'dark' && theme !== 'light') el.classList.add(`theme-${theme}`);
+  });
 }
 
 export type AccentId = 'gold' | 'jade' | 'sapphire' | 'lotus' | 'crimson';
@@ -105,9 +117,11 @@ export function applyReduceMotion(reduceMotion: boolean): void {
 }
 
 function applyAccent(accent: AccentId): void {
-  const el = document.documentElement;
-  el.classList.remove(...ACCENT_CLASSES);
-  if (accent !== 'gold') el.classList.add(`accent-${accent}`);
+  withoutTransitions(() => {
+    const el = document.documentElement;
+    el.classList.remove(...ACCENT_CLASSES);
+    if (accent !== 'gold') el.classList.add(`accent-${accent}`);
+  });
 }
 
 export interface IdentityProfile {

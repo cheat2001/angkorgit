@@ -31,6 +31,10 @@ All notable changes to AngKorGit are documented here. The format follows
   there is room, and the file name stays whole while the folder part shortens.
 
 ### Fixed
+- **Switching between dark and light no longer flickers.** Search boxes, buttons and
+  checkboxes used to fade from the old colours for a moment after the rest of the
+  window had already changed. Now everything changes in the same frame, and the
+  hover fades still work as before.
 - **A squeezed tab no longer shows a stray letter.** When two open tabs share a
   folder name, each shows its parent folder after the name. On a full tab strip that
   hint could shrink to its last letter, which looked like a typo next to the

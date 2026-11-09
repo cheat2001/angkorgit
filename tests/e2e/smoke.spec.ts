@@ -3852,3 +3852,38 @@ test('a squeezed same-name tab hint keeps a few letters instead of one', async (
   await expect(page.locator('[data-tab-overflow]')).toBeVisible();
   expect((await hint.boundingBox())!.width).toBeGreaterThanOrEqual(18);
 });
+
+test('switching between dark and light recolours every control in the same frame', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('angkorgit', { exact: true }).first().click();
+  await expect(page.getByPlaceholder('Search commits…')).toBeVisible({ timeout: 10_000 });
+  for (const theme of ['light', 'angkor-dusk']) {
+    const lagging = await page.evaluate(async (theme) => {
+      const { useSettings } = await import('/src/features/settings/store.ts');
+      const elements = [...document.querySelectorAll<HTMLElement | SVGElement>('body *')];
+      const snap = () =>
+        elements.map((el) => {
+          const style = getComputedStyle(el);
+          return `${style.backgroundColor}|${style.borderTopColor}|${style.color}|${style.fill}`;
+        });
+      useSettings.getState().setTheme(theme as 'light');
+      const frames: string[][] = [];
+      const start = performance.now();
+      await new Promise<void>((resolve) => {
+        const tick = () => {
+          frames.push(snap());
+          if (performance.now() - start < 300) requestAnimationFrame(tick);
+          else resolve();
+        };
+        requestAnimationFrame(tick);
+      });
+      const final = frames[frames.length - 1];
+      return elements
+        .filter((el, i) => el.isConnected && frames.some((frame) => frame[i] !== final[i]))
+        .map((el) => `${el.tagName.toLowerCase()} ${el.getAttribute('class')?.slice(0, 60) ?? ''}`);
+    }, theme);
+    expect(lagging).toEqual([]);
+  }
+  await expect(page.locator('html')).not.toHaveClass(/no-transitions/);
+  expect(await page.getByPlaceholder('Search commits…').evaluate((el) => getComputedStyle(el).transitionDuration)).not.toBe('0s');
+});

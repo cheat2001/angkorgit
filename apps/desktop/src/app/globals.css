@@ -109,6 +109,12 @@ body {
   50% { opacity: 0; }
 }
 
+.no-transitions *,
+.no-transitions *::before,
+.no-transitions *::after {
+  transition: none !important;
+}
+
 .reduce-motion *,
 .reduce-motion *::before,
 .reduce-motion *::after {
