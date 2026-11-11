@@ -5861,6 +5861,54 @@ fn rebasing_a_branch_already_on_top_of_its_upstream_is_up_to_date_and_runs_no_ho
 }
 
 #[test]
+fn a_rebase_aborted_during_post_checkout_does_not_replay_any_commits() {
+    use std::time::{Duration, Instant};
+
+    if !hooks_runnable() {
+        return;
+    }
+    let repo = TempRepo::new();
+    repo.write("base.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "topic", None, true).unwrap();
+    repo.write("topic.txt", "topic\n");
+    let topic = commit_all(&repo, "topic");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("master.txt", "master\n");
+    commit_all(&repo, "master");
+    core::checkout_branch(repo.path(), "topic").unwrap();
+    write_hook(&default_hooks(&repo), "post-checkout", "echo started > .git/hook-started\nattempts=0\nwhile [ ! -f .git/hook-release ] && [ \"$attempts\" -lt 200 ]; do\n sleep 0.05\n attempts=$((attempts + 1))\ndone\n");
+    write_hook(
+        &default_hooks(&repo),
+        "post-rewrite",
+        &format!("echo rewritten >> '{POST_HOOK_LOG}'"),
+    );
+
+    let (started, aborted, outcome) = std::thread::scope(|scope| {
+        let running = scope.spawn(|| core::post_hooks::rebase(repo.path(), "master", false));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !repo.dir.join(".git/hook-started").exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let started = repo.dir.join(".git/hook-started").exists();
+        let aborted = core::rebase_abort(repo.path());
+        std::fs::write(repo.dir.join(".git/hook-release"), "").unwrap();
+        (started, aborted, running.join().unwrap())
+    });
+    assert!(started);
+    aborted.unwrap();
+    let result = outcome.into_result().unwrap();
+    assert_eq!(result.value.status, "ok");
+    assert_eq!(result.value.message, "Rebase aborted");
+    assert_eq!(rev(&repo, "HEAD"), topic);
+    assert_eq!(rev(&repo, "topic"), topic);
+    assert!(!repo.dir.join("master.txt").exists());
+    assert!(!repo.dir.join(".git/rebase-merge").exists());
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
+    assert!(post_hook_runs(&repo).is_empty());
+}
+
+#[test]
 fn rebase_runs_post_checkout_on_onto_before_replaying_the_commits() {
     if !hooks_runnable() {
         return;

@@ -349,6 +349,13 @@ pub(crate) fn rebase_with_hooks(
         },
     );
 
+    if !rebase_state_dir(&repo).is_dir() {
+        return Ok(OpOutcome {
+            status: "ok".into(),
+            message: "Rebase aborted".into(),
+        });
+    }
+
     while let Some(op) = rebase.next() {
         if let Err(error) = op {
             return Err(stopped_step(&repo, &mut rebase, error));

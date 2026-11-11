@@ -45,6 +45,9 @@ All notable changes to AngKorGit are documented here. The format follows
   `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
 
 ### Fixed
+- **Aborting a rebase while post-checkout runs no longer reports a missing rebase
+  state file.** Once the hook returns, the rebase reports that it was aborted and
+  leaves the restored branch untouched, without replaying commits or post-rewrite.
 - **A running hook gets an info toast when you try another operation.** It names
   the hook and repository, such as "post-checkout is still running in angkorgit",
   while the progress toast stays visible.

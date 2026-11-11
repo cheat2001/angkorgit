@@ -19,8 +19,8 @@ pub mod test_api {
     pub use crate::core::blame::blame_file;
     pub use crate::core::branch::{
         can_fast_forward, checkout_branch, checkout_detached, cherry_pick, cherry_pick_many,
-        create as branch_create, list as branches, merge, rebase, rebase_commits, rebase_continue,
-        rebase_interactive, reset,
+        create as branch_create, list as branches, merge, rebase, rebase_abort, rebase_commits,
+        rebase_continue, rebase_interactive, reset,
     };
     pub use crate::core::commit::{amend, commit, merge_message, revert, reword};
     pub use crate::core::conflict::{
