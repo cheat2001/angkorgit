@@ -244,6 +244,17 @@ pub(crate) fn spawn_tree(
     Ok(TreeChild { child, leftovers })
 }
 
+#[cfg(unix)]
+pub fn background_process_signals_available() -> std::io::Result<bool> {
+    let mut command = crate::proc::hidden("/bin/sh");
+    command.args(["-c", "exec sleep 30"]);
+    let mut tree = spawn_tree(command, true)?;
+    let can_stop = tree.leftovers.as_ref().is_some_and(Leftovers::can_stop);
+    kill_tree(&mut tree.child);
+    tree.child.wait()?;
+    Ok(can_stop)
+}
+
 pub(crate) fn capture_child(child: Child, stdin: &str, timeout: Duration) -> AppResult<Captured> {
     collect(child, stdin, timeout, false)
 }
@@ -376,6 +387,11 @@ impl BackgroundProcesses {
     #[cfg(test)]
     pub(crate) fn is_tracking(&self) -> bool {
         self.leftovers.is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn can_stop(&self) -> bool {
+        self.leftovers.as_ref().is_some_and(Leftovers::can_stop)
     }
 
     pub(crate) fn retain_for_cancel(&mut self) -> bool {
@@ -1367,10 +1383,7 @@ mod tests {
         assert!(!marker.exists());
         let background = background.unwrap();
         assert!(background.is_tracking());
-        let can_stop = background
-            .leftovers
-            .as_ref()
-            .is_some_and(Leftovers::can_stop);
+        let can_stop = background.can_stop();
         assert_eq!(
             background.wait_on_cancel(),
             if can_stop {
@@ -1405,10 +1418,7 @@ mod tests {
         let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
         let processes = processes.unwrap();
         assert!(processes.is_tracking());
-        let can_stop = processes
-            .leftovers
-            .as_ref()
-            .is_some_and(Leftovers::can_stop);
+        let can_stop = processes.can_stop();
         let outcome = processes.wait_on_cancel();
         if !can_stop {
             unsafe { libc::kill(background, libc::SIGKILL) };
@@ -1459,10 +1469,7 @@ mod tests {
         let mut unrelated = spawn_tree(command, false).unwrap();
         assert_eq!(unrelated.child.id(), group);
         let background = background.unwrap();
-        let can_stop = background
-            .leftovers
-            .as_ref()
-            .is_some_and(Leftovers::can_stop);
+        let can_stop = background.can_stop();
         let outcome = background.wait_on_cancel();
         let survived = unrelated.child.try_wait().unwrap().is_none();
         if survived {

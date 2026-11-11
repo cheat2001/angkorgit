@@ -1180,9 +1180,9 @@ mod tests {
         }
 
         let control = &GroupUpdateControl::default();
-        let tracked = Cell::new(None);
+        let can_stop = Cell::new(None);
         let retain = |hook: PendingHook| {
-            tracked.set(Some(hook.processes.is_tracking()));
+            can_stop.set(Some(hook.processes.can_stop()));
             control.record_background_hook("earlier", hook);
         };
         let watch = Watch {
@@ -1196,11 +1196,11 @@ mod tests {
                 Ok(GroupUpdateResult::default())
             })
             .unwrap();
-        if cfg!(target_os = "linux") && tracked.get() == Some(false) {
-            eprintln!("skipping: the kernel cannot track the hook process group");
+        if cfg!(target_os = "linux") && can_stop.get() == Some(false) {
+            eprintln!("skipping: process-group signals are unavailable");
             return;
         }
-        assert_eq!(tracked.get(), Some(true));
+        assert_eq!(can_stop.get(), Some(true));
 
         let receipts = std::thread::scope(|scope| {
             let (active, entered) = mpsc::channel();
@@ -1250,13 +1250,13 @@ mod tests {
             let mut command = crate::proc::hidden("/bin/sh");
             command.args(["-c", "sleep 1 >/dev/null 2>&1 &"]);
             let child = spawn_tree(command, true).unwrap();
-            let mut tracking = false;
+            let mut can_stop = false;
             let run = run_tree(child, "", Duration::from_secs(2), |processes| {
-                tracking = processes.is_tracking();
+                can_stop = processes.can_stop();
             });
             assert!(!run.timed_out);
-            if !tracking {
-                eprintln!("skipping: the kernel cannot track the hook process group");
+            if !can_stop {
+                eprintln!("skipping: process-group signals are unavailable");
                 return;
             }
         }

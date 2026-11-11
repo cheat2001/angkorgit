@@ -6826,6 +6826,10 @@ fn group_pull_leaves_background_hooks_running_and_reports_their_state_on_cancel(
     if !hooks_runnable() {
         return;
     }
+    #[cfg(unix)]
+    let can_stop = core::background_process_signals_available().unwrap();
+    #[cfg(not(unix))]
+    let can_stop = cfg!(windows);
     let local = TempRepo::new();
     local.write("a.txt", "base\n");
     commit_all(&local, "base");
@@ -6859,7 +6863,7 @@ fn group_pull_leaves_background_hooks_running_and_reports_their_state_on_cancel(
     let cancel_marker = also_behind.dir.join(".git/background-done");
     assert!(!cancel_marker.exists());
     let receipts = control.cancel_results().unwrap();
-    if cfg!(any(target_os = "linux", windows)) {
+    if can_stop {
         assert!(
             cancel_marker.exists(),
             "Cancel returned before background work finished"
@@ -6868,7 +6872,7 @@ fn group_pull_leaves_background_hooks_running_and_reports_their_state_on_cancel(
     assert_eq!(receipts.len(), 1);
     assert_eq!(receipts[0].result.status, "ok");
     let warnings = &receipts[0].result.hook_warnings;
-    if cfg!(all(unix, not(target_os = "linux"))) {
+    if !can_stop {
         assert_eq!(warnings.len(), 1);
         assert!(!warnings[0].timed_out);
         assert!(warnings[0]

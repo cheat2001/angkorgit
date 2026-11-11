@@ -16,6 +16,8 @@ mod terminal;
 mod watcher;
 
 pub mod test_api {
+    #[cfg(unix)]
+    pub use crate::ai_cli::background_process_signals_available;
     pub use crate::core::blame::blame_file;
     pub use crate::core::branch::{
         can_fast_forward, checkout_branch, checkout_detached, cherry_pick, cherry_pick_many,
