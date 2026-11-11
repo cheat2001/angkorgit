@@ -45,6 +45,9 @@ All notable changes to AngKorGit are documented here. The format follows
   `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
 
 ### Fixed
+- **New worktrees stay protected while their post-checkout hook runs.** The target
+  folder is reserved before creation, including access through a symlink alias,
+  so another operation gets an info toast until the hook finishes.
 - **Aborting a rebase while post-checkout runs no longer reports a missing rebase
   state file.** Once the hook returns, the rebase reports that it was aborted and
   leaves the restored branch untouched, without replaying commits or post-rewrite.

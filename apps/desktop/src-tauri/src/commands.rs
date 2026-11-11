@@ -38,9 +38,36 @@ static HOOKED_OPERATIONS: OnceLock<Mutex<HashMap<PathBuf, Option<String>>>> = On
 
 struct HookedOperation(PathBuf);
 
+fn operation_path(path: PathBuf) -> AppResult<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let mut parent = absolute.as_path();
+    let mut missing = Vec::new();
+    loop {
+        match parent.canonicalize() {
+            Ok(mut root) => {
+                for part in missing.into_iter().rev() {
+                    root.push(part);
+                }
+                return Ok(root);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                missing.push(parent.file_name().ok_or(error)?);
+                parent = parent
+                    .parent()
+                    .ok_or_else(|| AppError::other("invalid operation path"))?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
 impl HookedOperation {
     fn start(path: PathBuf) -> AppResult<Self> {
-        let path = path.canonicalize().unwrap_or(path);
+        let path = operation_path(path)?;
         let mut active = HOOKED_OPERATIONS
             .get_or_init(Mutex::default)
             .lock()
@@ -89,14 +116,19 @@ async fn blocking_post_hooks<T: Send + 'static>(
         let operation_path = operation.0.clone();
         hooks::observe_post_hooks(
             move |workdir, hook, running| {
-                if let Some(active_hook) = HOOKED_OPERATIONS
+                let mut active = HOOKED_OPERATIONS
                     .get_or_init(Mutex::default)
                     .lock()
-                    .unwrap_or_else(|error| error.into_inner())
-                    .get_mut(&operation_path)
-                {
+                    .unwrap_or_else(|error| error.into_inner());
+                if let Some(active_hook) = active.get_mut(&operation_path) {
                     *active_hook = running.then(|| hook.to_string());
                 }
+                if let Ok(hook_path) = workdir.canonicalize() {
+                    if let Some(active_hook) = active.get_mut(&hook_path) {
+                        *active_hook = running.then(|| hook.to_string());
+                    }
+                }
+                drop(active);
                 let workdir = workdir.to_string_lossy();
                 let _ = app.emit(
                     "post-hook-progress",
@@ -899,12 +931,15 @@ pub async fn worktree_add(
     path: String,
     request: WorktreeAddRequest,
 ) -> AppResult<String> {
-    let added = blocking_post_hooks(&app, path, move |path| {
-        post_hooks::worktree_add(path, &request, false)
-    })
-    .await?;
+    let added =
+        blocking_post_hooks(&app, path, move |path| guarded_worktree_add(path, &request)).await?;
     let created = added.value.clone();
     Ok(report(&app, &created, added))
+}
+
+fn guarded_worktree_add(path: &str, request: &WorktreeAddRequest) -> AppResult<Hooked<String>> {
+    let _target = HookedOperation::start(PathBuf::from(request.directory.trim()))?;
+    post_hooks::worktree_add(path, request, false)
 }
 
 #[tauri::command]
@@ -1246,4 +1281,108 @@ pub async fn index_files(path: String) -> AppResult<Vec<String>> {
 #[tauri::command]
 pub async fn file_contents(path: String, file: String, oid: Option<String>) -> AppResult<FileDiff> {
     blocking(move || files::file_contents(&path, &file, oid.as_deref())).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_new_worktree_is_locked_through_its_canonical_path_until_its_hook_finishes() {
+        if !hooks::runner_available() {
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let main = root.path().join("main");
+        let repo = git2::Repository::init(&main).unwrap();
+        let signature = git2::Signature::now("Test", "test@example.com").unwrap();
+        let tree = repo.index().unwrap().write_tree().unwrap();
+        let oid = repo
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "base",
+                &repo.find_tree(tree).unwrap(),
+                &[],
+            )
+            .unwrap();
+        repo.branch("topic", &repo.find_commit(oid).unwrap(), false)
+            .unwrap();
+        let hooks_dir = repo.path().join("hooks");
+        std::fs::create_dir_all(&hooks_dir).unwrap();
+        repo.config()
+            .unwrap()
+            .set_str("core.hooksPath", hooks_dir.to_str().unwrap())
+            .unwrap();
+        let started = root.path().join("started");
+        let release = root.path().join("release");
+        let hook = hooks_dir.join("post-checkout");
+        let shell_path = |path: &std::path::Path| path.to_string_lossy().replace('\\', "/");
+        std::fs::write(&hook, format!("#!/bin/sh\necho started > '{}'\nattempts=0\nwhile [ ! -f '{}' ] && [ \"$attempts\" -lt 200 ]; do sleep 0.05; attempts=$((attempts + 1)); done\n", shell_path(&started), shell_path(&release))).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let target = root.path().join("real/new/target");
+        std::fs::create_dir(root.path().join("real")).unwrap();
+        #[cfg(unix)]
+        let requested = {
+            std::os::unix::fs::symlink(root.path().join("real"), root.path().join("alias"))
+                .unwrap();
+            root.path().join("alias/new/target")
+        };
+        #[cfg(not(unix))]
+        let requested = target.clone();
+        let request = WorktreeAddRequest {
+            directory: requested.to_string_lossy().into_owned(),
+            branch: "topic".into(),
+            create_branch: false,
+            base: None,
+        };
+        let (saw_hook, blocked, outcome) = std::thread::scope(|scope| {
+            let running = scope.spawn(|| guarded_worktree_add(main.to_str().unwrap(), &request));
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !started.exists() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let saw_hook = started.exists();
+            let blocked = HookedOperation::start(target.join("."));
+            std::fs::write(&release, "").unwrap();
+            (saw_hook, blocked, running.join().unwrap())
+        });
+        assert!(saw_hook);
+        assert!(matches!(blocked, Err(AppError::Busy { .. })));
+        let outcome = outcome.unwrap();
+        assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
+        assert_eq!(
+            git2::Repository::open(&target)
+                .unwrap()
+                .head()
+                .unwrap()
+                .target(),
+            Some(oid)
+        );
+        let _released = HookedOperation::start(target).unwrap();
+    }
+
+    #[test]
+    fn a_target_lock_conflict_does_not_create_a_worktree_or_branch() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("missing/target");
+        let guard = HookedOperation::start(target.clone()).unwrap();
+        let request = WorktreeAddRequest {
+            directory: target.to_string_lossy().into_owned(),
+            branch: "topic".into(),
+            create_branch: true,
+            base: None,
+        };
+        let result = guarded_worktree_add(root.path().to_str().unwrap(), &request);
+        assert!(matches!(result, Err(AppError::Busy { .. })));
+        assert!(!target.exists());
+        drop(guard);
+        let _released = HookedOperation::start(target).unwrap();
+    }
 }
