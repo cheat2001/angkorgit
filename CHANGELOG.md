@@ -6,6 +6,62 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Checkouts, merges and rewrites run your `post-*` hooks.** `post-checkout`,
+  `post-merge` and `post-rewrite` now run after the operations that run them in `git`,
+  with the same arguments and input:
+  - `post-checkout` after a checkout, a new branch you check out, a detached checkout,
+    a pull request checkout, a clone, a new worktree, and after discarding or applying
+    files from a stash (`git restore` runs it too, with flag `0`).
+  - `post-merge` after a merge or a pull that merged or fast-forwarded.
+  - `post-rewrite` after amend, reword, rebase, interactive rebase and a pull with
+    rebase, once with every rewritten commit, also when a paused rebase is continued.
+  As in `git`, a failing hook never undoes the operation: AngKorGit shows a warning
+  with **Show output** instead of an error. AngKorGit attempts to stop a foreground
+  hook at its 10-minute limit and reports a timeout with any captured output. The
+  warning says when exit could not be confirmed. **Skip hooks** in the commit box
+  also skips `post-rewrite` when amending, and the Pull menu has **Pull without hooks** when the
+  repository has one of these hooks, or keeps its hooks in a folder inside the repository
+  (like `.husky`), links a hook to a file there, or includes a Git config file from the
+  repository, where a pull can bring a new one. A rebase you started without hooks
+  stays without hooks when you continue it after a conflict. (#82)
+- **Pull all runs `post-merge` in each repository it fast-forwarded.** One at a time,
+  never for a repository that was already up to date; a failing hook shows as a warning
+  with its output on that repository's row and the rest of the group still updates.
+  **Pull all without hooks** in the group menu skips it. **Cancel** waits for the
+  checkout and foreground hook already in progress. During that wait, it monitors
+  tracked background hooks and requests termination at each hook's original deadline.
+  On macOS and on Linux without usable process-group pidfd support, Cancel can finish
+  while background hook processes are still running. The affected repository's row
+  warns that exit could not be confirmed. Those processes may keep writing to the
+  repository past the hook's original deadline. (#69, #82)
+
+### Changed
+- **Rebasing a branch that already sits on top of its target does nothing**, like
+  `git rebase`: it reports "Already up to date" instead of re-creating the branch's
+  commits with new commit dates. Uncommitted changes or an unfinished operation still
+  stop it first.
+- **Fast-forward merges and pulls set `ORIG_HEAD`** to the commit you were on, like
+  `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
+
+### Fixed
+- **New worktrees stay protected while their post-checkout hook runs.** The target
+  folder is reserved before creation, including access through a symlink alias,
+  so another operation gets an info toast until the hook finishes.
+- **Aborting a rebase while post-checkout runs no longer reports a missing rebase
+  state file.** Once the hook returns, the rebase reports that it was aborted and
+  leaves the restored branch untouched, without replaying commits or post-rewrite.
+- **A running hook gets an info toast when you try another operation.** It names
+  the hook and repository, such as "post-checkout is still running in angkorgit",
+  while the progress toast stays visible.
+- **Cancel no longer warns about hooks that already finished.** Pull all treats an
+  empty hook process group as finished on macOS and Linux, including an `exit 0` hook.
+  A live group without a safe signalling handle still warns immediately. Children
+  that leave the group with `setsid` or daemonize are not tracked, as with Git.
+- **Discarding several files, or all staged changes, no longer stops at a file it
+  cannot discard.** The other files are still restored, and AngKorGit names the files
+  it could not discard instead of reporting every change as discarded.
+
 ## [0.27.0] — 2026-11-09
 
 The review release. Text is easier to read in every theme, diffs are calmer to review,

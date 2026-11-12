@@ -20,6 +20,8 @@ const AGENTS: &[(&str, &str, &[&str])] = &[
 const OUTPUT_FILE_PLACEHOLDER: &str = "{OUTPUT_FILE}";
 const VERSION_TIMEOUT: Duration = Duration::from_secs(15);
 const OUTPUT_DRAIN: Duration = Duration::from_secs(1);
+const PROCESS_EXIT_GRACE: Duration = Duration::from_secs(1);
+pub(crate) const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const CURSOR_LAUNCHERS: &[&str] = &["cursor-agent", "agent"];
 
 #[derive(Serialize, Clone)]
@@ -205,21 +207,75 @@ pub(crate) fn spawn_piped(mut command: Command) -> std::io::Result<Child> {
     command.spawn()
 }
 
-pub(crate) fn spawn_tree(mut command: Command) -> std::io::Result<Child> {
+pub(crate) struct TreeChild {
+    child: Child,
+    leftovers: Option<Leftovers>,
+}
+
+pub(crate) fn spawn_tree(
+    mut command: Command,
+    track_descendants: bool,
+) -> std::io::Result<TreeChild> {
+    #[cfg(not(any(unix, windows)))]
+    let _ = track_descendants;
+    #[cfg(windows)]
+    if track_descendants {
+        let job = job::Job::new()?;
+        let child = job::spawn_assigned(command, |child| job.assign(child))?;
+        return Ok(TreeChild {
+            child,
+            leftovers: Some(Leftovers { job }),
+        });
+    }
     own_process_group(&mut command);
-    spawn_piped(command)
+    let child = spawn_piped(command)?;
+    #[cfg(unix)]
+    let leftovers = if track_descendants {
+        Some(Leftovers {
+            pgid: child.id(),
+            #[cfg(target_os = "linux")]
+            group: ProcessGroup::open(&child),
+        })
+    } else {
+        None
+    };
+    #[cfg(not(unix))]
+    let leftovers = None;
+    Ok(TreeChild { child, leftovers })
+}
+
+#[cfg(unix)]
+pub fn background_process_signals_available() -> std::io::Result<bool> {
+    let mut command = crate::proc::hidden("/bin/sh");
+    command.args(["-c", "exec sleep 30"]);
+    let mut tree = spawn_tree(command, true)?;
+    let can_stop = tree.leftovers.as_ref().is_some_and(Leftovers::can_stop);
+    kill_tree(&mut tree.child);
+    tree.child.wait()?;
+    Ok(can_stop)
 }
 
 pub(crate) fn capture_child(child: Child, stdin: &str, timeout: Duration) -> AppResult<Captured> {
     collect(child, stdin, timeout, false)
 }
 
-pub(crate) fn capture_tree_child(
-    child: Child,
+pub(crate) struct TreeRun {
+    pub(crate) captured: Captured,
+    pub(crate) timed_out: bool,
+    pub(crate) exit_unconfirmed: bool,
+}
+
+pub(crate) fn run_tree(
+    tree: TreeChild,
     stdin: &str,
     timeout: Duration,
-) -> AppResult<Captured> {
-    collect(child, stdin, timeout, true)
+    retain: impl FnOnce(BackgroundProcesses),
+) -> TreeRun {
+    gather(tree.child, stdin, timeout, true, tree.leftovers, retain)
+}
+
+fn timed_out(timeout: Duration) -> AppError {
+    AppError::other(format!("timed out after {}s", timeout.as_secs()))
 }
 
 #[cfg(unix)]
@@ -232,12 +288,17 @@ fn own_process_group(command: &mut Command) {
 fn own_process_group(_command: &mut Command) {}
 
 #[cfg(unix)]
-fn kill_tree(child: &mut Child) {
-    if let Ok(group) = libc::pid_t::try_from(child.id()) {
+fn kill_group(id: u32) {
+    if let Ok(group) = libc::pid_t::try_from(id) {
         unsafe {
             libc::killpg(group, libc::SIGKILL);
         }
     }
+}
+
+#[cfg(unix)]
+fn kill_tree(child: &mut Child) {
+    kill_group(child.id());
     let _ = child.kill();
 }
 
@@ -257,12 +318,422 @@ fn kill_tree(child: &mut Child) {
     let _ = child.kill();
 }
 
-fn collect(
+#[cfg(target_os = "linux")]
+struct ProcessGroup(std::os::fd::OwnedFd);
+
+#[cfg(target_os = "linux")]
+impl ProcessGroup {
+    fn open(child: &Child) -> Option<Self> {
+        use std::os::fd::{FromRawFd, OwnedFd, RawFd};
+
+        let pid = libc::pid_t::try_from(child.id()).ok()?;
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0u32) };
+        if fd < 0 {
+            return None;
+        }
+        let group = Self(unsafe { OwnedFd::from_raw_fd(fd as RawFd) });
+        group.signal(0).then_some(group)
+    }
+
+    fn signal(&self, signal: libc::c_int) -> bool {
+        use std::os::fd::AsRawFd;
+
+        unsafe {
+            libc::syscall(
+                libc::SYS_pidfd_send_signal,
+                self.0.as_raw_fd(),
+                signal,
+                std::ptr::null::<libc::siginfo_t>(),
+                libc::PIDFD_SIGNAL_PROCESS_GROUP,
+            ) == 0
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProcessState {
+    Running,
+    Empty,
+    Unknown,
+}
+
+struct Leftovers {
+    #[cfg(unix)]
+    pgid: u32,
+    #[cfg(target_os = "linux")]
+    group: Option<ProcessGroup>,
+    #[cfg(windows)]
+    job: job::Job,
+}
+
+pub(crate) struct BackgroundProcesses {
+    leftovers: Option<Leftovers>,
+    deadline: Instant,
+    stop_deadline: Option<Instant>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CancelOutcome {
+    Unconfirmed,
+    TimedOut { confirmed: bool },
+}
+
+pub(crate) enum CancelPoll<T> {
+    Waiting(Instant),
+    Finished(Option<T>),
+}
+
+impl BackgroundProcesses {
+    #[cfg(test)]
+    pub(crate) fn is_tracking(&self) -> bool {
+        self.leftovers.is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn can_stop(&self) -> bool {
+        self.leftovers.as_ref().is_some_and(Leftovers::can_stop)
+    }
+
+    pub(crate) fn retain_for_cancel(&mut self) -> bool {
+        match self
+            .leftovers
+            .as_ref()
+            .map_or(ProcessState::Unknown, Leftovers::probe)
+        {
+            ProcessState::Empty => {
+                self.leftovers = None;
+                false
+            }
+            ProcessState::Running => true,
+            ProcessState::Unknown => {
+                self.leftovers = None;
+                true
+            }
+        }
+    }
+
+    pub(crate) fn poll_on_cancel(&mut self) -> CancelPoll<CancelOutcome> {
+        let Some(leftovers) = &self.leftovers else {
+            return CancelPoll::Finished(Some(CancelOutcome::Unconfirmed));
+        };
+        let state = leftovers.probe();
+        let now = Instant::now();
+        if let Some(deadline) = self.stop_deadline {
+            if state == ProcessState::Running && now < deadline {
+                return CancelPoll::Waiting(deadline);
+            }
+            return CancelPoll::Finished(Some(CancelOutcome::TimedOut {
+                confirmed: cfg!(windows) && state == ProcessState::Empty,
+            }));
+        }
+        if state == ProcessState::Empty {
+            return CancelPoll::Finished(None);
+        }
+        if state == ProcessState::Unknown || !leftovers.can_stop() {
+            return CancelPoll::Finished(Some(CancelOutcome::Unconfirmed));
+        }
+        if now < self.deadline {
+            return CancelPoll::Waiting(self.deadline);
+        }
+        let grace = if leftovers.request_stop() {
+            PROCESS_EXIT_GRACE
+        } else {
+            Duration::ZERO
+        };
+        let deadline = Instant::now() + grace;
+        self.stop_deadline = Some(deadline);
+        CancelPoll::Waiting(deadline)
+    }
+
+    #[cfg(test)]
+    fn wait_on_cancel(mut self) -> Option<CancelOutcome> {
+        loop {
+            match self.poll_on_cancel() {
+                CancelPoll::Waiting(deadline) => std::thread::sleep(
+                    deadline
+                        .saturating_duration_since(Instant::now())
+                        .min(PROCESS_POLL_INTERVAL),
+                ),
+                CancelPoll::Finished(outcome) => return outcome,
+            }
+        }
+    }
+}
+
+impl Leftovers {
+    fn probe(&self) -> ProcessState {
+        #[cfg(target_os = "linux")]
+        if let Some(group) = &self.group {
+            return if group.signal(0) {
+                ProcessState::Running
+            } else if std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+                ProcessState::Empty
+            } else {
+                ProcessState::Unknown
+            };
+        }
+        #[cfg(unix)]
+        {
+            let Ok(pgid) = libc::pid_t::try_from(self.pgid) else {
+                return ProcessState::Unknown;
+            };
+            if unsafe { libc::killpg(pgid, 0) } == 0 {
+                return ProcessState::Running;
+            }
+            match std::io::Error::last_os_error().raw_os_error() {
+                Some(libc::ESRCH) => ProcessState::Empty,
+                Some(libc::EPERM) => ProcessState::Running,
+                _ => ProcessState::Unknown,
+            }
+        }
+        #[cfg(windows)]
+        {
+            if self.job.running() {
+                ProcessState::Running
+            } else {
+                ProcessState::Empty
+            }
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            ProcessState::Unknown
+        }
+    }
+
+    fn can_stop(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.group.is_some()
+        }
+        #[cfg(windows)]
+        {
+            true
+        }
+        #[cfg(not(any(target_os = "linux", windows)))]
+        {
+            false
+        }
+    }
+
+    fn stop(self, child: &mut Child) -> bool {
+        #[cfg(unix)]
+        {
+            kill_tree(child);
+            let _ = wait_for_process_exit(PROCESS_EXIT_GRACE, || {
+                Some(child.try_wait().ok()?.is_some() && self.probe() != ProcessState::Running)
+            });
+            false
+        }
+        #[cfg(not(unix))]
+        let _ = child;
+        #[cfg(windows)]
+        {
+            self.job.stop()
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            true
+        }
+    }
+
+    fn request_stop(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.group
+                .as_ref()
+                .is_some_and(|group| group.signal(libc::SIGKILL))
+        }
+        #[cfg(not(any(target_os = "linux", windows)))]
+        {
+            false
+        }
+        #[cfg(windows)]
+        {
+            self.job.terminate()
+        }
+    }
+}
+
+#[cfg(any(unix, windows, test))]
+fn wait_for_process_exit(timeout: Duration, mut exited: impl FnMut() -> Option<bool>) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match exited() {
+            Some(true) => return true,
+            None => return false,
+            Some(false) => {}
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        std::thread::sleep(remaining.min(PROCESS_POLL_INTERVAL));
+    }
+}
+
+#[cfg(windows)]
+mod job {
+    use std::io;
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use std::os::windows::process::CommandExt;
+    use std::process::{Child, Command};
+
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
+        QueryInformationJobObject, TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenThread, ResumeThread, CREATE_SUSPENDED, THREAD_SUSPEND_RESUME,
+    };
+
+    pub(super) struct Job(OwnedHandle);
+
+    impl Job {
+        pub(super) fn new() -> io::Result<Self> {
+            let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+            if handle.is_null() {
+                return Err(windows_error("could not create the hook job"));
+            }
+            Ok(Job(unsafe { OwnedHandle::from_raw_handle(handle) }))
+        }
+
+        pub(super) fn assign(&self, child: &Child) -> io::Result<()> {
+            if unsafe { AssignProcessToJobObject(self.0.as_raw_handle(), child.as_raw_handle()) }
+                == 0
+            {
+                return Err(windows_error(
+                    "could not assign the suspended process to the hook job",
+                ));
+            }
+            Ok(())
+        }
+
+        pub(super) fn running(&self) -> bool {
+            self.active_processes() != Some(0)
+        }
+
+        fn active_processes(&self) -> Option<u32> {
+            let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+            let queried = unsafe {
+                QueryInformationJobObject(
+                    self.0.as_raw_handle(),
+                    JobObjectBasicAccountingInformation,
+                    std::ptr::addr_of_mut!(info).cast(),
+                    std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                    std::ptr::null_mut(),
+                )
+            };
+            (queried != 0).then_some(info.ActiveProcesses)
+        }
+
+        pub(super) fn terminate(&self) -> bool {
+            unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) != 0 }
+        }
+
+        pub(super) fn stop(self) -> bool {
+            if !self.terminate() {
+                return self.active_processes() == Some(0);
+            }
+            super::wait_for_process_exit(super::PROCESS_EXIT_GRACE, || {
+                self.active_processes().map(|count| count == 0)
+            })
+        }
+    }
+
+    pub(super) fn spawn_assigned(
+        mut command: Command,
+        assign: impl FnOnce(&Child) -> io::Result<()>,
+    ) -> io::Result<Child> {
+        command.creation_flags(crate::proc::CREATE_NO_WINDOW | CREATE_SUSPENDED);
+        let mut child = super::spawn_piped(command)?;
+        if let Err(error) = assign(&child).and_then(|()| resume_primary_thread(child.id())) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+        Ok(child)
+    }
+
+    fn resume_primary_thread(process_id: u32) -> io::Result<()> {
+        let thread = primary_thread(process_id)?;
+        match unsafe { ResumeThread(thread.as_raw_handle()) } {
+            1 => Ok(()),
+            u32::MAX => Err(windows_error("could not resume the hook thread")),
+            _ => Err(io::Error::other("unexpected hook thread suspend count")),
+        }
+    }
+
+    fn primary_thread(process_id: u32) -> io::Result<OwnedHandle> {
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(windows_error("could not find the suspended hook thread"));
+        }
+        let snapshot = unsafe { OwnedHandle::from_raw_handle(snapshot) };
+        let mut entry = THREADENTRY32 {
+            dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
+            ..Default::default()
+        };
+        let mut found = unsafe { Thread32First(snapshot.as_raw_handle(), &mut entry) };
+        while found != 0 {
+            if entry.th32OwnerProcessID == process_id {
+                let thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) };
+                if thread.is_null() {
+                    return Err(windows_error("could not open the suspended hook thread"));
+                }
+                return Ok(unsafe { OwnedHandle::from_raw_handle(thread) });
+            }
+            found = unsafe { Thread32Next(snapshot.as_raw_handle(), &mut entry) };
+        }
+        Err(windows_error("could not find the suspended hook thread"))
+    }
+
+    fn windows_error(action: &str) -> io::Error {
+        io::Error::other(format!("{action}: {}", io::Error::last_os_error()))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use windows_sys::Win32::System::Threading::SuspendThread;
+
+        #[test]
+        fn hook_is_still_suspended_if_assignment_fails() {
+            let mut command = crate::proc::hidden("cmd");
+            command.args(["/C", "pause"]);
+            let mut previous_suspend_count = 0;
+            let error = spawn_assigned(command, |child| {
+                let thread = primary_thread(child.id())?;
+                previous_suspend_count = unsafe { SuspendThread(thread.as_raw_handle()) };
+                Err(io::Error::other("assignment refused"))
+            })
+            .unwrap_err();
+            assert_eq!(error.to_string(), "assignment refused");
+            assert_eq!(previous_suspend_count, 1);
+        }
+    }
+}
+
+fn collect(child: Child, stdin: &str, timeout: Duration, whole_tree: bool) -> AppResult<Captured> {
+    let run = gather(child, stdin, timeout, whole_tree, None, |_| {});
+    if run.timed_out {
+        return Err(timed_out(timeout));
+    }
+    Ok(run.captured)
+}
+
+fn gather(
     mut child: Child,
     stdin: &str,
     timeout: Duration,
     whole_tree: bool,
-) -> AppResult<Captured> {
+    mut leftovers: Option<Leftovers>,
+    retain: impl FnOnce(BackgroundProcesses),
+) -> TreeRun {
+    let deadline = Instant::now() + timeout;
     let stdin_data = stdin.as_bytes().to_vec();
     let mut stdin_pipe = child.stdin.take();
     let stdin_thread = std::thread::spawn(move || {
@@ -273,24 +744,36 @@ fn collect(
     let (stdout, stdout_thread) = read_pipe(child.stdout.take());
     let (stderr, stderr_thread) = read_pipe(child.stderr.take());
 
+    let mut expired = false;
+    let mut exit_unconfirmed = false;
     let status = match wait_with_timeout(&mut child, timeout) {
         Some(status) => status,
         None => {
-            if whole_tree {
-                kill_tree(&mut child);
+            expired = true;
+            if let Some(leftovers) = leftovers.take() {
+                exit_unconfirmed = !leftovers.stop(&mut child);
             } else {
-                let _ = child.kill();
+                if whole_tree {
+                    kill_tree(&mut child);
+                    exit_unconfirmed = true;
+                } else {
+                    let _ = child.kill();
+                }
+                let _ = child.wait();
             }
-            let _ = child.wait();
-            drop(stdin_thread);
-            drop(stdout_thread);
-            drop(stderr_thread);
-            return Err(AppError::other(format!(
-                "timed out after {}s",
-                timeout.as_secs()
-            )));
+            -1
         }
     };
+    if let Some(leftovers) = leftovers {
+        let mut background = BackgroundProcesses {
+            leftovers: Some(leftovers),
+            deadline,
+            stop_deadline: None,
+        };
+        if background.retain_for_cancel() {
+            retain(background);
+        }
+    }
     let drain_until = Instant::now() + OUTPUT_DRAIN;
     while !(stdout_thread.is_finished() && stderr_thread.is_finished())
         && Instant::now() < drain_until
@@ -298,19 +781,30 @@ fn collect(
         std::thread::sleep(Duration::from_millis(10));
     }
     drop(stdin_thread);
-    Ok(Captured {
+    #[cfg(unix)]
+    if exit_unconfirmed && !matches!(child.try_wait(), Ok(Some(_))) {
+        let _ = std::thread::Builder::new().spawn(move || {
+            let _ = child.wait();
+        });
+    }
+    let captured = Captured {
         status,
         stdout: take_output(&stdout),
         stderr: take_output(&stderr),
-    })
+    };
+    TreeRun {
+        captured,
+        timed_out: expired,
+        exit_unconfirmed,
+    }
 }
 
-type SharedOutput = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
+type SharedOutput = std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>;
 
 fn read_pipe<R: Read + Send + 'static>(
     pipe: Option<R>,
 ) -> (SharedOutput, std::thread::JoinHandle<()>) {
-    let output = SharedOutput::default();
+    let output = SharedOutput::new(std::sync::Mutex::new(Some(Vec::new())));
     let sink = std::sync::Arc::clone(&output);
     let handle = std::thread::spawn(move || {
         let Some(mut pipe) = pipe else {
@@ -321,8 +815,10 @@ fn read_pipe<R: Read + Send + 'static>(
             match pipe.read(&mut chunk) {
                 Ok(0) => break,
                 Ok(read) => {
-                    if let Ok(mut buffer) = sink.lock() {
-                        buffer.extend_from_slice(&chunk[..read]);
+                    if let Ok(mut output) = sink.lock() {
+                        if let Some(buffer) = output.as_mut() {
+                            buffer.extend_from_slice(&chunk[..read]);
+                        }
                     }
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
@@ -336,7 +832,8 @@ fn read_pipe<R: Read + Send + 'static>(
 fn take_output(output: &SharedOutput) -> String {
     let bytes = output
         .lock()
-        .map(|mut buffer| std::mem::take(&mut *buffer))
+        .ok()
+        .and_then(|mut buffer| buffer.take())
         .unwrap_or_default();
     String::from_utf8_lossy(&bytes).into_owned()
 }
@@ -519,6 +1016,12 @@ pub fn run(request: CliRunRequest) -> AppResult<CliRunResult> {
 mod tests {
     use super::*;
 
+    fn run_test_tree(tree: TreeChild, timeout: Duration) -> (TreeRun, Option<BackgroundProcesses>) {
+        let mut background = None;
+        let run = run_tree(tree, "", timeout, |processes| background = Some(processes));
+        (run, background)
+    }
+
     #[test]
     fn cursor_version_keys_follow_the_date_and_ignore_other_folders() {
         assert_eq!(cursor_version_key("2026.09.26-abcdef01"), Some(20_260_926));
@@ -699,11 +1202,9 @@ mod tests {
             pid_file.display()
         ));
         let started = Instant::now();
-        let child = spawn_tree(command).unwrap();
-        let Err(err) = capture_tree_child(child, "", Duration::from_secs(1)) else {
-            panic!("the sleeping shell must time out");
-        };
-        assert!(err.to_string().contains("timed out"), "{err}");
+        let child = spawn_tree(command, false).unwrap();
+        let (run, _) = run_test_tree(child, Duration::from_secs(1));
+        assert!(run.timed_out, "the sleeping shell must time out");
         assert!(started.elapsed() < Duration::from_secs(10));
         let grandchild: libc::pid_t = std::fs::read_to_string(&pid_file)
             .unwrap()
@@ -727,14 +1228,276 @@ mod tests {
         assert!(!alive, "the grandchild outlived the timeout");
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn cancellation_waits_for_a_windows_background_child() {
+        let mut command = crate::proc::hidden("cmd");
+        command.args(["/C", "start", "", "/B", "ping", "-n", "3", "127.0.0.1"]);
+        let started = Instant::now();
+        let child = spawn_tree(command, true).unwrap();
+        let (run, background) = run_test_tree(child, Duration::from_secs(30));
+        assert!(!run.timed_out);
+        assert_eq!(background.unwrap().wait_on_cancel(), None);
+        assert!(
+            started.elapsed() >= Duration::from_millis(1500),
+            "returned after {:?}, before the background ping finished",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn process_cleanup_stops_polling_at_the_deadline_without_confirming_exit() {
+        let mut states = [Some(false), Some(false), Some(true)].into_iter();
+        let poll = || states.next().flatten();
+        assert!(!wait_for_process_exit(Duration::from_millis(5), poll));
+        assert!(wait_for_process_exit(Duration::ZERO, || Some(true)));
+        assert!(!wait_for_process_exit(Duration::ZERO, || None));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cancellation_stops_a_windows_background_child_at_the_deadline() {
+        let mut command = crate::proc::hidden("cmd");
+        command.args(["/C", "start", "", "/B", "ping", "-n", "30", "127.0.0.1"]);
+        let started = Instant::now();
+        let child = spawn_tree(command, true).unwrap();
+        let (run, background) = run_test_tree(child, Duration::from_secs(2));
+        assert!(!run.timed_out);
+        assert_eq!(
+            background.unwrap().wait_on_cancel(),
+            Some(CancelOutcome::TimedOut { confirmed: true })
+        );
+        assert!(started.elapsed() < Duration::from_secs(15));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_timed_out_group_hook_cannot_confirm_descendant_exit_after_reaping_its_direct_child() {
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("echo started; exec sleep 30");
+        let child = spawn_tree(command, true).unwrap();
+        let (run, _) = run_test_tree(child, Duration::from_secs(1));
+        assert!(run.timed_out);
+        assert!(run.exit_unconfirmed);
+        assert_eq!(run.captured.stdout.trim(), "started");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_timed_out_tree_run_keeps_the_output_it_printed_before() {
+        let mut command = crate::proc::hidden("/bin/sh");
+        command
+            .arg("-c")
+            .arg("echo started; echo warming up >&2; sleep 30");
+        let child = spawn_tree(command, false).unwrap();
+        let (run, _) = run_test_tree(child, Duration::from_secs(1));
+        assert!(run.timed_out);
+        assert!(run.exit_unconfirmed);
+        assert_eq!(run.captured.stdout.trim(), "started");
+        assert_eq!(run.captured.stderr.trim(), "warming up");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn hook_timeouts_cannot_confirm_a_detached_child_exited() {
+        for track_descendants in [false, true] {
+            assert_detached_child_exit_unconfirmed(track_descendants);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn assert_detached_child_exit_unconfirmed(track_descendants: bool) {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("child-pid");
+        let mut command = crate::proc::hidden("/bin/sh");
+        command
+            .arg("-c")
+            .arg("setsid sleep 30 > /dev/null 2>&1 & echo $! > \"$1\"; wait")
+            .arg("hook")
+            .arg(&pid_file);
+        let child = spawn_tree(command, track_descendants).unwrap();
+        let (run, _) = run_test_tree(child, Duration::from_secs(3));
+        let detached: libc::pid_t = std::fs::read_to_string(pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let alive = unsafe { libc::kill(detached, 0) == 0 };
+        if alive {
+            unsafe { libc::kill(detached, libc::SIGKILL) };
+        }
+        assert!(
+            alive,
+            "the fixture child should outlive its original process group"
+        );
+        assert!(run.timed_out);
+        assert!(run.exit_unconfirmed);
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn retain_for_cancel_drops_an_exit_zero_tree() {
+        #[cfg(unix)]
+        let mut command = crate::proc::hidden("/bin/sh");
+        #[cfg(unix)]
+        command.args(["-c", "exit 0"]);
+        #[cfg(windows)]
+        let mut command = crate::proc::hidden("cmd");
+        #[cfg(windows)]
+        command.args(["/C", "exit 0"]);
+        let mut tree = spawn_tree(command, true).unwrap();
+        assert!(tree.child.wait().unwrap().success());
+        drop(tree.child);
+        let mut background = BackgroundProcesses {
+            leftovers: tree.leftovers,
+            deadline: Instant::now() + Duration::from_secs(20),
+            stop_deadline: None,
+        };
+        assert!(background.is_tracking());
+        assert!(wait_for_process_exit(PROCESS_EXIT_GRACE, || {
+            Some(!background.retain_for_cancel())
+        }));
+        assert!(!background.is_tracking());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancellation_waits_for_background_work_to_finish() {
+        let dir = std::env::temp_dir().join(format!(
+            "angkorgit-leftovers-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let marker = dir.join("late");
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg(format!(
+            "(sleep 1; echo late > '{}') > /dev/null 2>&1 & echo done",
+            marker.display()
+        ));
+        let child = spawn_tree(command, true).unwrap();
+        let (run, background) = run_test_tree(child, Duration::from_secs(20));
+        assert!(!marker.exists());
+        let background = background.unwrap();
+        assert!(background.is_tracking());
+        let can_stop = background.can_stop();
+        assert_eq!(
+            background.wait_on_cancel(),
+            if can_stop {
+                None
+            } else {
+                Some(CancelOutcome::Unconfirmed)
+            }
+        );
+        let written = marker.exists();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !marker.exists() && Instant::now() < deadline {
+            std::thread::sleep(PROCESS_POLL_INTERVAL);
+        }
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(!run.timed_out);
+        assert_eq!(run.captured.stdout.trim(), "done");
+        assert!(
+            !can_stop || written,
+            "the run returned before its background work finished"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancellation_stops_verified_background_work_at_the_deadline() {
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("sleep 30 > /dev/null 2>&1 & echo $!");
+        let started = Instant::now();
+        let child = spawn_tree(command, true).unwrap();
+        let (run, processes) = run_test_tree(child, Duration::from_secs(1));
+        assert!(!run.timed_out);
+        let background: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
+        let processes = processes.unwrap();
+        assert!(processes.is_tracking());
+        let can_stop = processes.can_stop();
+        let outcome = processes.wait_on_cancel();
+        if !can_stop {
+            unsafe { libc::kill(background, libc::SIGKILL) };
+            assert_eq!(outcome, Some(CancelOutcome::Unconfirmed));
+            return;
+        }
+        assert_eq!(outcome, Some(CancelOutcome::TimedOut { confirmed: false }));
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut alive = true;
+        while alive && Instant::now() < deadline {
+            alive = unsafe { libc::kill(background, 0) } == 0;
+            if alive {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        if alive {
+            unsafe {
+                libc::kill(background, libc::SIGKILL);
+            }
+        }
+        assert!(!alive, "the leftover process outlived the deadline");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "run the test binary in a private PID namespace as PID 1"]
+    fn cancellation_does_not_signal_a_reused_process_group() {
+        assert_eq!(std::process::id(), 1);
+        assert_eq!(std::fs::read_link("/proc/self").unwrap(), Path::new("1"));
+
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("sleep 30 > /dev/null 2>&1 & echo $!");
+        let original = spawn_tree(command, true).unwrap();
+        let group = original.child.id();
+        let (run, background) = run_test_tree(original, Duration::from_secs(1));
+        assert!(!run.timed_out);
+        let orphan: libc::pid_t = run.captured.stdout.trim().parse().unwrap();
+        assert_eq!(unsafe { libc::kill(orphan, libc::SIGKILL) }, 0);
+        assert_eq!(
+            unsafe { libc::waitpid(orphan, std::ptr::null_mut(), 0) },
+            orphan
+        );
+
+        std::fs::write("/proc/sys/kernel/ns_last_pid", (group - 1).to_string()).unwrap();
+        let mut command = crate::proc::hidden("/bin/sh");
+        command.arg("-c").arg("exec sleep 30");
+        let mut unrelated = spawn_tree(command, false).unwrap();
+        assert_eq!(unrelated.child.id(), group);
+        let background = background.unwrap();
+        let can_stop = background.can_stop();
+        let outcome = background.wait_on_cancel();
+        let survived = unrelated.child.try_wait().unwrap().is_none();
+        if survived {
+            unrelated.child.kill().unwrap();
+        }
+        unrelated.child.wait().unwrap();
+
+        assert!(survived, "Cancel killed the unrelated process group");
+        assert_eq!(
+            outcome,
+            if can_stop {
+                None
+            } else {
+                Some(CancelOutcome::Unconfirmed)
+            }
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn a_background_process_holding_the_pipes_does_not_hold_up_the_capture() {
         let mut command = crate::proc::hidden("/bin/sh");
         command.arg("-c").arg("sleep 30 & echo $!; echo done");
         let started = Instant::now();
-        let child = spawn_tree(command).unwrap();
-        let captured = capture_tree_child(child, "", Duration::from_secs(60)).unwrap();
+        let child = spawn_tree(command, false).unwrap();
+        let (run, _) = run_test_tree(child, Duration::from_secs(60));
+        assert!(!run.timed_out);
+        let captured = run.captured;
         let elapsed = started.elapsed();
         let mut lines = captured.stdout.lines();
         let background: libc::pid_t = lines.next().unwrap().trim().parse().unwrap();

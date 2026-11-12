@@ -10,12 +10,28 @@ pub enum AppError {
     Other(String),
     #[error("no repository is open")]
     NoRepository,
+    #[error("{} is still running in {repo}", hook.as_deref().unwrap_or("Another operation"))]
+    Busy { hook: Option<String>, repo: String },
     #[error("operation would conflict: {0}")]
     Conflict(String),
     #[error("The {hook} hook failed (exit code {status}).")]
     Hook {
         hook: String,
         status: i32,
+        output: String,
+    },
+    #[error(
+        "The {hook} hook did not finish within {seconds} seconds{}",
+        if *.exit_unconfirmed {
+            ". AngKorGit could not confirm that all hook processes exited."
+        } else {
+            " and was stopped."
+        }
+    )]
+    HookTimeout {
+        hook: String,
+        seconds: u64,
+        exit_unconfirmed: bool,
         output: String,
     },
 }
@@ -94,14 +110,20 @@ impl AppError {
             },
             AppError::Other(_) => "other",
             AppError::NoRepository => "no_repository",
+            AppError::Busy { .. } => "operation_running",
             AppError::Conflict(_) => "conflict",
             AppError::Hook { .. } => "hook_failed",
+            AppError::HookTimeout { .. } => "hook_timeout",
         }
     }
 
     fn detail(&self) -> Option<String> {
         match self {
-            AppError::Hook { output, .. } if !output.is_empty() => Some(output.clone()),
+            AppError::Hook { output, .. } | AppError::HookTimeout { output, .. }
+                if !output.is_empty() =>
+            {
+                Some(output.clone())
+            }
             _ => None,
         }
     }
@@ -194,6 +216,26 @@ mod tests {
     }
 
     #[test]
+    fn busy_operations_name_the_running_hook_and_repository() {
+        for (hook, message) in [
+            (
+                Some("post-checkout".to_string()),
+                "post-checkout is still running in angkorgit",
+            ),
+            (None, "Another operation is still running in angkorgit"),
+        ] {
+            let error = AppError::Busy {
+                hook,
+                repo: "angkorgit".into(),
+            };
+            let payload = serde_json::to_value(error).unwrap();
+            assert_eq!(payload["code"], "operation_running");
+            assert_eq!(payload["message"], message);
+            assert!(payload.get("detail").is_none());
+        }
+    }
+
+    #[test]
     fn hook_failures_carry_the_hook_output_as_detail() {
         let error = AppError::Hook {
             hook: "pre-commit".into(),
@@ -209,6 +251,23 @@ mod tests {
         assert_eq!(payload["detail"], "lint: bad file");
         let plain = serde_json::to_value(AppError::other("boom")).unwrap();
         assert!(plain.get("detail").is_none());
+    }
+
+    #[test]
+    fn a_hook_timeout_reports_an_unconfirmed_exit_and_keeps_its_output() {
+        let error = AppError::HookTimeout {
+            hook: "post-merge".into(),
+            seconds: 600,
+            exit_unconfirmed: true,
+            output: "installing".into(),
+        };
+        let payload = serde_json::to_value(&error).unwrap();
+        assert_eq!(payload["code"], "hook_timeout");
+        assert_eq!(
+            payload["message"],
+            "The post-merge hook did not finish within 600 seconds. AngKorGit could not confirm that all hook processes exited."
+        );
+        assert_eq!(payload["detail"], "installing");
     }
 
     #[test]

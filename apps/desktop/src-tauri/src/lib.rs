@@ -16,11 +16,13 @@ mod terminal;
 mod watcher;
 
 pub mod test_api {
+    #[cfg(unix)]
+    pub use crate::ai_cli::background_process_signals_available;
     pub use crate::core::blame::blame_file;
     pub use crate::core::branch::{
         can_fast_forward, checkout_branch, checkout_detached, cherry_pick, cherry_pick_many,
-        create as branch_create, list as branches, merge, rebase, rebase_commits, rebase_continue,
-        rebase_interactive, reset,
+        create as branch_create, list as branches, merge, rebase, rebase_abort, rebase_commits,
+        rebase_continue, rebase_interactive, reset,
     };
     pub use crate::core::commit::{amend, commit, merge_message, revert, reword};
     pub use crate::core::conflict::{
@@ -44,6 +46,7 @@ pub mod test_api {
         stash_create, stash_files, stash_list, stash_pop, stash_restore_files, tag_create,
         tag_delete, tag_list,
     };
+    pub use crate::core::post_hooks;
     pub use crate::core::pull_preview::pull_preview;
     pub use crate::core::remote::{
         add as remote_add, checkout_remote_ref, fetch, group_update, group_update_controlled,
@@ -147,6 +150,7 @@ pub fn run() {
             commands::stage_all,
             commands::unstage_all,
             commands::discard_file,
+            commands::discard_files,
             commands::discard_all,
             commands::discard_staged_file,
             commands::discard_staged_all,

@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { FolderOpen } from 'lucide-react';
@@ -71,7 +72,7 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
       closeDialog();
       onCloned(path);
     } catch (error) {
-      toast.error(`Clone failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Clone failed', error);
       setProgress(null);
     }
   };

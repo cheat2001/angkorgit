@@ -1,3 +1,5 @@
+import { AlertTriangle } from 'lucide-react';
+import { cleanCliOutput } from '@angkorgit/core';
 import {
   Badge,
   Button,
@@ -16,6 +18,7 @@ export interface GroupUpdateProgress {
   runId: string;
   name: string;
   pull: boolean;
+  skipHooks?: boolean;
   total: number;
   results: GroupRepositoryResult[];
   running: boolean;
@@ -28,9 +31,10 @@ export function GroupUpdateDialog({ progress, onClose, onCancel }: {
   onCancel: () => void;
 }) {
   if (!progress) return null;
-  const { name, pull, total, results, running, cancelling } = progress;
+  const { name, pull, skipHooks, total, results, running, cancelling } = progress;
   const counts: Record<GroupResultKind, number> = { updated: 0, unchanged: 0, skipped: 0, failed: 0, partial: 0, cancelled: 0 };
   for (const result of results) counts[classify(result)]++;
+  const hookWarnings = results.reduce((sum, result) => sum + (result.hookWarnings?.length ?? 0), 0);
   const labels: Record<GroupResultKind, string> = {
     updated: 'Updated', unchanged: pull ? 'Up to date' : 'Unchanged', skipped: 'Skipped',
     failed: 'Failed', partial: 'Partial', cancelled: 'Cancelled',
@@ -47,14 +51,15 @@ export function GroupUpdateDialog({ progress, onClose, onCancel }: {
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle>{pull ? 'Pull all (fast-forward only)' : 'Fetch all'} — {name}</DialogTitle>
+          <DialogTitle>{pull ? `Pull all${skipHooks ? ' without hooks' : ''} (fast-forward only)` : 'Fetch all'} — {name}</DialogTitle>
           <DialogDescription>
             {pull ? 'Fast-forwards the checked-out branch from its upstream, preserving unrelated local changes.' : 'Fetches every configured remote in the group.'}
+            {pull && skipHooks && ' The post-merge hooks do not run.'}
           </DialogDescription>
         </DialogHeader>
         <div className="mb-3 flex items-center gap-2 overflow-x-auto whitespace-nowrap text-xs" role="status" aria-live="polite">
           {running && <Spinner className="size-4 shrink-0" />}
-          <span className="shrink-0">{cancelling ? 'Cancelling…' : running ? `${results.length} of ${total} repositories complete` : `${total} repositories complete`} · {counts.updated} updated · {counts.unchanged} {pull ? 'up to date' : 'unchanged'} · {counts.skipped} skipped · {counts.failed} failed{counts.partial > 0 && ` · ${counts.partial} partial`}{counts.cancelled > 0 && ` · ${counts.cancelled} cancelled`}</span>
+          <span className="shrink-0">{cancelling ? 'Cancelling…' : running ? `${results.length} of ${total} repositories complete` : `${total} repositories complete`} · {counts.updated} updated · {counts.unchanged} {pull ? 'up to date' : 'unchanged'} · {counts.skipped} skipped · {counts.failed} failed{counts.partial > 0 && ` · ${counts.partial} partial`}{counts.cancelled > 0 && ` · ${counts.cancelled} cancelled`}{hookWarnings > 0 && ` · ${hookWarnings} hook warning${hookWarnings === 1 ? '' : 's'}`}</span>
         </div>
         <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1" data-group-update-results>
           {results.map((result) => (
@@ -72,6 +77,24 @@ export function GroupUpdateDialog({ progress, onClose, onCancel }: {
                 </p>
               ))}
               {!pull && result.status === 'ok' && result.changes.length === 0 && <p className="text-xs text-muted">No refs moved.</p>}
+              {result.hookWarnings?.map((warning) => (
+                <div key={`${warning.hook}:${warning.timedOut}:${warning.status}`} className="mt-1.5 rounded-md bg-surface-raised px-2.5 py-1.5 text-xs" data-group-hook-warning={warning.hook}>
+                  <p className="flex items-start gap-1.5">
+                    <AlertTriangle className="mt-px size-3.5 shrink-0 text-primary" aria-hidden />
+                    <span className="break-words">
+                      {warning.message} {warning.status === null ? 'The pull stands.' : 'Git ignores its exit code, so the pull stands.'}
+                    </span>
+                  </p>
+                  {warning.output && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-muted">Hook output</summary>
+                      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed [overflow-wrap:anywhere]" data-hook-output>
+                        {cleanCliOutput(warning.output)}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              ))}
             </div>
           ))}
         </div>

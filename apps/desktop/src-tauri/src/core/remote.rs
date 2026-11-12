@@ -12,7 +12,7 @@ use git2::{
 use crate::error::{AppError, AppResult};
 
 use super::group_update::{FetchProgress, GroupUpdateControl};
-use super::hooks::{pre_push_input, PrePush, PushedRef};
+use super::hooks::{pre_push_input, PostHook, PostHooks, PrePush, PushedRef};
 use super::types::{GeneratedKey, GroupUpdateResult, OpOutcome, RefMovement, RemoteInfo};
 
 static CREDENTIAL_PREFS: OnceLock<RwLock<CredentialPrefs>> = OnceLock::new();
@@ -64,20 +64,19 @@ fn prefs_snapshot() -> CredentialPrefs {
         .unwrap_or_default()
 }
 
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
 }
 
 pub(crate) fn expand_home(path: &str, home: Option<&Path>) -> PathBuf {
-    let trimmed = path.trim();
-    if let Some(rest) = trimmed.strip_prefix("~/") {
+    if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = home {
-            return home.join(rest);
+            return home.join(rest.trim_start_matches('/'));
         }
     }
-    PathBuf::from(trimmed)
+    PathBuf::from(path)
 }
 
 const MAX_SSH_KEYS: usize = 5;
@@ -126,7 +125,7 @@ fn discover_ssh_keys(home: Option<&Path>) -> Vec<PathBuf> {
 }
 
 fn resolved_key_path(path: &str) -> AppResult<PathBuf> {
-    let resolved = expand_home(path, home_dir().as_deref());
+    let resolved = expand_home(path.trim(), home_dir().as_deref());
     if resolved.as_os_str().is_empty() {
         return Err(AppError::other("choose a path for the key"));
     }
@@ -479,6 +478,7 @@ pub fn group_update_controlled(
             status: "cancelled".into(),
             message: "Cancelled before completing the repository update".into(),
             changes: Vec::new(),
+            ..Default::default()
         }),
         Err(error) => Err(error),
     }
@@ -495,6 +495,7 @@ fn group_update_inner(
             status: "skipped".into(),
             message: "Repository folder no longer exists".into(),
             changes: Vec::new(),
+            ..Default::default()
         });
     }
     let repo = super::repo::open(path)?;
@@ -502,6 +503,7 @@ fn group_update_inner(
         status: status.into(),
         message,
         changes: Vec::new(),
+        ..Default::default()
     };
     if !pull {
         let names: Vec<String> = repo.remotes()?.iter().flatten().map(String::from).collect();
@@ -687,6 +689,7 @@ fn group_update_inner(
         ));
     }
     let checkout = control.with_active_result(path, || {
+        super::branch::set_orig_head(&repo, old)?;
         let mut checkout = CheckoutBuilder::new();
         checkout.safe();
         if let Err(error) = repo.checkout_tree(target.as_object(), Some(&mut checkout)) {
@@ -710,6 +713,14 @@ fn group_update_inner(
                 ))
             })?;
         super::submodule::follow_recorded(path, &submodules, false);
+        let hook_warnings = super::hooks::run_post_watched(
+            &repo,
+            &[PostHook::Merge],
+            control.skips_hooks(),
+            super::hooks::Watch::track_background(&|hook| {
+                control.record_background_hook(path, hook);
+            }),
+        );
         Ok(GroupUpdateResult {
             status: "ok".into(),
             message: format!("Fast-forwarded {branch_name} by {behind} commit(s)"),
@@ -719,6 +730,7 @@ fn group_update_inner(
                 new_oid: Some(new.to_string()),
                 commits: Some(behind),
             }],
+            hook_warnings,
         })
     });
     checkout
@@ -877,6 +889,7 @@ pub(super) fn fetch_progress_summary(
         status: status.into(),
         message,
         changes,
+        ..Default::default()
     }
 }
 
@@ -924,6 +937,15 @@ fn fetched_refs(repo: &Repository) -> AppResult<HashMap<String, git2::Oid>> {
 }
 
 pub fn pull(path: &str, remote_name: &str, mode: Option<&str>) -> AppResult<OpOutcome> {
+    pull_with_hooks(path, remote_name, mode, &mut PostHooks::off())
+}
+
+pub(crate) fn pull_with_hooks(
+    path: &str,
+    remote_name: &str,
+    mode: Option<&str>,
+    hooks: &mut PostHooks,
+) -> AppResult<OpOutcome> {
     fetch(path, remote_name, false, false)?;
 
     let repo = super::repo::open(path)?;
@@ -955,9 +977,13 @@ pub fn pull(path: &str, remote_name: &str, mode: Option<&str>) -> AppResult<OpOu
     drop(repo);
 
     if rebase && ahead > 0 && behind > 0 {
-        return super::branch::rebase(path, &upstream_name);
+        return super::branch::rebase_with_hooks(path, &upstream_name, hooks);
     }
-    super::branch::merge(path, &upstream_name, false)
+    let outcome = super::branch::merge(path, &upstream_name, false)?;
+    if let Some(hook) = PostHook::merged(&outcome) {
+        hooks.later(hook);
+    }
+    Ok(outcome)
 }
 
 pub(super) fn pull_source(
@@ -1311,7 +1337,11 @@ fn tracking_ref_matches(repo: &Repository, remote_name: &str, branch_name: &str)
     local.is_some() && local == tip(format!("refs/remotes/{remote_name}/{branch_name}"))
 }
 
-pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
+pub(crate) fn pull_branch_with_hooks(
+    path: &str,
+    branch_name: &str,
+    hooks: &mut PostHooks,
+) -> AppResult<OpOutcome> {
     let (upstream_name, remote_name) = {
         let repo = super::repo::open(path)?;
         let branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
@@ -1340,7 +1370,11 @@ pub fn pull_branch(path: &str, branch_name: &str) -> AppResult<OpOutcome> {
         .as_deref()
         == Some(branch_name);
     if is_head {
-        return super::branch::merge(path, &upstream_name, false);
+        let outcome = super::branch::merge(path, &upstream_name, false)?;
+        if let Some(hook) = PostHook::merged(&outcome) {
+            hooks.later(hook);
+        }
+        return Ok(outcome);
     }
 
     let branch = repo.find_branch(branch_name, git2::BranchType::Local)?;
@@ -1625,6 +1659,14 @@ mod tests {
         assert_eq!(
             expand_home("~/.ssh/work_key", Some(&home())),
             PathBuf::from("/Users/tester/.ssh/work_key")
+        );
+    }
+
+    #[test]
+    fn expands_a_leading_tilde_with_repeated_slashes() {
+        assert_eq!(
+            expand_home("~//src/repo/project.gitconfig", Some(&home())),
+            home().join("src/repo/project.gitconfig")
         );
     }
 

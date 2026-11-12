@@ -264,6 +264,29 @@ export interface GroupUpdateResult {
   status: 'ok' | 'up_to_date' | 'skipped' | 'failed' | 'partial' | 'cancelled';
   message: string;
   changes: RefMovement[];
+  hookWarnings?: HookWarning[];
+}
+
+export interface DiscardBatch {
+  leftovers: string[];
+  failed: { path: string; message: string }[];
+}
+
+export interface RepoHooks {
+  found: string[];
+  inWorktree: boolean;
+}
+
+export interface HookWarning {
+  hook: string;
+  status: number | null;
+  timedOut: boolean;
+  message: string;
+  output: string;
+}
+
+export interface HookWarningEvent extends HookWarning {
+  repoPath: string;
 }
 
 export interface RefMovement {

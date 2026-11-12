@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -436,7 +437,7 @@ export function DiffPanel({ target }: { target: CenterDiffTarget }) {
       await op();
       await refreshStatus();
     } catch (error) {
-      toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
+      toastActionError(`${label} failed`, error);
     }
   };
 

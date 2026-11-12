@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { create } from 'zustand';
 import { toast } from 'sonner';
 import { ipc, type CommitOutcome } from '@/core/ipc';
@@ -77,7 +78,7 @@ export async function runCommit(request: CommitRequest, noVerify: boolean, hooks
         retry: () => void runCommit(request, true, hooksPresent),
       });
     } else {
-      toast.error(`Commit failed${where()}: ${(error as { message?: string } | null)?.message ?? error}`);
+      toastActionError(`Commit failed${where()}`, error);
     }
   } finally {
     useCommitWork.setState((s) => {

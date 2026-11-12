@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { FolderOpen, FolderTree } from 'lucide-react';
@@ -142,7 +143,7 @@ export function CreateWorktreeDialog() {
         await refresh();
       }
     } catch (error) {
-      toast.error(`Could not create worktree: ${(error as { message?: string }).message ?? error}`);
+      toastActionError('Could not create worktree', error);
     } finally {
       setBusy(false);
     }

@@ -1,3 +1,4 @@
+import { toastActionError } from '../../components/actionError';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
@@ -243,7 +244,7 @@ export function CommitGraph() {
           reportHookFailure({ repoPath: path, operation: 'push', error, retry: retryWithoutHooks });
           return;
         }
-        toast.error(`${label} failed: ${(error as { message?: string }).message ?? error}`);
+        toastActionError(`${label} failed`, error);
       }
     },
     [refresh, reload, path],
@@ -372,7 +373,7 @@ export function CommitGraph() {
               action: () => ipc.checkout(path, name),
             });
           } catch (error) {
-            toast.error(`Checkout ${name} failed: ${(error as { message?: string }).message ?? error}`);
+            toastActionError(`Checkout ${name} failed`, error);
             return;
           }
         }

@@ -2,7 +2,7 @@ use git2::Repository;
 
 use crate::error::{AppError, AppResult};
 
-use super::hooks::CommitHooks;
+use super::hooks::{CommitHooks, PostHook, PostHooks, Rewrite};
 use super::types::{CommitOutcome, OpOutcome, RebaseTodoEntry};
 
 pub(crate) fn default_signature(repo: &Repository) -> AppResult<git2::Signature<'static>> {
@@ -174,6 +174,22 @@ pub fn revert(path: &str, oid: &str) -> AppResult<OpOutcome> {
 }
 
 pub fn amend(path: &str, message: Option<&str>, no_verify: bool) -> AppResult<CommitOutcome> {
+    amend_with_hooks(path, message, no_verify, &mut PostHooks::off())
+}
+
+fn amended(old: git2::Oid, new: git2::Oid) -> PostHook {
+    PostHook::Rewrite {
+        command: Rewrite::Amend,
+        pairs: vec![(old, new)],
+    }
+}
+
+pub(crate) fn amend_with_hooks(
+    path: &str,
+    message: Option<&str>,
+    no_verify: bool,
+    post_hooks: &mut PostHooks,
+) -> AppResult<CommitOutcome> {
     let repo = super::repo::open(path)?;
     let head = repo
         .head()
@@ -204,6 +220,7 @@ pub fn amend(path: &str, message: Option<&str>, no_verify: bool) -> AppResult<Co
             message.as_deref(),
             Some(&tree),
         )?;
+        post_hooks.later(amended(commit.id(), oid));
         return Ok(CommitOutcome {
             oid: oid.to_string(),
             hook_warning: hooks.warning,
@@ -224,6 +241,7 @@ pub fn amend(path: &str, message: Option<&str>, no_verify: bool) -> AppResult<Co
         &tree,
         &parent_refs,
     )?;
+    post_hooks.later(amended(commit.id(), oid));
     Ok(CommitOutcome {
         oid: oid.to_string(),
         hook_warning: hooks.warning,
@@ -231,6 +249,15 @@ pub fn amend(path: &str, message: Option<&str>, no_verify: bool) -> AppResult<Co
 }
 
 pub fn reword(path: &str, oid: &str, message: &str) -> AppResult<String> {
+    reword_with_hooks(path, oid, message, &mut PostHooks::off())
+}
+
+pub(crate) fn reword_with_hooks(
+    path: &str,
+    oid: &str,
+    message: &str,
+    hooks: &mut PostHooks,
+) -> AppResult<String> {
     let message = message.trim_end();
     if message.trim().is_empty() {
         return Err(AppError::other("the commit message cannot be empty"));
@@ -242,7 +269,9 @@ pub fn reword(path: &str, oid: &str, message: &str) -> AppResult<String> {
         .map_err(|_| AppError::other("nothing to reword: repository has no commits"))?
         .peel_to_commit()?;
     if target.id() == head.id() {
-        return reword_head(&repo, &head, message);
+        let new = reword_head(&repo, &head, message)?;
+        hooks.later(amended(head.id(), new));
+        return Ok(new.to_string());
     }
     let parent = target.parent(0).map_err(|_| {
         AppError::other("the root commit can only be reworded while it is the latest commit")
@@ -267,7 +296,7 @@ pub fn reword(path: &str, oid: &str, message: &str) -> AppResult<String> {
             }
         })
         .collect();
-    let new_head = super::branch::rebase_interactive(path, &parent_oid, &todo)?;
+    let new_head = super::branch::rebase_interactive_with_hooks(path, &parent_oid, &todo, hooks)?;
     let mut commit = repo.find_commit(git2::Oid::from_str(&new_head)?)?;
     for _ in 0..index {
         commit = commit.parent(0)?;
@@ -275,15 +304,14 @@ pub fn reword(path: &str, oid: &str, message: &str) -> AppResult<String> {
     Ok(commit.id().to_string())
 }
 
-fn reword_head(repo: &Repository, head: &git2::Commit, message: &str) -> AppResult<String> {
+fn reword_head(repo: &Repository, head: &git2::Commit, message: &str) -> AppResult<git2::Oid> {
     if super::sign::signing_config(repo)?.is_none() {
-        let oid = head.amend(Some("HEAD"), None, None, None, Some(message), None)?;
-        return Ok(oid.to_string());
+        return Ok(head.amend(Some("HEAD"), None, None, None, Some(message), None)?);
     }
     let tree = head.tree()?;
     let parents: Vec<git2::Commit> = head.parents().collect();
     let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
-    let oid = super::sign::create_commit(
+    super::sign::create_commit(
         repo,
         Some("HEAD"),
         &head.author(),
@@ -291,6 +319,5 @@ fn reword_head(repo: &Repository, head: &git2::Commit, message: &str) -> AppResu
         message,
         &tree,
         &parent_refs,
-    )?;
-    Ok(oid.to_string())
+    )
 }
