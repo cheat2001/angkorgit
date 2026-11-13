@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use git2::{ApplyLocation, DiffFormat, DiffOptions, Repository};
+use git2::{ApplyLocation, DiffFormat, DiffOptions, Index, IndexEntry, IndexTime, Repository};
 
 use super::types::{DiscardBatch, DiscardFailure};
 use crate::error::{AppError, AppResult};
@@ -152,9 +152,11 @@ pub fn discard_all(path: &str) -> AppResult<Vec<String>> {
 }
 
 pub fn discard_staged_file(path: &str, file: &str) -> AppResult<bool> {
-    let repo = super::repo::open(path)?;
-    discard_to_head(&repo, file)?;
-    Ok(!touched_paths(&repo)?.iter().any(|p| p == file))
+    let (batch, _) = discard_staged(path, Some(&[file.to_string()]))?;
+    if let Some(failure) = batch.failed.into_iter().next() {
+        return Err(AppError::other(failure.message));
+    }
+    Ok(batch.leftovers.is_empty())
 }
 
 pub fn discard_staged_all(path: &str) -> AppResult<Vec<String>> {
@@ -166,81 +168,212 @@ pub fn discard_staged_all(path: &str) -> AppResult<Vec<String>> {
 }
 
 pub(crate) fn discard_staged_all_reporting(path: &str) -> AppResult<(DiscardBatch, bool)> {
-    let repo = super::repo::open(path)?;
-    let mut opts = git2::StatusOptions::new();
-    opts.include_untracked(false);
-    let statuses = repo.statuses(Some(&mut opts))?;
-    let staged: Vec<String> = statuses
-        .iter()
-        .filter(|e| {
-            e.status().intersects(
-                git2::Status::INDEX_NEW
-                    | git2::Status::INDEX_MODIFIED
-                    | git2::Status::INDEX_DELETED
-                    | git2::Status::INDEX_RENAMED
-                    | git2::Status::INDEX_TYPECHANGE,
-            )
-        })
-        .filter_map(|e| {
-            e.head_to_index()
-                .and_then(|d| d.old_file().path().map(|p| p.to_string_lossy().to_string()))
-                .or_else(|| e.path().map(String::from))
-        })
-        .collect();
-    let renamed_targets: Vec<String> = statuses
-        .iter()
-        .filter(|e| e.status().contains(git2::Status::INDEX_RENAMED))
-        .filter_map(|e| {
-            e.head_to_index()
-                .and_then(|d| d.new_file().path().map(|p| p.to_string_lossy().to_string()))
-        })
-        .collect();
-    drop(statuses);
-    let mut batch = DiscardBatch::default();
-    let mut restored_any = false;
-    for file in staged.iter().chain(renamed_targets.iter()) {
-        match discard_to_head(&repo, file) {
-            Ok(()) => restored_any = true,
-            Err(error) => batch.failed.push(DiscardFailure {
-                path: file.clone(),
-                message: error.to_string(),
-            }),
-        }
-    }
-    let remaining = touched_paths(&repo)?;
-    batch.leftovers = staged
-        .into_iter()
-        .chain(renamed_targets)
-        .filter(|p| remaining.contains(p) && !batch.failed.iter().any(|failure| &failure.path == p))
-        .collect();
-    Ok((batch, restored_any))
+    discard_staged(path, None)
 }
 
-fn discard_to_head(repo: &git2::Repository, file: &str) -> AppResult<()> {
+pub(crate) fn discard_staged_files_reporting(
+    path: &str,
+    files: &[String],
+) -> AppResult<(DiscardBatch, bool)> {
+    discard_staged(path, Some(files))
+}
+
+fn discard_staged(path: &str, selected: Option<&[String]>) -> AppResult<(DiscardBatch, bool)> {
+    let repo = super::repo::open(path)?;
     let workdir = repo
         .workdir()
         .ok_or_else(|| AppError::other("bare repository"))?
         .to_path_buf();
+    let lock = IndexLock::acquire(&repo)?;
+    let files = staged_targets(&repo, selected)?;
+    let mut batch = DiscardBatch::default();
+    let mut restored_any = false;
+    if files.is_empty() {
+        return Ok((batch, restored_any));
+    }
     let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
-    let in_head = head_tree
-        .as_ref()
-        .map(|t| t.get_path(Path::new(file)).is_ok())
-        .unwrap_or(false);
-    if in_head {
-        let tree = head_tree.as_ref().expect("checked above");
-        let mut builder = git2::build::CheckoutBuilder::new();
-        builder.path(file).force();
-        repo.checkout_tree(tree.as_object(), Some(&mut builder))?;
-    } else {
-        let mut index = repo.index()?;
-        let _ = index.remove_path(Path::new(file));
-        index.write()?;
-        let full = workdir.join(file);
-        if full.is_file() || full.is_symlink() {
-            std::fs::remove_file(full)?;
+    let (removals, restores): (Vec<_>, Vec<_>) = files
+        .into_iter()
+        .map(|file| {
+            let entry = head_tree
+                .as_ref()
+                .and_then(|tree| tree.get_path(Path::new(&file)).ok())
+                .filter(|entry| entry.kind() != Some(git2::ObjectType::Tree));
+            (file, entry)
+        })
+        .partition(|(_, entry)| entry.is_none());
+    let mut index = lock.index()?;
+    let mut processed = Vec::new();
+    for (file, entry) in removals.into_iter().chain(restores) {
+        let result = match (&head_tree, &entry) {
+            (Some(tree), Some(entry)) => restore_from_head(&repo, tree, &mut index, &file, entry),
+            _ => remove_staged_addition(&workdir, &mut index, &file),
+        };
+        match result {
+            Ok(()) => {
+                restored_any = true;
+                processed.push(file);
+            }
+            Err(error) => batch.failed.push(DiscardFailure {
+                path: file,
+                message: error.to_string(),
+            }),
         }
     }
+    if restored_any {
+        lock.publish(index)?;
+    }
+    let remaining = touched_paths(&repo)?;
+    batch.leftovers = processed
+        .into_iter()
+        .filter(|p| remaining.contains(p))
+        .collect();
+    Ok((batch, restored_any))
+}
+
+fn staged_targets(repo: &Repository, selected: Option<&[String]>) -> AppResult<Vec<String>> {
+    let mut opts = git2::StatusOptions::new();
+    opts.include_untracked(false).renames_head_to_index(true);
+    let statuses = repo.statuses(Some(&mut opts))?;
+    let staged = git2::Status::INDEX_NEW
+        | git2::Status::INDEX_MODIFIED
+        | git2::Status::INDEX_DELETED
+        | git2::Status::INDEX_RENAMED
+        | git2::Status::INDEX_TYPECHANGE;
+    let groups: Vec<Vec<String>> = statuses
+        .iter()
+        .filter(|e| e.status().intersects(staged))
+        .map(|e| {
+            let delta = e.head_to_index();
+            let old = delta
+                .as_ref()
+                .and_then(|d| d.old_file().path().map(path_string));
+            let new = delta.and_then(|d| d.new_file().path().map(path_string));
+            let mut paths: Vec<String> = old.into_iter().chain(new).collect();
+            paths.dedup();
+            if paths.is_empty() {
+                paths.extend(e.path().map(String::from));
+            }
+            paths
+        })
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut targets = Vec::new();
+    let mut take = |paths: &[String]| {
+        for path in paths {
+            if seen.insert(path.clone()) {
+                targets.push(path.clone());
+            }
+        }
+    };
+    match selected {
+        None => groups.iter().for_each(|group| take(group)),
+        Some(files) => {
+            for file in files {
+                match groups.iter().find(|group| group.contains(file)) {
+                    Some(group) => take(group),
+                    None => take(std::slice::from_ref(file)),
+                }
+            }
+        }
+    }
+    Ok(targets)
+}
+
+fn path_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+fn restore_from_head(
+    repo: &Repository,
+    tree: &git2::Tree,
+    index: &mut Index,
+    file: &str,
+    entry: &git2::TreeEntry,
+) -> AppResult<()> {
+    let mut builder = git2::build::CheckoutBuilder::new();
+    builder
+        .path(file)
+        .disable_pathspec_match(true)
+        .force()
+        .update_index(false);
+    repo.checkout_tree(tree.as_object(), Some(&mut builder))?;
+    index.remove_path(Path::new(file))?;
+    index.add(&IndexEntry {
+        ctime: IndexTime::new(0, 0),
+        mtime: IndexTime::new(0, 0),
+        dev: 0,
+        ino: 0,
+        mode: entry.filemode() as u32,
+        uid: 0,
+        gid: 0,
+        file_size: 0,
+        id: entry.id(),
+        flags: 0,
+        flags_extended: 0,
+        path: file.as_bytes().to_vec(),
+    })?;
     Ok(())
+}
+
+fn remove_staged_addition(workdir: &Path, index: &mut Index, file: &str) -> AppResult<()> {
+    let full = workdir.join(file);
+    if full.is_file() || full.is_symlink() {
+        std::fs::remove_file(full)?;
+    }
+    index.remove_path(Path::new(file))?;
+    Ok(())
+}
+
+struct IndexLock {
+    lock: PathBuf,
+    index: PathBuf,
+    held: bool,
+}
+
+impl IndexLock {
+    fn acquire(repo: &Repository) -> AppResult<Self> {
+        let lock = repo.path().join("index.lock");
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock)
+        {
+            Ok(_) => Ok(Self {
+                lock,
+                index: repo.path().join("index"),
+                held: true,
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                Err(AppError::other(format!(
+                    "Another Git process is using this repository ({} exists), so nothing was discarded. If no Git process is running, delete that file and try again.",
+                    lock.display()
+                )))
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn index(&self) -> AppResult<Index> {
+        std::fs::copy(&self.index, &self.lock)?;
+        Ok(Index::open(&self.lock)?)
+    }
+
+    fn publish(mut self, mut index: Index) -> AppResult<()> {
+        index.write()?;
+        drop(index);
+        std::fs::rename(&self.lock, &self.index)?;
+        self.held = false;
+        Ok(())
+    }
+}
+
+impl Drop for IndexLock {
+    fn drop(&mut self) {
+        if self.held {
+            let _ = std::fs::remove_file(&self.lock);
+        }
+    }
 }
 
 fn touched_paths(repo: &git2::Repository) -> AppResult<Vec<String>> {

@@ -490,6 +490,124 @@ fn discard_staged_file_restores_head_for_index_and_worktree() {
     assert_eq!(core::status(repo.path()).unwrap().files.len(), 0);
 }
 
+fn staged_paths(repo: &TempRepo) -> Vec<String> {
+    let mut paths: Vec<String> = core::status(repo.path())
+        .unwrap()
+        .files
+        .into_iter()
+        .filter(|f| f.staged.is_some())
+        .map(|f| f.path)
+        .collect();
+    paths.sort();
+    paths
+}
+
+#[test]
+fn discarding_a_staged_file_with_glob_characters_leaves_the_files_it_matches() {
+    let repo = TempRepo::new();
+    repo.write("[ab].txt", "pattern\n");
+    repo.write("a.txt", "a\n");
+    commit_all(&repo, "base");
+    repo.write("[ab].txt", "pattern staged\n");
+    repo.write("a.txt", "a staged\n");
+    core::stage_all(repo.path()).unwrap();
+
+    assert!(core::discard_staged_file(repo.path(), "[ab].txt").unwrap());
+    assert_eq!(repo.read("[ab].txt"), "pattern\n");
+    assert_eq!(repo.read("a.txt"), "a staged\n");
+    assert_eq!(staged_paths(&repo), vec!["a.txt"]);
+
+    repo.write("[ab].txt", "pattern staged again\n");
+    core::stage_all(repo.path()).unwrap();
+    let batch = core::post_hooks::discard_files(repo.path(), &["[ab].txt".to_string()], true, true)
+        .unwrap();
+    assert!(batch.value.failed.is_empty());
+    assert_eq!(repo.read("[ab].txt"), "pattern\n");
+    assert_eq!(repo.read("a.txt"), "a staged\n");
+    assert_eq!(staged_paths(&repo), vec!["a.txt"]);
+}
+
+#[test]
+fn a_staged_discard_changes_nothing_while_another_process_holds_the_index_lock() {
+    let repo = TempRepo::new();
+    repo.write("a.txt", "a\n");
+    commit_all(&repo, "base");
+    repo.write("a.txt", "staged\n");
+    repo.write("fresh.txt", "new\n");
+    core::stage_all(repo.path()).unwrap();
+    let lock = repo.dir.join(".git/index.lock");
+    std::fs::write(&lock, "held by someone else").unwrap();
+
+    let error = core::discard_staged_all(repo.path()).unwrap_err();
+    assert!(error.to_string().contains("index.lock"));
+    assert!(
+        core::post_hooks::discard_files(repo.path(), &["a.txt".to_string()], true, true).is_err()
+    );
+    assert_eq!(repo.read("a.txt"), "staged\n");
+    assert_eq!(repo.read("fresh.txt"), "new\n");
+    assert_eq!(
+        std::fs::read_to_string(&lock).unwrap(),
+        "held by someone else"
+    );
+
+    std::fs::remove_file(&lock).unwrap();
+    assert_eq!(staged_paths(&repo), vec!["a.txt", "fresh.txt"]);
+    assert!(core::discard_staged_all(repo.path()).unwrap().is_empty());
+    assert_eq!(repo.read("a.txt"), "a\n");
+    assert!(!repo.dir.join("fresh.txt").exists());
+    assert!(!lock.exists());
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
+}
+
+#[test]
+fn discarding_either_path_of_a_staged_rename_restores_the_original() {
+    let repo = TempRepo::new();
+    repo.write("old.txt", "same content for rename detection\n");
+    commit_all(&repo, "base");
+    for selected in ["new.txt", "old.txt"] {
+        std::fs::rename(repo.dir.join("old.txt"), repo.dir.join("new.txt")).unwrap();
+        core::stage_all(repo.path()).unwrap();
+        let status = core::status(repo.path()).unwrap();
+        assert!(status
+            .files
+            .iter()
+            .any(|f| f.path == "new.txt" && f.orig_path.as_deref() == Some("old.txt")));
+
+        let batch =
+            core::post_hooks::discard_files(repo.path(), &[selected.to_string()], true, true)
+                .unwrap();
+        assert!(batch.value.failed.is_empty());
+        assert!(batch.value.leftovers.is_empty());
+        assert_eq!(repo.read("old.txt"), "same content for rename detection\n");
+        assert!(!repo.dir.join("new.txt").exists());
+        assert!(core::status(repo.path()).unwrap().files.is_empty());
+        assert!(!repo.dir.join(".git/index.lock").exists());
+    }
+}
+
+#[test]
+fn discarding_a_folder_replaced_by_a_staged_file_restores_the_folder() {
+    let repo = TempRepo::new();
+    repo.write("dir/inner.txt", "inner\n");
+    repo.write("keep.txt", "keep\n");
+    commit_all(&repo, "base");
+    std::fs::remove_dir_all(repo.dir.join("dir")).unwrap();
+    repo.write("dir", "now a file\n");
+    repo.write("keep.txt", "keep staged\n");
+    core::stage_all(repo.path()).unwrap();
+
+    let batch = core::post_hooks::discard_files(
+        repo.path(),
+        &["dir".to_string(), "dir/inner.txt".to_string()],
+        true,
+        true,
+    )
+    .unwrap();
+    assert!(batch.value.failed.is_empty(), "{:?}", batch.value.failed);
+    assert_eq!(repo.read("dir/inner.txt"), "inner\n");
+    assert_eq!(staged_paths(&repo), vec!["keep.txt"]);
+}
+
 #[test]
 fn history_shows_stashes_as_single_parent_commits_and_hides_their_helpers() {
     let repo = TempRepo::new();
