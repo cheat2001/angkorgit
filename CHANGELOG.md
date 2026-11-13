@@ -47,7 +47,8 @@ All notable changes to AngKorGit are documented here. The format follows
 ### Fixed
 - **Pull with rebase handles upstream submodule updates.** Local commits now replay
   when the upstream changes a submodule's recorded commit. Continue rebase also
-  recovers a rebase stopped by this problem in an older version. (#89)
+  recovers a rebase stopped by this problem in an older version and updates clean
+  submodules still at their pre-rebase commits. (#89)
 - **Discarding staged changes writes the index once and leaves other files alone.**
   A file whose name contains `[`, `]`, `*` or `?` no longer resets files the name
   happens to match. The whole batch takes Git's index lock and stops without

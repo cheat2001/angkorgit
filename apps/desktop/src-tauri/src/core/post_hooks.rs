@@ -161,7 +161,7 @@ pub fn pull(
     no_verify: bool,
 ) -> Hooked<AppResult<OpOutcome>> {
     let mut hooks = PostHooks::new(no_verify);
-    let outcome = submodule::synced(path, || {
+    let outcome = submodule::synced_rebase(path, || {
         remote::pull_with_hooks(path, remote_name, mode, &mut hooks)
     });
     finished_or_failed(path, outcome, hooks)
@@ -175,7 +175,7 @@ pub fn pull_branch(path: &str, branch_name: &str, no_verify: bool) -> AppResult<
 
 pub fn rebase(path: &str, upstream: &str, no_verify: bool) -> Hooked<AppResult<OpOutcome>> {
     let mut hooks = PostHooks::new(no_verify);
-    let outcome = submodule::synced(path, || {
+    let outcome = submodule::synced_rebase(path, || {
         branch::rebase_with_hooks(path, upstream, &mut hooks)
     });
     finished_or_failed(path, outcome, hooks)
@@ -183,7 +183,7 @@ pub fn rebase(path: &str, upstream: &str, no_verify: bool) -> Hooked<AppResult<O
 
 pub fn rebase_continue(path: &str, no_verify: bool) -> AppResult<Hooked<OpOutcome>> {
     let mut hooks = PostHooks::new(no_verify);
-    let outcome = submodule::synced(path, || {
+    let outcome = submodule::synced_rebase(path, || {
         branch::rebase_continue_with_hooks(path, &mut hooks)
     })?;
     Ok(finished(path, outcome, hooks))

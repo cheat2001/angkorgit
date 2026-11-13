@@ -4390,10 +4390,33 @@ fn continue_recovers_a_rebase_stopped_by_submodule_drift_in_an_older_client() {
     let fx = SubmoduleFixture::new();
     submodule_rebase_topic(&fx);
     stop_rebase_on_submodule_drift(&fx);
+    fx.local
+        .write("deps/lib/scratch.txt", "untracked submodule work\n");
+    if hooks_runnable() {
+        write_hook(
+            &default_hooks(&fx.local),
+            "post-rewrite",
+            &format!("git -C deps/lib rev-parse HEAD > '{POST_HOOK_LOG}'"),
+        );
+    }
 
-    let outcome = core::rebase_continue(fx.local.path()).unwrap();
-    assert_eq!(outcome.status, "ok");
-    assert_submodule_rebase_complete(&fx, &fx.first);
+    let outcome = core::post_hooks::rebase_continue(fx.local.path(), false).unwrap();
+    assert_eq!(outcome.value.status, "ok");
+    assert_submodule_rebase_complete(&fx, &fx.second);
+    assert_eq!(
+        fx.local.read("deps/lib/scratch.txt"),
+        "untracked submodule work\n"
+    );
+    if hooks_runnable() {
+        assert_eq!(post_hook_runs(&fx.local), vec![fx.second.clone()]);
+    }
+    std::fs::remove_file(fx.local.dir.join("deps/lib/scratch.txt")).unwrap();
+    assert!(core::status(fx.local.path()).unwrap().files.is_empty());
+    core::stage_all(fx.local.path()).unwrap();
+    assert_eq!(
+        git_in(&fx.local.dir, &["diff", "--cached", "--name-only"]),
+        ""
+    );
 }
 
 fn stop_rebase_on_submodule_drift(fx: &SubmoduleFixture) {
@@ -4407,6 +4430,105 @@ fn stop_rebase_on_submodule_drift(fx: &SubmoduleFixture) {
         .unwrap_err();
     assert_eq!(error.code(), git2::ErrorCode::Unmerged);
     assert!(error.message().contains("unstaged changes"));
+}
+
+#[test]
+fn app_continue_retries_submodule_recovery_after_a_failed_continue() {
+    for file in ["README.md", "deps/lib/lib.txt"] {
+        let fx = SubmoduleFixture::new();
+        submodule_rebase_topic(&fx);
+        stop_rebase_on_submodule_drift(&fx);
+        let original = fx.local.read(file);
+        fx.local.write(file, "unsaved work\n");
+
+        assert!(core::post_hooks::rebase_continue(fx.local.path(), true).is_err());
+        assert_eq!(fx.checked_out(), fx.first);
+        assert_eq!(fx.local.read(file), "unsaved work\n");
+        fx.local.write(file, &original);
+
+        let outcome = core::post_hooks::rebase_continue(fx.local.path(), true).unwrap();
+        assert_eq!(outcome.value.status, "ok");
+        assert_submodule_rebase_complete(&fx, &fx.second);
+        assert!(core::status(fx.local.path()).unwrap().files.is_empty());
+    }
+}
+
+#[test]
+fn legacy_rebase_recovery_preserves_a_submodule_moved_to_another_commit() {
+    let fx = SubmoduleFixture::new();
+    submodule_rebase_topic(&fx);
+    stop_rebase_on_submodule_drift(&fx);
+    git_in(
+        &fx.local_sub(),
+        &[
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "intentional local move",
+        ],
+    );
+    let moved = fx.checked_out();
+
+    let outcome = core::post_hooks::rebase_continue(fx.local.path(), true).unwrap();
+    assert_eq!(outcome.value.status, "ok");
+    assert_submodule_rebase_complete(&fx, &moved);
+}
+
+#[test]
+fn invalid_rebase_submodule_baselines_do_not_fall_back_to_original_gitlinks() {
+    for contents in ["interrupted JSON", "[[\"library\",\"invalid commit\"]]"] {
+        let fx = SubmoduleFixture::new();
+        submodule_rebase_topic(&fx);
+        stop_rebase_on_submodule_drift(&fx);
+        std::fs::write(
+            fx.local.dir.join(".git/rebase-merge/angkorgit-submodules"),
+            contents,
+        )
+        .unwrap();
+        let index = std::fs::read(fx.local.dir.join(".git/index")).unwrap();
+        let head = rev(&fx.local, "HEAD");
+
+        assert!(core::post_hooks::rebase_continue(fx.local.path(), true).is_err());
+        assert_eq!(rev(&fx.local, "HEAD"), head);
+        assert_eq!(
+            std::fs::read(fx.local.dir.join(".git/index")).unwrap(),
+            index
+        );
+        assert_eq!(fx.checked_out(), fx.first);
+        assert!(rebase_in_progress(&fx.local));
+    }
+}
+
+#[test]
+fn app_rebase_continues_following_submodules_after_a_blocked_replay() {
+    let fx = SubmoduleFixture::new();
+    submodule_rebase_topic(&fx);
+    std::fs::remove_file(fx.local.dir.join("later.txt")).unwrap();
+    commit_all(&fx.local, "remove later note");
+    fx.local.write("later.txt", "untracked parent work\n");
+
+    assert!(
+        core::post_hooks::rebase(fx.local.path(), "origin/master", true)
+            .into_result()
+            .is_err()
+    );
+    assert_eq!(fx.checked_out(), fx.first);
+    std::fs::remove_file(fx.local.dir.join("later.txt")).unwrap();
+    let outcome = core::post_hooks::rebase_continue(fx.local.path(), true).unwrap();
+    assert_eq!(outcome.value.status, "ok");
+    assert_eq!(fx.checked_out(), fx.second);
+    assert!(!rebase_in_progress(&fx.local));
+    assert!(core::status(fx.local.path()).unwrap().files.is_empty());
+    assert_eq!(
+        &head_summaries(&fx.local)[..4],
+        [
+            "remove later note",
+            "later local note",
+            "local note",
+            "bump lib"
+        ]
+    );
 }
 
 #[test]

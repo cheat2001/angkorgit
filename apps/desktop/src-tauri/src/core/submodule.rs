@@ -1,6 +1,6 @@
 use git2::{Oid, Repository, Submodule, SubmoduleIgnore, SubmoduleStatus};
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 use super::types::{SubmoduleCommits, SubmoduleInfo};
 
@@ -52,6 +52,89 @@ pub fn synced<T>(path: &str, op: impl FnOnce() -> AppResult<T>) -> AppResult<T> 
         follow_recorded(path, &before, true);
     }
     Ok(result)
+}
+
+const REBASE_BASELINE: &str = "angkorgit-submodules";
+
+pub fn synced_rebase<T>(path: &str, op: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
+    let before = rebase_baseline(&super::repo::open(path)?)?;
+    let result = op();
+    if result.is_ok() {
+        follow_recorded(path, &before, true);
+    }
+    save_rebase_baseline(path, &before, result.is_ok())?;
+    result
+}
+
+fn rebase_baseline(repo: &Repository) -> AppResult<Vec<(String, Oid)>> {
+    let mut before = at_recorded_commit(repo);
+    if repo.state() != git2::RepositoryState::RebaseMerge {
+        return Ok(before);
+    }
+    let file = repo.path().join("rebase-merge").join(REBASE_BASELINE);
+    let saved = match std::fs::read(file) {
+        Ok(bytes) => serde_json::from_slice::<Vec<(String, String)>>(&bytes)
+            .map_err(|error| {
+                AppError::other(format!("Cannot read rebase submodule baseline: {error}"))
+            })?
+            .into_iter()
+            .map(|(name, oid)| Ok((name, Oid::from_str(&oid)?)))
+            .collect::<AppResult<Vec<_>>>()?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let rebase = repo.open_rebase(None)?;
+            let original = rebase
+                .orig_head_id()
+                .ok_or_else(|| AppError::other("The rebase has no original commit"))?;
+            let tree = repo.find_commit(original)?.tree()?;
+            repo.submodules()?
+                .iter()
+                .filter_map(|submodule| {
+                    let entry = tree.get_path(submodule.path()).ok()?;
+                    let name = submodule.name()?.to_string();
+                    (entry.kind() == Some(git2::ObjectType::Commit)).then(|| (name, entry.id()))
+                })
+                .collect()
+        }
+        Err(error) => return Err(error.into()),
+    };
+    for (name, previous) in saved {
+        if before.iter().any(|(existing, _)| existing == &name) {
+            continue;
+        }
+        if repo
+            .find_submodule(&name)
+            .ok()
+            .and_then(|sub| sub.workdir_id())
+            == Some(previous)
+        {
+            before.push((name, previous));
+        }
+    }
+    Ok(before)
+}
+
+fn save_rebase_baseline(path: &str, before: &[(String, Oid)], followed: bool) -> AppResult<()> {
+    let repo = super::repo::open(path)?;
+    if repo.state() != git2::RepositoryState::RebaseMerge {
+        return Ok(());
+    }
+    let saved: Vec<_> = before
+        .iter()
+        .filter_map(|(name, previous)| {
+            let submodule = repo.find_submodule(name).ok()?;
+            let current = submodule.workdir_id()?;
+            (current == *previous || (followed && submodule.index_id() == Some(current)))
+                .then(|| (name, current.to_string()))
+        })
+        .collect();
+    let bytes = serde_json::to_vec(&saved).map_err(|error| {
+        AppError::other(format!("Cannot save rebase submodule baseline: {error}"))
+    })?;
+    std::fs::write(
+        repo.path().join("rebase-merge").join(REBASE_BASELINE),
+        bytes,
+    )?;
+    Ok(())
 }
 
 pub fn at_recorded_commit(repo: &Repository) -> Vec<(String, Oid)> {
