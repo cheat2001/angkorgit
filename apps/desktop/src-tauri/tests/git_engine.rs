@@ -1514,6 +1514,85 @@ fn rebase_linearizes_history() {
     assert!(repo.dir.join("feature.txt").exists());
 }
 
+#[test]
+fn rebase_replays_plain_file_commits_that_temporarily_break_gitmodules() {
+    let repo = TempRepo::new();
+    repo.write("base.txt", "base\n");
+    commit_all(&repo, "base");
+    core::branch_create(repo.path(), "topic", None, true).unwrap();
+    repo.write(".gitmodules", "[submodule \"broken\"\n");
+    commit_all(&repo, "broken module metadata");
+    repo.write(".gitmodules", "");
+    commit_all(&repo, "repair module metadata");
+    core::checkout_branch(repo.path(), "master").unwrap();
+    repo.write("upstream.txt", "upstream\n");
+    let onto = commit_all(&repo, "upstream");
+    core::checkout_branch(repo.path(), "topic").unwrap();
+
+    let result = core::post_hooks::rebase(repo.path(), "master", true)
+        .into_result()
+        .unwrap();
+    assert_eq!(result.value.status, "ok");
+    assert_eq!(rev(&repo, "HEAD~2"), onto);
+    assert_eq!(
+        &head_summaries(&repo)[..2],
+        ["repair module metadata", "broken module metadata"]
+    );
+    assert_eq!(repo.read(".gitmodules"), "");
+    assert!(core::status(repo.path()).unwrap().files.is_empty());
+}
+
+#[test]
+fn rebase_baseline_write_failures_preserve_conflicts_and_blocked_step_errors() {
+    if !hooks_runnable() {
+        return;
+    }
+    for conflict in [false, true] {
+        let repo = TempRepo::new();
+        topic_with_a_later_file(&repo);
+        if conflict {
+            core::checkout_branch(repo.path(), "master").unwrap();
+            repo.write("a.txt", "upstream edit\n");
+            commit_all(&repo, "upstream edit");
+            core::checkout_branch(repo.path(), "topic").unwrap();
+            repo.write("a.txt", "local edit\n");
+            commit_all(&repo, "local edit");
+        } else {
+            repo.write("later.txt", "untracked work\n");
+        }
+        write_hook(
+            &default_hooks(&repo),
+            "post-checkout",
+            "mkdir .git/rebase-merge/angkorgit-submodules",
+        );
+
+        let result = core::post_hooks::rebase(repo.path(), "master", false).into_result();
+        if conflict {
+            assert_eq!(result.unwrap().value.status, "conflicts");
+            assert_eq!(core::conflict_list(repo.path()).unwrap(), vec!["a.txt"]);
+        } else {
+            let error = result
+                .err()
+                .expect("the replay must still report its blocker")
+                .to_string();
+            assert!(error.contains("later.txt"), "{error}");
+            assert!(error.contains("add later"), "{error}");
+            assert!(error.contains("in the way"), "{error}");
+        }
+        assert!(rebase_in_progress(&repo));
+        std::fs::remove_dir(repo.dir.join(".git/rebase-merge/angkorgit-submodules")).unwrap();
+        if conflict {
+            repo.write("a.txt", "resolved\n");
+            core::stage_file(repo.path(), "a.txt").unwrap();
+        } else {
+            std::fs::remove_file(repo.dir.join("later.txt")).unwrap();
+        }
+        let result = core::post_hooks::rebase_continue(repo.path(), true).unwrap();
+        assert_eq!(result.value.status, "ok");
+        assert!(!rebase_in_progress(&repo));
+    }
+}
+
 fn head_summaries(repo: &TempRepo) -> Vec<String> {
     let git = git2::Repository::open(repo.path()).unwrap();
     let mut walk = git.revwalk().unwrap();

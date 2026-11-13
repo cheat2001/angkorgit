@@ -34,6 +34,7 @@ notify-debouncer-mini = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 which = "7"
 same-file = "1"
+tempfile = "3"
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "memmap", "fontconfig"] }
 
 [target.'cfg(unix)'.dependencies]
@@ -50,9 +51,6 @@ gtk = "0.18"
 # needs Perl available at build time.
 libssh2-sys = { version = "0.3", features = ["openssl-on-win32", "vendored-openssl"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_Threading"] }
-
-[dev-dependencies]
-tempfile = "3"
 
 [profile.release]
 codegen-units = 1

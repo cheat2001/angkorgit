@@ -1,4 +1,5 @@
 use git2::{Oid, Repository, Submodule, SubmoduleIgnore, SubmoduleStatus};
+use std::{io::Write, path::Path};
 
 use crate::error::{AppError, AppResult};
 
@@ -62,7 +63,9 @@ pub fn synced_rebase<T>(path: &str, op: impl FnOnce() -> AppResult<T>) -> AppRes
     if result.is_ok() {
         follow_recorded(path, &before, true);
     }
-    save_rebase_baseline(path, &before, result.is_ok())?;
+    if let Err(error) = save_rebase_baseline(path, &before, result.is_ok()) {
+        eprintln!("Cannot save rebase submodule baseline in {path}: {error}");
+    }
     result
 }
 
@@ -86,7 +89,8 @@ fn rebase_baseline(repo: &Repository) -> AppResult<Vec<(String, Oid)>> {
                 .orig_head_id()
                 .ok_or_else(|| AppError::other("The rebase has no original commit"))?;
             let tree = repo.find_commit(original)?.tree()?;
-            repo.submodules()?
+            repo.submodules()
+                .unwrap_or_default()
                 .iter()
                 .filter_map(|submodule| {
                     let entry = tree.get_path(submodule.path()).ok()?;
@@ -130,10 +134,22 @@ fn save_rebase_baseline(path: &str, before: &[(String, Oid)], followed: bool) ->
     let bytes = serde_json::to_vec(&saved).map_err(|error| {
         AppError::other(format!("Cannot save rebase submodule baseline: {error}"))
     })?;
-    std::fs::write(
-        repo.path().join("rebase-merge").join(REBASE_BASELINE),
-        bytes,
-    )?;
+    publish_rebase_baseline(&repo.path().join("rebase-merge"), |file| {
+        file.write_all(&bytes)
+    })?;
+    Ok(())
+}
+
+fn publish_rebase_baseline(
+    directory: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
+    write(temporary.as_file_mut())?;
+    temporary.as_file().sync_all()?;
+    temporary
+        .persist(directory.join(REBASE_BASELINE))
+        .map_err(|error| error.error)?;
     Ok(())
 }
 
@@ -234,4 +250,39 @@ fn run_update(sub: &mut Submodule, init: bool, fetch: bool) -> AppResult<()> {
     opts.fetch(fetch_options).allow_fetch(fetch);
     sub.update(init, Some(&mut opts))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn publishing_a_baseline_replaces_only_the_complete_snapshot() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join(REBASE_BASELINE);
+        std::fs::write(&file, b"[ ]").unwrap();
+        publish_rebase_baseline(directory.path(), |temporary| {
+            temporary.write_all(b"[")?;
+            assert_eq!(std::fs::read(&file).unwrap(), b"[ ]");
+            temporary.write_all(b"]")
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"[]");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn a_partial_baseline_write_failure_keeps_the_previous_snapshot() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join(REBASE_BASELINE);
+        let previous = b"[[\"library\",\"0123456789012345678901234567890123456789\"]]";
+        std::fs::write(&file, previous).unwrap();
+        let result = publish_rebase_baseline(directory.path(), |temporary| {
+            temporary.write_all(b"[")?;
+            Err(std::io::Error::other("disk full"))
+        });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&file).unwrap(), previous);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
 }

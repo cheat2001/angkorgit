@@ -397,9 +397,22 @@ fn commit_rebase_step(
     rebase: &mut git2::Rebase<'_>,
     signature: &git2::Signature<'_>,
 ) -> Result<git2::Oid, git2::Error> {
+    let error = match rebase.commit(None, signature, None) {
+        Ok(oid) => return Ok(oid),
+        Err(error)
+            if error.code() == git2::ErrorCode::Unmerged
+                && error.class() == git2::ErrorClass::Rebase =>
+        {
+            error
+        }
+        Err(error) => return Err(error),
+    };
     let original = repo.index()?;
     let mut drifted = Vec::new();
-    for submodule in repo.submodules()? {
+    let Ok(submodules) = repo.submodules() else {
+        return Err(error);
+    };
+    for submodule in submodules {
         let (Some(recorded), Some(checked_out)) = (submodule.index_id(), submodule.workdir_id())
         else {
             continue;
@@ -410,7 +423,9 @@ fn commit_rebase_step(
         let Some(name) = submodule.name() else {
             continue;
         };
-        let status = repo.submodule_status(name, git2::SubmoduleIgnore::Untracked)?;
+        let Ok(status) = repo.submodule_status(name, git2::SubmoduleIgnore::Untracked) else {
+            return Err(error);
+        };
         if status.intersects(
             git2::SubmoduleStatus::WD_ADDED
                 | git2::SubmoduleStatus::WD_DELETED
@@ -427,7 +442,7 @@ fn commit_rebase_step(
         }
     }
     if drifted.is_empty() || original.has_conflicts() {
-        return rebase.commit(None, signature, None);
+        return Err(error);
     }
     let mut temporary = git2::Index::new()?;
     for entry in original.iter() {
