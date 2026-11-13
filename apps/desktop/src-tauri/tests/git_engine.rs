@@ -4325,6 +4325,381 @@ impl SubmoduleFixture {
     }
 }
 
+fn submodule_rebase_topic(fx: &SubmoduleFixture) {
+    fx.local.write("notes.txt", "local note\n");
+    commit_all(&fx.local, "local note");
+    fx.local.write("later.txt", "another local note\n");
+    commit_all(&fx.local, "later local note");
+    core::fetch(fx.local.path(), "origin", false, false).unwrap();
+}
+
+fn assert_submodule_rebase_complete(fx: &SubmoduleFixture, checked_out: &str) {
+    let repo = &fx.local;
+    assert!(!rebase_in_progress(repo));
+    assert_eq!(git_in(&repo.dir, &["branch", "--show-current"]), "master");
+    assert_eq!(rev(repo, "HEAD~2"), rev(repo, "origin/master"));
+    assert_eq!(
+        &head_summaries(repo)[..3],
+        ["later local note", "local note", "bump lib"]
+    );
+    assert_eq!(repo.read("notes.txt"), "local note\n");
+    assert_eq!(repo.read("later.txt"), "another local note\n");
+    assert_eq!(git_in(&repo.dir, &["rev-parse", ":deps/lib"]), fx.second);
+    assert_eq!(fx.checked_out(), checked_out);
+    assert_eq!(
+        git_in(&repo.dir, &["ls-files", "-v", "deps/lib"]),
+        "H deps/lib"
+    );
+}
+
+#[test]
+fn rebase_replays_local_commits_when_upstream_moves_a_submodule() {
+    let fx = SubmoduleFixture::new();
+    submodule_rebase_topic(&fx);
+    fx.local
+        .write("deps/lib/scratch.txt", "untracked submodule work\n");
+
+    let outcome = core::rebase(fx.local.path(), "origin/master").unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_submodule_rebase_complete(&fx, &fx.first);
+    assert_eq!(
+        fx.local.read("deps/lib/scratch.txt"),
+        "untracked submodule work\n"
+    );
+    assert_eq!(
+        git_in(&fx.local.dir, &["status", "--porcelain"]),
+        "M deps/lib"
+    );
+}
+
+#[test]
+fn pull_with_rebase_replays_local_commits_when_upstream_moves_a_submodule() {
+    for mode in [Some("rebase"), None] {
+        let fx = SubmoduleFixture::new();
+        submodule_rebase_topic(&fx);
+        core::set_config(Some(fx.local.path()), "pull.rebase", "true", false).unwrap();
+
+        let outcome = core::pull(fx.local.path(), "origin", mode).unwrap();
+        assert_eq!(outcome.status, "ok");
+        assert_submodule_rebase_complete(&fx, &fx.first);
+    }
+}
+
+#[test]
+fn continue_recovers_a_rebase_stopped_by_submodule_drift_in_an_older_client() {
+    let fx = SubmoduleFixture::new();
+    submodule_rebase_topic(&fx);
+    stop_rebase_on_submodule_drift(&fx);
+
+    let outcome = core::rebase_continue(fx.local.path()).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_submodule_rebase_complete(&fx, &fx.first);
+}
+
+fn stop_rebase_on_submodule_drift(fx: &SubmoduleFixture) {
+    let repo = git2::Repository::open(fx.local.path()).unwrap();
+    let upstream = repo.find_reference("refs/remotes/origin/master").unwrap();
+    let upstream = repo.reference_to_annotated_commit(&upstream).unwrap();
+    let mut rebase = repo.rebase(None, Some(&upstream), None, None).unwrap();
+    rebase.next().unwrap().unwrap();
+    let error = rebase
+        .commit(None, &repo.signature().unwrap(), None)
+        .unwrap_err();
+    assert_eq!(error.code(), git2::ErrorCode::Unmerged);
+    assert!(error.message().contains("unstaged changes"));
+}
+
+#[test]
+fn submodule_drift_does_not_hide_edited_files_or_leak_index_flags_on_continue() {
+    for blocked in [
+        "parent edit",
+        "submodule edit",
+        "submodule staged edit",
+        "head lock",
+    ] {
+        let fx = SubmoduleFixture::new();
+        submodule_rebase_topic(&fx);
+        stop_rebase_on_submodule_drift(&fx);
+        let repo = &fx.local;
+        let index_path = repo.dir.join(".git/index");
+        let before_index = std::fs::read(&index_path).unwrap();
+        let before_head = rev(repo, "HEAD");
+        match blocked {
+            "parent edit" => repo.write("README.md", "unsaved parent edit\n"),
+            "submodule edit" | "submodule staged edit" => {
+                repo.write("deps/lib/lib.txt", "unsaved submodule edit\n");
+                if blocked == "submodule staged edit" {
+                    git_in(&fx.local_sub(), &["add", "lib.txt"]);
+                }
+            }
+            "head lock" => {
+                std::fs::write(repo.dir.join(".git/HEAD.lock"), "another git process\n").unwrap();
+            }
+            _ => unreachable!(),
+        }
+
+        assert!(core::rebase_continue(repo.path()).is_err(), "{blocked}");
+        assert!(rebase_in_progress(repo));
+        assert_eq!(rev(repo, "HEAD"), before_head);
+        assert_eq!(std::fs::read(&index_path).unwrap(), before_index);
+        assert_eq!(
+            git_in(&repo.dir, &["ls-files", "-v", "deps/lib"]),
+            "H deps/lib"
+        );
+        match blocked {
+            "parent edit" => {
+                assert_eq!(repo.read("README.md"), "unsaved parent edit\n");
+                repo.write("README.md", "parent\n");
+            }
+            "submodule edit" | "submodule staged edit" => {
+                assert_eq!(repo.read("deps/lib/lib.txt"), "unsaved submodule edit\n");
+                git_in(&fx.local_sub(), &["reset", "--hard", "-q", "HEAD"]);
+            }
+            "head lock" => std::fs::remove_file(repo.dir.join(".git/HEAD.lock")).unwrap(),
+            _ => unreachable!(),
+        }
+        core::rebase_continue(repo.path()).unwrap();
+        assert_submodule_rebase_complete(&fx, &fx.first);
+    }
+}
+
+#[test]
+fn app_rebase_and_pull_follow_the_submodule_and_keep_the_rewrite_hooks() {
+    if !hooks_runnable() {
+        return;
+    }
+    for operation in ["rebase", "pull", "configured pull"] {
+        let fx = SubmoduleFixture::new();
+        submodule_rebase_topic(&fx);
+        let repo = &fx.local;
+        let first = rev(repo, "HEAD~1");
+        let second = rev(repo, "HEAD");
+        let onto = rev(repo, "origin/master");
+        record_post_hooks(&default_hooks(repo), POST_HOOK_LOG);
+        core::set_config(Some(repo.path()), "pull.rebase", "true", false).unwrap();
+
+        let outcome = match operation {
+            "rebase" => core::post_hooks::rebase(repo.path(), "origin/master", false),
+            "pull" => core::post_hooks::pull(repo.path(), "origin", Some("rebase"), false),
+            "configured pull" => core::post_hooks::pull(repo.path(), "origin", None, false),
+            _ => unreachable!(),
+        }
+        .into_result()
+        .unwrap();
+        assert_eq!(outcome.value.status, "ok");
+        assert_submodule_rebase_complete(&fx, &fx.second);
+        assert!(core::status(repo.path()).unwrap().files.is_empty());
+        assert_eq!(
+            post_hook_runs(repo),
+            vec![
+                format!("post-checkout {second} {onto} 1"),
+                "post-rewrite rebase".to_string(),
+                format!("{first} {}", rev(repo, "HEAD~1")),
+                format!("{second} {}", rev(repo, "HEAD")),
+            ]
+        );
+    }
+}
+
+#[test]
+fn a_submodule_bump_can_pause_for_conflicts_then_continue_or_abort() {
+    if !hooks_runnable() {
+        return;
+    }
+    for action in ["continue", "skip hooks", "abort"] {
+        let fx = SubmoduleFixture::new();
+        submodule_rebase_topic(&fx);
+        let repo = &fx.local;
+        repo.write("README.md", "local parent edit\n");
+        let conflict = commit_all(repo, "local parent edit");
+        repo.write("last.txt", "last\n");
+        let last = commit_all(repo, "last local note");
+        fx._upstream.write("README.md", "upstream parent edit\n");
+        let onto = commit_all(&fx._upstream, "upstream parent edit");
+        let first = rev(repo, "HEAD~3");
+        let second = rev(repo, "HEAD~2");
+        record_post_hooks(&default_hooks(repo), POST_HOOK_LOG);
+
+        let paused = core::post_hooks::pull(
+            repo.path(),
+            "origin",
+            Some("rebase"),
+            action == "skip hooks",
+        )
+        .into_result()
+        .unwrap();
+        assert_eq!(paused.value.status, "conflicts");
+        assert!(rebase_in_progress(repo));
+        assert_eq!(core::conflict_list(repo.path()).unwrap(), vec!["README.md"]);
+        assert_eq!(fx.checked_out(), fx.second);
+        assert_eq!(
+            post_hook_runs(repo),
+            if action == "skip hooks" {
+                vec![]
+            } else {
+                vec![format!("post-checkout {last} {onto} 1")]
+            }
+        );
+        if action == "abort" {
+            core::submodule_synced(repo.path(), || core::rebase_abort(repo.path())).unwrap();
+            assert!(!rebase_in_progress(repo));
+            assert_eq!(rev(repo, "HEAD"), last);
+            assert_eq!(repo.read("README.md"), "local parent edit\n");
+            assert_eq!(fx.checked_out(), fx.first);
+            assert!(post_hook_runs(repo).is_empty());
+            continue;
+        }
+        git_in(&fx.local_sub(), &["checkout", "-q", &fx.first]);
+        assert_eq!(
+            core::rebase_continue(repo.path()).unwrap().status,
+            "conflicts"
+        );
+        repo.write("README.md", "resolved parent edit\n");
+        core::stage_file(repo.path(), "README.md").unwrap();
+        let continued = core::post_hooks::rebase_continue(repo.path(), false).unwrap();
+        assert_eq!(continued.value.status, "ok");
+        assert!(!rebase_in_progress(repo));
+        assert_eq!(rev(repo, "HEAD~4"), onto);
+        assert_eq!(repo.read("README.md"), "resolved parent edit\n");
+        assert_eq!(repo.read("last.txt"), "last\n");
+        assert_eq!(git_in(&repo.dir, &["rev-parse", ":deps/lib"]), fx.second);
+        assert_eq!(fx.checked_out(), fx.first);
+        assert_eq!(
+            git_in(&repo.dir, &["ls-files", "-v", "deps/lib"]),
+            "H deps/lib"
+        );
+        assert_eq!(
+            post_hook_runs(repo),
+            if action == "skip hooks" {
+                vec![]
+            } else {
+                vec![
+                    "post-rewrite rebase".to_string(),
+                    format!("{first} {}", rev(repo, "HEAD~3")),
+                    format!("{second} {}", rev(repo, "HEAD~2")),
+                    format!("{conflict} {}", rev(repo, "HEAD~1")),
+                    format!("{last} {}", rev(repo, "HEAD")),
+                ]
+            }
+        );
+    }
+}
+
+#[test]
+fn rebase_skips_an_already_applied_step_despite_submodule_drift() {
+    let fx = SubmoduleFixture::new();
+    submodule_rebase_topic(&fx);
+    fx._upstream.write("notes.txt", "local note\n");
+    let onto = commit_all(&fx._upstream, "upstream note");
+    core::fetch(fx.local.path(), "origin", false, false).unwrap();
+
+    let outcome = core::rebase(fx.local.path(), "origin/master").unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert!(!rebase_in_progress(&fx.local));
+    assert_eq!(rev(&fx.local, "HEAD~1"), onto);
+    assert_eq!(
+        &head_summaries(&fx.local)[..2],
+        ["later local note", "upstream note"]
+    );
+    assert_eq!(fx.checked_out(), fx.first);
+    assert_eq!(
+        git_in(&fx.local.dir, &["ls-files", "-v", "deps/lib"]),
+        "H deps/lib"
+    );
+}
+
+#[test]
+fn rebase_keeps_a_resolved_gitlink_and_replays_the_commits_after_it() {
+    let fx = SubmoduleFixture::new();
+    submodule_rebase_topic(&fx);
+    fx._library.write("lib.txt", "three\n");
+    let third = commit_all(&fx._library, "lib three");
+    git_in(&fx.local_sub(), &["fetch", "-q", "origin"]);
+    git_in(&fx.local_sub(), &["checkout", "-q", &third]);
+    core::stage_file(fx.local.path(), "deps/lib").unwrap();
+    core::commit(fx.local.path(), "local lib bump", false).unwrap();
+    fx.local.write("after.txt", "after the lib bump\n");
+    commit_all(&fx.local, "after lib bump");
+
+    let paused = core::rebase(fx.local.path(), "origin/master").unwrap();
+    assert_eq!(paused.status, "conflicts");
+    assert_eq!(
+        core::conflict_list(fx.local.path()).unwrap(),
+        vec!["deps/lib"]
+    );
+    assert_eq!(
+        core::rebase_continue(fx.local.path()).unwrap().status,
+        "conflicts"
+    );
+    git_in(&fx.local_sub(), &["checkout", "-q", &fx.first]);
+    git_in(
+        &fx.local.dir,
+        &[
+            "update-index",
+            "--cacheinfo",
+            &format!("160000,{third},deps/lib"),
+        ],
+    );
+
+    let outcome = core::rebase_continue(fx.local.path()).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert!(!rebase_in_progress(&fx.local));
+    assert_eq!(rev(&fx.local, "HEAD~4"), rev(&fx.local, "origin/master"));
+    assert_eq!(
+        &head_summaries(&fx.local)[..5],
+        [
+            "after lib bump",
+            "local lib bump",
+            "later local note",
+            "local note",
+            "bump lib"
+        ]
+    );
+    assert_eq!(git_in(&fx.local.dir, &["rev-parse", ":deps/lib"]), third);
+    assert_eq!(
+        git_in(&fx.local.dir, &["rev-parse", "HEAD:deps/lib"]),
+        third
+    );
+    assert_eq!(fx.checked_out(), fx.first);
+    assert_eq!(fx.local.read("after.txt"), "after the lib bump\n");
+    assert_eq!(
+        git_in(&fx.local.dir, &["ls-files", "-v", "deps/lib"]),
+        "H deps/lib"
+    );
+}
+
+#[test]
+fn submodule_drift_does_not_skip_a_replay_stopped_by_an_untracked_file() {
+    let fx = SubmoduleFixture::new();
+    submodule_rebase_topic(&fx);
+    std::fs::remove_file(fx.local.dir.join("later.txt")).unwrap();
+    commit_all(&fx.local, "remove later note");
+    fx.local.write("later.txt", "untracked parent work\n");
+
+    let error = core::rebase(fx.local.path(), "origin/master")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("later.txt"), "{error}");
+    assert_eq!(fx.local.read("later.txt"), "untracked parent work\n");
+    assert!(core::rebase_continue(fx.local.path()).is_err());
+    std::fs::remove_file(fx.local.dir.join("later.txt")).unwrap();
+
+    let outcome = core::rebase_continue(fx.local.path()).unwrap();
+    assert_eq!(outcome.status, "ok");
+    assert_eq!(
+        &head_summaries(&fx.local)[..4],
+        [
+            "remove later note",
+            "later local note",
+            "local note",
+            "bump lib"
+        ]
+    );
+    assert!(!rebase_in_progress(&fx.local));
+    assert_eq!(fx.checked_out(), fx.first);
+    assert!(!fx.local.dir.join("later.txt").exists());
+}
+
 #[test]
 fn pull_moves_a_submodule_that_was_at_the_recorded_commit() {
     let fx = SubmoduleFixture::new();
