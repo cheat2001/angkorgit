@@ -45,6 +45,11 @@ All notable changes to AngKorGit are documented here. The format follows
   `git merge` does, so `git diff ORIG_HEAD HEAD` shows what a pull brought in.
 
 ### Fixed
+- **Discarding staged changes writes the index once and leaves other files alone.**
+  A file whose name contains `[`, `]`, `*` or `?` no longer resets files the name
+  happens to match. The whole batch waits for Git's index lock and changes nothing
+  while another Git process holds it. Picking either name of a staged rename
+  restores the original file.
 - **New worktrees stay protected while their post-checkout hook runs.** The target
   folder is reserved before creation, including access through a symlink alias,
   so another operation gets an info toast until the hook finishes.

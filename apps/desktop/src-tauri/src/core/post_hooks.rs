@@ -239,17 +239,20 @@ pub fn discard_files(
     staged: bool,
     no_verify: bool,
 ) -> AppResult<Hooked<DiscardBatch>> {
+    if staged {
+        let (batch, restored_any) = stage::discard_staged_files_reporting(path, files)?;
+        return Ok(if restored_any {
+            restored(path, batch, no_verify)
+        } else {
+            Hooked::plain(batch)
+        });
+    }
     let repo = super::repo::open(path)?;
     let mut batch = DiscardBatch::default();
     let mut restored_any = false;
     for file in files {
-        let restores = staged || restores_from_index(&repo, file).unwrap_or(false);
-        let result = if staged {
-            stage::discard_staged_file(path, file)
-        } else {
-            stage::discard_file(path, file)
-        };
-        match result {
+        let restores = restores_from_index(&repo, file).unwrap_or(false);
+        match stage::discard_file(path, file) {
             Ok(clean) => {
                 restored_any |= restores;
                 if !clean {
