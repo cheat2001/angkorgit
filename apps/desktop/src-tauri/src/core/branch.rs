@@ -364,7 +364,7 @@ pub(crate) fn rebase_with_hooks(
         if index.has_conflicts() {
             return Ok(paused_rebase());
         }
-        match rebase.commit(None, &sig, None) {
+        match commit_rebase_step(&repo, &mut rebase, &sig) {
             Ok(_) => {}
             Err(e) if e.code() == git2::ErrorCode::Applied => {}
             Err(e) => return Err(e.into()),
@@ -379,6 +379,81 @@ pub(crate) fn rebase_with_hooks(
         status: "ok".into(),
         message: format!("Rebased onto {upstream}"),
     })
+}
+
+struct RebaseCommitIndex<'repo> {
+    repo: &'repo Repository,
+    original: git2::Index,
+}
+
+impl Drop for RebaseCommitIndex<'_> {
+    fn drop(&mut self) {
+        let _ = self.repo.set_index(&mut self.original);
+    }
+}
+
+fn commit_rebase_step(
+    repo: &Repository,
+    rebase: &mut git2::Rebase<'_>,
+    signature: &git2::Signature<'_>,
+) -> Result<git2::Oid, git2::Error> {
+    let error = match rebase.commit(None, signature, None) {
+        Ok(oid) => return Ok(oid),
+        Err(error)
+            if error.code() == git2::ErrorCode::Unmerged
+                && error.class() == git2::ErrorClass::Rebase =>
+        {
+            error
+        }
+        Err(error) => return Err(error),
+    };
+    let original = repo.index()?;
+    let mut drifted = Vec::new();
+    let Ok(submodules) = repo.submodules() else {
+        return Err(error);
+    };
+    for submodule in submodules {
+        let (Some(recorded), Some(checked_out)) = (submodule.index_id(), submodule.workdir_id())
+        else {
+            continue;
+        };
+        if recorded == checked_out {
+            continue;
+        }
+        let Some(name) = submodule.name() else {
+            continue;
+        };
+        let Ok(status) = repo.submodule_status(name, git2::SubmoduleIgnore::Untracked) else {
+            return Err(error);
+        };
+        if status.intersects(
+            git2::SubmoduleStatus::WD_ADDED
+                | git2::SubmoduleStatus::WD_DELETED
+                | git2::SubmoduleStatus::WD_INDEX_MODIFIED
+                | git2::SubmoduleStatus::WD_WD_MODIFIED,
+        ) {
+            continue;
+        }
+        if let Some(mut entry) = original.get_path(submodule.path(), 0) {
+            if entry.mode == u32::from(git2::FileMode::Commit) {
+                entry.flags |= git2::IndexEntryFlag::VALID.bits();
+                drifted.push(entry);
+            }
+        }
+    }
+    if drifted.is_empty() || original.has_conflicts() {
+        return Err(error);
+    }
+    let mut temporary = git2::Index::new()?;
+    for entry in original.iter() {
+        temporary.add(&entry)?;
+    }
+    for entry in drifted {
+        temporary.add(&entry)?;
+    }
+    repo.set_index(&mut temporary)?;
+    let _restore = RebaseCommitIndex { repo, original };
+    rebase.commit(None, signature, None)
 }
 
 fn rewritten_pairs(repo: &Repository) -> Vec<(git2::Oid, git2::Oid)> {
@@ -423,7 +498,7 @@ pub(crate) fn rebase_continue_with_hooks(
             });
         }
     }
-    match rebase.commit(None, &sig, None) {
+    match commit_rebase_step(&repo, &mut rebase, &sig) {
         Ok(_) => {}
         Err(e) if e.code() == git2::ErrorCode::Applied => {}
         Err(e) => return Err(e.into()),
@@ -437,7 +512,7 @@ pub(crate) fn rebase_continue_with_hooks(
         if index.has_conflicts() {
             return Ok(paused_rebase());
         }
-        match rebase.commit(None, &sig, None) {
+        match commit_rebase_step(&repo, &mut rebase, &sig) {
             Ok(_) => {}
             Err(e) if e.code() == git2::ErrorCode::Applied => {}
             Err(e) => return Err(e.into()),
