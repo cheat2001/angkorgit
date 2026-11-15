@@ -1,10 +1,10 @@
 # Roadmap
 
-Updated for v0.27.0 (November 2026). [CHANGELOG.md](../CHANGELOG.md) is the
+Updated for v0.28.0 (November 2026). [CHANGELOG.md](../CHANGELOG.md) is the
 authoritative record of what shipped in each release; this file tracks
 direction.
 
-## Shipped (0.1.0 → 0.27.0)
+## Shipped (0.1.0 → 0.28.0)
 
 - [x] Repository: open, clone (with progress), recents, search, repository tabs (drag to reorder)
 - [x] Commit: stage files, hunks, and individual lines; unstage, commit, amend; per-repo commit drafts; multi-select in the working copy with bulk stage/unstage/stash/discard; discard for staged files; path filter over changed files and commit files
@@ -51,6 +51,7 @@ direction.
 - [x] Graph: rail-style lines, lanes that keep their spacing, chips in their lane colour, a resizable graph column that scrolls sideways, and the sidebar's branch and tag actions on the graph chips; AI writes a new message while rewording an earlier commit
 - [x] Compare any two commits from the graph with the usual file list and diff panel; copy a diff line's path and line number for your editor
 - [x] Readability: text that stays readable in all 16 themes, calmer diff colours with labelled header buttons, a search that can narrow the graph to its matches, smoother sideways graph scrolling with pinned avatars
+- [x] Git hooks after the fact: `post-checkout`, `post-merge` and `post-rewrite` wherever Git runs them (Pull all included), a failing one shown as a warning, Pull without hooks; pull with rebase across an upstream submodule update; staged discards under one index lock
 
 ## Next
 
