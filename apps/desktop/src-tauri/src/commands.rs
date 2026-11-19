@@ -4,6 +4,7 @@ use std::sync::{Mutex, OnceLock};
 
 use tauri::{AppHandle, Emitter, State};
 
+use crate::core::accounts::AccountRef;
 use crate::core::post_hooks::{self, Hooked};
 use crate::core::types::*;
 use crate::core::{
@@ -198,6 +199,7 @@ pub async fn repo_clone(
     url: String,
     into: String,
     branch: Option<String>,
+    account: Option<AccountRef>,
 ) -> AppResult<String> {
     let emitter = app.clone();
     let cloned = blocking_post_hooks(&app, into, move |into| {
@@ -205,6 +207,7 @@ pub async fn repo_clone(
             &url,
             into,
             branch.as_deref(),
+            account.as_ref(),
             move |pct| {
                 let _ = emitter.emit("clone-progress", pct);
             },
@@ -1123,6 +1126,15 @@ pub async fn ssh_key_generate(path: String, comment: String) -> AppResult<Genera
 #[tauri::command]
 pub fn account_list() -> Vec<crate::core::accounts::AccountInfo> {
     crate::core::accounts::list()
+}
+
+#[tauri::command]
+pub async fn account_repositories(
+    host: String,
+    username: String,
+) -> AppResult<Vec<crate::forge_repositories::RemoteRepository>> {
+    let (account, token) = blocking(move || AccountRef { host, username }.with_token()).await?;
+    crate::forge_repositories::list(account, &token).await
 }
 
 #[tauri::command]

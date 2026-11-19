@@ -36,6 +36,68 @@ pub struct AccountInfo {
     pub is_default: bool,
 }
 
+#[derive(Deserialize)]
+pub struct AccountRef {
+    pub host: String,
+    pub username: String,
+}
+
+impl AccountRef {
+    pub fn with_token(&self) -> AppResult<(AccountInfo, String)> {
+        self.resolve(&list(), token_of)
+    }
+
+    fn resolve(
+        &self,
+        accounts: &[AccountInfo],
+        token: impl FnOnce(&str, &str) -> Option<String>,
+    ) -> AppResult<(AccountInfo, String)> {
+        let host = normalize_host(&self.host);
+        let account = find_in(accounts, &host, &self.username).ok_or_else(|| {
+            AppError::other(format!(
+                "The saved account {} on {host} no longer exists.",
+                self.username
+            ))
+        })?;
+        let token = token(&account.host, &account.username).ok_or_else(|| {
+            AppError::other(format!(
+                "The token for {} on {} is missing from the system keychain. Reconnect the account in Settings → Authentication.",
+                account.username, account.host
+            ))
+        })?;
+        Ok((account.clone(), token))
+    }
+}
+
+pub fn account_origin(host: &str, scheme: &str) -> Option<reqwest::Url> {
+    let url = reqwest::Url::parse(&format!("{scheme}://{host}/")).ok()?;
+    (url.host().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.path() == "/"
+        && url.query().is_none()
+        && url.fragment().is_none())
+    .then_some(url)
+}
+
+pub fn clone_url(account: &AccountInfo, raw: &str) -> Option<reqwest::Url> {
+    let url = reqwest::Url::parse(raw).ok()?;
+    let transport_allowed = match account.provider.as_str() {
+        "github" | "gitlab" | "bitbucket" => url.scheme() == "https",
+        "gitlab-self" => matches!(url.scheme(), "https" | "http"),
+        _ => false,
+    };
+    let origin = account_origin(&account.host, url.scheme())?;
+    (transport_allowed
+        && url.origin() == origin.origin()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && url.path() != "/")
+        .then_some(url)
+}
+
 fn meta_path() -> Option<PathBuf> {
     CONFIG_DIR.get().map(|dir| dir.join("accounts.json"))
 }
@@ -140,8 +202,12 @@ fn save_list(accounts: &[AccountInfo]) -> AppResult<()> {
 
 pub fn find(host: &str, username: &str) -> Option<AccountInfo> {
     let host = normalize_host(host);
-    list()
-        .into_iter()
+    find_in(&list(), &host, username).cloned()
+}
+
+fn find_in<'a>(accounts: &'a [AccountInfo], host: &str, username: &str) -> Option<&'a AccountInfo> {
+    accounts
+        .iter()
         .find(|a| a.host == host && a.username == username)
 }
 
@@ -406,6 +472,60 @@ mod tests {
         ensure_defaults(&mut accounts);
         assert_eq!(accounts.iter().filter(|a| a.is_default).count(), 2);
         assert!(accounts[0].is_default);
+    }
+
+    #[test]
+    fn selecting_a_saved_account_never_uses_the_host_default() {
+        let accounts = [
+            account("github.com", "work", true),
+            account("github.com", "personal", false),
+        ];
+        let selected = AccountRef {
+            host: "github.com".into(),
+            username: "personal".into(),
+        };
+        let (account, token) = selected
+            .resolve(&accounts, |host, username| {
+                assert_eq!((host, username), ("github.com", "personal"));
+                Some("personal-token".into())
+            })
+            .unwrap();
+        assert_eq!(account.username, "personal");
+        assert_eq!(token, "personal-token");
+
+        let missing = selected.resolve(&accounts, |_, username| {
+            assert_eq!(username, "personal");
+            None
+        });
+        assert!(
+            matches!(missing, Err(error) if error.to_string().contains("missing from the system keychain"))
+        );
+        let removed = selected.resolve(&accounts[..1], |_, _| {
+            panic!("must not look up another account's token")
+        });
+        assert!(matches!(removed, Err(error) if error.to_string().contains("no longer exists")));
+    }
+
+    #[test]
+    fn account_clone_urls_are_credential_free_and_match_the_saved_origin() {
+        let work = account("github.com", "work", true);
+        assert!(clone_url(&work, "https://github.com:443/org/repo.git").is_some());
+        for url in [
+            "https://github.com.example.org/org/repo.git",
+            "https://github.com:8443/org/repo.git",
+            "https://api.github.com/org/repo.git",
+            "https://user:secret@github.com/org/repo.git",
+            "https://github.com/org/repo.git?token=secret",
+            "http://github.com/org/repo.git",
+            "git@github.com:org/repo.git",
+        ] {
+            assert!(clone_url(&work, url).is_none(), "{url}");
+        }
+        let self_hosted = AccountInfo {
+            provider: "gitlab-self".into(),
+            ..account("git.local:8080", "work", true)
+        };
+        assert!(clone_url(&self_hosted, "http://git.local:8080/org/subgroup/repo.git").is_some());
     }
 
     #[test]

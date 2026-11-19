@@ -1,7 +1,7 @@
 import { toastActionError } from '../../components/actionError';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { FolderOpen } from 'lucide-react';
+import { ChevronDown, FolderOpen } from 'lucide-react';
 import {
   Button,
   Dialog,
@@ -13,9 +13,12 @@ import {
   Input,
   Spinner,
 } from '@angkorgit/design-system';
-import { ipc, listen, pickDirectory } from '@/core/ipc';
+import { ipc, listen, pickDirectory, type HostingAccount, type HostingAccountRef } from '@/core/ipc';
 import { useUi, type ClonePreset, type DialogContext } from '@/features/ui/store';
 import { useSettings } from '@/features/settings/store';
+import { AccountRepositoryPicker } from './AccountRepositoryPicker';
+
+const browsableProviders = new Set(['github', 'gitlab', 'gitlab-self', 'bitbucket']);
 
 function clonePreset(ctx: DialogContext): ClonePreset | null {
   if (!ctx || typeof ctx === 'string' || !('url' in ctx) || !('into' in ctx)) return null;
@@ -31,6 +34,28 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
   const [into, setInto] = useState('');
   const [branch, setBranch] = useState('');
   const [progress, setProgress] = useState<number | null>(null);
+  const [accounts, setAccounts] = useState<HostingAccount[]>([]);
+  const [pickedAccount, setPickedAccount] = useState<HostingAccountRef | null>(null);
+  const [browsing, setBrowsing] = useState(false);
+  const urlInput = useRef<HTMLInputElement>(null);
+  const browseButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setAccounts([]);
+      return;
+    }
+    let current = true;
+    void ipc.accountList().then(
+      (accounts) => {
+        if (current) setAccounts(accounts.filter((account) => browsableProviders.has(account.provider)));
+      },
+      () => {
+        if (current) setAccounts([]);
+      },
+    );
+    return () => { current = false; };
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -38,11 +63,15 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
       setInto('');
       setBranch('');
       setProgress(null);
+      setPickedAccount(null);
+      setBrowsing(false);
       return;
     }
     const preset = clonePreset(dialogContext);
     if (preset) {
       setUrl(preset.url);
+      setPickedAccount(null);
+      setBrowsing(false);
       setInto(preset.into || cloneRoot || '');
       setBranch(preset.branch ?? '');
     } else if (cloneRoot) {
@@ -62,11 +91,12 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
 
   const clone = async () => {
     if (progress !== null || !url.trim() || !into.trim()) return;
+    setBrowsing(false);
     setProgress(0);
     try {
       const name = url.trim().replace(/\.git$/, '').split('/').pop() ?? 'repository';
       const target = `${into.replace(/\/$/, '')}/${name}`;
-      const path = await ipc.cloneRepository(url.trim(), target, branch.trim() || null);
+      const path = await ipc.cloneRepository(url.trim(), target, branch.trim() || null, pickedAccount);
       setCloneRoot(into.trim().replace(/\/$/, ''));
       toast.success('Repository cloned');
       closeDialog();
@@ -79,7 +109,16 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && closeDialog()}>
-      <DialogContent>
+      <DialogContent
+        className="max-h-[calc(100vh-2rem)] overflow-y-auto"
+        onEscapeKeyDown={(event) => {
+          if (browsing) {
+            event.preventDefault();
+            setBrowsing(false);
+            browseButton.current?.focus();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Clone repository</DialogTitle>
           <DialogDescription>
@@ -90,13 +129,51 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
         <div className="flex flex-col gap-3">
           <Input
             autoFocus
+            ref={urlInput}
+            aria-label="Repository URL"
             placeholder="git@github.com:user/repo.git"
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              setPickedAccount(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void clone();
             }}
           />
+          {accounts.length > 0 && (
+            <div className="flex flex-col items-stretch gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  ref={browseButton}
+                  variant="secondary"
+                  size="sm"
+                  aria-expanded={browsing}
+                  disabled={progress !== null}
+                  onClick={() => setBrowsing((value) => !value)}
+                >
+                  Browse saved accounts
+                  <ChevronDown className={browsing ? 'rotate-180' : undefined} />
+                </Button>
+                {pickedAccount && (
+                  <span className="min-w-0 text-xs text-muted [overflow-wrap:anywhere]">
+                    {pickedAccount.username} on {pickedAccount.host}
+                  </span>
+                )}
+              </div>
+              {browsing && (
+                <AccountRepositoryPicker
+                  accounts={accounts}
+                  onSelect={(url, { host, username }) => {
+                    setUrl(url);
+                    setPickedAccount({ host, username });
+                    setBrowsing(false);
+                    urlInput.current?.focus();
+                  }}
+                />
+              )}
+            </div>
+          )}
           <Input
             placeholder="Branch (optional)"
             value={branch}

@@ -14,7 +14,7 @@ fn url_host_allowed(host: &str, url_host: &str) -> bool {
     url_host == host || url_host == format!("api.{host}")
 }
 
-fn auth_headers(
+pub(crate) fn auth_headers(
     provider: &str,
     token: &str,
     email: Option<&str>,

@@ -9,6 +9,7 @@ mod editors;
 mod error;
 mod fonts;
 mod forge;
+mod forge_repositories;
 mod http;
 mod proc;
 mod state;
@@ -248,6 +249,7 @@ pub fn run() {
             commands::ssh_public_key,
             commands::ssh_key_generate,
             commands::account_list,
+            commands::account_repositories,
             commands::account_add,
             commands::account_remove,
             commands::account_set_default,

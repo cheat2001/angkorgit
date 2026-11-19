@@ -77,6 +77,7 @@ fn post_checkout_runs_after_clone_with_a_zero_previous_head() {
         source.to_str().unwrap(),
         into.to_str().unwrap(),
         None,
+        None,
         |_| {},
         false,
     )
@@ -93,6 +94,7 @@ fn post_checkout_runs_after_clone_with_a_zero_previous_head() {
         source.to_str().unwrap(),
         root.join("clone-without-hooks").to_str().unwrap(),
         None,
+        None,
         |_| {},
         true,
     )
@@ -104,6 +106,7 @@ fn post_checkout_runs_after_clone_with_a_zero_previous_head() {
     core::post_hooks::clone(
         empty.to_str().unwrap(),
         root.join("clone-of-empty").to_str().unwrap(),
+        None,
         None,
         |_| {},
         false,

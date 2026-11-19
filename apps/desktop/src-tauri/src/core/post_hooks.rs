@@ -2,6 +2,7 @@ use std::path::Path;
 
 use git2::Oid;
 
+use super::accounts::AccountRef;
 use super::hooks::{run_post, PostHook, PostHooks};
 use super::types::{
     CommitOutcome, DiscardBatch, DiscardFailure, HookWarning, OpOutcome, RebaseTodoEntry,
@@ -331,10 +332,11 @@ pub fn clone(
     url: &str,
     into: &str,
     branch: Option<&str>,
+    account: Option<&AccountRef>,
     on_progress: impl Fn(u32) + Send,
     no_verify: bool,
 ) -> AppResult<Hooked<String>> {
-    let root = remote::clone(url, into, branch, on_progress)?;
+    let root = remote::clone(url, into, branch, account, on_progress)?;
     let path = root.clone();
     Ok(checked_out(&path, root, no_verify))
 }

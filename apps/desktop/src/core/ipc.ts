@@ -62,15 +62,23 @@ export interface GeneratedKey {
   publicKey: string;
 }
 
-export interface HostingAccount {
+export interface HostingAccountRef {
   host: string;
   username: string;
+}
+
+export interface HostingAccount extends HostingAccountRef {
   provider: string;
   verified: boolean;
   email?: string | null;
   verifiedAt?: number | null;
   expiresAt?: string | null;
   isDefault?: boolean;
+}
+
+export interface AccountRepository {
+  fullName: string;
+  cloneUrl: string;
 }
 
 export interface CliToolStatus {
@@ -400,12 +408,17 @@ export const ipc = {
     if (!isTauri()) return demo.demoRepo;
     return invoke('repo_init', { path });
   },
-  async cloneRepository(url: string, into: string, branch?: string | null): Promise<string> {
+  async cloneRepository(
+    url: string,
+    into: string,
+    branch?: string | null,
+    account?: HostingAccountRef | null,
+  ): Promise<string> {
     if (!isTauri()) {
       await delay(600);
       return demo.demoRepo.path;
     }
-    return invoke('repo_clone', { url, into, branch: branch ?? null });
+    return invoke('repo_clone', { url, into, branch: branch ?? null, account: account ?? null });
   },
   async status(path: string): Promise<StatusSummary> {
     if (!isTauri()) return demoStatusNow();
@@ -1034,6 +1047,10 @@ export const ipc = {
         },
       ];
     return invoke('account_list');
+  },
+  async accountRepositories({ host, username }: HostingAccountRef): Promise<AccountRepository[]> {
+    if (!isTauri()) return demo.demoAccountRepositories;
+    return invoke('account_repositories', { host, username });
   },
   async accountAdd(
     host: string,

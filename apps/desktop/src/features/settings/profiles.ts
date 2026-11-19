@@ -12,19 +12,23 @@ export function serializeAccountBindings(accounts: Record<string, string> | unde
 export async function applyProfileToRepo(
   repoPath: string,
   profile: IdentityProfile,
-  opts?: { preserveIdentity?: boolean },
+  opts?: { preserveIdentity?: boolean; preserveAccounts?: boolean },
 ): Promise<void> {
   if (!opts?.preserveIdentity) {
     await ipc.configSet(repoPath, 'user.name', profile.name, false);
     await ipc.configSet(repoPath, 'user.email', profile.email, false);
   }
-  await ipc.configSet(repoPath, 'angkorgit.profile', profile.id, false);
+  const profileBindings = serializeAccountBindings(profile.accounts);
+  const existingBindings = opts?.preserveAccounts
+    ? await ipc.configGet(repoPath, 'angkorgit.accounts')
+    : null;
   await ipc.configSet(
     repoPath,
     'angkorgit.accounts',
-    serializeAccountBindings(profile.accounts),
+    [profileBindings, existingBindings].filter(Boolean).join(','),
     false,
   );
+  await ipc.configSet(repoPath, 'angkorgit.profile', profile.id, false);
   const repoState = useRepo.getState();
   if (repoState.repo?.path === repoPath) repoState.setProfileId(profile.id);
 }
@@ -48,11 +52,11 @@ export async function ensureRepoProfile(repoPath: string): Promise<IdentityProfi
       ipc.configGet(null, 'user.email'),
     ]);
     const manualIdentity = repoEmail !== null && repoEmail !== globalEmail;
-    await applyProfileToRepo(repoPath, profiles[0], { preserveIdentity: manualIdentity });
+    await applyProfileToRepo(repoPath, profiles[0], { preserveIdentity: manualIdentity, preserveAccounts: true });
     return profiles[0];
   }
 
   const chosen = await pickProfile(repoPath.split('/').pop() ?? repoPath);
-  if (chosen) await applyProfileToRepo(repoPath, chosen);
+  if (chosen) await applyProfileToRepo(repoPath, chosen, { preserveAccounts: true });
   return chosen;
 }

@@ -1463,7 +1463,11 @@ features/
 │   │                           so fast switches never flash it; auto fetch tries every
 │   │                           remote on each tick, marks fetched when any succeeds,
 │   │                           records failed remote names, and retries at the configured
-│   │                           interval), CloneDialog, RepoDialogs
+│   │                           interval), CloneDialog (Browse saved accounts lists
+│   │                           GitHub, GitLab and Bitbucket Cloud repositories for
+│   │                           the exact host + username through account_repositories;
+│   │                           selecting a result fills the URL and editing clears
+│   │                           the selection), RepoDialogs
 │   │                           (create branch/tag/stash — the stash dialog takes an
 │   │                           optional StashPreset {paths} context (working-copy row menu
 │   │                           "Stash this file…" / "Stash n files…"), lists the files name-first and passes
@@ -3591,6 +3595,9 @@ update CLAUDE.md or docs/ — never the code.
   odd statuses never mark an account broken (offline must not rot accounts);
   Bitbucket re-checks need the stored Atlassian `email` (G17) and are skipped
   without it.
+  Cloning from the saved account picker uses the selected keychain entry and
+  writes that host binding before post-checkout. Initial profile setup keeps
+  existing bindings, while applying a profile explicitly replaces them.
 
 - **G31 — on Windows every `Command` needs `CREATE_NO_WINDOW`**: AngKorGit is a
   GUI-subsystem process with no console, so spawning a console-subsystem child

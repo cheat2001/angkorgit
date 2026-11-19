@@ -1,4 +1,4 @@
-import type { EditorInfo } from './ipc';
+import type { AccountRepository, EditorInfo } from './ipc';
 import type { BlameHunk, FileBlame } from '@angkorgit/core';
 import type {
   BranchInfo,
@@ -714,6 +714,9 @@ const demoPull = (
   },
   base: { ref: 'main' },
 });
+
+export const demoAccountRepositories: AccountRepository[] = ['demo/angkorgit', 'demo/temple-ui']
+  .map((fullName) => ({ fullName, cloneUrl: `https://github.com/${fullName}.git` }));
 
 export function demoForgeResponse(request: HttpRequest): HttpResponse {
   const url = request.url;
