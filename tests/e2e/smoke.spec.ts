@@ -2661,10 +2661,14 @@ async function openCloneWithTwoAccounts(page: Page) {
       host: 'github.com', username: 'demo-work', provider: 'github', verified: true,
     }];
     const accountRepositories = ipc.accountRepositories;
-    ipc.accountRepositories = async (account) => account.username === 'demo-work'
-      ? ['temple-labs/billing-service', 'temple-labs/angkorgit']
-        .map((fullName) => ({ fullName, cloneUrl: `https://github.com/${fullName}.git` }))
-      : accountRepositories(account);
+    ipc.accountRepositories = async (account, cursor) => account.username === 'demo-work'
+      ? {
+          repositories: ['temple-labs/billing-service', 'temple-labs/angkorgit']
+            .map((fullName) => ({ fullName, cloneUrl: `https://github.com/${fullName}.git` })),
+          next: null,
+          skipped: 0,
+        }
+      : accountRepositories(account, cursor);
   });
   await page.getByText('Clone repository', { exact: true }).first().click();
   return page.getByRole('dialog', { name: 'Clone repository' });
@@ -2706,7 +2710,7 @@ test('clone from saved accounts keeps the selected account when another list fin
   await search.press('Enter');
   await expect(dialog.getByRole('textbox', { name: 'Repository URL' }))
     .toHaveValue('https://github.com/temple-labs/billing-service.git');
-  await expect(dialog.getByText('demo-work on github.com', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('demo-work on github.com', { exact: true }).filter({ visible: true })).toBeVisible();
   await dialog.getByPlaceholder('Destination folder').fill('/tmp/repos');
   await dialog.getByPlaceholder('Branch (optional)').fill('develop');
   await dialog.getByRole('button', { name: 'Clone', exact: true }).click();
@@ -2755,15 +2759,71 @@ test('clone from saved accounts can retry and editing the URL clears the picked 
   await expect(dialog.getByText('No matching repositories.')).toBeVisible();
   await search.fill('angkorgit');
   await dialog.getByRole('option', { name: 'temple-labs/angkorgit' }).click();
-  await expect(dialog.getByText('demo-work on github.com', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('demo-work on github.com', { exact: true }).filter({ visible: true })).toBeVisible();
   await url.fill('git@github.com:demo/manual.git');
-  await expect(dialog.getByText('demo-work on github.com', { exact: true })).toBeHidden();
+  await expect(dialog.getByText('demo-work on github.com', { exact: true }).filter({ visible: true })).toBeHidden();
   await dialog.getByPlaceholder('Destination folder').fill('/tmp/repos');
   await url.press('Enter');
   await expect(page.getByText('Repository cloned')).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { cloneArgs: unknown[] }).cloneArgs)).toEqual([
     'git@github.com:demo/manual.git', '/tmp/repos/manual', null, null,
   ]);
+});
+
+test('clone from saved accounts caches pages and keeps results when a later page fails', async ({ page }) => {
+  const dialog = await openCloneWithTwoAccounts(page);
+  await page.evaluate(async () => {
+    const { ipc } = await import('/src/core/ipc.ts');
+    const original = ipc.accountRepositories;
+    const state = window as unknown as { repositoryRequests: string[]; rateLimited: boolean };
+    state.repositoryRequests = [];
+    state.rateLimited = true;
+    ipc.accountRepositories = async (account, cursor) => {
+      state.repositoryRequests.push(`${account.username}:${cursor ? 'next' : 'first'}`);
+      if (account.username !== 'demo-work') return original(account, cursor);
+      if (cursor && state.rateLimited) throw new Error('GitHub rate limit (429).');
+      const repo = cursor ? 'temple-labs/second-page' : 'temple-labs/first-page';
+      return {
+        repositories: [{ fullName: repo, cloneUrl: `https://github.com/${repo}.git` }],
+        next: cursor ? null : { kind: 'github', url: 'https://api.github.com/user/repos?page=2' },
+        skipped: cursor ? 1 : 0,
+      };
+    };
+  });
+
+  const browse = dialog.getByRole('button', { name: 'Browse saved accounts' });
+  const account = dialog.getByRole('combobox', { name: 'Saved account' });
+  const first = dialog.getByRole('option', { name: 'temple-labs/first-page' });
+  const requests = () => page.evaluate(() => (window as unknown as { repositoryRequests: string[] }).repositoryRequests);
+  await browse.click();
+  await account.click();
+  await page.getByRole('option', { name: 'demo-work on github.com' }).click();
+  await expect(first).toBeVisible();
+  expect(await requests()).toEqual(['demo-work:first']);
+  await dialog.getByRole('button', { name: 'Load more' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('429');
+  await expect(first).toBeVisible();
+  await page.evaluate(() => { (window as unknown as { rateLimited: boolean }).rateLimited = false; });
+  await dialog.getByRole('button', { name: 'Retry' }).click();
+  await expect(dialog.getByRole('option', { name: 'temple-labs/second-page' })).toBeVisible();
+  await expect(dialog.getByText('One repository had an invalid clone address.')).toBeVisible();
+
+  await account.click();
+  await page.getByRole('option', { name: 'demo-user on github.com' }).click();
+  await expect(dialog.getByRole('option', { name: 'demo/temple-ui' })).toBeVisible();
+  await account.click();
+  await page.getByRole('option', { name: 'demo-work on github.com' }).click();
+  await expect(first).toBeVisible();
+  await browse.click();
+  await browse.click();
+  await expect(first).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByText('Clone repository', { exact: true }).first().click();
+  await browse.click();
+  await account.click();
+  await page.getByRole('option', { name: 'demo-work on github.com' }).click();
+  await expect(first).toBeVisible();
+  expect(await requests()).toEqual(['demo-work:first', 'demo-work:next', 'demo-work:next', 'demo-user:first']);
 });
 
 test('a diff selection keeps its lines after scrolling away and back', async ({ page }) => {

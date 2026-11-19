@@ -27,7 +27,7 @@ interface GitlabMergeRequest {
   target_project_id?: number;
 }
 
-function gitlabMessage(body: string): string | null {
+export function gitlabMessage(body: string): string | null {
   try {
     const parsed = JSON.parse(body) as { message?: string | string[]; error?: string };
     if (Array.isArray(parsed.message)) return parsed.message.join('; ');

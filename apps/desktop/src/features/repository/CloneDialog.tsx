@@ -16,7 +16,7 @@ import {
 import { ipc, listen, pickDirectory, type HostingAccount, type HostingAccountRef } from '@/core/ipc';
 import { useUi, type ClonePreset, type DialogContext } from '@/features/ui/store';
 import { useSettings } from '@/features/settings/store';
-import { AccountRepositoryPicker } from './AccountRepositoryPicker';
+import { AccountRepositoryPicker, useAccountRepositoryPages } from './AccountRepositoryPicker';
 
 const browsableProviders = new Set(['github', 'gitlab', 'gitlab-self', 'bitbucket']);
 
@@ -37,6 +37,8 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
   const [accounts, setAccounts] = useState<HostingAccount[]>([]);
   const [pickedAccount, setPickedAccount] = useState<HostingAccountRef | null>(null);
   const [browsing, setBrowsing] = useState(false);
+  const [hasBrowsed, setHasBrowsed] = useState(false);
+  const repositoryPages = useAccountRepositoryPages();
   const urlInput = useRef<HTMLInputElement>(null);
   const browseButton = useRef<HTMLButtonElement>(null);
 
@@ -65,6 +67,7 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
       setProgress(null);
       setPickedAccount(null);
       setBrowsing(false);
+      setHasBrowsed(false);
       return;
     }
     const preset = clonePreset(dialogContext);
@@ -72,6 +75,7 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
       setUrl(preset.url);
       setPickedAccount(null);
       setBrowsing(false);
+      setHasBrowsed(false);
       setInto(preset.into || cloneRoot || '');
       setBranch(preset.branch ?? '');
     } else if (cloneRoot) {
@@ -150,7 +154,10 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
                   size="sm"
                   aria-expanded={browsing}
                   disabled={progress !== null}
-                  onClick={() => setBrowsing((value) => !value)}
+                  onClick={() => {
+                    setHasBrowsed(true);
+                    setBrowsing((value) => !value);
+                  }}
                 >
                   Browse saved accounts
                   <ChevronDown className={browsing ? 'rotate-180' : undefined} />
@@ -161,16 +168,20 @@ export function CloneDialog({ onCloned }: { onCloned: (path: string) => void }) 
                   </span>
                 )}
               </div>
-              {browsing && (
-                <AccountRepositoryPicker
-                  accounts={accounts}
-                  onSelect={(url, { host, username }) => {
-                    setUrl(url);
-                    setPickedAccount({ host, username });
-                    setBrowsing(false);
-                    urlInput.current?.focus();
-                  }}
-                />
+              {hasBrowsed && (
+                <div hidden={!browsing}>
+                  <AccountRepositoryPicker
+                    accounts={accounts}
+                    active={browsing}
+                    pages={repositoryPages}
+                    onSelect={(url, { host, username }) => {
+                      setUrl(url);
+                      setPickedAccount({ host, username });
+                      setBrowsing(false);
+                      urlInput.current?.focus();
+                    }}
+                  />
+                </div>
               )}
             </div>
           )}

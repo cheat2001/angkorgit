@@ -19,6 +19,7 @@ mod watcher;
 pub mod test_api {
     #[cfg(unix)]
     pub use crate::ai_cli::background_process_signals_available;
+    pub use crate::core::accounts::{self, AccountRef};
     pub use crate::core::blame::blame_file;
     pub use crate::core::branch::{
         can_fast_forward, checkout_branch, checkout_detached, cherry_pick, cherry_pick_many,
@@ -53,6 +54,7 @@ pub mod test_api {
         add as remote_add, checkout_remote_ref, fetch, group_update, group_update_controlled,
         list as remote_list, pull, push, push_specs, push_tag,
     };
+    pub use crate::core::repo::get_local_config;
     pub use crate::core::repo::{
         cleanup_state, discover, info as repo_info, init, ref_fingerprint, set_config, status,
     };
@@ -249,7 +251,7 @@ pub fn run() {
             commands::ssh_public_key,
             commands::ssh_key_generate,
             commands::account_list,
-            commands::account_repositories,
+            commands::account_forge_request,
             commands::account_add,
             commands::account_remove,
             commands::account_set_default,

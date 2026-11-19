@@ -1,4 +1,5 @@
-import type { AccountRepository, EditorInfo } from './ipc';
+import type { EditorInfo } from './ipc';
+import type { AccountRepository } from '@angkorgit/core';
 import type { BlameHunk, FileBlame } from '@angkorgit/core';
 import type {
   BranchInfo,

@@ -259,8 +259,18 @@ pub fn recent_remove(app: AppHandle, path: String) -> AppResult<Vec<RecentReposi
 }
 
 #[tauri::command]
-pub async fn config_get(path: Option<String>, key: String) -> AppResult<Option<String>> {
-    blocking(move || repo::get_config(path.as_deref(), &key)).await
+pub async fn config_get(
+    path: Option<String>,
+    key: String,
+    local: Option<bool>,
+) -> AppResult<Option<String>> {
+    blocking(move || {
+        if let (true, Some(path)) = (local.unwrap_or(false), path.as_deref()) {
+            return repo::get_local_config(path, &key);
+        }
+        repo::get_config(path.as_deref(), &key)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1146,12 +1156,13 @@ pub fn account_list() -> Vec<crate::core::accounts::AccountInfo> {
 }
 
 #[tauri::command]
-pub async fn account_repositories(
+pub async fn account_forge_request(
     host: String,
     username: String,
-) -> AppResult<Vec<crate::forge_repositories::RemoteRepository>> {
+    url: String,
+) -> AppResult<crate::http::HttpResponse> {
     let (account, token) = blocking(move || AccountRef { host, username }.with_token()).await?;
-    crate::forge_repositories::list(account, &token).await
+    crate::forge_repositories::request(&account, &token, url).await
 }
 
 #[tauri::command]

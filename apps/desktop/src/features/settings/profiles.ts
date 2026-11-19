@@ -19,15 +19,17 @@ export async function applyProfileToRepo(
     await ipc.configSet(repoPath, 'user.email', profile.email, false);
   }
   const profileBindings = serializeAccountBindings(profile.accounts);
-  const existingBindings = opts?.preserveAccounts
-    ? await ipc.configGet(repoPath, 'angkorgit.accounts')
-    : null;
-  await ipc.configSet(
-    repoPath,
-    'angkorgit.accounts',
-    [profileBindings, existingBindings].filter(Boolean).join(','),
-    false,
-  );
+  if (profileBindings || !opts?.preserveAccounts) {
+    const existingBindings = opts?.preserveAccounts
+      ? await ipc.configGet(repoPath, 'angkorgit.accounts', true)
+      : null;
+    await ipc.configSet(
+      repoPath,
+      'angkorgit.accounts',
+      [profileBindings, existingBindings].filter(Boolean).join(','),
+      false,
+    );
+  }
   await ipc.configSet(repoPath, 'angkorgit.profile', profile.id, false);
   const repoState = useRepo.getState();
   if (repoState.repo?.path === repoPath) repoState.setProfileId(profile.id);

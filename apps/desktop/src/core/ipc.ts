@@ -16,6 +16,8 @@ import type {
   HistoryQuery,
   HttpRequest,
   HttpResponse,
+  AccountRepositoryPage,
+  RepositoryCursor,
   RebaseTodoEntry,
   RecentRepository,
   RepositoryScan,
@@ -32,6 +34,7 @@ import type {
   RepoHooks,
   DiscardBatch,
 } from '@angkorgit/core';
+import { listAccountRepositories } from '@angkorgit/core';
 import type { FileBlame } from '@angkorgit/core';
 let demo = null as unknown as typeof import('./demo');
 
@@ -74,11 +77,6 @@ export interface HostingAccount extends HostingAccountRef {
   verifiedAt?: number | null;
   expiresAt?: string | null;
   isDefault?: boolean;
-}
-
-export interface AccountRepository {
-  fullName: string;
-  cloneUrl: string;
 }
 
 export interface CliToolStatus {
@@ -445,9 +443,9 @@ export const ipc = {
     return invoke('recent_remove', { path });
   },
 
-  async configGet(path: string | null, key: string): Promise<string | null> {
+  async configGet(path: string | null, key: string, local = false): Promise<string | null> {
     if (!isTauri()) return key === 'user.name' ? 'Demo User' : key === 'user.email' ? 'demo@angkorgit.dev' : null;
-    return invoke('config_get', { path, key });
+    return invoke('config_get', { path, key, local });
   },
   async configSet(path: string | null, key: string, value: string, global: boolean): Promise<void> {
     if (!isTauri()) return;
@@ -1048,9 +1046,10 @@ export const ipc = {
       ];
     return invoke('account_list');
   },
-  async accountRepositories({ host, username }: HostingAccountRef): Promise<AccountRepository[]> {
-    if (!isTauri()) return demo.demoAccountRepositories;
-    return invoke('account_repositories', { host, username });
+  async accountRepositories(account: HostingAccount, cursor?: RepositoryCursor | null): Promise<AccountRepositoryPage> {
+    if (!isTauri()) return { repositories: demo.demoAccountRepositories, next: null, skipped: 0 };
+    const { host, username } = account;
+    return listAccountRepositories(account, ({ url }) => invoke('account_forge_request', { host, username, url }), cursor);
   },
   async accountAdd(
     host: string,
