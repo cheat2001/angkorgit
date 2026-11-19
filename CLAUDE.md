@@ -3601,9 +3601,10 @@ update CLAUDE.md or docs/ — never the code.
   The picker lists and clones over HTTPS, including for self-managed GitLab.
   GitLab page numbers and repository paths are applied to the saved origin,
   since the server can advertise a different public address behind a proxy.
-  A repeated authentication challenge for the selected clone marks that
-  credential unverified. Automatic Git operations skip accounts with a
-  recorded rejection and still try accounts that have never been verified.
+  A clone authentication error triggers an independent HTTPS check of the
+  account's identity endpoint. Only a 401 from that endpoint marks the
+  current credential unverified. Verification is diagnostic and the Git
+  credential order still follows the repo binding and host default.
 
 - **G31 — on Windows every `Command` needs `CREATE_NO_WINDOW`**: AngKorGit is a
   GUI-subsystem process with no console, so spawning a console-subsystem child

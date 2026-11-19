@@ -202,6 +202,7 @@ pub async fn repo_clone(
     account: Option<AccountRef>,
 ) -> AppResult<String> {
     let emitter = app.clone();
+    let rejected_account = account.clone();
     let cloned = blocking_post_hooks(&app, into, move |into| {
         post_hooks::clone(
             &url,
@@ -214,11 +215,27 @@ pub async fn repo_clone(
             false,
         )
     })
-    .await?;
+    .await;
+    if matches!(&cloned, Err(AppError::Git(error)) if error.code() == git2::ErrorCode::Auth) {
+        if let Some(account) = rejected_account {
+            confirm_clone_account_rejection(account).await;
+        }
+    }
+    let cloned = cloned?;
     let root = cloned.value.clone();
     report(&app, &root, cloned);
     crate::state::recent_add(&app, &root)?;
     Ok(root)
+}
+
+async fn confirm_clone_account_rejection(account: AccountRef) {
+    let selected = account.clone();
+    let Ok((info, token)) = blocking(move || selected.with_token()).await else {
+        return;
+    };
+    if crate::forge_repositories::account_token_rejected(&info, &token).await {
+        let _ = blocking(move || account.mark_rejected(&token)).await;
+    }
 }
 
 #[tauri::command]

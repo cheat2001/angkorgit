@@ -9,6 +9,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use crate::core::accounts::{clone_url, https_account_origin, AccountInfo};
 use crate::error::{AppError, AppResult};
 
+const BITBUCKET_API: &str = "https://api.bitbucket.org/2.0/";
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteRepository {
@@ -125,6 +127,16 @@ impl Api {
                     self.label
                 ))
             })
+    }
+
+    async fn token_rejected_at(&self, url: Url) -> bool {
+        self.client
+            .get(url)
+            .headers(self.headers.clone())
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .is_ok_and(|response| response.status() == StatusCode::UNAUTHORIZED)
     }
 
     async fn decode<T: DeserializeOwned>(&self, response: Response) -> AppResult<T> {
@@ -246,12 +258,40 @@ fn provider_url(base: &Url, path: &str) -> Url {
     base.join(path).expect("provider API paths are fixed")
 }
 
-async fn github(api: &Api, account: &AccountInfo) -> AppResult<Vec<(String, String)>> {
-    let page = if account.host == "github.com" {
-        Url::parse("https://api.github.com/user/repos?per_page=100").unwrap()
+fn github_api_base(account: &AccountInfo) -> AppResult<Url> {
+    let base = account_base(account)?;
+    if base.as_str() == "https://github.com/" {
+        Ok(Url::parse("https://api.github.com/").unwrap())
     } else {
-        provider_url(&account_base(account)?, "api/v3/user/repos?per_page=100")
+        Ok(provider_url(&base, "api/v3/"))
+    }
+}
+
+fn account_identity_url(account: &AccountInfo) -> AppResult<Url> {
+    match account.provider.as_str() {
+        "github" => Ok(provider_url(&github_api_base(account)?, "user")),
+        "gitlab" | "gitlab-self" => Ok(provider_url(&account_base(account)?, "api/v4/user")),
+        "bitbucket" if account_base(account)?.as_str() == "https://bitbucket.org/" => {
+            Ok(provider_url(&Url::parse(BITBUCKET_API).unwrap(), "user"))
+        }
+        _ => Err(AppError::other(
+            "Account verification is unavailable for this host.",
+        )),
+    }
+}
+
+pub async fn account_token_rejected(account: &AccountInfo, token: &str) -> bool {
+    let Ok(url) = account_identity_url(account) else {
+        return false;
     };
+    let Ok(api) = Api::new(account, token) else {
+        return false;
+    };
+    api.token_rejected_at(url).await
+}
+
+async fn github(api: &Api, account: &AccountInfo) -> AppResult<Vec<(String, String)>> {
+    let page = provider_url(&github_api_base(account)?, "user/repos?per_page=100");
     let entries =
         api.link_pages::<GitHubRepository>(page, |headers, _| {
             Ok(next_link(headers).map(str::to_owned))
@@ -297,7 +337,7 @@ fn gitlab_clone_url(base: &Url, full_name: &str) -> Option<Url> {
 }
 
 async fn bitbucket(api: &Api) -> AppResult<Vec<(String, String)>> {
-    let root = Url::parse("https://api.bitbucket.org/2.0/user/workspaces").unwrap();
+    let root = provider_url(&Url::parse(BITBUCKET_API).unwrap(), "user/workspaces");
     let workspaces = api.bitbucket_pages::<WorkspaceAccess>(root.clone()).await?;
     let mut repos = Vec::new();
     for entry in workspaces {
@@ -355,11 +395,19 @@ mod tests {
     use std::net::TcpListener;
 
     fn serve_pages(pages: &[(&'static str, &'static str, &'static str)]) -> Url {
+        serve_responses(
+            pages
+                .iter()
+                .map(|&(path, headers, body)| (path, StatusCode::OK, headers, body))
+                .collect(),
+        )
+    }
+
+    fn serve_responses(pages: Vec<(&'static str, StatusCode, &'static str, &'static str)>) -> Url {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let origin = Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
-        let pages = pages.to_vec();
         std::thread::spawn(move || {
-            for (path, headers, body) in pages {
+            for (path, status, headers, body) in pages {
                 let (mut stream, _) = listener.accept().unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
@@ -370,7 +418,7 @@ mod tests {
                     .take_while(|line| !line.is_empty())
                     .collect();
                 assert_eq!(request.first().unwrap(), &format!("GET {path} HTTP/1.1"));
-                write!(stream, "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+                write!(stream, "HTTP/1.1 {status}\r\nConnection: close\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
             }
         });
         origin
@@ -382,6 +430,7 @@ mod tests {
             client: CLIENT.get_or_init(|| {
                 Client::builder()
                     .timeout(Duration::from_secs(5))
+                    .redirect(reqwest::redirect::Policy::none())
                     .build()
                     .unwrap()
             }),
@@ -468,6 +517,25 @@ mod tests {
                 .send(),
         );
         assert!(matches!(result, Err(error) if error.is_builder()));
+    }
+
+    #[test]
+    fn only_unauthorized_from_the_identity_endpoint_confirms_token_rejection() {
+        let origin = serve_responses(vec![
+            ("/user", StatusCode::OK, "", "{}"),
+            ("/user", StatusCode::FORBIDDEN, "", "{}"),
+            ("/user", StatusCode::SERVICE_UNAVAILABLE, "", "{}"),
+            ("/user", StatusCode::FOUND, "Location: /elsewhere\r\n", ""),
+            ("/user", StatusCode::UNAUTHORIZED, "", "{}"),
+        ]);
+        let api = test_api();
+        let identity_url = origin.join("user").unwrap();
+        tauri::async_runtime::block_on(async {
+            for rejected in [false, false, false, false, true] {
+                assert_eq!(api.token_rejected_at(identity_url.clone()).await, rejected);
+            }
+            assert!(!api.token_rejected_at(identity_url).await);
+        });
     }
 
     #[test]

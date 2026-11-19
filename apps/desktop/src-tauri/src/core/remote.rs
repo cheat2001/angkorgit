@@ -1568,11 +1568,13 @@ impl SavedClone {
                 && allowed.contains(CredentialType::USER_PASS_PLAINTEXT)
             {
                 if offered {
-                    let _ = self.account.mark_rejected(&self.token);
                     return Err(git2::Error::new(
                         git2::ErrorCode::Auth,
                         git2::ErrorClass::Http,
-                        refused_account_message(&self.account.host, &self.account.username),
+                        format!(
+                            "This repository refused the saved account {} on {}. Check repository access or reconnect the account in Settings → Authentication.",
+                            self.account.username, self.account.host
+                        ),
                     ));
                 }
                 let credential = Cred::userpass_plaintext(&self.account.username, &self.token)?;
@@ -1915,7 +1917,7 @@ mod tests {
     }
 
     #[test]
-    fn saved_account_clone_reports_a_rejected_token_as_an_auth_error() {
+    fn saved_account_clone_reports_a_refusal_as_a_repository_auth_error() {
         let target = tempfile::tempdir().unwrap();
         let (saved, server) = git_auth_server(false);
         let url = saved.url.to_string();
@@ -1933,7 +1935,7 @@ mod tests {
         assert_eq!(error.code(), git2::ErrorCode::Auth);
         assert!(error
             .message()
-            .contains("Reconnect it in Settings → Authentication."));
+            .contains("This repository refused the saved account"));
     }
 
     #[test]
