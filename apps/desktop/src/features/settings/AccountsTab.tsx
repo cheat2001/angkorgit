@@ -86,7 +86,7 @@ const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
     defaultHost: '',
     hostEditable: true,
     tokenPage: (host) => (host ? `http://${host}/-/user_settings/personal_access_tokens` : null),
-    tokenHint: 'Personal access token with read_repository and write_repository. Add read_api to browse repositories.',
+    tokenHint: 'Personal access token with read_repository and write_repository. Repository browsing uses HTTPS and requires read_api.',
     usernameHint: 'username (detected from the token)',
   },
   bitbucket: {

@@ -6,7 +6,7 @@ use reqwest::header::{HeaderMap, HeaderValue, LINK};
 use reqwest::{Client, Response, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::core::accounts::{account_origin, clone_url, AccountInfo};
+use crate::core::accounts::{clone_url, https_account_origin, AccountInfo};
 use crate::error::{AppError, AppResult};
 
 #[derive(Serialize)]
@@ -25,7 +25,6 @@ struct GitHubRepository {
 #[derive(Deserialize)]
 struct GitLabProject {
     path_with_namespace: String,
-    http_url_to_repo: String,
 }
 
 #[derive(Deserialize)]
@@ -70,6 +69,7 @@ impl Api {
                 let client = Client::builder()
                     .connect_timeout(Duration::from_secs(10))
                     .timeout(Duration::from_secs(30))
+                    .https_only(true)
                     .redirect(reqwest::redirect::Policy::none())
                     .build()
                     .map_err(|_| AppError::other("Could not start the repository browser."))?;
@@ -113,23 +113,18 @@ impl Api {
         })
     }
 
-    async fn send(&self, url: Url) -> Result<Response, reqwest::Error> {
+    async fn get(&self, url: Url) -> AppResult<Response> {
         self.client
             .get(url)
             .headers(self.headers.clone())
             .send()
             .await
-    }
-
-    async fn get(&self, url: Url) -> AppResult<Response> {
-        self.send(url).await.map_err(|_| self.connection_error())
-    }
-
-    fn connection_error(&self) -> AppError {
-        AppError::other(format!(
-            "Could not reach {}. Check your connection and try again.",
-            self.label
-        ))
+            .map_err(|_| {
+                AppError::other(format!(
+                    "Could not reach {} over HTTPS. Check your connection and try again.",
+                    self.label
+                ))
+            })
     }
 
     async fn decode<T: DeserializeOwned>(&self, response: Response) -> AppResult<T> {
@@ -153,17 +148,22 @@ impl Api {
         })
     }
 
-    async fn link_pages<T: DeserializeOwned>(&self, first: Response) -> AppResult<Vec<T>> {
-        let mut response = first;
+    async fn link_pages<T: DeserializeOwned>(
+        &self,
+        mut page: Url,
+        continuation: impl Fn(&HeaderMap, &Url) -> AppResult<Option<String>>,
+    ) -> AppResult<Vec<T>> {
         let mut entries = Vec::new();
         let mut visited = HashSet::new();
         loop {
-            let page = response.url().clone();
             visited.insert(page.clone());
-            let next = next_link(response.headers(), &page);
+            let response = self.get(page.clone()).await?;
+            let next = continuation(response.headers(), &page);
             entries.extend(self.decode::<Vec<T>>(response).await?);
-            let Some(next) = next else { return Ok(entries) };
-            response = self.get(next_page(&page, &next, &visited)?).await?;
+            let Some(next) = next? else {
+                return Ok(entries);
+            };
+            page = next_page(&page, &next, &visited)?;
         }
     }
 
@@ -182,7 +182,7 @@ impl Api {
     }
 }
 
-fn next_link(headers: &HeaderMap, page: &Url) -> Option<String> {
+fn next_link(headers: &HeaderMap) -> Option<&str> {
     headers
         .get_all(LINK)
         .iter()
@@ -190,24 +190,38 @@ fn next_link(headers: &HeaderMap, page: &Url) -> Option<String> {
         .flat_map(|value| value.split(','))
         .filter_map(|value| value.trim().strip_prefix('<')?.split_once('>'))
         .find(|(_, params)| params.split(';').any(|part| part.trim() == "rel=\"next\""))
-        .map(|(url, _)| url.to_string())
-        .or_else(|| {
-            let next = headers
-                .get("x-next-page")?
-                .to_str()
-                .ok()?
-                .parse::<u32>()
-                .ok()?;
-            if next == 0 {
-                return None;
-            }
-            let mut url = page.clone();
-            url.set_query(None);
-            url.query_pairs_mut()
-                .extend_pairs(page.query_pairs().filter(|(key, _)| key != "page"))
-                .append_pair("page", &next.to_string());
-            Some(url.into())
+        .map(|(url, _)| url)
+}
+
+fn gitlab_next_link(headers: &HeaderMap, page: &Url) -> AppResult<Option<String>> {
+    let next = if let Some(value) = headers
+        .get("x-next-page")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+    {
+        value.parse::<u32>().ok()
+    } else if let Some(link) = next_link(headers) {
+        page.join(link).ok().and_then(|url| {
+            url.query_pairs()
+                .find(|(key, _)| key == "page")
+                .and_then(|(_, value)| value.parse::<u32>().ok())
         })
+    } else {
+        return Ok(None);
+    };
+    let next = next
+        .filter(|page| *page > 0)
+        .ok_or_else(invalid_pagination)?;
+    let mut url = page.clone();
+    url.set_query(None);
+    url.query_pairs_mut()
+        .extend_pairs(page.query_pairs().filter(|(key, _)| key != "page"))
+        .append_pair("page", &next.to_string());
+    Ok(Some(url.into()))
+}
+
+fn invalid_pagination() -> AppError {
+    AppError::other("The provider returned an invalid repository pagination link.")
 }
 
 fn next_page(page: &Url, next: &str, visited: &HashSet<Url>) -> AppResult<Url> {
@@ -220,13 +234,11 @@ fn next_page(page: &Url, next: &str, visited: &HashSet<Url>) -> AppResult<Url> {
                 && url.fragment().is_none()
                 && !visited.contains(url)
         })
-        .ok_or_else(|| {
-            AppError::other("The provider returned an invalid repository pagination link.")
-        })
+        .ok_or_else(invalid_pagination)
 }
 
-fn account_base(account: &AccountInfo, scheme: &str) -> AppResult<Url> {
-    account_origin(&account.host, scheme)
+fn account_base(account: &AccountInfo) -> AppResult<Url> {
+    https_account_origin(&account.host)
         .ok_or_else(|| AppError::other("The saved account has an invalid host."))
 }
 
@@ -238,13 +250,12 @@ async fn github(api: &Api, account: &AccountInfo) -> AppResult<Vec<(String, Stri
     let page = if account.host == "github.com" {
         Url::parse("https://api.github.com/user/repos?per_page=100").unwrap()
     } else {
-        provider_url(
-            &account_base(account, "https")?,
-            "api/v3/user/repos?per_page=100",
-        )
+        provider_url(&account_base(account)?, "api/v3/user/repos?per_page=100")
     };
-    let entries = api
-        .link_pages::<GitHubRepository>(api.get(page).await?)
+    let entries =
+        api.link_pages::<GitHubRepository>(page, |headers, _| {
+            Ok(next_link(headers).map(str::to_owned))
+        })
         .await?;
     Ok(entries
         .into_iter()
@@ -253,21 +264,36 @@ async fn github(api: &Api, account: &AccountInfo) -> AppResult<Vec<(String, Stri
 }
 
 async fn gitlab(api: &Api, account: &AccountInfo) -> AppResult<Vec<(String, String)>> {
-    let projects = "api/v4/projects?membership=true&simple=true&per_page=100&order_by=id&sort=asc";
-    let page = provider_url(&account_base(account, "https")?, projects);
-    let response = match api.send(page).await {
-        Ok(response) => response,
-        Err(error) if account.provider == "gitlab-self" && error.is_connect() => {
-            api.get(provider_url(&account_base(account, "http")?, projects))
-                .await?
-        }
-        Err(_) => return Err(api.connection_error()),
-    };
-    let entries = api.link_pages::<GitLabProject>(response).await?;
+    let base = account_base(account)?;
+    let projects =
+        "api/v4/projects?membership=true&simple=true&per_page=100&order_by=id&sort=asc&page=1";
+    let page = provider_url(&base, projects);
+    let entries = api
+        .link_pages::<GitLabProject>(page, gitlab_next_link)
+        .await?;
     Ok(entries
         .into_iter()
-        .map(|entry| (entry.path_with_namespace, entry.http_url_to_repo))
+        .filter_map(|entry| {
+            let url = gitlab_clone_url(&base, &entry.path_with_namespace)?;
+            Some((entry.path_with_namespace, url.into()))
+        })
         .collect())
+}
+
+fn gitlab_clone_url(base: &Url, full_name: &str) -> Option<Url> {
+    let (namespace, repo) = full_name.rsplit_once('/')?;
+    if full_name
+        .split('/')
+        .any(|segment| matches!(segment, "" | "." | ".."))
+    {
+        return None;
+    }
+    let mut url = base.clone();
+    url.path_segments_mut()
+        .ok()?
+        .extend(namespace.split('/'))
+        .push(&format!("{repo}.git"));
+    Some(url)
 }
 
 async fn bitbucket(api: &Api) -> AppResult<Vec<(String, String)>> {
@@ -366,16 +392,35 @@ mod tests {
     }
 
     #[test]
-    fn github_and_gitlab_pagination_reads_link_and_next_page_headers() {
+    fn github_pagination_follows_the_next_link() {
         let origin = serve_pages(&[
             (
-                "/projects?membership=true",
-                "Link: </projects?membership=true&page=2>; rel=\"next\"\r\n",
+                "/user/repos",
+                "Link: </user/repos?page=2>; rel=\"next\"\r\n",
+                "[1]",
+            ),
+            ("/user/repos?page=2", "", "[2]"),
+        ]);
+        let results = tauri::async_runtime::block_on(
+            test_api().link_pages::<u32>(origin.join("user/repos").unwrap(), |headers, _| {
+                Ok(next_link(headers).map(str::to_owned))
+            }),
+        )
+        .unwrap();
+        assert_eq!(results, vec![1, 2]);
+    }
+
+    #[test]
+    fn gitlab_pagination_keeps_the_account_origin_path_and_filters() {
+        let origin = serve_pages(&[
+            (
+                "/projects?membership=true&page=1",
+                "Link: <https://public.example.test:3443/gitlab/api/v4/projects?membership=false&page=2>; rel=\"next\"\r\n",
                 "[1]",
             ),
             (
                 "/projects?membership=true&page=2",
-                "X-Next-Page: 3\r\n",
+                "X-Next-Page: 3\r\nLink: <http://public.example.test/projects?page=4>; rel=\"next\"\r\n",
                 "[2]",
             ),
             (
@@ -384,15 +429,45 @@ mod tests {
                 "[3]",
             ),
         ]);
-        let api = test_api();
-        let results = tauri::async_runtime::block_on(async {
-            let response = api
-                .get(origin.join("/projects?membership=true").unwrap())
-                .await
-                .unwrap();
-            api.link_pages::<u32>(response).await.unwrap()
-        });
+        let results = tauri::async_runtime::block_on(test_api().link_pages::<u32>(
+            origin.join("/projects?membership=true&page=1").unwrap(),
+            gitlab_next_link,
+        ))
+        .unwrap();
         assert_eq!(results, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn gitlab_clone_links_use_the_saved_https_origin_and_full_namespace() {
+        let origin = https_account_origin("git.example.test:8443").unwrap();
+        let url = gitlab_clone_url(&origin, "group/child/repo").unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://git.example.test:8443/group/child/repo.git"
+        );
+        assert!(gitlab_clone_url(&origin, "group/../repo").is_none());
+    }
+
+    #[test]
+    fn authenticated_repository_client_rejects_plain_http() {
+        let account = AccountInfo {
+            host: "git.example.test".into(),
+            username: "work".into(),
+            provider: "gitlab-self".into(),
+            verified: true,
+            email: None,
+            verified_at: None,
+            expires_at: None,
+            is_default: true,
+        };
+        let api = Api::new(&account, "saved-token").unwrap();
+        let result = tauri::async_runtime::block_on(
+            api.client
+                .get("http://127.0.0.1:1/projects")
+                .headers(api.headers)
+                .send(),
+        );
+        assert!(matches!(result, Err(error) if error.is_builder()));
     }
 
     #[test]

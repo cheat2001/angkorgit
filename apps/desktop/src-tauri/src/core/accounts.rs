@@ -47,6 +47,23 @@ impl AccountRef {
         self.resolve(&list(), token_of)
     }
 
+    pub fn mark_rejected(&self, token: &str) -> AppResult<()> {
+        let host = normalize_host(&self.host);
+        let Ok(cache) = token_cache().lock() else {
+            return Ok(());
+        };
+        if cache
+            .get(&entry_name(&host, &self.username))
+            .and_then(Option::as_deref)
+            != Some(token)
+        {
+            return Ok(());
+        }
+        mark_matching_unverified(|account| {
+            account.host == host && account.username == self.username
+        })
+    }
+
     fn resolve(
         &self,
         accounts: &[AccountInfo],
@@ -69,8 +86,8 @@ impl AccountRef {
     }
 }
 
-pub fn account_origin(host: &str, scheme: &str) -> Option<reqwest::Url> {
-    let url = reqwest::Url::parse(&format!("{scheme}://{host}/")).ok()?;
+pub fn https_account_origin(host: &str) -> Option<reqwest::Url> {
+    let url = reqwest::Url::parse(&format!("https://{host}/")).ok()?;
     (url.host().is_some()
         && url.username().is_empty()
         && url.password().is_none()
@@ -82,14 +99,11 @@ pub fn account_origin(host: &str, scheme: &str) -> Option<reqwest::Url> {
 
 pub fn clone_url(account: &AccountInfo, raw: &str) -> Option<reqwest::Url> {
     let url = reqwest::Url::parse(raw).ok()?;
-    let transport_allowed = match account.provider.as_str() {
-        "github" | "gitlab" | "bitbucket" => url.scheme() == "https",
-        "gitlab-self" => matches!(url.scheme(), "https" | "http"),
-        _ => false,
-    };
-    let origin = account_origin(&account.host, url.scheme())?;
-    (transport_allowed
-        && url.origin() == origin.origin()
+    let origin = https_account_origin(&account.host)?;
+    (matches!(
+        account.provider.as_str(),
+        "github" | "gitlab" | "gitlab-self" | "bitbucket"
+    ) && url.origin() == origin.origin()
         && url.username().is_empty()
         && url.password().is_none()
         && url.query().is_none()
@@ -351,7 +365,7 @@ pub fn has_account(host: &str) -> bool {
 pub fn candidates(host: &str, preferred: Option<&str>) -> Vec<(String, String)> {
     let host = normalize_host(host);
     let accounts = list();
-    ordered_for_host(&accounts, &host, preferred)
+    usable_git_accounts(&accounts, &host, preferred)
         .into_iter()
         .filter_map(|account| {
             token_of(&account.host, &account.username)
@@ -360,12 +374,29 @@ pub fn candidates(host: &str, preferred: Option<&str>) -> Vec<(String, String)> 
         .collect()
 }
 
+fn usable_git_accounts<'a>(
+    accounts: &'a [AccountInfo],
+    host: &str,
+    preferred: Option<&str>,
+) -> Vec<&'a AccountInfo> {
+    ordered_for_host(accounts, host, preferred)
+        .into_iter()
+        .filter(|account| account.verified || account.verified_at.is_none())
+        .collect()
+}
+
 pub fn mark_unverified(host: &str, username: &str) -> AppResult<()> {
     let host = normalize_host(host);
+    mark_matching_unverified(|account| {
+        hosts_match(&account.host, &host) && account.username == username
+    })
+}
+
+fn mark_matching_unverified(matches: impl Fn(&AccountInfo) -> bool) -> AppResult<()> {
     let mut accounts = list();
     let mut changed = false;
     for account in accounts.iter_mut() {
-        if hosts_match(&account.host, &host) && account.username == username && account.verified {
+        if matches(account) && (account.verified || account.verified_at.is_none()) {
             account.verified = false;
             account.verified_at = Some(now_epoch());
             changed = true;
@@ -525,7 +556,50 @@ mod tests {
             provider: "gitlab-self".into(),
             ..account("git.local:8080", "work", true)
         };
-        assert!(clone_url(&self_hosted, "http://git.local:8080/org/subgroup/repo.git").is_some());
+        assert!(clone_url(&self_hosted, "https://git.local:8080/org/subgroup/repo.git").is_some());
+        assert!(clone_url(&self_hosted, "http://git.local:8080/org/subgroup/repo.git").is_none());
+    }
+
+    #[test]
+    fn rejection_flags_only_the_selected_credential_and_keeps_unchecked_accounts_usable() {
+        let dir = tempfile::tempdir().unwrap();
+        CONFIG_DIR.set(dir.path().to_path_buf()).unwrap();
+        let host = "git.example.test";
+        let selected = AccountRef {
+            host: host.into(),
+            username: "work".into(),
+        };
+        let unchecked = AccountInfo {
+            verified: false,
+            ..account(host, "personal", false)
+        };
+        save_list(&[
+            account(host, "work", true),
+            account("git.example.test:8443", "work", true),
+            unchecked,
+        ])
+        .unwrap();
+        token_cache()
+            .lock()
+            .unwrap()
+            .insert(entry_name(host, "work"), Some("current-token".into()));
+
+        selected.mark_rejected("previous-token").unwrap();
+        assert!(find(host, "work").unwrap().verified);
+        selected.mark_rejected("current-token").unwrap();
+        let rejected = find(host, "work").unwrap();
+        assert!(!rejected.verified);
+        assert!(rejected.verified_at.is_some());
+        assert!(find("git.example.test:8443", "work").unwrap().verified);
+        let accounts = list();
+        let usable: Vec<_> = usable_git_accounts(&accounts, host, Some("work"))
+            .into_iter()
+            .map(|account| (account.host.as_str(), account.username.as_str()))
+            .collect();
+        assert_eq!(
+            usable,
+            [("git.example.test:8443", "work"), (host, "personal")]
+        );
     }
 
     #[test]

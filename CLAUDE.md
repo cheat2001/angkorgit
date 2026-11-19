@@ -3598,6 +3598,12 @@ update CLAUDE.md or docs/ — never the code.
   Cloning from the saved account picker uses the selected keychain entry and
   writes that host binding before post-checkout. Initial profile setup keeps
   existing bindings, while applying a profile explicitly replaces them.
+  The picker lists and clones over HTTPS, including for self-managed GitLab.
+  GitLab page numbers and repository paths are applied to the saved origin,
+  since the server can advertise a different public address behind a proxy.
+  A repeated authentication challenge for the selected clone marks that
+  credential unverified. Automatic Git operations skip accounts with a
+  recorded rejection and still try accounts that have never been verified.
 
 - **G31 — on Windows every `Command` needs `CREATE_NO_WINDOW`**: AngKorGit is a
   GUI-subsystem process with no console, so spawning a console-subsystem child
