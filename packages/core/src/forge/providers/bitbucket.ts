@@ -29,7 +29,7 @@ interface BitbucketPull {
   links?: { html?: { href?: string } };
 }
 
-function bitbucketMessage(body: string): string | null {
+export function bitbucketMessage(body: string): string | null {
   try {
     const parsed = JSON.parse(body) as { error?: { message?: string; detail?: string } };
     const message = parsed.error?.message ?? null;

@@ -6,6 +6,11 @@ All notable changes to AngKorGit are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Clone from saved accounts** (#47). Browse and search repositories from your
+  GitHub, GitLab or Bitbucket Cloud accounts in the clone dialog. AngKorGit
+  remembers the selected account for that repository.
+
 ## [0.28.0] — 2026-11-15
 
 The hooks release. AngKorGit now runs the hooks Git runs after a checkout, a pull or

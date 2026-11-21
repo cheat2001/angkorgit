@@ -1,4 +1,4 @@
-import type { HttpClient } from '../ai/types';
+import type { HttpClient, HttpResponse } from '../ai/types';
 import type { ForgeKind } from './remote';
 import { ForgeError, type PullRequestCheckoutSpec, type PullRequestInfo } from './types';
 
@@ -13,6 +13,7 @@ export function createForgeJsonRequest(
   forge: string,
   label: string,
   parseMessage: (body: string) => string | null,
+  onResponse?: (response: HttpResponse) => void,
 ): ForgeJsonRequest {
   return async (url, method, payload) => {
     const res = await http({
@@ -21,6 +22,7 @@ export function createForgeJsonRequest(
       headers: payload === undefined ? {} : { 'content-type': 'application/json' },
       body: payload === undefined ? undefined : JSON.stringify(payload),
     });
+    onResponse?.(res);
     if (res.status < 200 || res.status >= 300) {
       const detail = parseMessage(res.body);
       throw new ForgeError(

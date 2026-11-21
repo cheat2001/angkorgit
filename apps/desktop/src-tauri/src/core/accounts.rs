@@ -36,6 +36,84 @@ pub struct AccountInfo {
     pub is_default: bool,
 }
 
+#[derive(Clone, Deserialize)]
+pub struct AccountRef {
+    pub host: String,
+    pub username: String,
+}
+
+impl AccountRef {
+    pub fn with_token(&self) -> AppResult<(AccountInfo, String)> {
+        self.resolve(&list(), token_of)
+    }
+
+    pub fn mark_rejected(&self, token: &str) -> AppResult<()> {
+        let host = normalize_host(&self.host);
+        let Ok(cache) = token_cache().lock() else {
+            return Ok(());
+        };
+        if cache
+            .get(&entry_name(&host, &self.username))
+            .and_then(Option::as_deref)
+            != Some(token)
+        {
+            return Ok(());
+        }
+        mark_matching_unverified(|account| {
+            account.host == host
+                && account.username == self.username
+                && (account.verified || account.verified_at.is_none())
+        })
+    }
+
+    fn resolve(
+        &self,
+        accounts: &[AccountInfo],
+        token: impl FnOnce(&str, &str) -> Option<String>,
+    ) -> AppResult<(AccountInfo, String)> {
+        let host = normalize_host(&self.host);
+        let account = find_in(accounts, &host, &self.username).ok_or_else(|| {
+            AppError::other(format!(
+                "The saved account {} on {host} no longer exists.",
+                self.username
+            ))
+        })?;
+        let token = token(&account.host, &account.username).ok_or_else(|| {
+            AppError::other(format!(
+                "The token for {} on {} is missing from the system keychain. Reconnect the account in Settings → Authentication.",
+                account.username, account.host
+            ))
+        })?;
+        Ok((account.clone(), token))
+    }
+}
+
+pub fn https_account_origin(host: &str) -> Option<reqwest::Url> {
+    let url = reqwest::Url::parse(&format!("https://{host}/")).ok()?;
+    (url.host().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.path() == "/"
+        && url.query().is_none()
+        && url.fragment().is_none())
+    .then_some(url)
+}
+
+pub fn clone_url(account: &AccountInfo, raw: &str) -> Option<reqwest::Url> {
+    let url = reqwest::Url::parse(raw).ok()?;
+    let origin = https_account_origin(&account.host)?;
+    (matches!(
+        account.provider.as_str(),
+        "github" | "gitlab" | "gitlab-self" | "bitbucket"
+    ) && url.origin() == origin.origin()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && url.path() != "/")
+        .then_some(url)
+}
+
 fn meta_path() -> Option<PathBuf> {
     CONFIG_DIR.get().map(|dir| dir.join("accounts.json"))
 }
@@ -140,8 +218,12 @@ fn save_list(accounts: &[AccountInfo]) -> AppResult<()> {
 
 pub fn find(host: &str, username: &str) -> Option<AccountInfo> {
     let host = normalize_host(host);
-    list()
-        .into_iter()
+    find_in(&list(), &host, username).cloned()
+}
+
+fn find_in<'a>(accounts: &'a [AccountInfo], host: &str, username: &str) -> Option<&'a AccountInfo> {
+    accounts
+        .iter()
         .find(|a| a.host == host && a.username == username)
 }
 
@@ -296,10 +378,16 @@ pub fn candidates(host: &str, preferred: Option<&str>) -> Vec<(String, String)> 
 
 pub fn mark_unverified(host: &str, username: &str) -> AppResult<()> {
     let host = normalize_host(host);
+    mark_matching_unverified(|account| {
+        account.verified && hosts_match(&account.host, &host) && account.username == username
+    })
+}
+
+fn mark_matching_unverified(matches: impl Fn(&AccountInfo) -> bool) -> AppResult<()> {
     let mut accounts = list();
     let mut changed = false;
     for account in accounts.iter_mut() {
-        if hosts_match(&account.host, &host) && account.username == username && account.verified {
+        if matches(account) {
             account.verified = false;
             account.verified_at = Some(now_epoch());
             changed = true;
@@ -406,6 +494,107 @@ mod tests {
         ensure_defaults(&mut accounts);
         assert_eq!(accounts.iter().filter(|a| a.is_default).count(), 2);
         assert!(accounts[0].is_default);
+    }
+
+    #[test]
+    fn selecting_a_saved_account_never_uses_the_host_default() {
+        let accounts = [
+            account("github.com", "work", true),
+            account("github.com", "personal", false),
+        ];
+        let selected = AccountRef {
+            host: "github.com".into(),
+            username: "personal".into(),
+        };
+        let (account, token) = selected
+            .resolve(&accounts, |host, username| {
+                assert_eq!((host, username), ("github.com", "personal"));
+                Some("personal-token".into())
+            })
+            .unwrap();
+        assert_eq!(account.username, "personal");
+        assert_eq!(token, "personal-token");
+
+        let missing = selected.resolve(&accounts, |_, username| {
+            assert_eq!(username, "personal");
+            None
+        });
+        assert!(
+            matches!(missing, Err(error) if error.to_string().contains("missing from the system keychain"))
+        );
+        let removed = selected.resolve(&accounts[..1], |_, _| {
+            panic!("must not look up another account's token")
+        });
+        assert!(matches!(removed, Err(error) if error.to_string().contains("no longer exists")));
+    }
+
+    #[test]
+    fn account_clone_urls_are_credential_free_and_match_the_saved_origin() {
+        let work = account("github.com", "work", true);
+        assert!(clone_url(&work, "https://github.com:443/org/repo.git").is_some());
+        for url in [
+            "https://github.com.example.org/org/repo.git",
+            "https://github.com:8443/org/repo.git",
+            "https://api.github.com/org/repo.git",
+            "https://user:secret@github.com/org/repo.git",
+            "https://github.com/org/repo.git?token=secret",
+            "http://github.com/org/repo.git",
+            "git@github.com:org/repo.git",
+        ] {
+            assert!(clone_url(&work, url).is_none(), "{url}");
+        }
+        let self_hosted = AccountInfo {
+            provider: "gitlab-self".into(),
+            ..account("git.local:8080", "work", true)
+        };
+        assert!(clone_url(&self_hosted, "https://git.local:8080/org/subgroup/repo.git").is_some());
+        assert!(clone_url(&self_hosted, "http://git.local:8080/org/subgroup/repo.git").is_none());
+    }
+
+    #[test]
+    fn a_recorded_rejection_preserves_the_preferred_git_credential() {
+        let dir = tempfile::tempdir().unwrap();
+        CONFIG_DIR.set(dir.path().to_path_buf()).unwrap();
+        let host = "git.example.test";
+        let selected = AccountRef {
+            host: host.into(),
+            username: "work".into(),
+        };
+        let unchecked = AccountInfo {
+            verified: false,
+            ..account(host, "personal", false)
+        };
+        save_list(&[
+            account(host, "work", true),
+            account("git.example.test:8443", "work", true),
+            unchecked,
+        ])
+        .unwrap();
+        token_cache().lock().unwrap().extend([
+            (entry_name(host, "work"), Some("current-token".into())),
+            (
+                entry_name("git.example.test:8443", "work"),
+                Some("other-port-token".into()),
+            ),
+            (entry_name(host, "personal"), Some("unchecked-token".into())),
+        ]);
+
+        selected.mark_rejected("previous-token").unwrap();
+        assert!(find(host, "work").unwrap().verified);
+        selected.mark_rejected("current-token").unwrap();
+        let rejected = find(host, "work").unwrap();
+        assert!(!rejected.verified);
+        assert!(rejected.verified_at.is_some());
+        assert!(find("git.example.test:8443", "work").unwrap().verified);
+        let usable = candidates(host, Some("work"));
+        assert_eq!(
+            usable,
+            [
+                ("work".into(), "current-token".into()),
+                ("work".into(), "other-port-token".into()),
+                ("personal".into(), "unchecked-token".into()),
+            ]
+        );
     }
 
     #[test]

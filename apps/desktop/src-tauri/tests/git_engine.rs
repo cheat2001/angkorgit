@@ -56,6 +56,155 @@ impl Drop for TempRepo {
     }
 }
 
+#[test]
+fn local_account_binding_reads_ignore_included_config() {
+    let repo = TempRepo::new();
+    let included = repo.dir.join("accounts.gitconfig");
+    let mut config = git2::Config::open(&included).unwrap();
+    config
+        .set_str("angkorgit.accounts", "github.com=included")
+        .unwrap();
+    core::set_config(
+        Some(repo.path()),
+        "include.path",
+        included.to_str().unwrap(),
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        core::get_local_config(repo.path(), "angkorgit.accounts").unwrap(),
+        None
+    );
+    core::set_config(
+        Some(repo.path()),
+        "angkorgit.accounts",
+        "github.com=direct",
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        core::get_local_config(repo.path(), "angkorgit.accounts")
+            .unwrap()
+            .as_deref(),
+        Some("github.com=direct")
+    );
+    assert_eq!(
+        git2::Config::open(&included)
+            .unwrap()
+            .get_string("angkorgit.accounts")
+            .unwrap(),
+        "github.com=included"
+    );
+}
+
+#[test]
+fn saved_account_clone_looks_up_the_exact_keychain_entry_and_writes_a_local_binding() {
+    const CHILD: &str = "ANGKORGIT_TEST_SAVED_ACCOUNT_CLONE";
+    if std::env::var_os(CHILD).is_none() {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "saved_account_clone_looks_up_the_exact_keychain_entry_and_writes_a_local_binding",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
+    struct CloneKeychain;
+    impl keyring::credential::CredentialBuilderApi for CloneKeychain {
+        fn build(
+            &self,
+            _: Option<&str>,
+            service: &str,
+            user: &str,
+        ) -> keyring::Result<Box<keyring::Credential>> {
+            use keyring::credential::CredentialApi;
+            assert_eq!(service, "AngKorGit");
+            assert_eq!(user, "acct:git.example.test:personal");
+            let entry = keyring::mock::MockCredential::default();
+            entry.set_password("test-token")?;
+            Ok(Box::new(entry))
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
+    keyring::set_default_credential_builder(Box::new(CloneKeychain));
+    let settings = tempfile::tempdir().unwrap();
+    core::accounts::CONFIG_DIR
+        .set(settings.path().to_path_buf())
+        .unwrap();
+    std::fs::write(settings.path().join("accounts.json"), serde_json::to_vec(&serde_json::json!([
+        { "host": "git.example.test", "username": "work", "provider": "gitlab-self", "isDefault": true },
+        { "host": "git.example.test", "username": "personal", "provider": "gitlab-self" }
+    ])).unwrap()).unwrap();
+
+    unsafe {
+        git2::opts::set_search_path(git2::ConfigLevel::Global, settings.path()).unwrap();
+    }
+    let source = TempRepo::new();
+    source.write("tracked.txt", "saved clone");
+    commit_all(&source, "source commit");
+    let source_url = reqwest::Url::from_file_path(&source.dir).unwrap();
+    let url = "https://git.example.test/group/project.git";
+    let mut global = git2::Config::open(&settings.path().join(".gitconfig")).unwrap();
+    global
+        .set_str(&format!("url.{source_url}.insteadOf"), url)
+        .unwrap();
+    global
+        .set_str("angkorgit.accounts", "unrelated.example.test=global")
+        .unwrap();
+    assert_eq!(
+        core::get_local_config(source.path(), "angkorgit.accounts").unwrap(),
+        None
+    );
+
+    let selected = core::AccountRef {
+        host: "git.example.test".into(),
+        username: "personal".into(),
+    };
+    let target = settings.path().join("clone");
+    let into = target.to_str().unwrap();
+    let invalid = core::post_hooks::clone(
+        "https://elsewhere.test/group/project.git",
+        into,
+        None,
+        Some(&selected),
+        |_| {},
+        true,
+    );
+    assert!(matches!(invalid, Err(error) if error.to_string().contains("does not match")));
+    assert!(!target.exists());
+
+    core::post_hooks::clone(url, into, None, Some(&selected), |_| {}, true).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(target.join("tracked.txt")).unwrap(),
+        "saved clone"
+    );
+    assert_eq!(
+        core::get_local_config(into, "remote.origin.url")
+            .unwrap()
+            .as_deref(),
+        Some(url)
+    );
+    assert_eq!(
+        core::get_local_config(into, "angkorgit.accounts")
+            .unwrap()
+            .as_deref(),
+        Some("git.example.test=personal")
+    );
+}
+
 fn commit_all(repo: &TempRepo, message: &str) -> String {
     core::stage_all(repo.path()).unwrap();
     core::commit(repo.path(), message, false).unwrap().oid

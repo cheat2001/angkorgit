@@ -69,7 +69,7 @@ export function explainGithubCreateRefusal(error: unknown, targetRepo: string | 
   return new ForgeError(said ? `${hint} GitHub said: ${said}.` : hint, error.forge, error.status);
 }
 
-function githubMessage(body: string): string | null {
+export function githubMessage(body: string): string | null {
   try {
     const parsed = JSON.parse(body) as {
       message?: string;

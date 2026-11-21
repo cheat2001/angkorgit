@@ -78,7 +78,7 @@ const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
     defaultHost: 'gitlab.com',
     hostEditable: false,
     tokenPage: () => 'https://gitlab.com/-/user_settings/personal_access_tokens',
-    tokenHint: 'Personal access token with "read_repository" + "write_repository" scopes',
+    tokenHint: 'Personal access token with read_repository and write_repository. Add read_api to browse repositories.',
     usernameHint: 'username (detected from the token)',
   },
   'gitlab-self': {
@@ -86,7 +86,7 @@ const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
     defaultHost: '',
     hostEditable: true,
     tokenPage: (host) => (host ? `http://${host}/-/user_settings/personal_access_tokens` : null),
-    tokenHint: 'Personal access token with "read_repository" + "write_repository" scopes',
+    tokenHint: 'Personal access token with read_repository and write_repository. Repository browsing uses HTTPS and requires read_api.',
     usernameHint: 'username (detected from the token)',
   },
   bitbucket: {
@@ -94,7 +94,7 @@ const PROVIDERS: Record<ProviderKind, ProviderPreset> = {
     defaultHost: 'bitbucket.org',
     hostEditable: false,
     tokenPage: () => 'https://id.atlassian.com/manage-profile/security/api-tokens',
-    tokenHint: 'API token with read:repository:bitbucket + write:repository:bitbucket scopes',
+    tokenHint: 'API token with read:repository:bitbucket and write:repository:bitbucket. Add read:workspace:bitbucket to browse repositories.',
     usernameHint: 'Atlassian account email (your Bitbucket username is detected)',
   },
   other: {

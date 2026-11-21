@@ -6,11 +6,12 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use git2::{
     build::CheckoutBuilder, AutotagOption, Cred, CredentialType, FetchOptions, PushOptions,
-    RemoteCallbacks, Repository,
+    RemoteCallbacks, RemoteRedirect, Repository,
 };
 
 use crate::error::{AppError, AppResult};
 
+use super::accounts::{self, AccountInfo, AccountRef};
 use super::group_update::{FetchProgress, GroupUpdateControl};
 use super::hooks::{pre_push_input, PostHook, PostHooks, PrePush, PushedRef};
 use super::types::{GeneratedKey, GroupUpdateResult, OpOutcome, RefMovement, RemoteInfo};
@@ -288,8 +289,12 @@ fn refused_account_hint(offered: &Mutex<Option<(String, String)>>) -> String {
         return String::new();
     };
     let _ = super::accounts::mark_unverified(&host, &username);
+    format!(" {}", refused_account_message(&host, &username))
+}
+
+fn refused_account_message(host: &str, username: &str) -> String {
     format!(
-        " The connected {host} account '{username}' was refused — its token may have expired \
+        "The connected {host} account '{username}' was refused — its token may have expired \
          or been revoked. Reconnect it in Settings → Authentication."
     )
 }
@@ -1514,10 +1519,101 @@ pub fn clone(
     url: &str,
     into: &str,
     branch: Option<&str>,
+    account: Option<&AccountRef>,
     on_progress: impl Fn(u32) + Send,
 ) -> AppResult<String> {
     prime_account_bindings(None);
-    let mut callbacks = make_callbacks();
+    let saved = account
+        .map(|account| {
+            let (account, token) = account.with_token()?;
+            SavedClone::new(&account, token, url)
+        })
+        .transpose()?;
+    let repo = clone_repository(url, Path::new(into), branch, saved, on_progress)?;
+    let root = repo
+        .workdir()
+        .unwrap_or_else(|| repo.path())
+        .to_string_lossy()
+        .trim_end_matches('/')
+        .to_string();
+    Ok(root)
+}
+
+struct SavedClone {
+    url: reqwest::Url,
+    account: AccountRef,
+    token: String,
+}
+
+impl SavedClone {
+    fn new(account: &AccountInfo, token: String, url: &str) -> AppResult<Self> {
+        let url = accounts::clone_url(account, url).ok_or_else(|| {
+            AppError::other("The clone URL does not match the selected saved account.")
+        })?;
+        Ok(Self {
+            url,
+            account: AccountRef {
+                host: account.host.clone(),
+                username: account.username.clone(),
+            },
+            token,
+        })
+    }
+
+    fn callbacks(self) -> RemoteCallbacks<'static> {
+        let mut callbacks = RemoteCallbacks::new();
+        let mut offered = false;
+        callbacks.credentials(move |url, _, allowed| {
+            if reqwest::Url::parse(url).is_ok_and(|url| url.origin() == self.url.origin())
+                && allowed.contains(CredentialType::USER_PASS_PLAINTEXT)
+            {
+                if offered {
+                    return Err(git2::Error::new(
+                        git2::ErrorCode::Auth,
+                        git2::ErrorClass::Http,
+                        format!(
+                            "This repository refused the saved account {} on {}. Check repository access or reconnect the account in Settings → Authentication.",
+                            self.account.username, self.account.host
+                        ),
+                    ));
+                }
+                let credential = Cred::userpass_plaintext(&self.account.username, &self.token)?;
+                offered = true;
+                return Ok(credential);
+            }
+            Err(git2::Error::from_str(&format!(
+                "Could not authenticate with {} on {}. Check repository access or reconnect the account in Settings → Authentication.",
+                self.account.username, self.account.host
+            )))
+        });
+        callbacks
+    }
+}
+
+fn clone_repository(
+    url: &str,
+    into: &Path,
+    branch: Option<&str>,
+    saved: Option<SavedClone>,
+    on_progress: impl Fn(u32) + Send,
+) -> AppResult<Repository> {
+    let mut builder = git2::build::RepoBuilder::new();
+    let mut opts = FetchOptions::new();
+    let saved_url = saved.as_ref().map(|saved| saved.url.to_string());
+    let mut callbacks = if let Some(saved) = saved {
+        let host = accounts::host_of_url(saved.url.as_str()).expect("saved clone URL has a host");
+        let binding = format!("{host}={}", saved.account.username);
+        builder.remote_create(move |repo, name, url| {
+            repo.config()?
+                .open_level(git2::ConfigLevel::Local)?
+                .set_str("angkorgit.accounts", &binding)?;
+            repo.remote(name, url)
+        });
+        opts.follow_redirects(RemoteRedirect::None);
+        saved.callbacks()
+    } else {
+        make_callbacks()
+    };
     let mut last_pct: Option<u32> = None;
     callbacks.transfer_progress(move |stats| {
         let total = stats.total_objects().max(1);
@@ -1528,22 +1624,13 @@ pub fn clone(
         }
         true
     });
-    let mut opts = FetchOptions::new();
     opts.remote_callbacks(callbacks);
-    let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(opts);
     if let Some(branch) = branch {
         builder.branch(branch);
     }
 
-    let repo = builder.clone(url, std::path::Path::new(into))?;
-    let root = repo
-        .workdir()
-        .unwrap_or_else(|| repo.path())
-        .to_string_lossy()
-        .trim_end_matches('/')
-        .to_string();
-    Ok(root)
+    Ok(builder.clone(saved_url.as_deref().unwrap_or(url), into)?)
 }
 
 #[allow(dead_code)]
@@ -1742,6 +1829,113 @@ mod tests {
     #[test]
     fn blank_configuration_is_ignored() {
         assert_eq!(ssh_key_candidates(Some("   "), Some(&home()), &[]).len(), 2);
+    }
+
+    fn git_auth_server(accepts_token: bool) -> (SavedClone, std::thread::JoinHandle<()>) {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let host = listener.local_addr().unwrap().to_string();
+        let url = format!("http://{host}/origin.git");
+        let server = std::thread::spawn(move || {
+            for authorized in [false, true] {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let headers: Vec<_> = BufReader::new(&stream)
+                    .lines()
+                    .map(Result::unwrap)
+                    .take_while(|line| !line.is_empty())
+                    .collect();
+                let authorization = headers.iter().find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("authorization")
+                        .then(|| value.trim())
+                });
+                if authorized {
+                    assert_eq!(
+                        authorization,
+                        Some("Basic cGVyc29uYWw6c2VsZWN0ZWQtdG9rZW4=")
+                    );
+                } else {
+                    assert!(authorization.is_none());
+                }
+                if authorized && accepts_token {
+                    let service = "# service=git-upload-pack\n";
+                    let ref_line = format!(
+                        "{} capabilities^{{}}\0symref=HEAD:refs/heads/main\n",
+                        "0".repeat(40)
+                    );
+                    let body = format!(
+                        "{:04x}{service}0000{:04x}{ref_line}0000",
+                        service.len() + 4,
+                        ref_line.len() + 4
+                    );
+                    write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/x-git-upload-pack-advertisement\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+                } else {
+                    write!(stream, "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"test\"\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").unwrap();
+                }
+            }
+        });
+        let saved = SavedClone {
+            url: reqwest::Url::parse(&url).unwrap(),
+            account: AccountRef {
+                host,
+                username: "personal".into(),
+            },
+            token: "selected-token".into(),
+        };
+        (saved, server)
+    }
+
+    #[test]
+    fn saved_account_clone_authenticates_and_records_the_local_binding() {
+        let target = tempfile::tempdir().unwrap();
+        let (saved, server) = git_auth_server(true);
+        let host = saved.account.host.clone();
+        let url = saved.url.to_string();
+        let repo = clone_repository(
+            &url,
+            &target.path().join("cloned"),
+            None,
+            Some(saved),
+            |_| {},
+        )
+        .unwrap();
+        server.join().unwrap();
+        assert_eq!(
+            read_account_bindings(&repo).get(&host).map(String::as_str),
+            Some("personal")
+        );
+        assert_eq!(
+            repo.find_remote("origin").unwrap().url(),
+            Some(url.as_str())
+        );
+    }
+
+    #[test]
+    fn saved_account_clone_reports_a_refusal_as_a_repository_auth_error() {
+        let target = tempfile::tempdir().unwrap();
+        let (saved, server) = git_auth_server(false);
+        let url = saved.url.to_string();
+        let result = clone_repository(
+            &url,
+            &target.path().join("cloned"),
+            None,
+            Some(saved),
+            |_| {},
+        );
+        let Err(AppError::Git(error)) = result else {
+            panic!("expected clone authentication to fail")
+        };
+        server.join().unwrap();
+        assert_eq!(error.code(), git2::ErrorCode::Auth);
+        assert!(error
+            .message()
+            .contains("This repository refused the saved account"));
     }
 
     #[test]

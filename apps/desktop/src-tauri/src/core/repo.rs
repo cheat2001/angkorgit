@@ -246,7 +246,29 @@ pub fn get_config(repo_path: Option<&str>, key: &str) -> AppResult<Option<String
     }
 }
 
+pub fn get_local_config(repo_path: &str, key: &str) -> AppResult<Option<String>> {
+    let config = open(repo_path)?
+        .config()?
+        .open_level(git2::ConfigLevel::Local)?;
+    let mut entries = config.entries(None)?;
+    let mut value = None;
+    while let Some(entry) = entries.next() {
+        let entry = entry?;
+        if entry.include_depth() == 0 && entry.name() == Some(key) {
+            value = entry.value().map(str::to_owned);
+        }
+    }
+    Ok(value)
+}
+
 pub fn set_config(repo_path: Option<&str>, key: &str, value: &str, global: bool) -> AppResult<()> {
+    if let (false, Some(path), "angkorgit.accounts") = (global, repo_path, key) {
+        open(path)?
+            .config()?
+            .open_level(git2::ConfigLevel::Local)?
+            .set_multivar(key, ".*", value)?;
+        return Ok(());
+    }
     let mut config = match (global, repo_path) {
         (false, Some(path)) => open(path)?.config()?,
         _ => git2::Config::open_default()?

@@ -4,6 +4,7 @@ use std::sync::{Mutex, OnceLock};
 
 use tauri::{AppHandle, Emitter, State};
 
+use crate::core::accounts::AccountRef;
 use crate::core::post_hooks::{self, Hooked};
 use crate::core::types::*;
 use crate::core::{
@@ -198,24 +199,43 @@ pub async fn repo_clone(
     url: String,
     into: String,
     branch: Option<String>,
+    account: Option<AccountRef>,
 ) -> AppResult<String> {
     let emitter = app.clone();
+    let rejected_account = account.clone();
     let cloned = blocking_post_hooks(&app, into, move |into| {
         post_hooks::clone(
             &url,
             into,
             branch.as_deref(),
+            account.as_ref(),
             move |pct| {
                 let _ = emitter.emit("clone-progress", pct);
             },
             false,
         )
     })
-    .await?;
+    .await;
+    if matches!(&cloned, Err(AppError::Git(error)) if error.code() == git2::ErrorCode::Auth) {
+        if let Some(account) = rejected_account {
+            confirm_clone_account_rejection(account).await;
+        }
+    }
+    let cloned = cloned?;
     let root = cloned.value.clone();
     report(&app, &root, cloned);
     crate::state::recent_add(&app, &root)?;
     Ok(root)
+}
+
+async fn confirm_clone_account_rejection(account: AccountRef) {
+    let selected = account.clone();
+    let Ok((info, token)) = blocking(move || selected.with_token()).await else {
+        return;
+    };
+    if crate::forge_repositories::account_token_rejected(&info, &token).await {
+        let _ = blocking(move || account.mark_rejected(&token)).await;
+    }
 }
 
 #[tauri::command]
@@ -239,8 +259,18 @@ pub fn recent_remove(app: AppHandle, path: String) -> AppResult<Vec<RecentReposi
 }
 
 #[tauri::command]
-pub async fn config_get(path: Option<String>, key: String) -> AppResult<Option<String>> {
-    blocking(move || repo::get_config(path.as_deref(), &key)).await
+pub async fn config_get(
+    path: Option<String>,
+    key: String,
+    local: Option<bool>,
+) -> AppResult<Option<String>> {
+    blocking(move || {
+        if let (true, Some(path)) = (local.unwrap_or(false), path.as_deref()) {
+            return repo::get_local_config(path, &key);
+        }
+        repo::get_config(path.as_deref(), &key)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1123,6 +1153,16 @@ pub async fn ssh_key_generate(path: String, comment: String) -> AppResult<Genera
 #[tauri::command]
 pub fn account_list() -> Vec<crate::core::accounts::AccountInfo> {
     crate::core::accounts::list()
+}
+
+#[tauri::command]
+pub async fn account_forge_request(
+    host: String,
+    username: String,
+    url: String,
+) -> AppResult<crate::http::HttpResponse> {
+    let (account, token) = blocking(move || AccountRef { host, username }.with_token()).await?;
+    crate::forge_repositories::request(&account, &token, url).await
 }
 
 #[tauri::command]
