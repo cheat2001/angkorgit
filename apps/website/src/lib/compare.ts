@@ -70,7 +70,7 @@ export const COMPETITORS: Competitor[] = [
       },
       {
         q: 'Is there a paid tier coming?',
-        a: 'No. The whole thing is MIT licensed and on GitHub. If it saves you time there is a coffee link in the footer, and that is the extent of the business model.',
+        a: 'No. The whole thing is MIT licensed and on GitHub. If it saves you time there is a GitHub Sponsors link in the footer, and that is the extent of the business model.',
       },
     ],
   },
